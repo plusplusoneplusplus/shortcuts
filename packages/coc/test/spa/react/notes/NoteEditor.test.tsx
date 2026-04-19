@@ -793,7 +793,7 @@ describe('NoteEditor', () => {
 
             await waitFor(() => {
                 expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
-                expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>', false);
             });
         });
 

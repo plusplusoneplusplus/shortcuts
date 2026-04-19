@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type React from 'react';
 import type { Editor } from '@tiptap/core';
 import type { CommentThread } from '../notesApi';
@@ -15,6 +15,8 @@ import type { ModeOption } from '../../shared/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import { wordDiff } from './noteEditDiff';
+import type { DiffChunk } from './noteEditDiff';
+import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
 import { AIEditNavigator } from './AIEditNavigator';
 import './noteEditor.css';
 
@@ -24,15 +26,6 @@ const NOTE_MODE_OPTIONS: readonly ModeOption<NoteViewMode>[] = [
     { value: 'rich', label: 'Rich', testId: 'note-mode-rich' },
     { value: 'source', label: 'Source', testId: 'note-mode-source' },
 ] as const;
-
-/** Imperative handle exposed to parent components via ref. */
-export interface NoteEditorHandle {
-    /**
-     * Apply an AI edit to the note: reload from disk, then decorate the
-     * changed region with word-level diff highlights (ephemeral, 5s).
-     */
-    applyAiEdit(args: { oldStr: string; newStr: string }): Promise<void>;
-}
 
 export interface NoteEditorProps {
     workspaceId: string;
@@ -60,7 +53,79 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 const AI_EDIT_HIGHLIGHT_DURATION_MS = 5000;
 
-export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor({
+/**
+ * Find contiguous changed regions in the editor document from word diff chunks.
+ * Groups runs of add/remove chunks, maps text offsets to ProseMirror positions.
+ */
+function findChangedRegionsInDoc(
+    chunks: DiffChunk[],
+    doc: { descendants: (callback: (node: { isText: boolean; text?: string }, pos: number) => void) => void },
+): AiEditRegion[] {
+    // Group chunks into contiguous changed regions and track new-text offsets
+    const rawRegions: Array<{ fromOffset: number; toOffset: number; chunks: DiffChunk[] }> = [];
+    let newTextOffset = 0;
+    let i = 0;
+
+    while (i < chunks.length) {
+        if (chunks[i].type === 'equal') {
+            newTextOffset += chunks[i].text.length;
+            i++;
+            continue;
+        }
+        const regionFrom = newTextOffset;
+        const regionChunks: DiffChunk[] = [];
+        while (i < chunks.length && chunks[i].type !== 'equal') {
+            regionChunks.push(chunks[i]);
+            if (chunks[i].type === 'add') {
+                newTextOffset += chunks[i].text.length;
+            }
+            i++;
+        }
+        rawRegions.push({ fromOffset: regionFrom, toOffset: newTextOffset, chunks: regionChunks });
+    }
+
+    if (rawRegions.length === 0) return [];
+
+    // Build text-offset → doc-position map
+    const posMap: Array<{ textOffset: number; docPos: number; len: number }> = [];
+    let currentTextOffset = 0;
+    doc.descendants((node, pos) => {
+        if (!node.isText) return;
+        const len = (node.text ?? '').length;
+        posMap.push({ textOffset: currentTextOffset, docPos: pos, len });
+        currentTextOffset += len;
+    });
+
+    function textOffsetToDocPos(offset: number): number {
+        for (let j = posMap.length - 1; j >= 0; j--) {
+            if (posMap[j].textOffset <= offset) {
+                return posMap[j].docPos + (offset - posMap[j].textOffset);
+            }
+        }
+        return offset === 0 && posMap.length > 0 ? posMap[0].docPos : -1;
+    }
+
+    const now = Date.now();
+    const regions: AiEditRegion[] = [];
+
+    for (const raw of rawRegions) {
+        const from = textOffsetToDocPos(raw.fromOffset);
+        const to = raw.toOffset > raw.fromOffset ? textOffsetToDocPos(raw.toOffset) : from;
+        if (from === -1) continue;
+
+        regions.push({
+            id: `ai-edit-${now}-${regions.length}`,
+            from,
+            to: to === -1 ? from : to,
+            chunks: raw.chunks,
+            expiresAt: now + AI_EDIT_HIGHLIGHT_DURATION_MS,
+        });
+    }
+
+    return regions;
+}
+
+export function NoteEditor({
     workspaceId,
     notePath,
     io = defaultNoteEditorIO,
@@ -75,7 +140,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     onToggleCommentsPanel,
     commentCount,
     onFlushSave,
-}: NoteEditorProps, ref: React.Ref<NoteEditorHandle>) {
+}: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -91,6 +156,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
     const [rawMarkdown, setRawMarkdown] = useState('');
     const [sourceDirty, setSourceDirty] = useState(false);
+    const viewModeRef = useRef(viewMode);
+    viewModeRef.current = viewMode;
 
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sourceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -443,6 +510,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
                         saveTimerRef.current = null;
                     }
                     setDirty(false);
+                    setRawMarkdown(content);
                     contentLoadedRef.current = true;
 
                     if (commentsEnabled) {
@@ -503,89 +571,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
         onFlushSave?.(flushSave);
     }, [onFlushSave, flushSave]);
 
-    // ── AI edit: imperative handle for applyAiEdit ──────────────────────
-
-    useImperativeHandle(ref, () => ({
-        async applyAiEdit({ oldStr, newStr }: { oldStr: string; newStr: string }) {
-            const path = notePathRef.current;
-            if (!path || viewMode === 'source') return;
-
-            // Cancel pending autosave to avoid race conditions
-            if (saveTimerRef.current) {
-                clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = null;
-            }
-            pendingContentRef.current = null;
-
-            // Reload fresh content from disk
-            let freshHtml: string;
-            try {
-                const { content } = await ioRef.current.loadContent(workspaceIdRef.current, path);
-                setRawMarkdown(content);
-                freshHtml = markdownToHtml(content);
-                freshHtml = rewriteHtmlImageSrc(freshHtml, ioRef.current, workspaceIdRef.current);
-            } catch {
-                return; // If reload fails, skip decoration silently
-            }
-
-            const ed = editorRef.current;
-            if (!ed || ed.isDestroyed) return;
-
-            // Load fresh content without marking as dirty
-            ed.commands.setContent(freshHtml, false);
-            setDirty(false);
-
-            // Find newStr in the editor text to locate the decorated region
-            const docText = ed.state.doc.textContent;
-            const idx = newStr.length > 0 ? docText.indexOf(newStr) : -1;
-
-            setAiEditCount(prev => prev + 1);
-
-            if (idx === -1 && newStr.length > 0) {
-                // newStr not found — reload happened but decoration skipped
-                return;
-            }
-
-            // Compute ProseMirror positions for the found text region
-            // Walk the document to map text offset to doc position
-            const chunks = wordDiff(oldStr, newStr);
-            if (chunks.every(c => c.type === 'equal')) return;
-
-            let textOffset = 0;
-            let fromPos = -1;
-            let toPos = -1;
-
-            if (newStr.length > 0 && idx !== -1) {
-                ed.state.doc.descendants((node, pos) => {
-                    if (!node.isText || fromPos !== -1) return;
-                    const text = node.text ?? '';
-                    const nodeStart = textOffset;
-                    const nodeEnd = textOffset + text.length;
-                    if (nodeStart <= idx && idx < nodeEnd) {
-                        const offsetInNode = idx - nodeStart;
-                        fromPos = pos + offsetInNode;
-                        toPos = fromPos + newStr.length;
-                    }
-                    textOffset += text.length;
-                });
-            }
-
-            if (fromPos === -1) return;
-
-            const regionId = `ai-edit-${Date.now()}`;
-            const region = {
-                id: regionId,
-                from: fromPos,
-                to: toPos,
-                chunks,
-                expiresAt: Date.now() + AI_EDIT_HIGHLIGHT_DURATION_MS,
-            };
-
-            aiEditRegionsRef.current = [...aiEditRegionsRef.current, region];
-            ed.commands.setAiEdits(aiEditRegionsRef.current as any);
-        },
-    }), [viewMode]);
-
     // ── AI edit navigator: dismiss all decorations ──────────────────────
 
     const handleAiEditDismiss = useCallback(() => {
@@ -606,7 +591,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
         ed.chain().setTextSelection({ from: first.from, to: first.to }).scrollIntoView().run();
     }, []);
 
-    // ── Auto-reload on notes-changed WS event ────────────────────────────
+    // ── Auto-reload on notes-changed WS event (with diff decorations) ───
 
     useEffect(() => {
         if (!notePath) return;
@@ -620,16 +605,45 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             if (pendingContentRef.current !== null) return;
             ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content }) => {
                 // Skip redundant reload — content already matches what's displayed
-                // (e.g. applyAiEdit already loaded this version from disk)
                 if (content === rawMarkdownRef.current) return;
+
+                const ed = editorRef.current;
+                if (!ed || ed.isDestroyed) {
+                    setRawMarkdown(content);
+                    return;
+                }
+
+                // Capture previous doc text before updating content
+                const previousDocText = ed.state.doc.textContent;
+
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
-                const ed = editorRef.current;
-                if (ed && !ed.isDestroyed) {
-                    ed.commands.setContent(html);
-                    setDirty(false);
-                }
+                ed.commands.setContent(html, false);
+                setDirty(false);
                 setRawMarkdown(content);
+
+                // Skip diff decorations in source mode
+                if (viewModeRef.current === 'source') return;
+
+                // Compute diff on plain text (doc text, not markdown)
+                const newDocText = ed.state.doc.textContent;
+                if (previousDocText === newDocText) return;
+
+                const chunks = wordDiff(previousDocText, newDocText);
+                if (chunks.every(c => c.type === 'equal')) return;
+
+                // Skip decoration if diff is too large (>50% of new text is changed)
+                const equalChars = chunks.filter(c => c.type === 'equal').reduce((sum, c) => sum + c.text.length, 0);
+                if (newDocText.length > 0 && equalChars / newDocText.length < 0.5) return;
+
+                // Find changed regions and map to ProseMirror positions
+                const regions = findChangedRegionsInDoc(chunks, ed.state.doc);
+                if (regions.length === 0) return;
+
+                // Apply decorations and update count
+                aiEditRegionsRef.current = [...aiEditRegionsRef.current, ...regions];
+                ed.commands.setAiEdits(aiEditRegionsRef.current as any);
+                setAiEditCount(prev => prev + regions.length);
             }).catch(() => { /* non-fatal */ });
         };
         window.addEventListener('notes-changed', handler);
@@ -823,4 +837,4 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             )}
         </div>
     );
-});
+}

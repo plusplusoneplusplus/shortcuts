@@ -1,14 +1,15 @@
 /**
- * Integration tests for NoteEditor.applyAiEdit — the full ref → reload → decoration path.
+ * Integration tests for NoteEditor diff-on-reload — the notes-changed → diff → decoration path.
  *
- * Renders <NoteEditor> with a mocked RichEditorCore to test the imperative
- * applyAiEdit handle: disk reload, editor content update, AI edit count
- * increment, and navigator pill visibility.
+ * Renders <NoteEditor> with a mocked RichEditorCore to test that external
+ * file changes (via notes-changed WS event) trigger word-diff decorations:
+ * disk reload, content comparison, AI edit region creation, and navigator
+ * pill visibility.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
-import { createRef, useEffect } from 'react';
+import { useEffect } from 'react';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -129,30 +130,39 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', ()
     },
 }));
 
-import type { NoteEditorHandle } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
 import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function renderWithRef(notePath: string | null = 'test.md') {
-    const ref = createRef<NoteEditorHandle>();
+function fireNotesChanged(wsId: string, changedPaths: string[]) {
+    window.dispatchEvent(new CustomEvent('notes-changed', {
+        detail: { wsId, changedPaths },
+    }));
+}
+
+async function renderEditor(notePath: string | null = 'test.md') {
     // Initial content load
     if (notePath) {
         mockLoadContent.mockResolvedValueOnce({ content: 'initial content', path: notePath });
     }
     await act(async () => {
-        render(<NoteEditor workspaceId="ws1" notePath={notePath} io={mockIo} ref={ref} />);
+        render(<NoteEditor workspaceId="ws1" notePath={notePath} io={mockIo} />);
     });
     // Wait for initial content load + editor ready
     if (notePath) {
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
     }
-    return ref;
+}
+
+async function tickAsync() {
+    await act(async () => {
+        await new Promise(r => setTimeout(r, 50));
+    });
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-describe('NoteEditor.applyAiEdit', () => {
+describe('NoteEditor diff-on-reload', () => {
     beforeEach(() => {
         mockLoadContent.mockReset();
         mockIOSaveContent.mockReset();
@@ -178,24 +188,24 @@ describe('NoteEditor.applyAiEdit', () => {
         vi.useRealTimers();
     });
 
-    // ── Case 1: Happy path — plain text ─────────────────────────────────
+    // ── Happy path: notes-changed with different content shows decorations ──
 
-    it('reloads content from disk and shows navigator pill', async () => {
-        const ref = await renderWithRef('test.md');
-        expect(ref.current).toBeDefined();
+    it('shows diff decorations when notes-changed delivers different content', async () => {
+        await renderEditor('test.md');
 
-        // Set up the reload response — applyAiEdit will call loadContent again
-        mockLoadContent.mockResolvedValueOnce({ content: 'The new text here', path: 'test.md' });
+        // Simulate external file change
+        mockLoadContent.mockResolvedValueOnce({ content: 'updated content', path: 'test.md' });
 
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'The old text here', newStr: 'The new text here' });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
 
-        // loadContent should be called: once for initial load + once for applyAiEdit
-        expect(mockLoadContent).toHaveBeenCalledTimes(2);
-
-        // setContent called for both initial load and reload
+        // setContent called: initial + reload
         expect(mockSetContent).toHaveBeenCalledTimes(2);
+
+        // setAiEdits called with regions (content changed: "initial" → "updated")
+        expect(mockSetAiEdits).toHaveBeenCalled();
 
         // Navigator pill should be visible
         await waitFor(() => {
@@ -203,142 +213,154 @@ describe('NoteEditor.applyAiEdit', () => {
         });
     });
 
-    // ── Case 2: newStr not found in doc text (markdown mismatch) ────────
+    // ── Identical content skips reload and decorations ──
 
-    it('increments count even when newStr is not found in doc text', async () => {
-        const ref = await renderWithRef('test.md');
+    it('skips setContent when notes-changed delivers identical content', async () => {
+        await renderEditor('test.md');
+        const callsAfterInit = mockSetContent.mock.calls.length;
 
-        // Return content where the plain text won't match newStr exactly
-        // Our mock markdownToHtml wraps in <p>, and setContent strips to plain text
-        // But if AI returns markdown like "**bold**", the doc textContent would be "bold"
-        mockLoadContent.mockResolvedValueOnce({ content: 'some content', path: 'test.md' });
+        // Deliver same content as initial
+        mockLoadContent.mockResolvedValueOnce({ content: 'initial content', path: 'test.md' });
 
-        // newStr won't be found in doc textContent because the actual text doesn't match
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'this-will-not-match-anything' });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
 
-        // Navigator should still appear (count incremented even on mismatch)
-        await waitFor(() => {
-            expect(screen.getByTestId('ai-edit-navigator')).toBeDefined();
-        });
-
-        // But setAiEdits should NOT have been called (decoration skipped)
+        // setContent NOT called again
+        expect(mockSetContent).toHaveBeenCalledTimes(callsAfterInit);
+        // No decorations
         expect(mockSetAiEdits).not.toHaveBeenCalled();
     });
 
-    // ── Case 3: oldStr === newStr (all-equal diff) ──────────────────────
+    // ── Large diff (>50% changed) skips decoration ──
 
-    it('increments count but does not set decorations when oldStr equals newStr', async () => {
-        const ref = await renderWithRef('test.md');
-        const sameText = 'identical text';
+    it('skips decoration when diff is too large (>50% changed)', async () => {
+        await renderEditor('test.md');
 
-        mockLoadContent.mockResolvedValueOnce({ content: sameText, path: 'test.md' });
+        // Completely different content — should exceed 50% threshold
+        mockLoadContent.mockResolvedValueOnce({ content: 'xyz abc 123', path: 'test.md' });
 
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: sameText, newStr: sameText });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
 
-        // Count is incremented (so navigator shows), but no decorations set
-        // because wordDiff returns all-equal chunks and the code returns early
-        // The count IS still incremented before the equal-check
-        await waitFor(() => {
-            expect(screen.getByTestId('ai-edit-navigator')).toBeDefined();
-        });
-
-        // setAiEdits NOT called because chunks are all-equal → early return
+        // setContent called for reload
+        expect(mockSetContent).toHaveBeenCalledTimes(2);
+        // But no decorations — diff too large
         expect(mockSetAiEdits).not.toHaveBeenCalled();
-    });
-
-    // ── Case 4: newStr empty (deletion) ─────────────────────────────────
-
-    it('increments count when newStr is empty (deletion)', async () => {
-        const ref = await renderWithRef('test.md');
-
-        mockLoadContent.mockResolvedValueOnce({ content: 'remaining content', path: 'test.md' });
-
-        await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'deleted text', newStr: '' });
-        });
-
-        // Count should increment — navigator shows
-        await waitFor(() => {
-            expect(screen.getByTestId('ai-edit-navigator')).toBeDefined();
-        });
-
-        // loadContent was called for reload
-        expect(mockLoadContent).toHaveBeenCalledTimes(2);
-    });
-
-    // ── Case 5: loadContent throws ──────────────────────────────────────
-
-    it('resolves silently when loadContent throws', async () => {
-        const ref = await renderWithRef('test.md');
-
-        mockLoadContent.mockRejectedValueOnce(new Error('disk error'));
-
-        // Should not throw
-        await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'new' });
-        });
-
-        // Navigator should NOT be shown (count not incremented on error)
-        expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
-
-        // setAiEdits should NOT have been called
-        expect(mockSetAiEdits).not.toHaveBeenCalled();
-    });
-
-    // ── Case 6: notePath is null ────────────────────────────────────────
-
-    it('returns early without calling loadContent when notePath is null', async () => {
-        const ref = await renderWithRef(null);
-
-        await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'new' });
-        });
-
-        // loadContent should NOT have been called at all (no initial load, no reload)
-        expect(mockLoadContent).not.toHaveBeenCalled();
-
         // No navigator
         expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
     });
 
-    // ── Case 7: Multiple sequential calls accumulate count ──────────────
+    // ── User has unsaved edits — dedup prevents double reload ──
 
-    it('accumulates count across multiple sequential applyAiEdit calls', async () => {
-        const ref = await renderWithRef('test.md');
+    it('dedup guard prevents redundant setContent when content matches', async () => {
+        await renderEditor('test.md');
+        const callsAfterInit = mockSetContent.mock.calls.length;
 
-        // Each call will reload content; the newStr won't match but count still goes up
-        for (let i = 0; i < 3; i++) {
-            mockLoadContent.mockResolvedValueOnce({ content: `content ${i}`, path: 'test.md' });
-            await act(async () => {
-                await ref.current!.applyAiEdit({ oldStr: `old ${i}`, newStr: `unique-${i}-no-match` });
-            });
-        }
-
-        // Navigator should show with count reflecting 3 edits
-        await waitFor(() => {
-            const nav = screen.getByTestId('ai-edit-navigator');
-            expect(nav).toBeDefined();
-            expect(nav.textContent).toContain('3');
-        });
-
-        // loadContent called: 1 (initial) + 3 (reloads) = 4
-        expect(mockLoadContent).toHaveBeenCalledTimes(4);
-    });
-
-    // ── Case 8: Dismiss clears count and hides navigator ────────────────
-
-    it('dismiss button clears count and hides navigator', async () => {
-        const ref = await renderWithRef('test.md');
-
-        mockLoadContent.mockResolvedValueOnce({ content: 'updated', path: 'test.md' });
+        // Deliver same content as initial — rawMarkdownRef should match
+        mockLoadContent.mockResolvedValueOnce({ content: 'initial content', path: 'test.md' });
 
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'no-match-text' });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
+
+        // loadContent is called but dedup prevents setContent
+        expect(mockSetContent).toHaveBeenCalledTimes(callsAfterInit);
+    });
+
+    // ── Editor destroyed — no crash ──
+
+    it('updates rawMarkdown but skips decoration when editor is destroyed', async () => {
+        await renderEditor('test.md');
+
+        mockEditor.isDestroyed = true;
+        mockLoadContent.mockResolvedValueOnce({ content: 'new content', path: 'test.md' });
+
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        // setContent NOT called for the reload (editor destroyed)
+        expect(mockSetContent).toHaveBeenCalledTimes(1); // only initial
+        expect(mockSetAiEdits).not.toHaveBeenCalled();
+    });
+
+    // ── loadContent throws — no crash ──
+
+    it('handles loadContent errors silently', async () => {
+        await renderEditor('test.md');
+
+        mockLoadContent.mockRejectedValueOnce(new Error('disk error'));
+
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        // No crash, no extra setContent
+        expect(mockSetContent).toHaveBeenCalledTimes(1);
+        expect(mockSetAiEdits).not.toHaveBeenCalled();
+    });
+
+    // ── Wrong workspace ID — ignored ──
+
+    it('ignores notes-changed for different workspace', async () => {
+        await renderEditor('test.md');
+        const callsAfterInit = mockLoadContent.mock.calls.length;
+
+        await act(async () => {
+            fireNotesChanged('other-ws', ['test.md']);
+        });
+        await tickAsync();
+
+        // loadContent NOT called — wrong workspace
+        expect(mockLoadContent).toHaveBeenCalledTimes(callsAfterInit);
+    });
+
+    // ── Different path — ignored ──
+
+    it('ignores notes-changed for different file path', async () => {
+        await renderEditor('test.md');
+        const callsAfterInit = mockLoadContent.mock.calls.length;
+
+        await act(async () => {
+            fireNotesChanged('ws1', ['other.md']);
+        });
+        await tickAsync();
+
+        expect(mockLoadContent).toHaveBeenCalledTimes(callsAfterInit);
+    });
+
+    // ── notePath is null — no handler registered ──
+
+    it('does not register handler when notePath is null', async () => {
+        await renderEditor(null);
+        const callsAfterInit = mockLoadContent.mock.calls.length;
+
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        expect(mockLoadContent).toHaveBeenCalledTimes(callsAfterInit);
+    });
+
+    // ── Dismiss clears count and hides navigator ──
+
+    it('dismiss button clears count and hides navigator', async () => {
+        await renderEditor('test.md');
+
+        mockLoadContent.mockResolvedValueOnce({ content: 'updated content', path: 'test.md' });
+
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
 
         // Navigator visible
         await waitFor(() => {
@@ -357,99 +379,81 @@ describe('NoteEditor.applyAiEdit', () => {
         });
     });
 
-    // ── Case: editor destroyed before applyAiEdit runs ──────────────────
+    // ── Multiple events accumulate regions ──
 
-    it('returns silently when editor is destroyed', async () => {
-        const ref = await renderWithRef('test.md');
+    it('accumulates regions across multiple notes-changed events', async () => {
+        await renderEditor('test.md');
 
-        mockLoadContent.mockResolvedValueOnce({ content: 'content', path: 'test.md' });
-        mockEditor.isDestroyed = true;
-
+        // First change: small word edit
+        mockLoadContent.mockResolvedValueOnce({ content: 'updated content', path: 'test.md' });
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'new' });
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        // Second change: another small word edit
+        mockLoadContent.mockResolvedValueOnce({ content: 'modified content', path: 'test.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        // Navigator should show with accumulated count
+        await waitFor(() => {
+            const nav = screen.getByTestId('ai-edit-navigator');
+            expect(nav).toBeDefined();
         });
 
-        // loadContent was called for the reload attempt, but setContent wasn't called again
-        // (the 2nd call is blocked by isDestroyed check)
-        expect(mockSetContent).toHaveBeenCalledTimes(1); // only initial load
-        expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+        // setAiEdits called for each change event
+        expect(mockSetAiEdits).toHaveBeenCalledTimes(2);
     });
 
-    // ── Case: Cancel pending autosave ───────────────────────────────────
+    // ── Regression: rapid identical events only trigger one reload ──
 
-    it('cancels pending autosave before reloading', async () => {
-        const ref = await renderWithRef('test.md');
+    it('deduplicates rapid identical content deliveries', async () => {
+        await renderEditor('test.md');
 
-        mockLoadContent.mockResolvedValueOnce({ content: 'fresh', path: 'test.md' });
-
+        // First event: loads new content
+        mockLoadContent.mockResolvedValueOnce({ content: 'new content', path: 'test.md' });
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'no-match' });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
 
-        // loadContent called for reload — verifies the reload path runs
-        expect(mockLoadContent).toHaveBeenCalledTimes(2);
+        const callsAfterFirst = mockSetContent.mock.calls.length;
+
+        // Second event: delivers same content (already loaded by first event)
+        mockLoadContent.mockResolvedValueOnce({ content: 'new content', path: 'test.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+
+        // setContent NOT called again — content dedup
+        expect(mockSetContent).toHaveBeenCalledTimes(callsAfterFirst);
     });
 
-    // ── Regression: notes-changed WS event after applyAiEdit must not wipe decorations ──
+    // ── Partial word change produces decoration with correct region ──
 
-    it('notes-changed event with identical content skips redundant setContent (preserves decorations)', async () => {
-        const ref = await renderWithRef('test.md');
+    it('computes word diff and creates region for partial text change', async () => {
+        await renderEditor('test.md');
 
-        // applyAiEdit reloads content — the word "updated" is the new content on disk
-        const aiContent = 'The updated text here';
-        mockLoadContent.mockResolvedValueOnce({ content: aiContent, path: 'test.md' });
-
+        // Change one word: "initial content" → "initial update"
+        mockLoadContent.mockResolvedValueOnce({ content: 'initial update', path: 'test.md' });
         await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'The old text here', newStr: 'The updated text here' });
+            fireNotesChanged('ws1', ['test.md']);
         });
+        await tickAsync();
 
-        const setContentCallCount = mockSetContent.mock.calls.length;
-
-        // Now simulate the notes-changed WS event arriving with the same content
-        // (file watcher detected the same write that applyAiEdit already loaded)
-        mockLoadContent.mockResolvedValueOnce({ content: aiContent, path: 'test.md' });
-
-        await act(async () => {
-            window.dispatchEvent(new CustomEvent('notes-changed', {
-                detail: { wsId: 'ws1', changedPaths: ['test.md'] },
-            }));
-        });
-
-        // Wait for the async loadContent to resolve
-        await act(async () => {
-            await new Promise(r => setTimeout(r, 50));
-        });
-
-        // setContent should NOT have been called again — content dedup skipped it
-        expect(mockSetContent).toHaveBeenCalledTimes(setContentCallCount);
-    });
-
-    it('notes-changed event with different content still reloads', async () => {
-        const ref = await renderWithRef('test.md');
-
-        // applyAiEdit reloads content
-        mockLoadContent.mockResolvedValueOnce({ content: 'version-A', path: 'test.md' });
-
-        await act(async () => {
-            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'no-match' });
-        });
-
-        const setContentCallCount = mockSetContent.mock.calls.length;
-
-        // notes-changed arrives with genuinely different content (e.g. external edit)
-        mockLoadContent.mockResolvedValueOnce({ content: 'version-B', path: 'test.md' });
-
-        await act(async () => {
-            window.dispatchEvent(new CustomEvent('notes-changed', {
-                detail: { wsId: 'ws1', changedPaths: ['test.md'] },
-            }));
-        });
-
-        await act(async () => {
-            await new Promise(r => setTimeout(r, 50));
-        });
-
-        // setContent SHOULD have been called — content actually changed
-        expect(mockSetContent).toHaveBeenCalledTimes(setContentCallCount + 1);
+        // setAiEdits should be called with regions containing diff chunks
+        expect(mockSetAiEdits).toHaveBeenCalledTimes(1);
+        const regions = mockSetAiEdits.mock.calls[0][0];
+        expect(regions.length).toBeGreaterThan(0);
+        const region = regions[regions.length - 1];
+        expect(region.chunks).toBeDefined();
+        expect(region.chunks.length).toBeGreaterThan(0);
+        // Should contain at least one 'add' or 'remove' chunk
+        expect(region.chunks.some((c: any) => c.type === 'add' || c.type === 'remove')).toBe(true);
     });
 });
+
