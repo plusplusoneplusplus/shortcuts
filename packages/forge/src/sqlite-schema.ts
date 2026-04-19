@@ -262,25 +262,29 @@ export function initializeDatabase(db: Database.Database): void {
         `);
 
         // ── incremental migrations for existing databases ───────────
-        if (versionBefore >= 1 && versionBefore < 2) {
+        // Guards use only `versionBefore < N` (not `>= 1`) so that
+        // databases at version 0 with pre-existing tables still get
+        // columns added by later migrations.  Every migration is
+        // idempotent (checks column/table existence before ALTER).
+        if (versionBefore < 2) {
             migrateV1toV2(db);
         }
-        if (versionBefore >= 1 && versionBefore < 3) {
+        if (versionBefore < 3) {
             migrateV2toV3(db);
         }
-        if (versionBefore >= 1 && versionBefore < 4) {
+        if (versionBefore < 4) {
             migrateV3toV4(db);
         }
-        if (versionBefore >= 1 && versionBefore < 5) {
+        if (versionBefore < 5) {
             migrateV4toV5(db);
         }
-        if (versionBefore >= 1 && versionBefore < 6) {
+        if (versionBefore < 6) {
             migrateV5toV6(db);
         }
-        if (versionBefore >= 1 && versionBefore < 7) {
+        if (versionBefore < 7) {
             migrateV6toV7(db);
         }
-        if (versionBefore >= 1 && versionBefore < 8) {
+        if (versionBefore < 8) {
             migrateV7toV8(db);
         }
 
