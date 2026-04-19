@@ -3,8 +3,6 @@
  * dialog has been minimized. Lets the user restore or fully close the preview.
  */
 
-import { useBreakpoint } from '../hooks/useBreakpoint';
-
 export interface MarkdownReviewMinimizedChipProps {
     /** Short filename shown in the chip label. */
     fileName: string;
@@ -19,9 +17,8 @@ export function MarkdownReviewMinimizedChip({
     onRestore,
     onClose,
 }: MarkdownReviewMinimizedChipProps) {
-    const { isMobile } = useBreakpoint();
-    // On mobile sit above the BottomNav bar; on desktop sit at the edge.
-    const bottomClass = isMobile ? 'bottom-16' : 'bottom-4';
+    // Mobile nav is now at the top; chip sits at the edge on all viewports.
+    const bottomClass = 'bottom-4';
 
     return (
         <div

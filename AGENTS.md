@@ -157,7 +157,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
-- `processes.db` — SQLite process store (default backend; schema version 7); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), and FTS5 `conversation_search` index on `conversation_turns.content`
+- `processes.db` — SQLite process store (default backend; schema version 8); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), per-turn pin/archive/delete state (`conversation_turns.pinned_at`, `archived`, `deleted_at`), and FTS5 `conversation_search` index on `conversation_turns.content`
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions
@@ -176,6 +176,15 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 
 **Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path.
 
+**Convention — creating work items:** Work items are stored as JSON files in `~/.coc/repos/<workspaceId>/work-items/` (NOT as `.plan.md` files in `tasks/`). `.plan.md` files appear in the **Tasks tab**; work item JSON files appear in the **Work Items tab**. These are completely separate systems.
+- **ALWAYS use the REST API** to create/update work items when the CoC server is running (default port 4000):
+  ```
+  POST http://localhost:4000/api/workspaces/<workspaceId>/work-items
+  Body: { title, description, priority, tags, source }
+  ```
+- **Never write work-item JSON files directly** via file I/O — the server uses an atomic write-queue and direct writes will be silently overwritten on the next server-side write.
+- The API also broadcasts a `work-item-added` WebSocket event so the dashboard UI updates immediately without a page refresh.
+
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration. Handler deduplication: `wiki-backend.ts` defines shared `ResolvedAskContext`/`ResolvedExploreContext`/`WikiProvider` interfaces; `handleAskCore()`/`handleExploreCore()` are the single-path implementations shared by both multi-wiki (native) and standalone handlers; `api-handlers.ts` directly creates context objects and delegates to core handlers; `standalone-admin-handlers.ts` and `standalone-config-loader.ts` handle deep-wiki-specific admin (seeds, config); generate handlers accept `WikiProvider` (satisfied by `WikiManager` or `createSingleWikiProvider()`).
 
 **Onboarding layer:** `WelcomeModal` (first-launch modal), `FirstStepsCard` (guided checklist replacing empty repos state), `FeatureTip` (contextual dismissible tips). State in `GlobalPreferences` (`hasSeenWelcome`, `onboardingProgress`, `dismissedTips`), gated by `SHOW_WELCOME_TUTORIAL` compile-time flag.
@@ -183,6 +192,8 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 **Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`, `GET /api/memory/observations/levels` (3-level overview), `GET /api/memory/observations` (list files at a level), `GET /api/memory/observations/:filename` (read observation). Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryFilesPanel` (3-level file browser) + `MemoryConfigPanel` + `ExploreCachePanel`.
 
 **Seen-state layer:** `seen-state-handler.ts` (`registerSeenStateRoutes`) exposes per-process read/unread tracking via `GET/PATCH /api/workspaces/:id/seen-state`, `DELETE /api/workspaces/:id/seen-state/:processId`, `GET /api/workspaces/:id/seen-state/count`. Backed by `seen_at TEXT` column on `processes` table. Client hook `useUnseenActivity` loads from server on mount, uses optimistic local state + debounced fire-and-forget API calls. One-time localStorage migration from `coc-unseen-*` keys on first load.
+
+**Turn actions layer:** `turn-actions-handler.ts` (`registerTurnActionRoutes`) exposes per-message delete, pin, and archive on conversation turns. Routes: `DELETE /api/processes/:id/turns/:turnIndex` (soft-delete), `PATCH .../restore`, `PATCH .../pin`, `PATCH .../archive`, `GET /api/processes/:id/turns/pinned`. Backed by `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER` columns on `conversation_turns` table. SPA: `ConversationTurnBubble` context menu (Delete/Pin/Archive), `ProcessDetail` renders collapsible Pinned Messages section, archived toggle, undo-delete toast.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 

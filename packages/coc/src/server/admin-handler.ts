@@ -143,6 +143,8 @@ export interface AdminRouteOptions {
     restartExitCode?: number;
     /** Override token TTL in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
     tokenTtlMs?: number;
+    /** Callback invoked when clientPool config changes at runtime. */
+    onClientPoolConfigChanged?: (config: { enabled: boolean; size: number }) => Promise<void>;
 }
 
 /**
@@ -153,7 +155,7 @@ export interface AdminRouteOptions {
 const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
 
 export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions): void {
-    const { store, dataDir, getWsServer, configPath, configFunctions } = options;
+    const { store, dataDir, getWsServer, configPath, configFunctions, onClientPoolConfigChanged } = options;
     const wiper = new DataWiper(dataDir, store);
     const resolvedConfigPath = configPath ?? configFunctions?.getConfigFilePath?.() ?? '';
 
@@ -224,7 +226,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'clientPool.enabled', 'clientPool.size'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -302,6 +304,17 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('myLife.enabled' in body) {
                 if (typeof body['myLife.enabled'] !== 'boolean') {
                     errors.push('myLife.enabled must be a boolean');
+                }
+            }
+            if ('clientPool.enabled' in body) {
+                if (typeof body['clientPool.enabled'] !== 'boolean') {
+                    errors.push('clientPool.enabled must be a boolean');
+                }
+            }
+            if ('clientPool.size' in body) {
+                const size = body['clientPool.size'];
+                if (typeof size !== 'number' || !Number.isInteger(size) || size < 0 || size > 10) {
+                    errors.push('clientPool.size must be an integer between 0 and 10');
                 }
             }
 
@@ -402,7 +415,29 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 existing.myLife.enabled = body['myLife.enabled'] as boolean;
             }
 
+            // Handle nested clientPool fields
+            let clientPoolChanged = false;
+            if ('clientPool.enabled' in body) {
+                if (!existing.clientPool) { existing.clientPool = {}; }
+                existing.clientPool.enabled = body['clientPool.enabled'] as boolean;
+                clientPoolChanged = true;
+            }
+            if ('clientPool.size' in body) {
+                if (!existing.clientPool) { existing.clientPool = {}; }
+                existing.clientPool.size = body['clientPool.size'] as number;
+                clientPoolChanged = true;
+            }
+
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
+
+            // Notify client pool of config change so it takes effect immediately
+            if (clientPoolChanged && onClientPoolConfigChanged) {
+                const resolved = configFunctions?.getResolvedConfigWithSource?.(configPath);
+                const poolConfig = resolved?.resolved?.clientPool;
+                if (poolConfig) {
+                    onClientPoolConfigChanged(poolConfig).catch(() => { /* best-effort */ });
+                }
+            }
 
             // Return updated resolved config (same shape as GET)
             const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };

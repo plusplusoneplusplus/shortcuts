@@ -95,6 +95,10 @@ export const CLIConfigSchema = z.object({
     skills: z.object({
         autoUpdate: z.boolean().optional(),
     }).passthrough().optional(),
+    clientPool: z.object({
+        enabled: z.boolean().optional(),
+        size: z.number().int().min(0).max(10).optional(),
+    }).passthrough().optional(),
 }).passthrough();
 
 /**

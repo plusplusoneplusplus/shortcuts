@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Spinner } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
@@ -45,6 +45,16 @@ export interface ConversationAreaProps {
     onCancelSelection?: () => void;
     /** Called when user selects "Attach as context" from a bubble's context menu. */
     onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
+    /** Called when user deletes a turn via context menu. */
+    onDeleteTurn?: (turnIndex: number) => void;
+    /** Called when user pins/unpins a turn via context menu. */
+    onPinTurn?: (turnIndex: number, pinned: boolean) => void;
+    /** Called when user archives/unarchives a turn via context menu. */
+    onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
+    /** Undo-delete state: turnIndex of the recently deleted turn (for undo toast). */
+    undoDeleteTurnIndex?: number | null;
+    /** Called when user clicks "Undo" on the delete toast. */
+    onUndoDelete?: () => void;
 }
 
 export function ConversationArea({
@@ -73,7 +83,13 @@ export function ConversationArea({
     onCopySelected,
     onCancelSelection,
     onAttachContext,
+    onDeleteTurn,
+    onPinTurn,
+    onArchiveTurn,
+    undoDeleteTurnIndex,
+    onUndoDelete,
 }: ConversationAreaProps) {
+    const [showArchived, setShowArchived] = useState(false);
     // Escape key exits selection mode
     useEffect(() => {
         if (!isSelecting) return;
@@ -94,7 +110,13 @@ export function ConversationArea({
                 className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
             >
                 {isPending ? (
-                    <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
+                    task?.type === 'chat' ? (
+                        <div className="flex items-center gap-2 text-[#848484] text-sm">
+                            <Spinner size="sm" /> Task queued, starting soon…
+                        </div>
+                    ) : (
+                        <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
+                    )
                 ) : loading ? (
                     <div className="flex items-center gap-2 text-[#848484] text-sm">
                         <Spinner size="sm" /> Loading conversation...
@@ -103,6 +125,41 @@ export function ConversationArea({
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
                 ) : (
                     <div className="space-y-3" ref={turnsContainerRef}>
+                        {/* Pinned messages section */}
+                        {onPinTurn && (() => {
+                            const pinnedTurns = turns.filter(t => t.pinnedAt && !t.deletedAt);
+                            if (pinnedTurns.length === 0) return null;
+                            return (
+                                <details className="border border-amber-300/30 dark:border-amber-500/20 rounded-lg p-2 mb-2">
+                                    <summary className="cursor-pointer text-xs font-semibold text-[#848484] dark:text-[#999] select-none">
+                                        📌 Pinned Messages ({pinnedTurns.length})
+                                    </summary>
+                                    <div className="mt-2 space-y-2">
+                                        {pinnedTurns.sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? '')).map((turn, i) => (
+                                            <ConversationTurnBubble
+                                                key={`pinned-${turn.turnIndex ?? i}`}
+                                                turn={turn}
+                                                taskId={taskId}
+                                                wsId={wsId}
+                                                turnIndex={turn.turnIndex}
+                                                onPinTurn={onPinTurn}
+                                                onArchiveTurn={onArchiveTurn}
+                                                onDeleteTurn={onDeleteTurn}
+                                            />
+                                        ))}
+                                    </div>
+                                </details>
+                            );
+                        })()}
+                        {/* Archived toggle */}
+                        {onArchiveTurn && turns.some(t => t.archived && !t.deletedAt) && (
+                            <button
+                                onClick={() => setShowArchived(v => !v)}
+                                className="text-xs text-[#848484] hover:text-[#666] dark:hover:text-[#bbb] transition-colors"
+                            >
+                                {showArchived ? '🗄️ Hide archived messages' : `🗄️ Show archived messages (${turns.filter(t => t.archived && !t.deletedAt).length})`}
+                            </button>
+                        )}
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
                             const nextTurnIndex = Math.max(0, ...turns.map(t => t.turnIndex ?? -1)) + 1;
@@ -110,9 +167,9 @@ export function ConversationArea({
                                 task?.status === 'running' && !hasStreaming && turns.length > 0
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
                                     : turns;
-                            // Sort by turnIndex to handle storage order anomalies from race conditions;
-                            // turns without turnIndex sort to end (they are always the newest)
-                            const sortedTurns = [...renderTurns].sort((a, b) => {
+                            const sortedTurns = [...renderTurns]
+                                .filter(t => !t.deletedAt && (!t.archived || showArchived || !onArchiveTurn))
+                                .sort((a, b) => {
                                 const ai = a.turnIndex;
                                 const bi = b.turnIndex;
                                 if (ai == null && bi == null) return 0;
@@ -169,7 +226,16 @@ export function ConversationArea({
                                                 </div>
                                             )}
                                             <div className="flex-1 min-w-0">
-                                                <ConversationTurnBubble turn={turn} taskId={taskId} wsId={wsId} turnIndex={idx} onAttachContext={onAttachContext} />
+                                                <ConversationTurnBubble
+                                                    turn={turn}
+                                                    taskId={taskId}
+                                                    wsId={wsId}
+                                                    turnIndex={idx}
+                                                    onAttachContext={onAttachContext}
+                                                    onDeleteTurn={onDeleteTurn}
+                                                    onPinTurn={onPinTurn}
+                                                    onArchiveTurn={onArchiveTurn}
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -190,6 +256,18 @@ export function ConversationArea({
                     </div>
                 )}
             </div>
+            {/* Undo delete toast */}
+            {undoDeleteTurnIndex != null && onUndoDelete && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#333] dark:bg-[#555] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in">
+                    <span>Message deleted</span>
+                    <button
+                        onClick={onUndoDelete}
+                        className="font-semibold text-amber-300 hover:text-amber-200 transition-colors"
+                    >
+                        Undo
+                    </button>
+                </div>
+            )}
             <button
                 data-testid="scroll-to-bottom-btn"
                 className={cn(

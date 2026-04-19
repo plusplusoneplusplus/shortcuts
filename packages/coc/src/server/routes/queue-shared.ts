@@ -140,6 +140,7 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         workingDirectory: payload?.workingDirectory,
         workspaceId: payload?.workspaceId,
         scheduleId: payload?.scheduleId,
+        workItemId: payload?.workItemId,
         imagesCount,
         hasImages: imagesCount > 0 || !!payload?.imagesFilePath,
     };

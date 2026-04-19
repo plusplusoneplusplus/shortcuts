@@ -109,6 +109,13 @@ export interface CLIConfig {
         /** Auto-update globally-installed bundled skills on serve startup (default: true) */
         autoUpdate?: boolean;
     };
+    /** Client pool configuration (pre-warmed CopilotClient processes) */
+    clientPool?: {
+        /** Enable the pre-warmed client pool (default: true) */
+        enabled?: boolean;
+        /** Number of pre-warmed idle clients to maintain (default: 3) */
+        size?: number;
+    };
 }
 
 // ============================================================================
@@ -223,6 +230,13 @@ export interface ResolvedCLIConfig {
         /** Auto-update globally-installed bundled skills on serve startup */
         autoUpdate: boolean;
     };
+    /** Client pool configuration (pre-warmed CopilotClient processes) */
+    clientPool: {
+        /** Enable the pre-warmed client pool */
+        enabled: boolean;
+        /** Number of pre-warmed idle clients to maintain */
+        size: number;
+    };
 }
 
 // ============================================================================
@@ -286,6 +300,10 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     skills: {
         autoUpdate: true,
     },
+    clientPool: {
+        enabled: true,
+        size: 3,
+    },
 };
 
 /**
@@ -306,6 +324,7 @@ export const CONFIG_SOURCE_KEYS = [
     'notes.enabled',
     'myWork.enabled',
     'myLife.enabled',
+    'clientPool.enabled', 'clientPool.size',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -469,6 +488,10 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         skills: {
             autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
         },
+        clientPool: {
+            enabled: override.clientPool?.enabled ?? base.clientPool?.enabled ?? true,
+            size: override.clientPool?.size ?? base.clientPool?.size ?? 3,
+        },
     };
 }
 
@@ -533,6 +556,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('myLife.')) {
         const subKey = key.slice('myLife.'.length) as keyof NonNullable<CLIConfig['myLife']>;
         return fileConfig.myLife?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('clientPool.')) {
+        const subKey = key.slice('clientPool.'.length) as keyof NonNullable<CLIConfig['clientPool']>;
+        return fileConfig.clientPool?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

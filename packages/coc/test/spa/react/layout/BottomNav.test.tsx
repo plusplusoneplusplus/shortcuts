@@ -109,16 +109,13 @@ describe('BottomNav', () => {
         expect(screen.queryByText('Processes')).toBeNull();
     });
 
-    it('has safe area padding attribute for notched devices', () => {
+    it('is positioned at the top below the TopBar', () => {
         viewportCleanup = mockViewport(375);
-        // jsdom strips `env()` CSS values, so we verify the element renders
-        // with the correct test ID and confirm the style prop is applied
-        // by checking the nav element is a fixed-position bar
         render(<BottomNav />);
         const nav = screen.getByTestId('bottom-nav');
         expect(nav.tagName).toBe('NAV');
         expect(nav.className).toContain('fixed');
-        expect(nav.className).toContain('bottom-0');
+        expect(nav.className).toContain('top-10');
     });
 
     it('has z-[8000] class', () => {

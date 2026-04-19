@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNotesChat } from '../../hooks/useNotesChat';
-import { ActivityChatDetail } from '../ActivityChatDetail';
+import { ChatDetail } from '../ChatDetail';
 import { ChatPreferencesProvider } from '../../context/ChatPreferencesContext';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
@@ -96,7 +96,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             🔄 New Chat
                         </button>
                     </div>
-                    <ActivityChatDetail
+                    <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}
                         variant="floating"

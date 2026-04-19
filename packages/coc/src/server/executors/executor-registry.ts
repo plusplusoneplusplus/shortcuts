@@ -20,6 +20,7 @@ import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
+import { CopilotClientCache } from './copilot-client-cache';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -34,6 +35,8 @@ export interface ExecutorRegistryOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
+    /** Shared CopilotClient cache (optional — when provided, executors reuse clients). */
+    clientCache?: CopilotClientCache;
 }
 
 /**
@@ -45,6 +48,7 @@ export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
     readonly memoryAggregateExecutor: MemoryAggregateExecutor;
     readonly runner: ProcessLifecycleRunner;
+    readonly clientCache: CopilotClientCache;
 
     private readonly store: ProcessStore;
     private readonly approvePermissions: boolean;
@@ -70,6 +74,12 @@ export class ExecutorRegistry {
         this.aiService = options.aiService;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
 
+        // Shared client cache — use the provided one or create a new instance
+        this.clientCache = options.clientCache ?? new CopilotClientCache();
+        if (!options.clientCache) {
+            this.clientCache.setAIService(options.aiService);
+        }
+
         const chatOpts = {
             workingDirectory: options.defaultWorkingDirectory,
             approvePermissions: options.approvePermissions,
@@ -86,16 +96,16 @@ export class ExecutorRegistry {
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded }, options.dataDir);
-        this.chatExecutor = new ChatExecutor(store, chatOpts, options.dataDir);
-        this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir);
-        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir);
+        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded }, options.dataDir, this.clientCache);
+        this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir, this.clientCache);
+        this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir, this.clientCache);
+        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir, this.clientCache);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.memoryAggregateExecutor = new MemoryAggregateExecutor(store, options.dataDir ?? '');
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */

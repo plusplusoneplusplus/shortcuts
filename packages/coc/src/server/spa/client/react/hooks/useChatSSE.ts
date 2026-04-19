@@ -81,6 +81,7 @@ export function useChatSSE({
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
         setIsStreaming(true);
+        const sseStartTime = Date.now();
 
         const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
             const last = prev[prev.length - 1];
@@ -188,9 +189,21 @@ export function useChatSSE({
         };
 
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            const costTimeMs = Date.now() - sseStartTime;
             closeSSE();
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
+            // Stamp costTimeMs on the last assistant turn before server refresh
+            setTurnsAndRef(prev => {
+                for (let i = prev.length - 1; i >= 0; i--) {
+                    if (prev[i].role === 'assistant') {
+                        const updated = [...prev];
+                        updated[i] = { ...updated[i], costTimeMs };
+                        return updated;
+                    }
+                }
+                return prev;
+            });
             void refreshConversation(processId);
             // Server drains one pending message on task completion; sync
             // the queued section from the refreshed process data.
@@ -207,7 +220,28 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
-        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
+        // SSE auto-reconnects natively on transient errors. Only close
+        // permanently when the task reaches a terminal status (handled by
+        // finish()) or the component unmounts (handled by cleanup return).
+        // Track consecutive errors and fall back to a full refresh if the
+        // connection keeps failing.
+        let consecutiveErrors = 0;
+        const MAX_SSE_ERRORS = 5;
+
+        es.onerror = () => {
+            consecutiveErrors++;
+            if (consecutiveErrors >= MAX_SSE_ERRORS) {
+                // Too many consecutive errors — give up and refresh
+                closeSSE();
+                void refreshConversation(processId);
+            }
+            // Otherwise let EventSource auto-reconnect
+        };
+
+        // Reset error count on successful reconnection
+        es.onopen = () => {
+            consecutiveErrors = 0;
+        };
 
         es.addEventListener('suggestions', (event: Event) => {
             try {

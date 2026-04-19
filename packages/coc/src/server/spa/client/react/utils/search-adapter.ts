@@ -1,6 +1,6 @@
 /**
  * Adapts ProcessSearchResult from the FTS5 search API into task-like objects
- * compatible with ActivityListPane's Card rendering.
+ * compatible with ChatListPane's Card rendering.
  */
 
 import type { ProcessSearchResult } from '../hooks/useProcessSearch';

@@ -98,6 +98,9 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             tokenUsage: turn.tokenUsage,
             pasteExternalized: turn.pasteExternalized,
             model: turn.model,
+            deletedAt: turn.deletedAt?.toISOString(),
+            pinnedAt: turn.pinnedAt?.toISOString(),
+            archived: turn.archived,
         })),
         // Context window tracking fields
         tokenLimit: process.tokenLimit,
@@ -200,6 +203,9 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             tokenUsage: turn.tokenUsage,
             pasteExternalized: turn.pasteExternalized,
             model: turn.model,
+            deletedAt: turn.deletedAt ? new Date(turn.deletedAt) : undefined,
+            pinnedAt: turn.pinnedAt ? new Date(turn.pinnedAt) : undefined,
+            archived: turn.archived,
         })),
         // Context window tracking fields
         tokenLimit: serialized.tokenLimit,

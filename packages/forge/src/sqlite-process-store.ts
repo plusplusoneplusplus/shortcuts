@@ -103,6 +103,9 @@ interface TurnRow {
     token_usage: string | null;
     paste_externalized: number;
     model: string | null;
+    deleted_at: string | null;
+    pinned_at: string | null;
+    archived: number;
 }
 
 interface WorkspaceRow {
@@ -402,6 +405,9 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         token_usage: jsonStringify(turn.tokenUsage),
         paste_externalized: boolToInt(turn.pasteExternalized),
         model: turn.model ?? null,
+        deleted_at: dateToIso(turn.deletedAt),
+        pinned_at: dateToIso(turn.pinnedAt),
+        archived: boolToInt(turn.archived),
     };
 }
 
@@ -449,6 +455,9 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         tokenUsage: jsonParse<TokenUsage>(row.token_usage),
         pasteExternalized: intToBool(row.paste_externalized),
         ...(row.model ? { model: row.model } : {}),
+        deletedAt: isoToDate(row.deleted_at),
+        pinnedAt: isoToDate(row.pinned_at),
+        archived: intToBool(row.archived),
     };
 }
 
@@ -900,6 +909,102 @@ export class SqliteProcessStore implements ProcessStore {
                 archived: intToBool(row.archived) || undefined,
             };
         });
+    }
+
+    // ========================================================================
+    // Conversation Turn Actions (per-message delete, pin, archive)
+    // ========================================================================
+
+    /**
+     * Soft-delete a conversation turn by setting `deleted_at`.
+     * The turn is not physically removed — it can be restored via `restoreTurn()`.
+     */
+    softDeleteTurn(processId: string, turnIndex: number): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET deleted_at = ? WHERE process_id = ? AND turn_index = ?'
+        ).run(new Date().toISOString(), processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Restore a soft-deleted conversation turn by clearing `deleted_at`.
+     */
+    restoreTurn(processId: string, turnIndex: number): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET deleted_at = NULL WHERE process_id = ? AND turn_index = ?'
+        ).run(processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Permanently remove a soft-deleted turn from the database.
+     */
+    hardDeleteTurn(processId: string, turnIndex: number): void {
+        this.db.prepare(
+            'DELETE FROM conversation_turns WHERE process_id = ? AND turn_index = ? AND deleted_at IS NOT NULL'
+        ).run(processId, turnIndex);
+    }
+
+    /**
+     * Pin a conversation turn within a process.
+     */
+    pinTurn(processId: string, turnIndex: number, pinnedAt: string): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET pinned_at = ?, archived = 0 WHERE process_id = ? AND turn_index = ?'
+        ).run(pinnedAt, processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Unpin a conversation turn.
+     */
+    unpinTurn(processId: string, turnIndex: number): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET pinned_at = NULL WHERE process_id = ? AND turn_index = ?'
+        ).run(processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Archive a conversation turn (collapse/hide).
+     */
+    archiveTurn(processId: string, turnIndex: number): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET archived = 1 WHERE process_id = ? AND turn_index = ?'
+        ).run(processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Unarchive a conversation turn.
+     */
+    unarchiveTurn(processId: string, turnIndex: number): void {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET archived = 0 WHERE process_id = ? AND turn_index = ?'
+        ).run(processId, turnIndex);
+        if (result.changes > 0) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+    }
+
+    /**
+     * Get all pinned turns for a process.
+     */
+    getPinnedTurns(processId: string): ConversationTurn[] {
+        const rows = this.db.prepare(
+            'SELECT * FROM conversation_turns WHERE process_id = ? AND pinned_at IS NOT NULL AND deleted_at IS NULL ORDER BY pinned_at DESC'
+        ).all(processId) as TurnRow[];
+        return rows.map(rowToTurn);
     }
 
     // ========================================================================

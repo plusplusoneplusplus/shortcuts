@@ -13,7 +13,6 @@ import { useQueue } from '../context/QueueContext';
 import { isHidden as isHiddenTask } from '../hooks/useRepoQueueStats';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
-import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 
 export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
 
@@ -104,12 +103,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [addFolderOpen, setAddFolderOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [editRepoId, setEditRepoId] = useState<string | null>(null);
-    const [generateDialog, setGenerateDialog] = useState<{
-        open: boolean;
-        minimized: boolean;
-        wsId: string | undefined;
-        targetFolder: string | undefined;
-    }>({ open: false, minimized: false, wsId: undefined, targetFolder: undefined });
     const [overflowOpen, setOverflowOpen] = useState(false);
     const [overflowFilter, setOverflowFilter] = useState('');
     const [overflowHighlight, setOverflowHighlight] = useState(-1);
@@ -605,28 +598,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
                         <button
-                            data-testid="repo-tab-context-queue-task"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id });
-                                setContextMenu(null);
-                            }}
-                        >
-                            🤖 Queue Task
-                        </button>
-                        <button
-                            data-testid="repo-tab-context-ask"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' });
-                                setContextMenu(null);
-                            }}
-                        >
-                            💡 Ask
-                        </button>
-                        <button
                             data-testid="repo-tab-context-run-script"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"
@@ -636,17 +607,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             }}
                         >
                             🛠️ Run Script
-                        </button>
-                        <button
-                            data-testid="repo-tab-context-generate-plan"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                setGenerateDialog({ open: true, minimized: false, wsId: ws.id, targetFolder: undefined });
-                                setContextMenu(null);
-                            }}
-                        >
-                            📋 Generate Plan
                         </button>
                         <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
                         <button
@@ -686,17 +646,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     </div>
                 );
             })()}
-            {generateDialog.open && generateDialog.wsId && (
-                <GenerateTaskDialog
-                    wsId={generateDialog.wsId}
-                    initialFolder={generateDialog.targetFolder}
-                    minimized={generateDialog.minimized}
-                    onMinimize={() => setGenerateDialog(prev => ({ ...prev, minimized: true }))}
-                    onRestore={() => setGenerateDialog(prev => ({ ...prev, minimized: false }))}
-                    onClose={() => setGenerateDialog({ open: false, minimized: false, wsId: undefined, targetFolder: undefined })}
-                    onSuccess={() => setGenerateDialog({ open: false, minimized: false, wsId: undefined, targetFolder: undefined })}
-                />
-            )}
         </div>
     );
 }

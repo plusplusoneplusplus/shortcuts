@@ -35,9 +35,9 @@ vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({
     ),
 }));
 
-// Stub RepoActivityTab — just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoActivityTab', () => ({
-    RepoActivityTab: (props: any) => (
+// Stub RepoChatTab — just render a marker div
+vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
+    RepoChatTab: (props: any) => (
         <div data-testid="repo-activity-tab" data-workspace-id={props.workspaceId} />
     ),
 }));
@@ -109,7 +109,7 @@ describe('MyLifeView', () => {
         expect(notesContainer.style.display).toBe('none');
     });
 
-    it('passes my_life workspace ID to RepoActivityTab', () => {
+    it('passes my_life workspace ID to RepoChatTab', () => {
         mockActiveRepoSubTab = 'activity';
         renderView();
 

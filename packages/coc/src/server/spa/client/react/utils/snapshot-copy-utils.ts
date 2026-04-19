@@ -112,8 +112,8 @@ export function stripInteractiveElements(clone: HTMLElement): void {
         els.forEach(el => el.remove());
     }
 
-    // Remove TokenUsageBadge elements (rendered as inline spans with token-usage class)
-    clone.querySelectorAll('.token-usage-badge').forEach(el => el.remove());
+    // Remove TokenUsageBadge and CostTimeBadge elements
+    clone.querySelectorAll('.token-usage-badge, .cost-time-badge').forEach(el => el.remove());
 }
 
 /** Expand collapsed tool call groups so their content is visible. */

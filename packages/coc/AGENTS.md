@@ -133,6 +133,16 @@ src/
 │   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 conversation search)
 │   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
 │   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
+│   ├── executors/                 # AI chat execution layer — process lifecycle, client caching, prompt building
+│   │   ├── copilot-client-cache.ts # CopilotClient process pool: per-process caching + pre-warmed idle pool (default 3). Idle timeout: 5 min. Pool rotation: 5 min. Retry-on-death handled in executors.
+│   │   ├── base-executor.ts       # Abstract base: streaming, throttling, tool-event capture, session state, output persistence
+│   │   ├── chat-base-executor.ts  # Abstract chat executor: AI call lifecycle with retry-on-client-death (1 retry with fresh client from pool)
+│   │   ├── chat-executor.ts       # Ask-mode executor (interactive)
+│   │   ├── plan-executor.ts       # Plan-mode executor
+│   │   ├── autopilot-executor.ts  # Autopilot-mode executor
+│   │   ├── follow-up-executor.ts  # Follow-up message executor with retry-on-client-death
+│   │   ├── process-lifecycle-runner.ts # Full process lifecycle orchestration
+│   │   └── prompt-builder.ts      # System message, memory context, repo instructions, skill injection
 │   ├── task-migration.ts         # One-time migration from legacy .vscode/tasks/ location
 │   ├── startup-process-migration.ts # Auto-migrates file-based process histories to SQLite on startup (renames processes/ → processes.migrated/)
 │   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes

@@ -14,6 +14,7 @@ class MockEventSource {
     url: string;
     listeners: Map<string, Set<(e: Event) => void>> = new Map();
     onerror: ((e: Event) => void) | null = null;
+    onopen: ((e: Event) => void) | null = null;
     close = vi.fn();
 
     constructor(url: string) {
@@ -37,6 +38,10 @@ class MockEventSource {
 
     _emitError() {
         if (this.onerror) this.onerror(new Event('error'));
+    }
+
+    _emitOpen() {
+        if (this.onopen) this.onopen(new Event('open'));
     }
 
     static reset() {
@@ -108,11 +113,27 @@ describe('useChatSSE', () => {
         expect(MockEventSource.instances).toHaveLength(0);
     });
 
-    it('calls setIsStreaming(false) on SSE onerror', () => {
+    it('does not close SSE on a single onerror (allows native auto-reconnect)', () => {
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setIsStreaming })));
         act(() => { MockEventSource.last._emitError(); });
+        // Single error should NOT close the connection — EventSource auto-reconnects
+        expect(MockEventSource.last.close).not.toHaveBeenCalled();
+        expect(setIsStreaming).not.toHaveBeenCalledWith(false);
+    });
+
+    it('closes SSE after MAX_SSE_ERRORS consecutive errors', () => {
+        const setIsStreaming = vi.fn();
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        renderHook(() => useChatSSE(makeOptions({ setIsStreaming, refreshConversation })));
+        const es = MockEventSource.last;
+        // Fire 5 consecutive errors (MAX_SSE_ERRORS)
+        for (let i = 0; i < 5; i++) {
+            act(() => { es._emitError(); });
+        }
+        expect(es.close).toHaveBeenCalled();
         expect(setIsStreaming).toHaveBeenCalledWith(false);
+        expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
     it('stopStreaming closes the EventSource and calls setIsStreaming(false)', () => {

@@ -1,11 +1,11 @@
 /**
- * FloatingChatContent — compact ActivityChatDetail wrapper for floating mode.
+ * FloatingChatContent — compact ChatDetail wrapper for floating mode.
  *
  * Rendered as children inside a FloatingDialog managed by FloatingChatManager.
- * Passes `variant="floating"` to ActivityChatDetail for compact styling.
+ * Passes `variant="floating"` to ChatDetail for compact styling.
  */
 
-import { ActivityChatDetail } from './ActivityChatDetail';
+import { ChatDetail } from './ChatDetail';
 
 export interface FloatingChatContentProps {
     taskId: string;
@@ -14,7 +14,7 @@ export interface FloatingChatContentProps {
 
 export function FloatingChatContent({ taskId, workspaceId }: FloatingChatContentProps) {
     return (
-        <ActivityChatDetail
+        <ChatDetail
             key={taskId}
             taskId={taskId}
             workspaceId={workspaceId}

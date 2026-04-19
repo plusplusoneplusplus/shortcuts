@@ -77,6 +77,8 @@ export function ProcessDetail() {
     const [copiedHtml, setCopiedHtml] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
     const [wasRenamed, setWasRenamed] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
+    const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -149,9 +151,17 @@ export function ProcessDetail() {
 
         es.addEventListener('chunk', (e) => {
             try {
-                const turn = JSON.parse(e.data);
-                dispatch({ type: 'APPEND_TURN', processId: selectedId, turn });
-                setTurns(prev => [...prev, turn]);
+                const data = JSON.parse(e.data);
+                const chunk = data.content || '';
+                setTurns(prev => {
+                    if (prev.length === 0 || prev[prev.length - 1].role !== 'assistant') {
+                        return [...prev, { role: 'assistant', content: chunk, streaming: true, timeline: [] }];
+                    }
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk, streaming: true };
+                    return updated;
+                });
             } catch { /* ignore parse errors */ }
         });
 
@@ -223,16 +233,32 @@ export function ProcessDetail() {
             setTurns(prev => prev.map(t => t.streaming ? { ...t, streaming: false } : t));
         });
 
+        let consecutiveErrors = 0;
+        const MAX_SSE_ERRORS = 5;
         es.onerror = () => {
-            es.close();
-            eventSourceRef.current = null;
+            consecutiveErrors++;
+            if (consecutiveErrors >= MAX_SSE_ERRORS) {
+                es.close();
+                eventSourceRef.current = null;
+            }
         };
+        es.onopen = () => { consecutiveErrors = 0; };
 
         return () => {
             es.close();
             eventSourceRef.current = null;
         };
     }, [selectedId, process?.status, dispatch]);
+
+    // Auto-scroll to bottom when new turns arrive and user is near the bottom
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el || turns.length === 0) return;
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (dist < 150) {
+            requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+        }
+    }, [turns]);
 
     const metadataProcess = processDetails || process;
     const wsId = getProcessWorkspaceId(metadataProcess);
@@ -270,6 +296,75 @@ export function ProcessDetail() {
             setWasRenamed(true);
         } catch { /* WS will sync eventually */ }
     }, [selectedId, dispatch]);
+
+    // ── Per-message turn action callbacks ─────────────────────────
+    const handleDeleteTurn = useCallback((turnIndex: number) => {
+        if (!selectedId) return;
+        // Optimistic: mark turn as deleted in local state
+        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
+        fetchApi(`/processes/${encodeURIComponent(selectedId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
+            // Revert on failure
+            setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+        });
+        // Clear any previous undo timer
+        if (undoDelete) clearTimeout(undoDelete.timer);
+        const timer = setTimeout(() => {
+            setUndoDelete(null);
+        }, 5000);
+        setUndoDelete({ turnIndex, timer });
+    }, [selectedId, undoDelete]);
+
+    const handleUndoDelete = useCallback(() => {
+        if (!undoDelete || !selectedId) return;
+        clearTimeout(undoDelete.timer);
+        const { turnIndex } = undoDelete;
+        setUndoDelete(null);
+        // Restore locally
+        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+        fetchApi(`/processes/${encodeURIComponent(selectedId)}/turns/${turnIndex}/restore`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        }).catch(() => {});
+    }, [undoDelete, selectedId]);
+
+    const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
+        if (!selectedId) return;
+        setTurns(prev => prev.map(t =>
+            t.turnIndex === turnIndex
+                ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
+                : t
+        ));
+        fetchApi(`/processes/${encodeURIComponent(selectedId)}/turns/${turnIndex}/pin`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pinned }),
+        }).catch(() => {
+            // Revert
+            setTurns(prev => prev.map(t =>
+                t.turnIndex === turnIndex
+                    ? { ...t, pinnedAt: pinned ? undefined : new Date().toISOString() }
+                    : t
+            ));
+        });
+    }, [selectedId]);
+
+    const handleArchiveTurn = useCallback((turnIndex: number, archived: boolean) => {
+        if (!selectedId) return;
+        setTurns(prev => prev.map(t =>
+            t.turnIndex === turnIndex ? { ...t, archived } : t
+        ));
+        fetchApi(`/processes/${encodeURIComponent(selectedId)}/turns/${turnIndex}/archive`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived }),
+        }).catch(() => {
+            // Revert
+            setTurns(prev => prev.map(t =>
+                t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
+            ));
+        });
+    }, [selectedId]);
 
     if (!selectedId || !process) {
         return (
@@ -332,7 +427,7 @@ export function ProcessDetail() {
                     <div className="flex items-center justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
                             <Badge status={process.status}>
-                                {statusIcon(process.status)} {statusLabel(process.status)}
+                                {statusIcon(process.status)} {statusLabel(process.status, process.type)}
                             </Badge>
                             {duration && (
                                 <span className="text-xs text-[#848484]">{duration}</span>
@@ -344,7 +439,7 @@ export function ProcessDetail() {
                                     {model}
                                 </span>
                             )}
-                            {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && wsId && (
+                            {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && !metadataProcess?.metadata?.workItemId && wsId && (
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -498,18 +593,81 @@ export function ProcessDetail() {
                 ) : turns.length === 0 ? (
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
                 ) : (
-                    <div className="space-y-3" ref={turnsContainerRef}>
-                        {[...turns].sort((a, b) => {
-                            const ai = a.turnIndex;
-                            const bi = b.turnIndex;
-                            if (ai == null && bi == null) return 0;
-                            if (ai == null) return 1;
-                            if (bi == null) return -1;
-                            return ai - bi;
-                        }).map((turn, i) => (
-                            <ConversationTurnBubble key={turn.turnIndex ?? i} turn={turn} processType={metadataProcess?.type} wsId={wsId ?? undefined} />
-                        ))}
-                    </div>
+                    <>
+                        {/* Pinned messages section */}
+                        {(() => {
+                            const pinnedTurns = turns.filter(t => t.pinnedAt && !t.deletedAt);
+                            if (pinnedTurns.length === 0) return null;
+                            return (
+                                <details className="mb-3 border border-amber-300 dark:border-amber-600 rounded-lg" open>
+                                    <summary className="px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400 cursor-pointer select-none">
+                                        📌 Pinned Messages ({pinnedTurns.length})
+                                    </summary>
+                                    <div className="space-y-2 px-3 pb-2">
+                                        {pinnedTurns.sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? '')).map((turn, i) => (
+                                            <ConversationTurnBubble
+                                                key={`pinned-${turn.turnIndex ?? i}`}
+                                                turn={turn}
+                                                processType={metadataProcess?.type}
+                                                wsId={wsId ?? undefined}
+                                                turnIndex={turn.turnIndex}
+                                                onPinTurn={handlePinTurn}
+                                                onArchiveTurn={handleArchiveTurn}
+                                                onDeleteTurn={handleDeleteTurn}
+                                            />
+                                        ))}
+                                    </div>
+                                </details>
+                            );
+                        })()}
+
+                        {/* Archived toggle */}
+                        {turns.some(t => t.archived && !t.deletedAt) && (
+                            <button
+                                onClick={() => setShowArchived(v => !v)}
+                                className="mb-2 text-xs text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] transition-colors"
+                            >
+                                {showArchived ? '🗄️ Hide archived messages' : `🗄️ Show archived messages (${turns.filter(t => t.archived && !t.deletedAt).length})`}
+                            </button>
+                        )}
+
+                        <div className="space-y-3" ref={turnsContainerRef}>
+                            {[...turns]
+                                .filter(t => !t.deletedAt && (!t.archived || showArchived))
+                                .sort((a, b) => {
+                                    const ai = a.turnIndex;
+                                    const bi = b.turnIndex;
+                                    if (ai == null && bi == null) return 0;
+                                    if (ai == null) return 1;
+                                    if (bi == null) return -1;
+                                    return ai - bi;
+                                }).map((turn, i) => (
+                                    <ConversationTurnBubble
+                                        key={turn.turnIndex ?? i}
+                                        turn={turn}
+                                        processType={metadataProcess?.type}
+                                        wsId={wsId ?? undefined}
+                                        turnIndex={turn.turnIndex}
+                                        onDeleteTurn={handleDeleteTurn}
+                                        onPinTurn={handlePinTurn}
+                                        onArchiveTurn={handleArchiveTurn}
+                                    />
+                                ))}
+                        </div>
+
+                        {/* Undo delete toast */}
+                        {undoDelete && (
+                            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#333] dark:bg-[#555] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in">
+                                <span>Message deleted</span>
+                                <button
+                                    onClick={handleUndoDelete}
+                                    className="font-semibold text-amber-300 hover:text-amber-200 transition-colors"
+                                >
+                                    Undo
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* Footer for terminal processes without a session */}

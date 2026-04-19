@@ -23,7 +23,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/repos/WorkflowRunHistory';
-import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ActivityListPane';
+import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ChatListPane';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
 import { useWorkflowProgress } from '../../../src/server/spa/client/react/hooks/useWorkflowProgress';
 import { createMockFetch } from './test-utils';

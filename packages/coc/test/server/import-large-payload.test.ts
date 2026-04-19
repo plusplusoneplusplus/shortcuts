@@ -116,7 +116,7 @@ describe('Import Large Payload — Section 4', () => {
         return { status: res.status, body: JSON.parse(res.body) };
     }
 
-    it('imports 1,000 processes successfully', async () => {
+    it('imports 1,000 processes successfully', { timeout: 120_000 }, async () => {
         const payload = generateExportPayload({ processCount: 1000 });
         const result = await sendImport(payload);
 

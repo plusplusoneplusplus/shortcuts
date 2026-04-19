@@ -13,7 +13,7 @@ import {
     VALID_REPO_SUB_TABS,
     REPO_TAB_SHORTCUTS,
 } from '../../../src/server/spa/client/react/layout/Router';
-import { SUB_TABS, BASE_VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
+import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
 
 const ROUTER_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout', 'Router.tsx'),
@@ -39,8 +39,8 @@ describe('Router terminal integration', () => {
         expect(VALID_REPO_SUB_TABS.has(parts[2])).toBe(true);
     });
 
-    it('Alt+T shortcut maps to terminal', () => {
-        expect(REPO_TAB_SHORTCUTS['t']).toBe('terminal');
+    it('Alt+T shortcut maps to tasks', () => {
+        expect(REPO_TAB_SHORTCUTS['t']).toBe('tasks');
     });
 
     it('keyboard handler guards terminal shortcut on isTerminalEnabled', () => {
@@ -59,17 +59,16 @@ describe('RepoDetail terminal tab', () => {
         const terminalTab = SUB_TABS.find(t => t.key === 'terminal');
         expect(terminalTab).toBeDefined();
         expect(terminalTab!.label).toBe('Terminal');
-        expect(terminalTab!.shortcut).toBe('Alt+T');
     });
 
-    it('terminal is positioned after git in SUB_TABS', () => {
-        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
+    it('terminal is positioned after tasks in SUB_TABS', () => {
+        const tasksIdx = SUB_TABS.findIndex(t => t.key === 'tasks');
         const terminalIdx = SUB_TABS.findIndex(t => t.key === 'terminal');
-        expect(terminalIdx).toBe(gitIdx + 1);
+        expect(terminalIdx).toBe(tasksIdx + 1);
     });
 
-    it('BASE_VISIBLE_SUB_TABS includes terminal (wiki filtered, terminal kept)', () => {
-        expect(BASE_VISIBLE_SUB_TABS.find(t => t.key === 'terminal')).toBeDefined();
+    it('VISIBLE_SUB_TABS includes terminal (wiki filtered, terminal kept)', () => {
+        expect(VISIBLE_SUB_TABS.find(t => t.key === 'terminal')).toBeDefined();
     });
 });
 
@@ -96,11 +95,11 @@ describe('RepoDetail terminal visibility gating', () => {
 // ── RepoDetail: redirect when terminal disabled ─────────────────────────────
 
 describe('RepoDetail terminal redirect', () => {
-    it('has useEffect that redirects terminal → activity when disabled', () => {
+    it('has useEffect that redirects terminal → chats when disabled', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal' && !terminalEnabled");
     });
 
-    it('redirect dispatches SET_REPO_SUB_TAB with activity', () => {
+    it('redirect dispatches SET_REPO_SUB_TAB with chats', () => {
         // Verify the redirect pattern matches the git redirect pattern
         expect(REPO_DETAIL_SOURCE).toContain("[activeSubTab, terminalEnabled, dispatch]");
     });

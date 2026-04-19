@@ -649,6 +649,9 @@ timeout: 300
                 '  enabled: true',
                 'myLife:',
                 '  enabled: true',
+                'clientPool:',
+                '  enabled: false',
+                '  size: 5',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -964,6 +967,69 @@ timeout: 300
             const resolved = resolveConfig(configPath);
             expect(resolved.monitoring.heapCheck.enabled).toBe(false);
             expect(resolved.monitoring.heapCheck.intervalMs).toBe(60000);
+        });
+    });
+
+    // ========================================================================
+    // clientPool config
+    // ========================================================================
+
+    describe('clientPool config', () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-pool-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('defaults to enabled with size 3', () => {
+            expect(DEFAULT_CONFIG.clientPool.enabled).toBe(true);
+            expect(DEFAULT_CONFIG.clientPool.size).toBe(3);
+        });
+
+        it('mergeConfig uses defaults when no override', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, {});
+            expect(resolved.clientPool.enabled).toBe(true);
+            expect(resolved.clientPool.size).toBe(3);
+        });
+
+        it('mergeConfig overrides enabled', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, { clientPool: { enabled: false } });
+            expect(resolved.clientPool.enabled).toBe(false);
+            expect(resolved.clientPool.size).toBe(3);
+        });
+
+        it('mergeConfig overrides size', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, { clientPool: { size: 5 } });
+            expect(resolved.clientPool.enabled).toBe(true);
+            expect(resolved.clientPool.size).toBe(5);
+        });
+
+        it('resolveConfig includes clientPool from file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, [
+                'clientPool:',
+                '  enabled: false',
+                '  size: 0',
+            ].join('\n'));
+            const resolved = resolveConfig(configPath);
+            expect(resolved.clientPool.enabled).toBe(false);
+            expect(resolved.clientPool.size).toBe(0);
+        });
+
+        it('schema rejects invalid size', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'clientPool:\n  size: 20\n');
+            expect(() => loadConfigFile(configPath)).toThrow();
+        });
+
+        it('schema rejects negative size', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'clientPool:\n  size: -1\n');
+            expect(() => loadConfigFile(configPath)).toThrow();
         });
     });
 });

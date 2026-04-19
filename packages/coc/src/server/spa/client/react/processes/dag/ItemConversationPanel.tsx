@@ -298,7 +298,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                 <div className="flex items-center gap-2 min-w-0">
                     {proc && (
                         <>
-                            <Badge>{statusIcon(status)} {statusLabel(status)}</Badge>
+                            <Badge>{statusIcon(status)} {statusLabel(status, proc?.type)}</Badge>
                             {proc.metadata?.itemIndex != null && (
                                 <span className="text-xs text-[#848484]">Item #{proc.metadata.itemIndex}</span>
                             )}

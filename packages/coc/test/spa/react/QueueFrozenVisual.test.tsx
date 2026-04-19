@@ -1,6 +1,6 @@
 /**
  * Tests for frozen task visual effect in queue task cards.
- * Covers QueueTaskItem (ActivityListPane) and QueueTaskCard (ProcessesSidebar).
+ * Covers QueueTaskItem (ChatListPane) and QueueTaskCard (ProcessesSidebar).
  *
  * Intentionally not tested (source-level tests dropped):
  * - CSS @keyframes frost-shimmer / .task-frozen class existence — verified
@@ -17,7 +17,7 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
-import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ActivityListPane';
+import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ChatListPane';
 
 // ── Mocks for QueueTaskItem's transitive dependencies ──────────────────
 vi.mock('../../../src/server/spa/client/react/hooks/useWorkflowProgress', () => ({
@@ -103,7 +103,7 @@ function SeededQueuePanel({ running, queued }: { running: any[]; queued: any[] }
     return <ProcessesSidebar />;
 }
 
-// ── QueueTaskItem (ActivityListPane) ───────────────────────────────────
+// ── QueueTaskItem (ChatListPane) ───────────────────────────────────
 
 describe('QueueTaskItem frozen visual', () => {
     it('applies task-frozen class when task.frozen is true', () => {

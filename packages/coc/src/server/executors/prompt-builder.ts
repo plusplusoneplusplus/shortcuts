@@ -30,6 +30,8 @@ import { createSearchConversationsTool } from '../llm-tools/search-conversations
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
+import { createBugTool } from '../create-bug-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
     hasCommitChatContext,
@@ -444,4 +446,50 @@ export function buildAskUserAddon(
         'Do NOT use ask_user for simple yes/no that can be inferred from context.';
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, cancelAll, hasPending };
+}
+
+// ============================================================================
+// Create Work Item
+// ============================================================================
+
+/**
+ * Builds the tools array and prompt suffix for the `create_work_item` and `create_bug` tools.
+ * The tools are only injected when a valid dataDir and repoId are available.
+ *
+ * @param dataDir     - Base data directory (e.g. `~/.coc`).
+ * @param repoId      - Workspace / repo ID the item should be created in.
+ * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
+ */
+export function buildCreateWorkItemAddon(
+    dataDir: string | undefined,
+    repoId: string | undefined,
+    broadcastFn?: BroadcastWorkItemFn,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !repoId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
+    const suffix =
+        '\n\nYou have access to the `create_work_item` and `create_bug` tools. ' +
+        'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
+        'use `create_work_item`. When the user asks to file a bug, report a defect, or log an issue, ' +
+        'use `create_bug`. Both tools follow the same workflow:\n' +
+        '1. **Draft** — Analyze the request and present a summary:\n' +
+        '   📋 Work Item Draft / 🐛 Bug Report Draft\n' +
+        '   Title: <title>\n' +
+        '   Priority: <high|normal|low>\n' +
+        '   Tags: <tags or "none">\n' +
+        '   Description: <markdown description>\n' +
+        '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
+        '   Then ask "Confirm to create, or give feedback to refine."\n' +
+        '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
+        '3. **Create** — Once the user confirms, IMMEDIATELY call the tool. Do not deliberate, plan, or think about what to do next — just call the tool right away with all the fields from the draft.\n' +
+        'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
+        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.\n' +
+        'When the user discusses work, features, or tasks without explicitly asking to create a work item, ' +
+        'proactively suggest creating a work item to track the work.';
+
+    return { tools: [workItemTool, bugTool], suffix };
 }

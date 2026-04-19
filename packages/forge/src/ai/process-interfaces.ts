@@ -35,6 +35,12 @@ export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' 
 export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group' | 'pipeline-execution' | 'pipeline-item' | string;
 
 /**
+ * Session category for distinguishing the purpose of a session.
+ * Stored in `GenericProcessMetadata.sessionCategory`.
+ */
+export type SessionCategory = 'generating-code' | 'resolve-plan-comments' | 'resolve-commit-comments';
+
+/**
  * Generic metadata interface that feature modules can extend.
  * This allows ai-service to remain decoupled from specific feature implementations.
  */
@@ -45,6 +51,8 @@ export interface GenericProcessMetadata {
     workspaceId?: string;
     /** Human-readable workspace name */
     workspaceName?: string;
+    /** Purpose of the session (e.g. code generation vs comment resolution). */
+    sessionCategory?: SessionCategory;
     /** Feature-specific data stored as key-value pairs */
     [key: string]: unknown;
 }
@@ -152,6 +160,12 @@ export interface ConversationTurn {
     pasteExternalized?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
+    /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
+    deletedAt?: Date;
+    /** ISO timestamp when this turn was pinned (undefined = not pinned) */
+    pinnedAt?: Date;
+    /** True when this turn is archived (collapsed/hidden by default) */
+    archived?: boolean;
 }
 
 /**
@@ -178,6 +192,12 @@ export interface SerializedConversationTurn {
     pasteExternalized?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
+    /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
+    deletedAt?: string;
+    /** ISO timestamp when this turn was pinned (undefined = not pinned) */
+    pinnedAt?: string;
+    /** True when this turn is archived (collapsed/hidden by default) */
+    archived?: boolean;
 }
 
 /**

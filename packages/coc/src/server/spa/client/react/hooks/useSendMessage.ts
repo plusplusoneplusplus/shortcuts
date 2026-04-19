@@ -7,6 +7,7 @@ import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import type { AttachmentPayload } from '../types/attachments';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -33,6 +34,8 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
+    /** Convert current attachments to wire format for API calls */
+    toPayload?: () => AttachmentPayload[];
     clearPaste: () => void;
     /** Returns the raw pasted content held by useTextPaste, or null if no large paste is active. */
     getPastedContent?: () => string | null;
@@ -66,6 +69,7 @@ export function useSendMessage({
     selectedModeRef,
     images,
     clearImages,
+    toPayload,
     clearPaste,
     getPastedContent,
     lastFailedMessageRef,
@@ -167,6 +171,7 @@ export function useSendMessage({
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -202,6 +207,7 @@ export function useSendMessage({
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),

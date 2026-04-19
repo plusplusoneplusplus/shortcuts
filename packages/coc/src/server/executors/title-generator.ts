@@ -23,8 +23,10 @@ export function generateTitleIfNeeded(
     const firstUserContent = (turns ?? []).find(t => t?.role === 'user')?.content ?? '';
     if (!firstUserContent) return;
 
-    // Also grab the assistant's first response for context
+    // Require at least one assistant response before generating a title.
+    // This avoids titles derived purely from the user prompt before any AI reply.
     const firstAssistantContent = (turns ?? []).find(t => t?.role === 'assistant')?.content ?? '';
+    if (!firstAssistantContent) return;
 
     void (async () => {
         try {
@@ -43,18 +45,13 @@ export function generateTitleIfNeeded(
             const truncatedUser = firstUserContent.substring(0, 400);
             const truncatedAssistant = firstAssistantContent.substring(0, 400);
 
-            let prompt: string;
-            if (truncatedAssistant) {
-                prompt = [
-                    'Summarise the following conversation as a short title (max 8 words, no punctuation).',
-                    'Focus on what was actually done or discussed, not on the instruction itself.',
-                    '',
-                    `User: "${truncatedUser}"`,
-                    `Assistant: "${truncatedAssistant}"`,
-                ].join('\n');
-            } else {
-                prompt = `Summarise the following user message as a short title (max 8 words, no punctuation):\n\n"${truncatedUser}"`;
-            }
+            const prompt = [
+                'Summarise the following conversation as a short title (max 8 words, no punctuation).',
+                'Focus on what was actually done or discussed, not on the instruction itself.',
+                '',
+                `User: "${truncatedUser}"`,
+                `Assistant: "${truncatedAssistant}"`,
+            ].join('\n');
 
             const title: string = await (aiService as any).transform(
                 prompt,

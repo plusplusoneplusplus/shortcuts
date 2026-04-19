@@ -1,9 +1,9 @@
 /**
- * BottomNav — mobile bottom navigation bar.
+ * BottomNav — mobile top navigation bar (positioned below the TopBar).
  * Renders only on viewports < 768px (mobile). Hidden on tablet/desktop.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { DashboardTab } from '../types/dashboard';
@@ -151,25 +151,46 @@ const NAV_ITEMS: NavItem[] = SHOW_WIKI_TAB
 export function BottomNav() {
     const { state, dispatch } = useApp();
     const { isMobile } = useBreakpoint();
+    const { selectedRepoId } = state;
+    const navRef = useRef<HTMLElement>(null);
+
+    // Nav is only visible on mobile when no repo is selected (MobileTabBar handles repo-level nav)
+    const isNavVisible = isMobile && !selectedRepoId;
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         location.hash = '#' + tab;
     }, [dispatch]);
 
+    useLayoutEffect(() => {
+        if (!isNavVisible) {
+            document.documentElement.style.setProperty('--bottom-nav-height', '0px');
+            return;
+        }
+        const nav = navRef.current;
+        if (!nav) return;
+        const observer = new ResizeObserver(() => {
+            document.documentElement.style.setProperty('--bottom-nav-height', nav.offsetHeight + 'px');
+        });
+        observer.observe(nav);
+        document.documentElement.style.setProperty('--bottom-nav-height', nav.offsetHeight + 'px');
+        return () => {
+            observer.disconnect();
+            document.documentElement.style.setProperty('--bottom-nav-height', '0px');
+        };
+    }, [isNavVisible]);
+
     if (!isMobile) return null;
 
-    const { selectedRepoId } = state;
-
-    // When a repo is selected, MobileTabBar in RepoDetail handles bottom navigation
+    // When a repo is selected, MobileTabBar in RepoDetail handles top navigation
     if (selectedRepoId) {
         return null;
     }
 
     return (
         <nav
-            className="fixed bottom-0 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            ref={navRef}
+            className="fixed top-10 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
             aria-label="Mobile navigation"
             data-testid="bottom-nav"
         >

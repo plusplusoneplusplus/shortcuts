@@ -17,8 +17,8 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useCommitChatBinding', ()
     useCommitChatBinding: (...args: any[]) => mockUseCommitChatBinding(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ActivityChatDetail', () => ({
-    ActivityChatDetail: (props: any) => (
+vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+    ChatDetail: (props: any) => (
         <div data-testid="activity-chat-detail"
              data-task-id={props.taskId}
              data-variant={props.variant}
@@ -106,7 +106,7 @@ describe('CommitChatPanel', () => {
     // Active chat (taskId present)
     // ========================================================================
 
-    it('renders ActivityChatDetail when taskId is present', async () => {
+    it('renders ChatDetail when taskId is present', async () => {
         setupHook({ taskId: 'task-123' });
         await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
 
@@ -137,7 +137,7 @@ describe('CommitChatPanel', () => {
         expect(screen.getByText('abc123d')).toBeTruthy();
     });
 
-    it('displays short hash in ActivityChatDetail title', async () => {
+    it('displays short hash in ChatDetail title', async () => {
         setupHook({ taskId: 'task-123' });
         await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
 

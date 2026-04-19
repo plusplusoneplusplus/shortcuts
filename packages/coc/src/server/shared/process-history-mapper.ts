@@ -46,6 +46,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         payload: {
             mode: proc.metadata?.mode as string | undefined,
             pipelineName: proc.metadata?.pipelineName as string | undefined,
+            workItemId: proc.metadata?.workItemId as string | undefined,
         },
     };
 }
@@ -75,6 +76,7 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
             workspaceId: proc.metadata?.workspaceId,
             mode: proc.metadata?.mode,
             pipelineName: proc.metadata?.pipelineName,
+            workItemId: proc.metadata?.workItemId,
         } as any,
         displayName: proc.title || proc.promptPreview || proc.id,
         processId: proc.id,

@@ -347,7 +347,7 @@ describe('TaskTree', () => {
     it('getNodePath normalizes backslashes in relativePath', () => {
         // When the server sends backslash-separated relativePaths (Windows),
         // file paths constructed by getNodePath should use forward slashes
-        // to match the keys built by useQueueActivity.
+        // to match the keys built by useQueueChat.
         const bsTree = makeTree({
             children: [
                 makeTree({

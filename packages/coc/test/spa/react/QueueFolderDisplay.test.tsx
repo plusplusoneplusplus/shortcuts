@@ -348,7 +348,7 @@ describe('TaskTree folderMap wiring', () => {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: treeWithFolder }) });
         });
 
-        // Seed workspace with rootPath so useQueueActivity can match
+        // Seed workspace with rootPath so useQueueChat can match
         function WrapWithWorkspace({ children }: { children: ReactNode }) {
             return (
                 <AppProvider>

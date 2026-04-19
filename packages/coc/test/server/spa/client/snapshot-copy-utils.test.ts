@@ -36,6 +36,7 @@ function createConversationDOM(): HTMLDivElement {
                     <button class="bubble-copy-html-btn">HTML</button>
                     <span class="streaming-indicator">Live</span>
                     <span class="token-usage-badge">1234 tokens</span>
+                    <span class="cost-time-badge">⏱ 12.3s</span>
                 </div>
                 <div class="chat-message-content">I'm doing well, thank you!</div>
                 <div class="tool-call-body collapsed">Tool call result: success</div>

@@ -1,7 +1,7 @@
 /**
- * Tests for CommitChatPanel — thin wrapper around ActivityChatDetail for commit-bound chats.
+ * Tests for CommitChatPanel — thin wrapper around ChatDetail for commit-bound chats.
  *
- * Validates empty state, loading state, error state, delegation to ActivityChatDetail,
+ * Validates empty state, loading state, error state, delegation to ChatDetail,
  * close button, input handling, and correct props passthrough.
  */
 
@@ -22,7 +22,7 @@ const FOLLOW_UP_PATH = path.join(
 );
 
 const ACTIVITY_CHAT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityChatDetail.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
 );
 
 describe('CommitChatPanel', () => {
@@ -62,16 +62,16 @@ describe('CommitChatPanel', () => {
         });
     });
 
-    describe('renders ActivityChatDetail when taskId exists', () => {
-        it('renders ActivityChatDetail with taskId guard', () => {
+    describe('renders ChatDetail when taskId exists', () => {
+        it('renders ChatDetail with taskId guard', () => {
             expect(source).toContain('{taskId && !loading && (');
         });
 
-        it('imports ActivityChatDetail', () => {
-            expect(source).toContain("import { ActivityChatDetail } from './ActivityChatDetail'");
+        it('imports ChatDetail', () => {
+            expect(source).toContain("import { ChatDetail } from './ChatDetail'");
         });
 
-        it('passes taskId to ActivityChatDetail', () => {
+        it('passes taskId to ChatDetail', () => {
             expect(source).toContain('taskId={taskId}');
         });
     });
@@ -118,7 +118,7 @@ describe('CommitChatPanel', () => {
         });
     });
 
-    describe('passes correct props to ActivityChatDetail', () => {
+    describe('passes correct props to ChatDetail', () => {
         it('passes variant="floating"', () => {
             expect(source).toContain('variant="floating"');
         });
@@ -197,7 +197,7 @@ describe('FollowUpInputArea — hideModeSelector prop', () => {
     });
 });
 
-describe('ActivityChatDetail — standalone, title, hideModeSelector props', () => {
+describe('ChatDetail — standalone, title, hideModeSelector props', () => {
     let actSource: string;
 
     beforeAll(() => {

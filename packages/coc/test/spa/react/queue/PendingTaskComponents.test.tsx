@@ -12,8 +12,8 @@
  * - Interface shape checks (e.g. "accepts task, onCancel props") — same reason.
  * - Implementation ordering (e.g. "clears payloadImages before guard") —
  *   internal detail, not behavioral.
- * - ActivityChatDetail import checks — covered by build and by
- *   pending-task-info.test.tsx which renders through ActivityChatDetail.
+ * - ChatDetail import checks — covered by build and by
+ *   pending-task-info.test.tsx which renders through ChatDetail.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

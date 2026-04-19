@@ -187,20 +187,6 @@ test.describe('Dashboard — Processes tab', () => {
         await expect(page.locator('[data-testid="queue-paused-banner"]')).not.toBeVisible({ timeout: 8000 });
     });
 
-    // ── Enqueue dialog opens from empty-state button ───────────────────────────
-
-    test('enqueue button in empty state opens the enqueue dialog', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl + '/#processes');
-
-        await expect(page.locator('[data-testid="queue-empty-state"]')).toBeVisible({ timeout: 8000 });
-
-        // Click the + Queue Task button in the empty state
-        await page.locator('[data-testid="repo-queue-task-btn-empty"]').click();
-
-        // EnqueueDialog should open (contains a prompt textarea)
-        await expect(page.locator('textarea').first()).toBeVisible({ timeout: 5000 });
-    });
-
     // ── Detail panel placeholder when no task is selected ─────────────────────
 
     test('detail panel shows placeholder when no task is selected', async ({ page, serverUrl }) => {

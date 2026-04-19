@@ -41,7 +41,7 @@ import {
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
-
+import type { CopilotClientCache } from './copilot-client-cache';
 // ============================================================================
 // Types
 // ============================================================================
@@ -92,8 +92,8 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
 
-    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
-        super(store, dataDir);
+    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, dataDir, clientCache);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
@@ -205,13 +205,24 @@ export class FollowUpExecutor extends BaseExecutor {
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
 
-            const result = await this.aiService.sendMessage({
+            // Reuse a cached CopilotClient for this process when available.
+            let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
+            if (this.clientCache) {
+                try {
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
+                } catch {
+                    // Non-fatal: fall back to session-per-request (no cached client)
+                }
+            }
+
+            const sendOptions = {
                 prompt: followUpMessage,
+                client: cachedClient,
                 sessionId: process.sdkSessionId,
                 ...(model ? { model } : {}),
                 mode: agentMode,
                 workingDirectory,
-                reasoningEffort: 'high',
+                reasoningEffort: 'high' as const,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
@@ -237,7 +248,37 @@ export class FollowUpExecutor extends BaseExecutor {
                     () => process.conversationTurns?.length ?? 0,
                 ),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-            });
+            };
+
+            let result;
+            try {
+                result = await this.aiService.sendMessage(sendOptions);
+            } catch (firstError) {
+                // If we used a cached client and it failed, the client process may
+                // have died mid-request. Release the dead client, reset streaming
+                // state, and retry once with a fresh client from the pool.
+                if (!cachedClient || !this.clientCache) throw firstError;
+
+                logger.debug(LogCategory.AI,
+                    `[FollowUp] Cached client failed for ${processId}; retrying with fresh client`);
+
+                await this.clientCache.release(processId);
+                this.resetSessionStreamingState(processId);
+
+                try {
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
+                    sendOptions.client = cachedClient;
+                } catch {
+                    sendOptions.client = undefined;
+                }
+
+                // On retry without a session, fall back to history context
+                if (!sendOptions.client) {
+                    sendOptions.sessionId = undefined;
+                }
+
+                result = await this.aiService.sendMessage(sendOptions);
+            }
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;
