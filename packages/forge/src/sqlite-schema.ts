@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Read the current schema version from the database.
@@ -287,6 +287,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 8) {
             migrateV7toV8(db);
         }
+        if (versionBefore < 9) {
+            migrateV8toV9(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -360,6 +363,20 @@ function migrateV6toV7(db: Database.Database): void {
  * V7 → V8: add `model TEXT` column to `conversation_turns` for model-change tracking.
  */
 function migrateV7toV8(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'model')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
+    }
+}
+
+/**
+ * V8 → V9: ensure `model TEXT` column exists on `conversation_turns`.
+ *
+ * Some v8 databases were created from a different code branch whose v8
+ * schema did not include the `model` column.  This migration is
+ * idempotent — it only adds the column when missing.
+ */
+function migrateV8toV9(db: Database.Database): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'model')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');

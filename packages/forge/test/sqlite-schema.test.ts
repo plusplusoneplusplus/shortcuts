@@ -91,7 +91,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(8);
+        expect(SCHEMA_VERSION).toBe(9);
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -624,6 +624,59 @@ describe('sqlite-schema', () => {
             // Existing turn should have null model
             const turn = db.prepare('SELECT model FROM conversation_turns WHERE process_id = ?').get('p1') as any;
             expect(turn.model).toBeNull();
+
+            // Can insert turn with model
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, timeline, model)
+                VALUES ('p1', 1, 'user', 'with model', '2026-01-01T00:00:01.000Z', '[]', 'gpt-5.4')`).run();
+            const newTurn = db.prepare('SELECT model FROM conversation_turns WHERE turn_index = 1').get() as any;
+            expect(newTurn.model).toBe('gpt-5.4');
+        });
+    });
+
+    describe('V8 → V9 migration (model column on conversation_turns for divergent v8 DBs)', () => {
+        it('adds model column to v8 database that lacks it', () => {
+            // Simulate a v8 database from a different code branch that
+            // had extra columns (deleted_at, pinned_at, archived) but no model
+            db.pragma('journal_mode = WAL');
+            db.pragma('foreign_keys = ON');
+            db.exec(`
+                CREATE TABLE processes (
+                    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, type TEXT,
+                    prompt_preview TEXT, full_prompt TEXT, status TEXT NOT NULL,
+                    start_time TEXT NOT NULL, end_time TEXT, error TEXT, result TEXT,
+                    result_file_path TEXT, raw_stdout_file_path TEXT, metadata TEXT,
+                    group_metadata TEXT, structured_result TEXT, parent_process_id TEXT,
+                    sdk_session_id TEXT, backend TEXT, working_directory TEXT, title TEXT,
+                    token_limit INTEGER, current_tokens INTEGER, cumulative_token_usage TEXT,
+                    stale INTEGER DEFAULT 0, data_file_path TEXT, archived INTEGER DEFAULT 0,
+                    pinned_at TEXT, seen_at TEXT, last_event_at TEXT
+                )
+            `);
+            db.exec(`CREATE TABLE conversation_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                process_id TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                turn_index INTEGER NOT NULL, role TEXT NOT NULL, content TEXT,
+                timestamp TEXT NOT NULL, streaming INTEGER DEFAULT 0, tool_calls TEXT,
+                timeline TEXT, images TEXT, historical INTEGER DEFAULT 0, suggestions TEXT,
+                token_usage TEXT, paste_externalized INTEGER DEFAULT 0,
+                deleted_at TEXT, pinned_at TEXT, archived INTEGER DEFAULT 0,
+                UNIQUE(process_id, turn_index)
+            )`);
+            db.pragma('user_version = 8');
+
+            // Insert process and turn before migration
+            db.prepare(`INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p1', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')`).run();
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, timeline)
+                VALUES ('p1', 0, 'user', 'hello', '2026-01-01T00:00:00.000Z', '[]')`).run();
+
+            // Run migration
+            initializeDatabase(db);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            // model column should exist now
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('model');
 
             // Can insert turn with model
             db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, timeline, model)
