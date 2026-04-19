@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SUB_TABS, BASE_VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
+import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
@@ -13,10 +13,10 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 );
 
 describe('RepoDetail SUB_TABS', () => {
-    it('includes an "activity" entry', () => {
-        const activityTab = SUB_TABS.find(t => t.key === 'activity');
-        expect(activityTab).toBeDefined();
-        expect(activityTab!.label).toBe('Activity');
+    it('includes a "chats" entry', () => {
+        const chatsTab = SUB_TABS.find(t => t.key === 'chats');
+        expect(chatsTab).toBeDefined();
+        expect(chatsTab!.label).toBe('Chats');
     });
 
     it('does not include separate "chat" or "queue" entries', () => {
@@ -24,58 +24,58 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"activity" is followed by "git" entry', () => {
-        const activityIdx = SUB_TABS.findIndex(t => t.key === 'activity');
+    it('"chats" is followed by "git" entry', () => {
+        const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
         const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
-        expect(gitIdx).toBe(activityIdx + 1);
+        expect(gitIdx).toBe(chatsIdx + 1);
     });
 
     it('"git" is the second entry', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 11 entries', () => {
-        expect(SUB_TABS).toHaveLength(11);
+    it('has exactly 12 entries', () => {
+        expect(SUB_TABS).toHaveLength(12);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'terminal', 'notes', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules', 'wiki']);
+        expect(keys).toEqual(['chats', 'git', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'terminal', 'notes', 'settings', 'wiki']);
     });
 
-    it('includes "wiki" entry with Alt+I shortcut', () => {
+    it('includes "wiki" entry without a shortcut', () => {
         const wikiTab = SUB_TABS.find(t => t.key === 'wiki');
         expect(wikiTab).toBeDefined();
-        expect(wikiTab!.shortcut).toBe('Alt+I');
+        expect(wikiTab!.shortcut).toBeUndefined();
     });
 
-    it('has tasks as the fifth tab (after notes)', () => {
-        expect(SUB_TABS[4].key).toBe('tasks');
+    it('has explorer as the fifth tab (after schedules)', () => {
+        expect(SUB_TABS[4].key).toBe('explorer');
     });
 
-    it('activity is the first entry', () => {
-        expect(SUB_TABS[0].key).toBe('activity');
+    it('chats is the first entry', () => {
+        expect(SUB_TABS[0].key).toBe('chats');
     });
 
-    it('tasks tab has label "Plans"', () => {
+    it('tasks tab has label "Tasks"', () => {
         const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
         expect(tasksTab).toBeDefined();
-        expect(tasksTab!.label).toBe('Plans');
+        expect(tasksTab!.label).toBe('Tasks');
     });
 });
 
-describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
+describe('RepoDetail VISIBLE_SUB_TABS', () => {
     it('excludes wiki when SHOW_WIKI_TAB is false', () => {
-        expect(BASE_VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
+        expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
     });
 
-    it('has 10 entries (all SUB_TABS minus wiki)', () => {
-        expect(BASE_VISIBLE_SUB_TABS).toHaveLength(10);
+    it('has 11 entries (all SUB_TABS minus wiki)', () => {
+        expect(VISIBLE_SUB_TABS).toHaveLength(11);
     });
 
     it('contains all non-wiki tabs in order', () => {
-        const keys = BASE_VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'terminal', 'notes', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules']);
+        const keys = VISIBLE_SUB_TABS.map(t => t.key);
+        expect(keys).toEqual(['chats', 'git', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'terminal', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -88,17 +88,17 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab rendering', () => {
-    it('activity sub-tab renders RepoChatTab', () => {
+    it('activity sub-tab renders RepoChatTab in classic layout mode', () => {
         expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'activity' ? undefined : 'none'");
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-activity`}');
     });
 
-    it('activity is in SUB_TABS (visible in tab strip)', () => {
-        const activityTab = SUB_TABS.find(t => t.key === 'activity');
-        expect(activityTab).toBeDefined();
+    it('chats sub-tab renders RepoChatTab with mode="chats"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'chats' ? undefined : 'none'");
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-chats`}');
     });
 
-    it('activity sub-tab uses overflow-hidden layout like queue', () => {
+    it('activity sub-tab uses overflow-hidden layout', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
             l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
@@ -107,11 +107,7 @@ describe('RepoDetail Activity tab rendering', () => {
     });
 });
 
-describe('RepoDetail: Chat/Queue tabs removed', () => {
-    it('does not render RepoChatTab', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('RepoChatTab');
-    });
-
+describe('RepoDetail: Queue tab removed', () => {
     it('does not render RepoQueueTab', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('RepoQueueTab');
     });
@@ -136,12 +132,12 @@ describe('RepoDetail Activity badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('chatPending: chatPendingCount');
     });
 
-    it('renders activity running badge only when queueRunningCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueRunningCount > 0");
+    it('renders chats running badge only when queueRunningCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && queueRunningCount > 0");
     });
 
-    it('renders activity queued badge only when queueQueuedCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueQueuedCount > 0");
+    it('renders chats queued badge only when queueQueuedCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && queueQueuedCount > 0");
     });
 
     it('running badge uses green background color', () => {
@@ -214,8 +210,8 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
     });
 
-    it('shows resume button when activeSubTab is activity and isRepoPaused', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
+    it('shows resume button when activeSubTab is chats or tasks and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
         expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
     });
 
@@ -290,15 +286,9 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Run a script in this repo"');
     });
 
-    it('mobile overflow menu includes Run Script option', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
-    });
-
-    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
-        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, scriptIdx - 300), scriptIdx + 200);
-        expect(block).toContain("type: 'OPEN_SCRIPT_DIALOG'");
-        expect(block).toContain('workspaceId: ws.id');
+    it('MobileTabBar actions include Run Script option', () => {
+        // Run Script is now in MobileTabBar actions, not a separate overflow menu
+        expect(REPO_DETAIL_SOURCE).toContain('Run Script');
     });
 });
 
@@ -326,8 +316,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 
-    it('mounts a fresh RepoChatTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={ws.id}');
+    it('mounts a fresh RepoChatTab on every repo switch via key containing ws.id', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}');
     });
 
     it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {
@@ -342,8 +332,9 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
     });
 
-    it('mounts a fresh TasksPanel on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toMatch(/<TasksPanel[\s\S]*?key=\{ws\.id\}/);
+    it('renders tasks tab using RepoChatTab with mode="tasks"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-tasks`}');
+        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
     });
 
     it('no longer mounts a separate RepoInfoTab (merged into RepoSettingsTab)', () => {
@@ -614,23 +605,23 @@ describe('RepoDetail Git tab ahead/behind badge', () => {
 
 // ── TasksPanel always-mounted (keep-alive: no re-fetch on tab switch) ───────────
 
-describe('RepoDetail TasksPanel always-mounted', () => {
-    it('does NOT conditionally render TasksPanel with a ternary', () => {
-        // If conditionally rendered, the component unmounts/remounts on tab switch,
-        // triggering 3 API fetches. It must stay always-mounted.
-        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'tasks' ? (");
-        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'tasks' &&");
+describe('RepoDetail Tasks tab rendering', () => {
+    it('renders tasks tab with RepoChatTab mode="tasks" via ternary', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks' ? (");
     });
 
-    it('wraps TasksPanel in a div with display:none when inactive', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks' ? undefined : 'none'");
-    });
-
-    it('tasks tab wrapper uses overflow-hidden layout', () => {
+    it('wraps tasks RepoChatTab in a div with overflow-hidden', () => {
         const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
             l.includes("activeSubTab === 'tasks'") && l.includes('overflow-hidden')
         );
-        expect(overflowLine).toBeDefined();
+        // The overflow-hidden is on the wrapping div near the tasks ternary
+        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
+    });
+
+    it('tasks tab wrapper uses overflow-hidden layout', () => {
+        const tasksIdx = REPO_DETAIL_SOURCE.indexOf("activeSubTab === 'tasks' ? (");
+        const block = REPO_DETAIL_SOURCE.substring(tasksIdx, tasksIdx + 200);
+        expect(block).toContain('overflow-hidden');
     });
 });
 

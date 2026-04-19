@@ -4,7 +4,7 @@
  * Verifies that:
  * - BASE_VISIBLE_SUB_TABS includes git (module-level, static)
  * - visibleSubTabs inside the component filters git and pull-requests out when !isGitRepo
- * - Tab fallback redirects git/pull-requests → activity on non-git repos
+ * - Tab fallback redirects git/pull-requests → chats on non-git repos
  * - RepoGitTab is guarded by isGitRepo
  * - PullRequestsTab is guarded by isGitRepo
  * - Ahead/behind badge is only rendered inside the git tab button (which is absent for non-git repos)
@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SUB_TABS, BASE_VISIBLE_SUB_TABS } from '../../../../src/server/spa/client/react/repos/RepoDetail';
+import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../../src/server/spa/client/react/repos/RepoDetail';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
@@ -23,8 +23,8 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 // ── 1. Git tab present in static BASE_VISIBLE_SUB_TABS (for git repos) ──────
 
 describe('Git tab visible for git repos', () => {
-    it('BASE_VISIBLE_SUB_TABS includes git', () => {
-        expect(BASE_VISIBLE_SUB_TABS.find(t => t.key === 'git')).toBeDefined();
+    it('VISIBLE_SUB_TABS includes git', () => {
+        expect(VISIBLE_SUB_TABS.find(t => t.key === 'git')).toBeDefined();
     });
 
     it('SUB_TABS includes git', () => {
@@ -40,8 +40,8 @@ describe('Git tab hidden for non-git repos', () => {
     });
 
     it('computes visibleSubTabs by filtering git when !isGitRepo', () => {
-        // The useMemo should filter BASE_VISIBLE_SUB_TABS based on isGitRepo
-        expect(REPO_DETAIL_SOURCE).toContain('BASE_VISIBLE_SUB_TABS');
+        // The useMemo should filter VISIBLE_SUB_TABS based on isGitRepo
+        expect(REPO_DETAIL_SOURCE).toContain('VISIBLE_SUB_TABS');
         expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'git'");
     });
 
@@ -49,15 +49,15 @@ describe('Git tab hidden for non-git repos', () => {
         expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'pull-requests'");
     });
 
-    it('uses visibleSubTabs (not BASE_VISIBLE_SUB_TABS) in the tab strip map', () => {
+    it('uses visibleSubTabs (not VISIBLE_SUB_TABS) in the tab strip map', () => {
         expect(REPO_DETAIL_SOURCE).toContain('visibleSubTabs.map');
-        // Should NOT use BASE_VISIBLE_SUB_TABS.map directly in the render
-        expect(REPO_DETAIL_SOURCE).not.toContain('BASE_VISIBLE_SUB_TABS.map');
+        // Should NOT use VISIBLE_SUB_TABS.map directly in the render
+        expect(REPO_DETAIL_SOURCE).not.toContain('VISIBLE_SUB_TABS.map');
     });
 
-    it('passes visibleSubTabs (not BASE_VISIBLE_SUB_TABS) to MobileTabBar', () => {
+    it('passes visibleSubTabs (not VISIBLE_SUB_TABS) to MobileTabBar', () => {
         expect(REPO_DETAIL_SOURCE).toContain('tabs={visibleSubTabs}');
-        expect(REPO_DETAIL_SOURCE).not.toContain('tabs={BASE_VISIBLE_SUB_TABS}');
+        expect(REPO_DETAIL_SOURCE).not.toContain('tabs={VISIBLE_SUB_TABS}');
     });
 });
 
@@ -76,11 +76,11 @@ describe('Git tab hidden when gitInfo is undefined', () => {
 // ── 4. Tab fallback on repo switch ──────────────────────────────────────────
 
 describe('Tab fallback on repo switch', () => {
-    it('has a useEffect that redirects git tab to activity for non-git repos', () => {
-        // Should check activeSubTab === 'git' && !isGitRepo → dispatch activity
+    it('has a useEffect that redirects git tab to chats for non-git repos', () => {
+        // Should check activeSubTab === 'git' && !isGitRepo → dispatch chats
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'git'");
         expect(REPO_DETAIL_SOURCE).toContain('!isGitRepo');
-        expect(REPO_DETAIL_SOURCE).toContain("tab: 'activity'");
+        expect(REPO_DETAIL_SOURCE).toContain("tab: 'chats'");
     });
 
     it('redirects pull-requests tab to activity for non-git repos', () => {

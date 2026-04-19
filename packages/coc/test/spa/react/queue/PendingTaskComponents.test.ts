@@ -183,7 +183,8 @@ describe('ChatDetail imports extracted components', () => {
     });
 
     it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
-        expect(chatHeaderSource).toContain("import { ReferencesDropdown } from '../shared/ReferencesDropdown'");
+        expect(chatHeaderSource).toContain("from '../shared/ReferencesDropdown'");
+        expect(chatHeaderSource).toContain('ReferencesDropdown');
     });
 
     it('uses PendingTaskInfoPanel in JSX', () => {

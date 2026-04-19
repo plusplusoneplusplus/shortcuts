@@ -88,7 +88,7 @@ describe('RepoDetail terminal visibility gating', () => {
     });
 
     it('visibleSubTabs depends on terminalEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]');
     });
 });
 

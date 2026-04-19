@@ -127,9 +127,12 @@ function makeFollowUpProps(overrides: Partial<FollowUpInputAreaProps> = {}): Fol
         onSend: vi.fn().mockResolvedValue(undefined),
         onRetry: vi.fn(),
         skills: [],
-        images: [],
-        onImagePaste: vi.fn(),
-        onImageRemove: vi.fn(),
+        attachments: [],
+        onAttachmentPaste: vi.fn(),
+        onAttachmentRemove: vi.fn(),
+        onAttachmentFiles: vi.fn(),
+        attachmentError: null,
+        pastePreview: null,
         task: null,
         slashCommands: {
             handleInputChange: vi.fn(),
@@ -242,12 +245,12 @@ describe('FollowUpInputArea — compact input bar layout', () => {
         expect(screen.queryByTestId('mode-dropdown')).toBeNull();
     });
 
-    it('all three children (mode, input, send) are direct children of the flex-row container', () => {
+    it('all five children (file-input, attach-btn, mode, input, send) are direct children of the flex-row container', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const bar = screen.getByTestId('chat-input-bar');
-        // mode-selector, input wrapper, send button
+        // hidden file input, attach button, mode-selector, input wrapper, send button
         const children = Array.from(bar.children);
-        expect(children.length).toBe(3);
+        expect(children.length).toBe(5);
     });
 });
 
@@ -262,10 +265,10 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(bar.className).not.toContain('flex-col');
     });
 
-    it('does not render mode selector (chat-only, hardcoded ask mode)', () => {
+    it('renders mode selector with cycle button and dropdown', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
-        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-cycle-btn')).not.toBeNull();
+        expect(screen.queryByTestId('new-chat-mode-dropdown')).not.toBeNull();
     });
 
     it('send button has shrink-0 and no w-full', () => {
@@ -289,11 +292,11 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(inputWrapper).toBeTruthy();
     });
 
-    it('two children (input, send) are direct children of the flex-row container', () => {
+    it('children (mode, attach, input, send) are direct children of the flex-row container', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
         const children = Array.from(bar.children);
-        expect(children.length).toBe(2);
+        expect(children.length).toBe(5);
     });
 });
 

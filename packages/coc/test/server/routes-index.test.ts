@@ -48,6 +48,7 @@ function makeBridge(): any {
         createAggregateFacade: vi.fn(),
         registerRepoId: vi.fn(),
         dispatchToRepo: vi.fn(),
+        on: vi.fn(),
     };
 }
 

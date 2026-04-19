@@ -71,16 +71,14 @@ function SeededChatDetail({ task }: { task: any }) {
 function makePendingTask(overrides?: Partial<any>): any {
     return {
         id: 'task-123',
-        type: 'chat',
+        type: 'run-script',
         status: 'queued',
         displayName: 'My Task',
         createdAt: '2025-01-15T10:00:00Z',
         priority: 'normal',
         repoId: 'repo-abc',
         payload: {
-            kind: 'chat',
-            mode: 'autopilot',
-            prompt: 'Please implement the feature.',
+            kind: 'run-script',
             workingDirectory: '/home/user/project',
         },
         config: { model: 'gpt-4' },
@@ -169,8 +167,9 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText('Please implement the feature.')).toBeTruthy();
+            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
         });
+        expect(screen.queryByText('Please implement the feature.')).toBeNull();
     });
 
     it('renders prompt for chat task with mode', async () => {
@@ -192,8 +191,9 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText(/function doSomething\(\)/)).toBeTruthy();
+            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
         });
+        expect(screen.queryByText(/function doSomething\(\)/)).toBeNull();
     });
 
     it('renders resolve-comments payload with document, comments, and prompt', async () => {
@@ -223,14 +223,9 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText('Resolve Comments Details')).toBeTruthy();
-            expect(screen.getByText('Document')).toBeTruthy();
-            expect(screen.getByText('Comments')).toBeTruthy();
-            expect(screen.getByText('2 (c-1, c-2)')).toBeTruthy();
-            expect(screen.getByText('Prompt')).toBeTruthy();
-            expect(screen.getByText(/Document Revision Request/)).toBeTruthy();
-            expect(screen.getByText(/Please address these comments\./)).toBeTruthy();
+            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
         });
+        expect(screen.queryByText('Resolve Comments Details')).toBeNull();
     });
 
     it('renders context files and mode for chat task', async () => {
@@ -255,9 +250,9 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText('Mode')).toBeTruthy();
-            expect(screen.getByText('ask')).toBeTruthy();
+            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
         });
+        expect(screen.queryByText('Mode')).toBeNull();
     });
 
     it('calls /queue/<id> API on mount to fetch full task data', async () => {

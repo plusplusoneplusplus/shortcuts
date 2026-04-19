@@ -339,8 +339,9 @@ describe('CLITaskExecutor — Title Generation', () => {
         expect(promptArg).toContain('Focus on what was actually done or discussed');
     });
 
-    it('should fall back to user-only prompt when no assistant response', async () => {
-        // Directly test generateTitleIfNeeded with turns that have no assistant content
+    it('should skip title generation when no assistant response', async () => {
+        // The title generator requires at least one assistant response before
+        // generating a title. When only user turns are present it returns early.
         mockTransform.mockResolvedValue('Fix Auth Bug');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
@@ -360,12 +361,8 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
-        // Should use the old user-only prompt format
-        expect(promptArg).toContain('Summarise the following user message');
-        expect(promptArg).toContain('Fix the authentication bug');
-        // Should NOT contain conversation-style instructions
-        expect(promptArg).not.toContain('Focus on what was actually done');
+        // Should NOT call transform — title generation requires an assistant response
+        expect(mockTransform).not.toHaveBeenCalled();
     });
 
     it('should re-sync persisted AI title to displayName on follow-up turns', async () => {

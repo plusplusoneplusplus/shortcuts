@@ -111,7 +111,7 @@ describe('WorkflowRunHistory: workflow navigation', () => {
             PIPELINE_RUN_HISTORY_SRC.indexOf('const handleSelectTask'),
             PIPELINE_RUN_HISTORY_SRC.indexOf('};', PIPELINE_RUN_HISTORY_SRC.indexOf('const handleSelectTask')) + 2
         );
-        expect(handler).toContain('task.processId || `queue_${task.id}`');
+        expect(handler).toContain('task.processId || toQueueProcessId(task.id)');
     });
 
     it('RunHistoryItem no longer has isSelected prop', () => {

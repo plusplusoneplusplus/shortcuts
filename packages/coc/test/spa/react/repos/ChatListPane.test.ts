@@ -847,10 +847,10 @@ describe('ChatListPane pinned chats', () => {
             expect(block).toContain('animate-pulse');
         });
 
-        it('shows "Thinking" text in the indicator', () => {
+        it('shows status label text via statusLabel helper in the indicator', () => {
             const thinkingIdx = source.indexOf('thinking-indicator');
             const block = source.substring(thinkingIdx, thinkingIdx + 300);
-            expect(block).toContain('Thinking');
+            expect(block).toContain('statusLabel');
         });
 
         it('thinking indicator is in the timestamp area via isRunning ternary', () => {
@@ -1279,13 +1279,14 @@ describe('NewChatArea: chat-only UI', () => {
         expect(source).not.toContain('CreateWorkItemDialog');
     });
 
-    it('does not render a mode selector', () => {
-        expect(source).not.toContain('data-testid="new-chat-mode-dropdown"');
-        expect(source).not.toContain('data-testid="mode-cycle-btn"');
+    it('renders a mode selector with cycle button and dropdown', () => {
+        expect(source).toContain('data-testid="mode-cycle-btn"');
+        expect(source).toContain('data-testid="new-chat-mode-dropdown"');
     });
 
-    it('hardcodes mode as ask in the task payload', () => {
-        expect(source).toContain("mode: 'ask'");
+    it('defaults mode to autopilot and sends selectedMode in the task payload', () => {
+        expect(source).toContain("'autopilot'");
+        expect(source).toContain('mode: selectedMode');
     });
 
     it('still renders Start a new conversation hero text', () => {
@@ -1519,7 +1520,7 @@ describe('ChatListPane: chat search', () => {
         });
 
         it('renders search-match-count data-testid', () => {
-            expect(source).toContain("'search-match-count'");
+            expect(source).toContain('data-testid="search-match-count"');
         });
     });
 

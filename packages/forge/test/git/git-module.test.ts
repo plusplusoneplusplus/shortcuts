@@ -254,31 +254,33 @@ describe('execGit', () => {
     });
 
     it('should return trimmed output on success', () => {
-        mockExecSync.mockReturnValue('hello world\n');
+        mockExecFileSync.mockReturnValue('hello world\n');
         const result = execGit(['status', '--short'], nativeRepoRoot);
         expect(result).toBe('hello world');
     });
 
     it('should strip Windows-style trailing newline', () => {
-        mockExecSync.mockReturnValue('output\r\n');
+        mockExecFileSync.mockReturnValue('output\r\n');
         const result = execGit(['log'], nativeRepoRoot);
         expect(result).toBe('output');
     });
 
     it('should build the correct command with -C flag', () => {
-        mockExecSync.mockReturnValue('');
+        mockExecFileSync.mockReturnValue('');
         execGit(['log', '--oneline', '-5'], nativeNestedRepoRoot);
-        expect(mockExecSync).toHaveBeenCalledWith(
-            `git -C ${nativeNestedRepoRoot} log --oneline -5`,
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git',
+            ['-C', nativeNestedRepoRoot, 'log', '--oneline', '-5'],
             expect.objectContaining({ encoding: 'utf-8' }),
         );
     });
 
     it('should pass default maxBuffer, timeout, and encoding', () => {
-        mockExecSync.mockReturnValue('');
+        mockExecFileSync.mockReturnValue('');
         execGit(['status'], nativeRepoRoot);
-        expect(mockExecSync).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git',
+            expect.any(Array),
             expect.objectContaining({
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30_000,
@@ -288,11 +290,12 @@ describe('execGit', () => {
     });
 
     it('should allow overriding maxBuffer and timeout', () => {
-        mockExecSync.mockReturnValue('');
+        mockExecFileSync.mockReturnValue('');
         const opts: ExecGitOptions = { maxBuffer: 1024, timeout: 5000 };
         execGit(['diff'], nativeRepoRoot, opts);
-        expect(mockExecSync).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git',
+            expect.any(Array),
             expect.objectContaining({
                 maxBuffer: 1024,
                 timeout: 5000,
@@ -301,10 +304,11 @@ describe('execGit', () => {
     });
 
     it('should pass cwd when provided', () => {
-        mockExecSync.mockReturnValue('');
+        mockExecFileSync.mockReturnValue('');
         execGit(['status'], nativeRepoRoot, { cwd: otherDir });
-        expect(mockExecSync).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git',
+            expect.any(Array),
             expect.objectContaining({ cwd: otherDir }),
         );
     });
@@ -312,44 +316,24 @@ describe('execGit', () => {
     it('should throw a descriptive error when git command fails', () => {
         const error = new Error('Command failed') as Error & { stderr: string };
         error.stderr = 'fatal: not a git repository';
-        mockExecSync.mockImplementation(() => { throw error; });
+        mockExecFileSync.mockImplementation(() => { throw error; });
         expect(() => execGit(['log'], badRepoRoot)).toThrow(
             'git log failed: fatal: not a git repository',
         );
     });
 
-    it('should double caret (^) on Windows to prevent cmd.exe stripping', () => {
-        const origPlatform = process.platform;
-        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        try {
-            mockExecSync.mockReturnValue('');
-            execGit(['log', 'abc123^!'], nativeRepoRoot);
-            expect(mockExecSync).toHaveBeenCalledWith(
-                `git -C ${nativeRepoRoot} log abc123^^!`,
-                expect.objectContaining({ encoding: 'utf-8' }),
-            );
-        } finally {
-            Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
-        }
-    });
-
-    it('should not double caret on non-Windows platforms', () => {
-        const origPlatform = process.platform;
-        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
-        try {
-            mockExecSync.mockReturnValue('');
-            execGit(['log', 'abc123^!'], nativeRepoRoot);
-            expect(mockExecSync).toHaveBeenCalledWith(
-                `git -C ${nativeRepoRoot} log abc123^!`,
-                expect.objectContaining({ encoding: 'utf-8' }),
-            );
-        } finally {
-            Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
-        }
+    it('should pass caret through unchanged (no shell escaping needed with execFileSync)', () => {
+        mockExecFileSync.mockReturnValue('');
+        execGit(['log', 'abc123^!'], nativeRepoRoot);
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git',
+            ['-C', nativeRepoRoot, 'log', 'abc123^!'],
+            expect.objectContaining({ encoding: 'utf-8' }),
+        );
     });
 
     it('should handle errors without stderr gracefully', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('fail'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('fail'); });
         expect(() => execGit(['status'], nativeRepoRoot)).toThrow('git status failed:');
     });
 

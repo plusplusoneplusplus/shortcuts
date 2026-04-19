@@ -544,46 +544,35 @@ describe('ChatDetail', () => {
     // ── Pending task ───────────────────────────────────────────────────────
 
     describe('pending task', () => {
-        it('shows PendingTaskInfoPanel for queued tasks', async () => {
+        it('renders pending state for queued chat tasks', async () => {
             const task = makePendingTask();
             setupFetch({
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
             render(<Wrap><SeededChatDetail task={task} /></Wrap>);
+            // Once loading completes, the conversation area should exist
             await waitFor(() => {
-                expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
+                expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
             });
-        });
-
-        it('does not show follow-up input for queued tasks', async () => {
-            const task = makePendingTask();
-            setupFetch({
-                '/queue/': { body: { task } },
-                '/skills/all': { body: { merged: [] } },
-            });
-            render(<Wrap><SeededChatDetail task={task} /></Wrap>);
-            await waitFor(() => {
-                expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
-            });
+            // Follow-up input should not be shown for pending tasks
             expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
         });
 
-        it('shows user prompt as initial turn for queued tasks', async () => {
-            const task = makePendingTask({ payload: { kind: 'chat', mode: 'autopilot', prompt: 'Build feature X' } });
+        it('shows PendingTaskInfoPanel for non-chat queued tasks', async () => {
+            const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
             render(<Wrap><SeededChatDetail task={task} /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByTestId('pending-prompt')).toBeTruthy();
-                expect(screen.getByTestId('pending-prompt').textContent).toBe('Build feature X');
+                expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
             });
         });
 
-        it('cancel button sends DELETE /queue/<id>', async () => {
-            const task = makePendingTask();
+        it('cancel button sends DELETE /queue/<id> for non-chat tasks', async () => {
+            const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
@@ -605,8 +594,8 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('move-to-top button sends POST /queue/<id>/move-to-top', async () => {
-            const task = makePendingTask();
+        it('move-to-top button sends POST /queue/<id>/move-to-top for non-chat tasks', async () => {
+            const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
@@ -804,8 +793,8 @@ describe('ChatDetail', () => {
             expect(onBack).toHaveBeenCalledTimes(1);
         });
 
-        it('cancel calls onBack after deletion', async () => {
-            const task = makePendingTask();
+        it('cancel calls onBack after deletion for non-chat tasks', async () => {
+            const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },

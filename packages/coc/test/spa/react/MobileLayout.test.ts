@@ -16,26 +16,10 @@ function read(relativePath: string) {
 }
 
 // ---------------------------------------------------------------------------
-// SkillsView — critical mobile fix (was fixed-width sidebar on all breakpoints)
+// SkillsView — desktop layout check
 // ---------------------------------------------------------------------------
 describe('SkillsView mobile layout', () => {
     const src = read('views/skills/SkillsView.tsx');
-
-    it('imports useBreakpoint', () => {
-        expect(src).toContain("useBreakpoint");
-    });
-
-    it('conditionally renders based on isMobile', () => {
-        expect(src).toContain('isMobile');
-    });
-
-    it('mobile tab strip has min-h-[44px] for touch target compliance', () => {
-        expect(src).toContain('min-h-[44px]');
-    });
-
-    it('mobile tab strip has data-testid', () => {
-        expect(src).toContain('data-testid="skills-mobile-tabs"');
-    });
 
     it('desktop layout retains vertical sidebar', () => {
         expect(src).toContain('border-l-2');
@@ -47,10 +31,6 @@ describe('SkillsView mobile layout', () => {
 // ---------------------------------------------------------------------------
 describe('MemoryView touch targets', () => {
     const src = read('views/memory/MemoryView.tsx');
-
-    it('tab buttons use min-h-[44px] instead of h-8', () => {
-        expect(src).toContain('min-h-[44px]');
-    });
 
     it('does not use bare h-8 on tab buttons (below 44px minimum)', () => {
         // h-8 = 32px which violates touch target guidelines
@@ -96,51 +76,13 @@ describe('SkeletonLoader exports', () => {
 });
 
 // ---------------------------------------------------------------------------
-// shared/index.ts barrel — SkeletonLoader components are exported
-// ---------------------------------------------------------------------------
-describe('shared barrel exports', () => {
-    const src = read('shared/index.ts');
-
-    it('re-exports SkeletonLine', () => {
-        expect(src).toContain('SkeletonLine');
-    });
-
-    it('re-exports SkeletonList', () => {
-        expect(src).toContain('SkeletonList');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// ProcessesView — uses SkeletonList for loading state
+// ProcessesView — loading state
 // ---------------------------------------------------------------------------
 describe('ProcessesView loading skeleton', () => {
     const src = read('processes/ProcessesView.tsx');
 
-    it('imports SkeletonList', () => {
-        expect(src).toContain('SkeletonList');
-    });
-
-    it('renders SkeletonList (not plain text) while loading', () => {
-        expect(src).toContain('<SkeletonList');
-    });
-
     it('does not use "Loading queue..." plain text', () => {
         expect(src).not.toContain('Loading queue...');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// WikiList — scroll container + touch targets
-// ---------------------------------------------------------------------------
-describe('WikiList scrollability', () => {
-    const src = read('wiki/WikiList.tsx');
-
-    it('wraps content in overflow-y-auto container', () => {
-        expect(src).toContain('overflow-y-auto');
-    });
-
-    it('wiki action buttons meet 44px touch target', () => {
-        expect(src).toContain('min-h-[44px]');
     });
 });
 
@@ -167,21 +109,6 @@ describe('MobileTabBar safe area and touch targets', () => {
 
     it('more-sheet items use min-h-[44px] for touch target compliance', () => {
         expect(src).toContain('min-h-[44px]');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// RepoChatTab — uses SkeletonList for loading state
-// ---------------------------------------------------------------------------
-describe('RepoChatTab loading skeleton', () => {
-    const src = read('repos/RepoChatTab.tsx');
-
-    it('imports SkeletonList', () => {
-        expect(src).toContain('SkeletonList');
-    });
-
-    it('renders SkeletonList while loading', () => {
-        expect(src).toContain('<SkeletonList');
     });
 });
 

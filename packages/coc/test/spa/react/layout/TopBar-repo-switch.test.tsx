@@ -121,12 +121,12 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         expect(location.hash).toBe('#repos/repo-abc/settings/info');
     });
 
-    it('defaults to settings when target repo has no saved sub-tab', () => {
+    it('defaults to chats when target repo has no saved sub-tab', () => {
         mockRepoTabState = {};
         mockSettingsSection = 'info';
         render(<TopBar />);
         act(() => { capturedOnSelect?.('new-repo'); });
-        expect(location.hash).toBe('#repos/new-repo/settings/info');
+        expect(location.hash).toBe('#repos/new-repo/chats');
     });
 
     it('dispatches SET_SELECTED_REPO with the new repo id', () => {

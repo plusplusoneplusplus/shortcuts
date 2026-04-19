@@ -64,12 +64,70 @@ vi.mock('../../../../../src/server/spa/client/react/shared/AttachmentPreviews', 
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
     MODE_BORDER_COLORS: {
-        ask: { border: 'border-blue-500', ring: 'ring-blue-500' },
+        autopilot: { border: 'border-green-500', ring: 'ring-green-500' },
+        ask: { border: 'border-yellow-500', ring: 'ring-yellow-500' },
+        plan: { border: 'border-blue-500', ring: 'ring-blue-500' },
+    },
+    MODE_ICONS: {
+        ask: '💡',
+        plan: '📋',
+        autopilot: '🤖',
+    },
+    MODE_LABELS: {
+        ask: '💡 Ask',
+        plan: '📋 Plan',
+        autopilot: '🤖 Autopilot',
+    },
+    cycleMode: (current: string) => {
+        const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot' };
+        return next[current];
     },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+    useSlashCommands: () => ({
+        menuVisible: false,
+        menuFilter: '',
+        filteredSkills: [],
+        highlightIndex: 0,
+        handleInputChange: vi.fn(),
+        handleKeyDown: vi.fn(() => false),
+        selectSkill: vi.fn(),
+        parseAndExtract: vi.fn(() => ({ skills: [], prompt: '' })),
+        dismissMenu: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+    useModelCommand: () => ({
+        modelMenuVisible: false,
+        modelFilter: '',
+        filteredModels: [],
+        modelHighlightIndex: 0,
+        modelOverride: null,
+        setModelOverride: vi.fn(),
+        handleModelSelect: vi.fn(),
+        showModelMenu: vi.fn(),
+        dismissModelMenu: vi.fn(),
+        handleModelKeyDown: vi.fn(() => false),
+        setModelFilter: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+    SlashCommandMenu: () => null,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+    ModelCommandMenu: () => null,
 }));
 
 import { NewChatArea } from '../../../../../src/server/spa/client/react/repos/NewChatArea';

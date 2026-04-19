@@ -7,6 +7,14 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { mockViewport } from '../../helpers/viewport-mock';
 import { BottomNav } from '../../../../src/server/spa/client/react/layout/BottomNav';
 
+// ── Mock ResizeObserver (not available in jsdom) ──────────────────────
+
+vi.stubGlobal('ResizeObserver', vi.fn().mockImplementation(() => ({
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+})));
+
 // ── Mock AppContext ────────────────────────────────────────────────────
 
 const mockDispatch = vi.fn();

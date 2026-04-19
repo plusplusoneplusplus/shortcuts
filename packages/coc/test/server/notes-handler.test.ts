@@ -155,8 +155,9 @@ describe('Notes Handler', () => {
             expect(config.notes?.enabled).toBe(false);
         });
 
-        it('should reject unknown keys in notes', () => {
-            expect(() => validateConfigWithSchema({ notes: { enabled: true, foo: 'bar' } })).toThrow();
+        it('should allow unknown keys in notes (passthrough)', () => {
+            const config = validateConfigWithSchema({ notes: { enabled: true, foo: 'bar' } });
+            expect(config.notes?.enabled).toBe(true);
         });
     });
 

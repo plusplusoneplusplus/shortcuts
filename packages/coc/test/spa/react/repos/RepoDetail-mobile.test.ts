@@ -19,8 +19,8 @@ describe('RepoDetail mobile: imports', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
     });
 
-    it('imports BottomSheet for mobile overflow menu', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { BottomSheet } from '../shared/BottomSheet'");
+    it('imports MobileTabBar for mobile actions', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../layout/MobileTabBar'");
     });
 
     it('destructures isMobile from useBreakpoint', () => {
@@ -54,61 +54,50 @@ describe('RepoDetail mobile: header layout', () => {
 
     it('title row has min-w-0 for proper flex shrinking', () => {
         // The title row div has min-w-0 class
-        const titleRowSection = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('Title row'));
+        const titleRowSection = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('title row'));
         expect(titleRowSection).toBeDefined();
-        const titleRowIdx = REPO_DETAIL_SOURCE.indexOf('Title row');
+        const titleRowIdx = REPO_DETAIL_SOURCE.indexOf('title row');
         const nearby = REPO_DETAIL_SOURCE.substring(titleRowIdx, titleRowIdx + 200);
         expect(nearby).toContain('min-w-0');
     });
 });
 
-describe('RepoDetail mobile: overflow menu', () => {
-    it('renders more-menu button on mobile', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-btn"');
+describe('RepoDetail mobile: overflow menu removed', () => {
+    it('does not render old more-menu button', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-btn"');
     });
 
-    it('more-menu button has ⋯ text', () => {
-        const lines = REPO_DETAIL_SOURCE.split('\n');
-        const btnIdx = lines.findIndex(l => l.includes('repo-more-menu-btn'));
-        const nearby = lines.slice(btnIdx, btnIdx + 5).join('\n');
-        expect(nearby).toContain('⋯');
+    it('does not use BottomSheet', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('<BottomSheet');
     });
 
-    it('uses BottomSheet for the overflow menu', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<BottomSheet isOpen onClose=');
+    it('does not have old overflow menu Run Script option', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-run-script"');
     });
 
-    it('overflow menu has Run Script action', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
-    });
-
-    it('overflow menu does not have Edit action (removed from menu)', () => {
+    it('does not have Edit action', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-edit"');
     });
 
-    it('overflow menu does not have Remove action (removed from menu)', () => {
+    it('does not have Remove action', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-remove"');
     });
 
-    it('more-menu container has data-testid', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-container"');
+    it('does not have more-menu container', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-container"');
     });
 
-    it('overflow menu items container has data-testid', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-items"');
+    it('does not have more-menu items container', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-items"');
     });
 
-    it('moreMenuOpen state controls overflow menu visibility', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('moreMenuOpen');
-        expect(REPO_DETAIL_SOURCE).toContain('setMoreMenuOpen');
+    it('does not use moreMenuOpen state', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('moreMenuOpen');
+        expect(REPO_DETAIL_SOURCE).not.toContain('setMoreMenuOpen');
     });
 
-    it('closes more-menu on outside click', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('moreMenuRef.current && !moreMenuRef.current.contains');
-    });
-
-    it('click-outside mousedown listener is skipped on mobile', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('if (!moreMenuOpen || isMobile) return;');
+    it('does not have moreMenuRef click-outside handler', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('moreMenuRef');
     });
 });
 
@@ -250,7 +239,7 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
     });
 
     it('passes visibleSubTabs list to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('tabs={VISIBLE_SUB_TABS}');
+        expect(REPO_DETAIL_SOURCE).toContain('tabs={visibleSubTabs}');
     });
 
     it('passes badge counts to MobileTabBar', () => {

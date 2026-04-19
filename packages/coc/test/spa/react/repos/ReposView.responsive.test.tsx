@@ -79,13 +79,17 @@ vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => 
 vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
     RepoDetail: () => <div data-testid="repo-detail">RepoDetail</div>,
     SUB_TABS: [
-        { key: 'info', label: 'Info' },
+        { key: 'chats', label: 'Chats' },
         { key: 'git', label: 'Git' },
-        { key: 'tasks', label: 'Plans' },
-        { key: 'activity', label: 'Activity' },
-        { key: 'templates', label: 'Templates' },
+        { key: 'work-items', label: 'Work Items' },
         { key: 'schedules', label: 'Schedules' },
-        { key: 'copilot', label: 'Copilot' },
+        { key: 'explorer', label: 'Explorer' },
+        { key: 'workflows', label: 'Workflows' },
+        { key: 'pull-requests', label: 'Pull Requests' },
+        { key: 'tasks', label: 'Tasks' },
+        { key: 'terminal', label: 'Terminal' },
+        { key: 'notes', label: 'Notes' },
+        { key: 'settings', label: 'Settings' },
     ],
 }));
 
@@ -264,7 +268,7 @@ describe('ReposView — responsive layout', () => {
 
             // Height class is applied even during loading
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-40px-48px)]');
+            expect(container.className).toContain('h-[calc(100dvh-40px-48px)]');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {
@@ -388,7 +392,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(8);
+        expect(tabs.length).toBe(7);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');

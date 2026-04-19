@@ -84,7 +84,7 @@ describe('browseDirectory', () => {
 
     // ── Symlink tests ───────────────────────────────────────────────────
 
-    it('includes symlinked directories', () => {
+    it.skipIf(process.platform === 'win32')('includes symlinked directories', () => {
         const realDir = path.join(tmpDir, 'real-dir');
         fs.mkdirSync(realDir);
 
@@ -118,7 +118,7 @@ describe('browseDirectory', () => {
         expect(result.entries.map(e => e.name)).toEqual(['good']);
     });
 
-    it('detects git repo through a symlinked directory', () => {
+    it.skipIf(process.platform === 'win32')('detects git repo through a symlinked directory', () => {
         const realRepo = path.join(tmpDir, '_real_repo');
         fs.mkdirSync(path.join(realRepo, '.git'), { recursive: true });
 
@@ -131,7 +131,7 @@ describe('browseDirectory', () => {
         expect(linked!.isGitRepo).toBe(true);
     });
 
-    it('handles a mix of dirs, symlinks, files, and broken symlinks', () => {
+    it.skipIf(process.platform === 'win32')('handles a mix of dirs, symlinks, files, and broken symlinks', () => {
         // Normal directory
         fs.mkdirSync(path.join(tmpDir, 'normal'));
         // Symlink to directory

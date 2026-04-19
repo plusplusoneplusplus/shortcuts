@@ -714,7 +714,7 @@ describe('RepoDetail', () => {
         const buttons = document.querySelectorAll('button');
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Settings');
-        expect(tabLabels).toContain('Templates');
+        expect(tabLabels).toContain('Workflows');
         expect(tabLabels).toContain('Activity');
     });
 
@@ -728,15 +728,21 @@ describe('RepoDetail', () => {
     });
 
     it('shows task count badge when tasks exist', () => {
+        // Tasks tab is only visible in dev-workflow layout mode
+        localStorage.setItem('coc-ui-layout-mode', 'dev-workflow');
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             taskCount: 5,
         });
-        render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        // The badge with task count is the bg-[#0078d4] rounded-full span
-        const badges = document.querySelectorAll('span.rounded-full');
-        const taskBadge = Array.from(badges).find(b => b.textContent === '5');
-        expect(taskBadge).not.toBeUndefined();
+        try {
+            render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
+            // The badge with task count is the bg-[#0078d4] rounded-full span
+            const badges = document.querySelectorAll('span.rounded-full');
+            const taskBadge = Array.from(badges).find(b => b.textContent === '5');
+            expect(taskBadge).not.toBeUndefined();
+        } finally {
+            localStorage.removeItem('coc-ui-layout-mode');
+        }
     });
 
     it('shows no activity badge when queue is empty', () => {

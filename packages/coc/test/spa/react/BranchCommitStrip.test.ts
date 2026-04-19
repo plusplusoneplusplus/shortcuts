@@ -92,42 +92,42 @@ describe('BranchCommitStrip', () => {
             expect(source).toContain('data-testid="branch-range-ask-ai-btn"');
         });
 
-        it('renders Queue Task button with data-testid', () => {
-            expect(source).toContain('data-testid="branch-range-queue-task-btn"');
+        it('renders All Comments button with data-testid', () => {
+            expect(source).toContain('data-testid="branch-range-all-comments-btn"');
         });
     });
 
-    describe('Ask AI / Queue Task props', () => {
+    describe('Ask AI / All Comments props', () => {
         it('accepts onAskAI optional prop', () => {
             expect(source).toContain('onAskAI?: () => void');
         });
 
-        it('accepts onQueueTask optional prop', () => {
-            expect(source).toContain('onQueueTask?: () => void');
+        it('accepts onAllCommentsClick optional prop', () => {
+            expect(source).toContain('onAllCommentsClick?: () => void');
         });
 
         it('conditionally renders Ask AI button when onAskAI is provided', () => {
             expect(source).toContain('{onAskAI && (');
         });
 
-        it('conditionally renders Queue Task button when onQueueTask is provided', () => {
-            expect(source).toContain('{onQueueTask && (');
+        it('conditionally renders All Comments button when onAllCommentsClick is provided', () => {
+            expect(source).toContain('{onAllCommentsClick && (');
         });
 
         it('Ask AI button calls onAskAI onClick', () => {
             expect(source).toContain('onClick={onAskAI}');
         });
 
-        it('Queue Task button calls onQueueTask onClick', () => {
-            expect(source).toContain('onClick={onQueueTask}');
+        it('All Comments button calls onAllCommentsClick onClick', () => {
+            expect(source).toContain('onClick={onAllCommentsClick}');
         });
 
         it('Ask AI button has accessible title', () => {
             expect(source).toContain('title="Ask AI about branch changes"');
         });
 
-        it('Queue Task button has accessible title', () => {
-            expect(source).toContain('title="Queue task for branch changes"');
+        it('All Comments button has accessible title', () => {
+            expect(source).toContain('title="Show all branch comments"');
         });
     });
 });
