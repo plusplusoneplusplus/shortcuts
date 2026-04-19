@@ -135,8 +135,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 
-    it('has exactly 12 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(12);
+    it('has exactly 15 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(15);
     });
 });
 
@@ -1228,9 +1228,9 @@ describe('Bare W key no longer navigates to wiki', () => {
         expect(dispatches).toHaveLength(0);
     });
 
-    it('Alt+I does NOT dispatch wiki navigation (wiki tab hidden)', () => {
+    it('Alt+I dispatches work-items navigation', () => {
         const dispatches = simulateKeyHandler({ key: 'i', code: 'KeyI', altKey: true }, repoState);
-        expect(dispatches).toHaveLength(0);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'work-items' });
     });
 });
 
@@ -1269,16 +1269,16 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     it('REPO_TAB_SHORTCUTS maps 10 letters to sub-tabs (wiki hidden)', () => {
         expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(10);
-        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
+        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
     });
 
     it.each([
         ['g', 'KeyG', 'git'],
         ['e', 'KeyE', 'explorer'],
-        ['p', 'KeyP', 'tasks'],
+        ['t', 'KeyT', 'tasks'],
         ['r', 'KeyR', 'pull-requests'],
-        ['a', 'KeyA', 'activity'],
-        ['w', 'KeyW', 'templates'],
+        ['a', 'KeyA', 'chats'],
+        ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
@@ -1287,7 +1287,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
     });
 
     it.each([
-        ['å', 'KeyA', 'activity'],
+        ['å', 'KeyA', 'chats'],
         ['ê', 'KeyE', 'explorer'],
         ['©', 'KeyC', 'settings'],
     ] as [string, string, string][])('macOS Option+key: e.key="%s" e.code="%s" dispatches SET_REPO_SUB_TAB %s', (key, code, tab) => {
@@ -1440,11 +1440,11 @@ describe('Alt+Q queue dialog keyboard shortcut', () => {
 
     it('Alt+A still dispatches SET_REPO_SUB_TAB (not broken by Q handler)', () => {
         const dispatches = simulateFullAltKeyHandler({ key: 'a', code: 'KeyA', altKey: true }, repoState);
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
     });
 });
 
-// ─── handleHash wiki deep-link in repos context ──────────────────
+// ─── handleHash wiki deep-link in repos context──────────────────
 
 describe('handleHash wiki deep-link dispatch simulation (repos context)', () => {
     function simulateRepoWikiHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
@@ -1788,21 +1788,21 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("e.code.replace('Key', '').toLowerCase()");
     });
 
-    it('dispatches activity sub-tab via Alt+A', () => {
-        expect(ROUTER_SOURCE).toContain("a: 'activity'");
+    it('dispatches chats sub-tab via Alt+A', () => {
+        expect(ROUTER_SOURCE).toContain("a: 'chats'");
     });
 
-    it('dispatches templates sub-tab via Alt+W', () => {
-        expect(ROUTER_SOURCE).toContain("w: 'templates'");
+    it('dispatches workflows sub-tab via Alt+W', () => {
+        expect(ROUTER_SOURCE).toContain("w: 'workflows'");
     });
 
     it('bare W → wiki shortcut has been removed', () => {
         expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
     });
 
-    it('wiki shortcut (Alt+I) is defined in ALL_REPO_TAB_SHORTCUTS but hidden from exported REPO_TAB_SHORTCUTS', () => {
-        expect(ROUTER_SOURCE).toContain("i: 'wiki'");
-        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
+    it('work-items shortcut (Alt+I) is defined in ALL_REPO_TAB_SHORTCUTS and exported in REPO_TAB_SHORTCUTS', () => {
+        expect(ROUTER_SOURCE).toContain("i: 'work-items'");
+        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
     });
 
     it('bare A is no longer a shortcut (replaced by Alt+A)', () => {
@@ -2005,8 +2005,8 @@ describe('parseSettingsSection', () => {
         expect(parseSettingsSection('#repos/r1/settings/memory')).toBe('memory');
     });
 
-    it('returns "run-script-template" falls back to "info" (moved to Templates tab)', () => {
-        expect(parseSettingsSection('#repos/r1/settings/run-script-template')).toBe('info');
+    it('returns "run-script-template" for #repos/r1/settings/run-script-template', () => {
+        expect(parseSettingsSection('#repos/r1/settings/run-script-template')).toBe('run-script-template');
     });
 
     it('returns "tasks" for #repos/r1/settings/tasks', () => {
@@ -2057,8 +2057,8 @@ describe('VALID_SETTINGS_SECTIONS', () => {
         expect(VALID_SETTINGS_SECTIONS.has('memory')).toBe(true);
     });
 
-    it('does not include "run-script-template" (moved to Templates tab)', () => {
-        expect(VALID_SETTINGS_SECTIONS.has('run-script-template')).toBe(false);
+    it('includes "run-script-template"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('run-script-template')).toBe(true);
     });
 
     it('includes "tasks"', () => {
@@ -2122,9 +2122,9 @@ describe('settings section hash routing', () => {
         expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'preferences' });
     });
 
-    it('run-script-template falls back to info (moved to Templates tab)', () => {
+    it('dispatches run-script-template section for #repos/r1/settings/run-script-template', () => {
         const dispatches = simulateSettingsHash('#repos/r1/settings/run-script-template');
-        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'info' });
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'run-script-template' });
     });
 
     it('dispatches SET_SETTINGS_SECTION tasks for #repos/r1/settings/tasks', () => {
