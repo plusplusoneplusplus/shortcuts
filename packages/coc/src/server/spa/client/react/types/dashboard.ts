@@ -28,6 +28,9 @@ export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 export type MemorySubTab = 'entries' | 'config' | 'files';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database';
+
+/** UI layout mode: 'classic' shows unified Activity tab; 'dev-workflow' shows Chats + Work Items + Tasks */
+export type UiLayoutMode = 'classic' | 'dev-workflow';
 export type PrDetailTab = 'overview' | 'threads' | 'files';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */

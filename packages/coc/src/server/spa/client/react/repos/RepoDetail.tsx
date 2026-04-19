@@ -7,6 +7,7 @@ import { useApp } from '../context/AppContext';
 import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../context/WorkItemContext';
+import { useUiLayoutMode } from '../hooks/useUiLayoutMode';
 import { Button, cn } from '../shared';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
@@ -88,6 +89,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
+    const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -124,8 +126,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
         if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
+        // Layout mode filtering
+        if (uiLayoutMode === 'classic') {
+            // Classic: replace Chats with Activity, hide Work Items
+            tabs = tabs
+                .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
+                .filter(t => t.key !== 'work-items');
+        }
         return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled]);
+    }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -149,6 +158,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
+
+    // Redirect when switching layout modes
+    useEffect(() => {
+        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items')) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+        }
+    }, [uiLayoutMode, activeSubTab, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -345,6 +363,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     {t.key === 'chats' && queueQueuedCount > 0 && (
                                         <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
                                     )}
+                                    {t.key === 'activity' && queueRunningCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                                    )}
+                                    {t.key === 'activity' && queueQueuedCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                                    )}
                                     {t.key === 'work-items' && unseenWorkItemCount > 0 && (
                                         <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="Work items with updates">{unseenWorkItemCount}</span>
                                     )}
@@ -431,9 +455,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <div className="h-full min-w-0 overflow-hidden">
                         <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
                     </div>
+                ) : activeSubTab === 'activity' ? (
+                    <div className="h-full min-w-0 overflow-hidden">
+                        <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
+                    </div>
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
+                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} uiLayoutMode={uiLayoutMode} onUiLayoutModeChange={setUiLayoutMode} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
