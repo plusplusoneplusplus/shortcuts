@@ -20,7 +20,7 @@
     "build:bundle": "node esbuild.config.mjs",
     "prepublishOnly": "npm run build:bundle && npm run test:run",
     "test": "vitest",
-    "test:run": "vitest run --reporter=verbose",
+    "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "lint": "eslint src"
