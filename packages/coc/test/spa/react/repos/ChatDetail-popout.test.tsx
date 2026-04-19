@@ -79,6 +79,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     Button: ({ children, onClick }: any) => React.createElement('button', { onClick }, children),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
+    normalizeRefPath: (p: string) => p,
     ReferencesDropdown: () => null,
     ReferenceList: () => null,
 }));

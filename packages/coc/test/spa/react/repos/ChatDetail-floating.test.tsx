@@ -86,6 +86,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     Spinner: ({ size }: any) => React.createElement('span', { 'data-testid': 'spinner', 'data-size': size }),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
+    normalizeRefPath: (p: string) => p,
     ReferencesDropdown: () => null,
     ReferenceList: () => null,
 }));

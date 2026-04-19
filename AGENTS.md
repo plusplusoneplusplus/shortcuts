@@ -159,7 +159,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `config.yaml` — server configuration
 - `processes.db` — SQLite process store (default backend; schema version 8); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), per-turn pin/archive/delete state (`conversation_turns.pinned_at`, `archived`, `deleted_at`), and FTS5 `conversation_search` index on `conversation_turns.content`
 - `preferences.json` — global UI preferences (theme, etc.)
-- `memory/` — cross-repo and system memory (see Memory System section)
+- `memory/` — system-level bounded memory (`memory/system/MEMORY.md`)
 - `skills/` — global skill definitions
 
 **Storage layout — `~/.coc/repos/<workspaceId>/` (per-repo):**
@@ -170,6 +170,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `tasks/` — task and plan files
 - `processes/` — legacy file-based process store (used only when `store.backend: file` in config)
 - `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
+- `memory/` — per-repo bounded memory (`memory/MEMORY.md`); injected into all chat executors by default
 - `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
@@ -189,7 +190,7 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 
 **Onboarding layer:** `WelcomeModal` (first-launch modal), `FirstStepsCard` (guided checklist replacing empty repos state), `FeatureTip` (contextual dismissible tips). State in `GlobalPreferences` (`hasSeenWelcome`, `onboardingProgress`, `dismissedTips`), gated by `SHOW_WELCOME_TUTORIAL` compile-time flag.
 
-**Memory layer:** `MemoryConfig` (`storageDir`, `backend`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, explore-cache browsing routes (`GET /api/memory/explore-cache/levels`, `GET /api/memory/explore-cache/raw`, `GET /api/memory/explore-cache/raw/:filename`, `GET /api/memory/explore-cache/consolidated`, `GET /api/memory/explore-cache/consolidated/:id`). Dashboard UI: `MemoryView` → `MemoryFilesPanel` (explore-cache browser) + `MemoryConfigPanel` + `ExploreCachePanel`.
+**Memory layer:** `MemoryConfig` (`storageDir`, `backend`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, explore-cache browsing routes (`GET /api/memory/explore-cache/levels`, `GET /api/memory/explore-cache/raw`, `GET /api/memory/explore-cache/raw/:filename`, `GET /api/memory/explore-cache/consolidated`, `GET /api/memory/explore-cache/consolidated/:id`). Bounded memory routes (`GET/PATCH/DELETE /api/memory/bounded/*`) serve per-repo and system `MEMORY.md` content. Per-repo memory CRUD at `/api/repos/:repoId/memory/*` via `repo-memory-handler.ts`. Dashboard UI: `MemoryView` → `MemoryConfigPanel` + bounded memory viewer.
 
 **Seen-state layer:** `seen-state-handler.ts` (`registerSeenStateRoutes`) exposes per-process read/unread tracking via `GET/PATCH /api/workspaces/:id/seen-state`, `DELETE /api/workspaces/:id/seen-state/:processId`, `GET /api/workspaces/:id/seen-state/count`. Backed by `seen_at TEXT` column on `processes` table. Client hook `useUnseenActivity` loads from server on mount, uses optimistic local state + debounced fire-and-forget API calls. One-time localStorage migration from `coc-unseen-*` keys on first load.
 
@@ -199,30 +200,23 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 
 ## Memory System (`packages/forge/src/memory/`)
 
-Opt-in, two-level persistence layer that lets AI pipelines learn from past sessions. After each AI call the AI writes `write_memory` tool calls; those facts are periodically consolidated by an AI aggregation step into `consolidated.md`, which is injected into subsequent prompts.
+Bounded, file-backed persistence layer that lets AI chat sessions learn from past interactions. The AI writes `write_memory` tool calls (add/replace/remove), which are applied immediately to `MEMORY.md`; the frozen snapshot is injected into subsequent prompts. There is no batch-consolidation pipeline or raw-observations staging area.
 
-**Storage layout:** `~/.coc/memory/system/` (cross-repo), `~/.coc/memory/repos/<16-char-sha256>/` (per-repo), and `~/.coc/memory/git-remotes/<16-char-sha256>/` (per-git-remote), each with `raw/*.md`, `consolidated.md`, `index.json`. `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
+**Storage layout:** `~/.coc/repos/<workspaceId>/memory/MEMORY.md` (per-repo), `~/.coc/memory/system/MEMORY.md` (global system). `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
 
 **Key symbols in `forge`:**
 
 | Symbol | Role |
 |--------|------|
 | `MemoryStore` (interface) | Full CRUD contract |
-| `BoundedMemoryStore` | Hermes-style bounded file-backed store; add/replace/remove with substring matching, char limits, `§` delimiters, mkdir-based file locking |
+| `BoundedMemoryStore` | File-backed store; add/replace/remove with substring matching, char limits, `§` delimiters, mkdir-based file locking |
 | `scanMemoryContent()` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
 | `MemoryPromptBuilder` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` at construction, renders immutable `═══`-separated block with usage header + `MEMORY_GUIDANCE` for system prompt injection |
 | `createWriteMemoryTool()` | Factory returning an AI-callable `write_memory` tool + `getWrittenFacts()` accessor |
-| `MemoryAggregator` | Batch-threshold check; triggers AI consolidation when `rawCount >= 5` |
-| `withMemory()` | One-liner orchestrator: retrieve → inject tool → invoke AI → aggregate |
-| `EXTRACTION_SYSTEM_PROMPT` | System prompt for offline fact extraction from conversation transcripts |
-| `buildExtractionUserPrompt()` | Builds user prompt wrapping a transcript for extraction |
-| `parseExtractionResponse()` | Parses AI JSON response into `ExtractedFact[]` |
 
 **Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
 
-**Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in `packages/coc/src/server/` combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
-
-**Bounded Memory Addon** (CoC server integration in `packages/coc/src/server/executors/bounded-memory-addon.ts`): `buildBoundedMemoryAddon()` creates a per-request `BoundedMemoryStore` (file-backed at `~/.coc/repos/<workspaceId>/memory/MEMORY.md`), a `MemoryPromptBuilder` snapshot for system prompt injection, and a `write_memory` AI tool via `createMemoryTool()`. Gated by `PerRepoPreferences.boundedMemory.enabled` (opt-in per repo, default false). `appendBoundedMemoryContext()` in `prompt-builder.ts` appends the frozen memory block to chat system messages. All 6 chat executors (chat, autopilot, plan, follow-up, commit-chat, note-chat) wire the addon.
+**Bounded Memory Addon** (CoC server integration in `packages/coc/src/server/executors/bounded-memory-addon.ts`): `buildBoundedMemoryAddon()` creates a per-request `BoundedMemoryStore` (file-backed at `~/.coc/repos/<workspaceId>/memory/MEMORY.md`), a `MemoryPromptBuilder` snapshot for system prompt injection, and a `write_memory` AI tool via `createMemoryTool()`. Also wires system-level memory at `~/.coc/memory/system/MEMORY.md`. Gated by `PerRepoPreferences.boundedMemory.enabled` (opt-in per repo, default false). `appendBoundedMemoryContext()` in `prompt-builder.ts` appends the frozen memory block to chat system messages. All 6 chat executors (chat, autopilot, plan, follow-up, commit-chat, note-chat) wire the addon.
 
 ## Development Notes
 

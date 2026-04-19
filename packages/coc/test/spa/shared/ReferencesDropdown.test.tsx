@@ -48,7 +48,7 @@ describe('ReferencesDropdown component', () => {
     });
 
     it('renders file rows from files prop', () => {
-        expect(SOURCE).toContain('files?.map');
+        expect(SOURCE).toContain('uniqueFiles.map');
     });
 
     it('has data-testid on toggle button', () => {

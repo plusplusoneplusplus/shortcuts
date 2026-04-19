@@ -105,7 +105,7 @@ export interface PerRepoPreferences {
     skillTemplates?: SkillTemplateEntry[];
     /** Preferred file-list display mode across all git views (commits, branch changes, working tree). */
     filesViewMode?: 'flat' | 'tree';
-    /** Bounded memory settings (replaces old memoryExtraction). */
+    /** Bounded memory settings. */
     boundedMemory?: {
         enabled: boolean;
         /** Max characters for MEMORY.md content. Default: 16384. */

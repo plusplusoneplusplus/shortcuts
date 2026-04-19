@@ -36,6 +36,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', async () => {
 });
 
 vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
+    normalizeRefPath: (p: string) => p,
     ReferencesDropdown: ({ planPath, files }: any) => {
         const total = (planPath ? 1 : 0) + (files?.length ?? 0);
         return total > 0 ? <span data-testid="references-dropdown">Refs ({total})</span> : null;

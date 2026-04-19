@@ -95,7 +95,7 @@ export type { BoundedMemoryAddon } from './bounded-memory-addon';
 /**
  * Appends bounded memory snapshot to the system message.
  * Uses BoundedMemoryAddon.systemMessageSuffix if available.
- * Replaces the old appendMemoryContext().
+ * This is the sole memory context injection path.
  *
  * Must be called AFTER {@link withRepoInstructions} and BEFORE
  * {@link appendAutoFolderBlock} so memory context sits between repo

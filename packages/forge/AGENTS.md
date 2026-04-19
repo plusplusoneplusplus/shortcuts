@@ -31,60 +31,40 @@ Entry point: `src/index.ts` — re-exports all public API from the modules above
 
 ## Memory System
 
-Persistent memory that lets AI interactions learn from past executions. Stores observations per-repo under `~/.coc/memory/`. Design doc: `docs/designs/coc-memory.md`.
+Bounded, file-backed memory that lets AI chat sessions learn from past interactions. The AI writes `write_memory` tool calls (add/replace/remove) which are applied immediately to `MEMORY.md`; the frozen snapshot is injected into subsequent prompts. There is no batch-consolidation pipeline.
 
-**Storage layout:** `~/.coc/memory/system/` (global), `~/.coc/memory/repos/<hash>/` (per-repo, hash = SHA-256 of resolved repo root, 16-char hex prefix), and `~/.coc/memory/git-remotes/<hash>/` (per-git-remote, hash = SHA-256 of normalized remote URL, 16-char hex prefix). Each level dir contains `raw/*.md` (timestamped observations), `consolidated.md` (AI-synthesized summary), `index.json` (metadata). Repo dirs also have `repo-info.json`, git-remote dirs have `remote-info.json`.
-
-**MemoryLevel:** `'repo' | 'system' | 'git-remote' | 'both'` — the `git-remote` level scopes memory to all local clones of the same upstream repository.
+**Storage layout:** `~/.coc/repos/<workspaceId>/memory/MEMORY.md` (per-repo), `~/.coc/memory/system/MEMORY.md` (global system). `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
 
 ### Components (`src/memory/`)
 
 | File | Export | Role |
 |------|--------|------|
-| `types.ts` | `MemoryStore`, `MemoryConfig`, `RawObservation`, `ConsolidatedMemory`, `MemoryIndex`, etc. | All type definitions and the store interface |
+| `types.ts` | `MemoryStore`, `MemoryConfig`, `RepoInfo`, `GitRemoteInfo`, `MemoryLevel` | Core type definitions and store interface |
 | `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `MemoryUsage`, `MemoryScanResult`, `ThreatPatternId`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for the bounded memory system |
-| `bounded-memory-store.ts` | `BoundedMemoryStore` | Hermes-style bounded file-backed store with add/replace/remove, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
+| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
-| `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths (deprecated — prefer `repoDir` option) |
+| `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
 | `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`. Hermes-style: capacity-aware, duplicate-preventing, security scanning via store. Takes `MemoryToolStores` map (memory→repo store, system→global store). |
-| `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
-| `extraction-prompts.ts` | `EXTRACTION_SYSTEM_PROMPT`, `buildExtractionUserPrompt`, `parseExtractionResponse`, `ExtractedFact` | Prompts and JSON parser for offline fact extraction from conversation transcripts |
-| `with-memory.ts` | `withMemory` | Orchestrator: build frozen memory prompt → optionally inject `memory` tool (when `boundedStores` provided) → invoke AI → check aggregation threshold |
 
-### Usage Patterns
+### Usage Pattern
 
-**Simple — `withMemory()` wrapper** (single AI call):
 ```typescript
-import { withMemory, BoundedMemoryStore } from 'forge';
+import { MemoryPromptBuilder, BoundedMemoryStore, createMemoryTool } from 'forge';
 
-const store = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/MEMORY.md' });
-const result = await withMemory(innerInvoker, prompt, {
-    store, repoHash: 'abc123...', level: 'repo',
-});
-```
-
-**Complex — direct service calls** (multi-step like pipeline map-reduce or wiki):
-```typescript
-import { MemoryPromptBuilder, BoundedMemoryStore, createMemoryTool, MemoryAggregator } from 'forge';
-
-const repoStore = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/MEMORY.md' });
+const repoStore = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/memory/MEMORY.md' });
+const sysStore = new BoundedMemoryStore({ filePath: '~/.coc/memory/system/MEMORY.md' });
 await repoStore.load();
-const builder = new MemoryPromptBuilder({ store: repoStore });
-const block = builder.getSystemPromptBlock();
-// Inject block into system prompt...
+const builder = new MemoryPromptBuilder({ store: repoStore, systemStore: sysStore });
+const block = builder.getSystemPromptBlock(); // inject into system prompt
 
-const { tool } = createMemoryTool({ memory: repoStore });
+const { tool } = createMemoryTool({ memory: repoStore, system: sysStore });
 // Pass tool to AI session's available tools...
-
-const aggregator = new MemoryAggregator(store, aiInvoker);
-await aggregator.aggregateIfNeeded(repoHash, { threshold: 10 });
 ```
 
 **Key design decisions:**
-- Memory is **caller-side opt-in** — the AI invoker (`createCLIAIInvoker`) is never modified
+- Memory is **caller-side opt-in** — the AI invoker is never modified
 - Capture uses a **tool** (`write_memory` via `defineTool`), not a follow-up prompt — avoids polluting session history
-- Two integration patterns: `withMemory()` for simple cases, direct services for complex orchestration
 
 ## Build & Test
 
@@ -105,7 +85,4 @@ Paths use `path.join()`/`path.resolve()`. Shell escaping handles platform differ
 
 ## See Also
 
-- `docs/designs/coc-memory.md` — Memory system design doc
 - `docs/designs/forge-extraction.md` — Package extraction design
-- `src/shortcuts/ai-service/AGENTS.md` — VS Code AI service wrapper
-- `src/shortcuts/yaml-pipeline/AGENTS.md` — VS Code workflow UI

@@ -168,12 +168,14 @@ src/
 │   │   ├── types.ts              # Terminal session and message types (IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage)
 │   │   ├── terminal-session-manager.ts  # PTY lifecycle management (create, resize, destroy, idle cleanup)
 │   │   └── terminal-ws-server.ts # WebSocket server for /ws/terminal — per-workspace connections, multi-session per client, PTY I/O forwarding, heartbeat
-│   ├── memory/                  # Memory observation management and REST API
-│   │   ├── extraction-config.ts         # ExtractionConfig types, defaults, validation
+│   ├── memory/                  # Memory configuration and bounded-memory REST API
 │   │   ├── memory-config-handler.ts     # Memory config persistence (readMemoryConfig, writeMemoryConfig)
-│   │   ├── memory-routes.ts             # Global memory REST endpoints
-│   │   ├── repo-memory-handler.ts       # Per-repo memory REST endpoints (observations dir, not pipeline)
-│   │   └── repo-memory-migration.ts     # Startup migration for memory directories
+│   │   ├── memory-routes.ts             # Global memory REST endpoints (config + bounded memory routes)
+│   │   ├── bounded-memory-routes.ts     # Global bounded memory REST endpoints (GET/PATCH/DELETE /api/memory/bounded/*)
+│   │   ├── repo-memory-handler.ts       # Per-repo bounded MEMORY.md REST endpoints (GET/PUT /api/repos/:repoId/memory/*)
+│   │   ├── background-review.ts         # Background memory review (periodic AI pass to add/replace/remove entries)
+│   │   ├── background-review-executor.ts # Executor for background review tasks
+│   │   └── pre-compression-flush.ts     # Flush memory before compression to avoid data loss
 │   └── spa/              # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/
 │       ├── index.ts          # Module exports - generateDashboardHtml + DashboardOptions
@@ -202,7 +204,7 @@ src/
 │               ├── types/               # TypeScript type definitions
 │               ├── utils/               # Utility modules (config, format, path-resolution)
 │               ├── views/
-│               │   ├── memory/          # Memory management (MemoryView, entries/files/config panels, ExploreCachePanel)
+│               │   ├── memory/          # Memory management (MemoryView, MemoryConfigPanel, bounded memory file viewer)
 │               │   └── skills/          # Skills management (SkillsView, installed/bundled/config panels)
 │               ├── welcome/             # Onboarding system (WelcomeModal, FirstStepsCard, FeatureTip, tips registry)
 │               ├── featureFlags.ts      # Compile-time feature flags (SHOW_WELCOME_TUTORIAL)
