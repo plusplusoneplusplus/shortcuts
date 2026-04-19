@@ -128,10 +128,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
-            // Classic: replace Chats with Activity, hide Work Items
+            // Classic: replace Chats with Activity, hide Work Items and Tasks
             tabs = tabs
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .filter(t => t.key !== 'work-items');
+                .filter(t => t.key !== 'work-items' && t.key !== 'tasks');
         }
         return tabs;
     }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);
@@ -161,7 +161,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     // Redirect when switching layout modes
     useEffect(() => {
-        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items')) {
+        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items' || activeSubTab === 'tasks')) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
