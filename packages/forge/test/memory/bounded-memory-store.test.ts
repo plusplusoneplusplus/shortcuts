@@ -131,7 +131,7 @@ describe('BoundedMemoryStore', () => {
             const result = await store.add('this is way too long');
             expect(result.success).toBe(false);
             expect(result.message).toContain('exceed');
-            expect(result.message).toContain('character limit');
+            expect(result.message).toContain('Replace or remove');
         });
 
         it('strips leading/trailing whitespace from content before storing', async () => {
@@ -238,7 +238,7 @@ describe('BoundedMemoryStore', () => {
             await store.add('short');
             const result = await store.replace('short', 'this is a very long replacement string that exceeds the limit');
             expect(result.success).toBe(false);
-            expect(result.message).toContain('exceed');
+            expect(result.message).toContain('remove other entries first');
         });
 
         it('rejects newContent that fails security scan', async () => {

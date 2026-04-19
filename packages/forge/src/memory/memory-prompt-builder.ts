@@ -49,7 +49,7 @@ export class MemoryPromptBuilder {
         const repoEntries = options.store.read();
         const repoLimit = options.store.getUsage().limit;
         this.repoBlock = MemoryPromptBuilder.renderBlock(
-            'MEMORY (your persistent notes)',
+            'MEMORY (your personal notes)',
             repoEntries,
             repoLimit,
         );

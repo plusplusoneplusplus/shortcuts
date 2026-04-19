@@ -133,7 +133,7 @@ describe('buildBoundedMemoryAddon', () => {
         expect(addon.systemMessageSuffix).toBeDefined();
         expect(addon.systemMessageSuffix).toContain('Repo-scoped fact');
         expect(addon.systemMessageSuffix).toContain('System-level fact');
-        expect(addon.systemMessageSuffix).toContain('MEMORY (your persistent notes)');
+        expect(addon.systemMessageSuffix).toContain('MEMORY (your personal notes)');
         expect(addon.systemMessageSuffix).toContain('SYSTEM MEMORY (cross-project notes)');
     });
 

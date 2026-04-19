@@ -47,7 +47,7 @@ describe('MemoryPromptBuilder', () => {
         const block = builder.getSystemPromptBlock();
         expect(block).not.toBeNull();
         expect(block!).toContain('══════════════════════════════════════════════');
-        expect(block!).toContain('MEMORY (your persistent notes)');
+        expect(block!).toContain('MEMORY (your personal notes)');
         expect(block!).toContain('Project uses TypeScript');
         expect(block!).toContain(MEMORY_GUIDANCE);
     });
@@ -120,7 +120,7 @@ describe('MemoryPromptBuilder', () => {
         const builder = new MemoryPromptBuilder({ store: repoStore, systemStore });
         const block = builder.getSystemPromptBlock()!;
 
-        expect(block).toContain('MEMORY (your persistent notes)');
+        expect(block).toContain('MEMORY (your personal notes)');
         expect(block).toContain('SYSTEM MEMORY (cross-project notes)');
         // MEMORY_GUIDANCE appears exactly once
         const guidanceCount = block.split(MEMORY_GUIDANCE).length - 1;
@@ -133,7 +133,7 @@ describe('MemoryPromptBuilder', () => {
         const builder = new MemoryPromptBuilder({ store });
 
         const block = builder.getSystemPromptBlock()!;
-        expect(block).toContain('MEMORY (your persistent notes)');
+        expect(block).toContain('MEMORY (your personal notes)');
         expect(block).not.toContain('SYSTEM MEMORY');
     });
 
@@ -149,7 +149,7 @@ describe('MemoryPromptBuilder', () => {
         const block = builder.getSystemPromptBlock()!;
 
         expect(block).toContain('SYSTEM MEMORY (cross-project notes)');
-        expect(block).not.toContain('MEMORY (your persistent notes)');
+        expect(block).not.toContain('MEMORY (your personal notes)');
     });
 
     it('getGuidance() returns MEMORY_GUIDANCE constant', async () => {
@@ -185,7 +185,7 @@ describe('MemoryPromptBuilder', () => {
         // First line is separator
         expect(lines[0]).toBe('══════════════════════════════════════════════');
         // Second line is header with usage
-        expect(lines[1]).toMatch(/^MEMORY \(your persistent notes\) \[\d+% — [\d,]+\/[\d,]+ chars\]$/);
+        expect(lines[1]).toMatch(/^MEMORY \(your personal notes\) \[\d+% — [\d,]+\/[\d,]+ chars\]$/);
         // Third line is separator
         expect(lines[2]).toBe('══════════════════════════════════════════════');
         // Content follows

@@ -245,7 +245,7 @@ describe('createMemoryTool', () => {
     describe('error propagation', () => {
         it('capacity-exceeded error passes through unchanged', async () => {
             const capacityResult = makeFailResult(
-                'Adding this entry (250 chars) would exceed the character limit. Current: 2900/3000.',
+                'Memory at 2,900/3,000 chars. Adding this entry (250 chars) would exceed the limit. Replace or remove existing entries first.',
             );
             (repoStore.add as ReturnType<typeof vi.fn>).mockResolvedValue(capacityResult);
 

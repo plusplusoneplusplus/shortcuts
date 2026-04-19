@@ -61,8 +61,9 @@ export class BoundedMemoryStore extends BaseFileStore {
                 if (serialized.length > this.charLimit) {
                     const currentLen = this.entries.length > 0 ? this.serialize(this.entries).length : 0;
                     return this.failResult(
-                        `Adding this entry (${trimmed.length} chars) would exceed the character limit. ` +
-                        `Current: ${currentLen}/${this.charLimit}.`,
+                        `Memory at ${currentLen.toLocaleString()}/${this.charLimit.toLocaleString()} chars. ` +
+                        `Adding this entry (${trimmed.length} chars) would exceed the limit. ` +
+                        `Replace or remove existing entries first.`,
                     );
                 }
 
@@ -106,7 +107,8 @@ export class BoundedMemoryStore extends BaseFileStore {
                 const serialized = this.serialize(newEntries);
                 if (serialized.length > this.charLimit) {
                     return this.failResult(
-                        `Replacement would exceed the character limit (${serialized.length}/${this.charLimit}).`,
+                        `Replacement would put memory at ${serialized.length.toLocaleString()}/${this.charLimit.toLocaleString()} chars. ` +
+                        `Try a shorter replacement or remove other entries first.`,
                     );
                 }
 
