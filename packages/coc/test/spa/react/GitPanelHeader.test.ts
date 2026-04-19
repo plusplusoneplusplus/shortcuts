@@ -17,6 +17,10 @@ const INDEX_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
 );
 
+const REPO_GIT_TAB_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
+);
+
 describe('GitPanelHeader', () => {
     let source: string;
 
@@ -350,6 +354,74 @@ describe('GitPanelHeader', () => {
             expect(pullBtnIdx).toBeGreaterThan(fetchBtnIdx);
             expect(pushBtnIdx).toBeGreaterThan(pullBtnIdx);
             expect(refreshBtnIdx).toBeGreaterThan(pushBtnIdx);
+        });
+    });
+
+    describe('integration with RepoGitTab', () => {
+        let gitTabSource: string;
+
+        beforeAll(() => {
+            gitTabSource = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+        });
+
+        it('RepoGitTab imports GitPanelHeader', () => {
+            expect(gitTabSource).toContain("import { GitPanelHeader } from './GitPanelHeader'");
+        });
+
+        it('RepoGitTab renders GitPanelHeader', () => {
+            expect(gitTabSource).toContain('<GitPanelHeader');
+        });
+
+        it('RepoGitTab passes branch prop', () => {
+            expect(gitTabSource).toMatch(/branch=\{branchName/);
+        });
+
+        it('RepoGitTab passes ahead prop', () => {
+            expect(gitTabSource).toContain('ahead={ahead}');
+        });
+
+        it('RepoGitTab passes behind prop', () => {
+            expect(gitTabSource).toContain('behind={behind}');
+        });
+
+        it('RepoGitTab passes refreshing prop', () => {
+            expect(gitTabSource).toContain('refreshing={refreshing}');
+        });
+
+        it('RepoGitTab passes onRefresh prop', () => {
+            expect(gitTabSource).toContain('onRefresh={refreshAll}');
+        });
+
+        it('RepoGitTab passes onFetch prop', () => {
+            expect(gitTabSource).toContain('onFetch={handleFetch}');
+        });
+
+        it('RepoGitTab passes onPull prop', () => {
+            expect(gitTabSource).toContain('onPull={handlePull}');
+        });
+
+        it('RepoGitTab passes onPush prop', () => {
+            expect(gitTabSource).toContain('onPush={handlePush}');
+        });
+
+        it('RepoGitTab passes fetching prop', () => {
+            expect(gitTabSource).toContain('fetching={fetching}');
+        });
+
+        it('RepoGitTab passes pulling prop', () => {
+            expect(gitTabSource).toContain('pulling={pulling}');
+        });
+
+        it('RepoGitTab passes pushing prop', () => {
+            expect(gitTabSource).toContain('pushing={pushing}');
+        });
+
+        it('GitPanelHeader appears before BranchChanges in left panel', () => {
+            const headerIdx = gitTabSource.indexOf('<GitPanelHeader');
+            const branchIdx = gitTabSource.indexOf('<BranchChanges');
+            expect(headerIdx).toBeGreaterThan(-1);
+            expect(branchIdx).toBeGreaterThan(-1);
+            expect(headerIdx).toBeLessThan(branchIdx);
         });
     });
 });
