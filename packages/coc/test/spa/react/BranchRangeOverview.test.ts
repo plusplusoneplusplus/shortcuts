@@ -14,9 +14,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchRangeOverview.tsx'
 );
 
-const REPO_GIT_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
-);
 
 describe('BranchRangeOverview', () => {
     let source: string;
@@ -179,65 +176,3 @@ describe('BranchRangeOverview', () => {
     });
 });
 
-describe('RepoGitTab — BranchRangeOverview integration', () => {
-    let source: string;
-
-    beforeAll(() => {
-        source = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
-    });
-
-    it('imports BranchRangeOverview', () => {
-        expect(source).toContain("import { BranchRangeOverview }");
-    });
-
-    it('renders BranchRangeOverview for branch-range view type', () => {
-        expect(source).toContain("rightPanelView?.type === 'branch-range'");
-        expect(source).toContain('<BranchRangeOverview');
-    });
-
-    it('does NOT render CommitDetail for branch-range view type', () => {
-        // CommitDetail is still used for commit view, but not branch-range
-        const branchRangeSection = source.slice(
-            source.indexOf("rightPanelView?.type === 'branch-range'"),
-            source.indexOf("rightPanelView?.type === 'branch-file'")
-        );
-        expect(branchRangeSection).not.toContain('<CommitDetail');
-    });
-
-    it('passes range prop to BranchRangeOverview', () => {
-        expect(source).toContain('range={branchRangeData!}');
-    });
-
-    it('passes unpushedCount to BranchRangeOverview', () => {
-        expect(source).toContain('unpushedCount={unpushedCount}');
-    });
-
-    it('passes onFileSelect to BranchRangeOverview that navigates to branch-file', () => {
-        expect(source).toContain("type: 'branch-file', filePath");
-    });
-
-    it('includes branch-range in RightPanelView union', () => {
-        expect(source).toContain("| { type: 'branch-range' }");
-    });
-
-    it('defaults to empty right panel (no auto-selection on initial load)', () => {
-        expect(source).toContain("setRightPanelView(null)");
-        expect(source).not.toContain("rangeInfo && rangeInfo.commitCount > 0");
-    });
-
-    it('passes onBranchRangeSelect to BranchChanges', () => {
-        expect(source).toContain('onBranchRangeSelect=');
-    });
-
-    it('preserves branch-range view during refresh', () => {
-        expect(source).toMatch(/branch-range.*working-tree-file|working-tree-file.*branch-range/);
-    });
-
-    it('passes onAskAI to BranchRangeOverview in branch-range view', () => {
-        expect(source).toContain('onAskAI=');
-    });
-
-    it('passes onQueueTask to BranchRangeOverview in branch-range view', () => {
-        expect(source).toContain('onQueueTask=');
-    });
-});

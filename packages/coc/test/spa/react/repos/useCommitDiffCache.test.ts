@@ -274,24 +274,3 @@ describe('per-file diff cache bypass (regression: partial diff shown in file det
     });
 });
 
-describe('refreshAll cache invalidation integration', () => {
-    it('RepoGitTab.tsx imports clearCacheForHash', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
-        expect(source).toContain("import { clearCacheForHash } from './useCommitDiffCache'");
-    });
-
-    it('RepoGitTab.tsx calls clearCacheForHash in refreshAll', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
-        expect(source).toContain('clearCacheForHash(prevSelectedHash)');
-    });
-});

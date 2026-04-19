@@ -18,10 +18,6 @@ const INDEX_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
 );
 
-const REPO_GIT_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
-);
-
 describe('BranchChanges', () => {
     let source: string;
 
@@ -446,66 +442,6 @@ describe('BranchChanges', () => {
                 expect(source).not.toContain('showFullDiff');
                 expect(source).not.toContain('<pre');
             });
-        });
-    });
-
-    describe('integration with RepoGitTab', () => {
-        let gitTabSource: string;
-
-        beforeAll(() => {
-            gitTabSource = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
-        });
-
-        it('RepoGitTab imports BranchChanges', () => {
-            expect(gitTabSource).toContain("import { BranchChanges } from './BranchChanges'");
-        });
-
-        it('RepoGitTab renders BranchChanges component', () => {
-            expect(gitTabSource).toContain('<BranchChanges');
-        });
-
-        it('RepoGitTab passes workspaceId to BranchChanges', () => {
-            expect(gitTabSource).toContain('workspaceId={workspaceId}');
-        });
-
-        it('RepoGitTab passes branchRangeData to BranchChanges', () => {
-            expect(gitTabSource).toContain('branchRangeData={branchRangeData}');
-        });
-
-        it('RepoGitTab passes onDefaultBranch to BranchChanges', () => {
-            expect(gitTabSource).toContain('onDefaultBranch={onDefaultBranch}');
-        });
-
-        it('RepoGitTab passes onFileSelect to BranchChanges', () => {
-            expect(gitTabSource).toContain('onFileSelect={handleFileSelect}');
-        });
-
-        it('RepoGitTab passes selectedFile to BranchChanges', () => {
-            expect(gitTabSource).toContain('selectedFile={selectedBranchFile}');
-        });
-
-        it('RepoGitTab imports BranchRangeInfo type from BranchChanges', () => {
-            expect(gitTabSource).toContain("import type { BranchRangeInfo } from './BranchChanges'");
-        });
-
-        it('BranchChanges appears after GitPanelHeader in left panel', () => {
-            const headerIdx = gitTabSource.indexOf('<GitPanelHeader');
-            const branchIdx = gitTabSource.indexOf('<BranchChanges');
-            expect(headerIdx).toBeGreaterThan(-1);
-            expect(branchIdx).toBeGreaterThan(-1);
-            expect(headerIdx).toBeLessThan(branchIdx);
-        });
-
-        it('BranchChanges appears before CommitList in the commit list panel', () => {
-            const branchChangesIndex = gitTabSource.indexOf('<BranchChanges');
-            const commitListPanelIndex = gitTabSource.indexOf('{commitListPanel}');
-            expect(branchChangesIndex).toBeGreaterThan(-1);
-            expect(commitListPanelIndex).toBeGreaterThan(-1);
-            expect(branchChangesIndex).toBeLessThan(commitListPanelIndex);
-        });
-
-        it('RepoGitTab passes onBranchContextMenu to BranchChanges', () => {
-            expect(gitTabSource).toContain('onBranchContextMenu={handleBranchContextMenu}');
         });
     });
 

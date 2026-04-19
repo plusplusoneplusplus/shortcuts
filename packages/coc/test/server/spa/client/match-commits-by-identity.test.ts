@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { matchCommitsByIdentity } from '../../../../src/server/spa/client/react/repos/RepoGitTab';
+import { matchCommitsByIdentity } from '../../../../src/server/spa/client/react/repos/commit-utils';
 
 interface GitCommitItem {
     hash: string;
