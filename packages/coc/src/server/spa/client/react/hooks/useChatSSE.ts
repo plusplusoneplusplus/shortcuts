@@ -211,12 +211,19 @@ export function useChatSSE({
             onSendComplete();
         };
 
-        es.addEventListener('done', () => finish('completed'));
+        let finished = false;
+        const guardedFinish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            if (finished) return;
+            finished = true;
+            finish(finalStatus);
+        };
+
+        es.addEventListener('done', () => guardedFinish('completed'));
         es.addEventListener('status', (e: Event) => {
             try {
                 const status = JSON.parse((e as MessageEvent).data)?.status;
                 if (status && !['running', 'queued'].includes(status))
-                    finish(status as 'completed' | 'failed' | 'cancelled');
+                    guardedFinish(status as 'completed' | 'failed' | 'cancelled');
             } catch { /* ignore */ }
         });
 
@@ -234,6 +241,7 @@ export function useChatSSE({
                 // Too many consecutive errors — give up and refresh
                 closeSSE();
                 void refreshConversation(processId);
+                onSendComplete();
             }
             // Otherwise let EventSource auto-reconnect
         };

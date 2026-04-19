@@ -107,17 +107,20 @@ export function useSendMessage({
             return refreshConversation(pid);
         }
         return new Promise<void>(resolve => {
-            resolveCurrentSendRef.current = resolve;
+            let isResolved = false;
             const timeout = setTimeout(() => {
-                if (resolveCurrentSendRef.current === resolve) {
+                if (!isResolved) {
+                    isResolved = true;
                     resolveCurrentSendRef.current = null;
                     resolve();
                 }
             }, 90_000);
-            const origResolve = resolve;
             resolveCurrentSendRef.current = () => {
-                clearTimeout(timeout);
-                origResolve();
+                if (!isResolved) {
+                    isResolved = true;
+                    clearTimeout(timeout);
+                    resolve();
+                }
             };
         });
     }, [refreshConversation]);

@@ -28,6 +28,7 @@ export interface FollowUpInputAreaProps {
     selectedMode: 'ask' | 'plan' | 'autopilot';
     setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
+    onStop: () => void;
     onRetry: () => void;
     skills: SkillItem[];
     attachments: ChatAttachment[];
@@ -77,6 +78,7 @@ export interface FollowUpInputAreaProps {
     sessionModel?: string;
     /** When true, the ask/plan/autopilot mode selector is hidden */
     hideModeSelector?: boolean;
+    isStreaming: boolean;
 }
 
 export function FollowUpInputArea({
@@ -91,6 +93,7 @@ export function FollowUpInputArea({
     selectedMode,
     setSelectedMode,
     onSend,
+    onStop,
     onRetry,
     skills,
     attachments,
@@ -106,6 +109,7 @@ export function FollowUpInputArea({
     modelCommand,
     sessionModel,
     hideModeSelector = false,
+    isStreaming,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,11 +360,11 @@ export function FollowUpInputArea({
                         >✕</button>
                     </div>
                 )}
-                {sending ? (
+                {(sending || isStreaming) ? (
                     <button
                         type="button"
                         className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
-                        onClick={() => { void onSend(undefined, 'immediate'); }}
+                        onClick={onStop}
                         data-testid="activity-chat-stop-btn"
                     >
                         Stop

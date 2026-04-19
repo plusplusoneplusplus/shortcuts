@@ -145,7 +145,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
-    const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
+    const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired || isStreaming;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
@@ -613,6 +613,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         onBack?.();
     };
 
+    const handleStop = useCallback(() => {
+        stopStreaming();
+        void fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId), { method: 'DELETE' });
+    }, [bareTaskId, stopStreaming]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleMoveToTop = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top', { method: 'POST' });
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
@@ -806,6 +811,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     selectedMode={selectedMode}
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
+                    onStop={handleStop}
                     onRetry={retryLastMessage}
                     skills={skills}
                     attachments={attachments}
@@ -826,6 +832,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     modelCommand={modelCommand}
                     sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
+                    isStreaming={isStreaming}
                 />
             )}
         </div>
