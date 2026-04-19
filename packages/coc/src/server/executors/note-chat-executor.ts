@@ -87,7 +87,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
-        const searchConversations = buildSearchConversationsAddon(this.store, wsId);
+        const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
 
         const tools = [...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools];
         const toolSuffix = followUp.suffix + searchConversations.suffix + boundedMemory.suffix;

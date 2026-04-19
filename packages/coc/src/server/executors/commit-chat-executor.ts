@@ -114,7 +114,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
-        const searchConversations = buildSearchConversationsAddon(this.store, wsId);
+        const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
 
         tools.push(...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools);
         toolSuffix += followUp.suffix + searchConversations.suffix + boundedMemory.suffix;

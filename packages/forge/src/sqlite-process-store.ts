@@ -1535,6 +1535,74 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     // ========================================================================
+    // Conversation Turns (lightweight accessor)
+    // ========================================================================
+
+    async getConversationTurns(processId: string): Promise<ConversationTurn[]> {
+        const turnRows = this.getTurnsStmt.all(processId) as TurnRow[];
+        return turnRows.map(rowToTurn);
+    }
+
+    // ========================================================================
+    // Recent Processes
+    // ========================================================================
+
+    async listRecentProcesses(options: {
+        workspaceId?: string;
+        limit?: number;
+        excludeProcessId?: string;
+    }): Promise<ProcessIndexEntry[]> {
+        const conditions: string[] = ['archived = 0'];
+        const params: unknown[] = [];
+
+        if (options.workspaceId) {
+            conditions.push('workspace_id = ?');
+            params.push(options.workspaceId);
+        }
+
+        if (options.excludeProcessId) {
+            conditions.push('id != ?');
+            params.push(options.excludeProcessId);
+        }
+
+        const whereSQL = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const limit = Math.min(Math.max(1, options.limit ?? 10), 20);
+
+        const query = `
+            SELECT id, workspace_id, status, type, start_time, end_time,
+                   prompt_preview, error, parent_process_id, title,
+                   last_event_at, pinned_at, archived
+            FROM processes ${whereSQL}
+            ORDER BY COALESCE(last_event_at, start_time) DESC
+            LIMIT ?
+        `;
+
+        const entries: ProcessIndexEntry[] = [];
+        for (const row of this.db.prepare(query).iterate(...params, limit) as IterableIterator<ProcessRow>) {
+            const startMs = new Date(row.start_time).getTime();
+            const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
+            entries.push({
+                id: row.id,
+                workspaceId: row.workspace_id,
+                status: row.status,
+                type: row.type || 'clarification',
+                startTime: new Date(row.start_time).toISOString(),
+                endTime: row.end_time ? new Date(row.end_time).toISOString() : undefined,
+                promptPreview: row.prompt_preview ?? '',
+                error: row.error ?? undefined,
+                parentProcessId: row.parent_process_id ?? undefined,
+                title: row.title ?? undefined,
+                duration: endMs !== undefined ? endMs - startMs : undefined,
+                lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+                pinnedAt: row.pinned_at ?? undefined,
+                archived: intToBool(row.archived) || undefined,
+            });
+        }
+
+        return entries;
+    }
+
+    // ========================================================================
     // Disposal
     // ========================================================================
 

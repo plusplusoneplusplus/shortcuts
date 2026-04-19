@@ -418,4 +418,21 @@ export interface ProcessStore {
         query: string,
         filter?: SearchFilter
     ): Promise<{ results: ConversationSearchResult[]; total: number }>;
+
+    /**
+     * Retrieve conversation turns for a process without loading the full AIProcess.
+     * Optional — only SQLite-backed stores support this.
+     */
+    getConversationTurns?(processId: string): Promise<ConversationTurn[]>;
+
+    /**
+     * List recent processes ordered by start time (descending).
+     * Returns lightweight summaries suitable for "recent sessions" browsing.
+     * Optional — only SQLite-backed stores support this.
+     */
+    listRecentProcesses?(options: {
+        workspaceId?: string;
+        limit?: number;
+        excludeProcessId?: string;
+    }): Promise<ProcessIndexEntry[]>;
 }

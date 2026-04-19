@@ -86,7 +86,7 @@ export class ChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
         const createWorkItem = buildCreateWorkItemAddon(
             this.dataDir,
             payload.workspaceId,

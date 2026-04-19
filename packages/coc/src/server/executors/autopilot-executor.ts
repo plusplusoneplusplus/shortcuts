@@ -17,6 +17,7 @@ import type {
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import {
     appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
@@ -53,7 +54,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
 

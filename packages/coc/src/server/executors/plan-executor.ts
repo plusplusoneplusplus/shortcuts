@@ -80,7 +80,7 @@ export class PlanExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
 
         const processId = toQueueProcessId(task.id);
         const askUser = buildAskUserAddon(this.askUser.enabled, {

@@ -80,8 +80,9 @@ describe('createSearchConversationsTool', () => {
                 query: { type: 'string', description: expect.any(String) },
                 workspaceId: { type: 'string', description: expect.any(String) },
                 limit: { type: 'number', description: expect.any(String) },
+                summarize: { type: 'boolean', description: expect.any(String) },
             },
-            required: ['query'],
+            required: [],
         });
     });
 
@@ -92,6 +93,7 @@ describe('createSearchConversationsTool', () => {
         const result = await tool.handler({ query: 'test' }, invocationStub);
 
         expect(result).toEqual({
+            mode: 'search',
             results: [],
             total: 0,
             query: 'test',
