@@ -10,6 +10,29 @@ export interface ReferencesDropdownProps {
     wsId?: string;
 }
 
+/** Normalize a file path for dedup comparison: forward slashes, lowercased. */
+export function normalizeRefPath(p: string): string {
+    return p.replace(/\\/g, '/').toLowerCase();
+}
+
+/**
+ * Return the subset of `files` that are not duplicates of `planPath` or each
+ * other.  Comparison is case-insensitive with separator normalization.
+ */
+export function deduplicateReferenceFiles(
+    planPath: string | undefined,
+    files: { filePath: string }[] | undefined,
+): { filePath: string }[] {
+    const normPlan = planPath ? normalizeRefPath(planPath) : '';
+    const seen = new Set<string>(normPlan ? [normPlan] : []);
+    return (files ?? []).filter(f => {
+        const n = normalizeRefPath(f.filePath);
+        if (seen.has(n)) return false;
+        seen.add(n);
+        return true;
+    });
+}
+
 function PlanFileIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0" aria-hidden="true">
@@ -20,6 +43,7 @@ function PlanFileIcon() {
 }
 
 export function ReferenceList({ planPath, files }: { planPath?: string; files?: { filePath: string }[] }) {
+    const uniqueFiles = deduplicateReferenceFiles(planPath, files);
     return (
         <>
             {planPath && (
@@ -28,7 +52,7 @@ export function ReferenceList({ planPath, files }: { planPath?: string; files?: 
                     <FilePathLink path={planPath} noTruncate className="text-xs font-sans" />
                 </span>
             )}
-            {files?.map((f, i) => (
+            {uniqueFiles.map((f, i) => (
                 <span key={i} className="inline-flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#2d2d2d] rounded px-1">
                     <FilePathLink path={f.filePath} noTruncate className="text-xs font-sans" />
                 </span>
@@ -38,7 +62,8 @@ export function ReferenceList({ planPath, files }: { planPath?: string; files?: 
 }
 
 export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdownProps) {
-    const total = (planPath ? 1 : 0) + (files?.length ?? 0);
+    const uniqueFiles = deduplicateReferenceFiles(planPath, files);
+    const total = (planPath ? 1 : 0) + uniqueFiles.length;
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();

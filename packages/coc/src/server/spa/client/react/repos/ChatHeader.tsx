@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../shared';
 import { Button } from '../shared';
-import { ReferencesDropdown, ReferenceList } from '../shared/ReferencesDropdown';
+import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../shared/ReferencesDropdown';
 import { BottomSheet } from '../shared/BottomSheet';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
@@ -118,7 +118,8 @@ function buildOverflowItems(
     }
 
     // References
-    const refTotal = (props.planPath ? 1 : 0) + (props.createdFiles?.length ?? 0);
+    const dedupedFiles = deduplicateReferenceFiles(props.planPath, props.createdFiles);
+    const refTotal = (props.planPath ? 1 : 0) + dedupedFiles.length;
     if (refTotal > 0) {
         if (props.isMobile && props.onOpenRefs) {
             // On mobile, open a standalone BottomSheet outside the overflow menu
@@ -446,7 +447,7 @@ export function ChatHeader({
                 <BottomSheet
                     isOpen={refsSheetOpen}
                     onClose={() => setRefsSheetOpen(false)}
-                    title={`References (${(planPath ? 1 : 0) + (createdFiles?.length ?? 0)})`}
+                    title={`References (${(planPath ? 1 : 0) + deduplicateReferenceFiles(planPath, createdFiles).length})`}
                 >
                     <div className="flex flex-col gap-1 p-2" {...(wsId ? { 'data-ws-id': wsId } : {})}>
                         <ReferenceList planPath={planPath} files={createdFiles} />
