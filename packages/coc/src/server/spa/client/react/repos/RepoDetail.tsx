@@ -26,6 +26,7 @@ import { NotesView } from './NotesView';
 import { AddRepoDialog } from './AddRepoDialog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
+import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
@@ -90,6 +91,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
+    const [generateDialog, setGenerateDialog] = useState<{
+        open: boolean;
+        minimized: boolean;
+        targetFolder: string | undefined;
+    }>({ open: false, minimized: false, targetFolder: undefined });
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
     const color = ws.color || '#848484';
@@ -267,6 +273,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
     }, [ws.id, queueDispatch]);
 
+    const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
+        setGenerateDialog({ open: true, minimized: false, targetFolder });
+    }, []);
+
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
@@ -431,11 +441,35 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             <Button
                                 variant="primary"
                                 size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                title="Queue a new AI task (Alt+Q)"
+                                data-testid="repo-queue-task-btn"
+                            >
+                                🤖 Queue Task
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={() => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })}
                                 title="Run a script in this repo"
                                 data-testid="repo-run-script-btn"
                             >
                                 🛠️ Run Script
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                title="Ask AI a question (read-only)"
+                                data-testid="repo-ask-btn"
+                            >
+                                💡 Ask
+                            </Button>
+                            <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                📋 Generate Plan
+                                {generateDialog.open && generateDialog.minimized && (
+                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                )}
                             </Button>
 
                         </div>
@@ -454,7 +488,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
                     actions={[
+                        { label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) },
+                        { label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) },
                         { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        { label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() },
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
                             ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
                             : []),
@@ -511,6 +548,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     </div>
                 )}
             </div>
+
+            {/* Generate Task with AI dialog */}
+            {generateDialog.open && (
+                <GenerateTaskDialog
+                    wsId={ws.id}
+                    initialFolder={generateDialog.targetFolder}
+                    minimized={generateDialog.minimized}
+                    onMinimize={() => setGenerateDialog(prev => ({ ...prev, minimized: true }))}
+                    onRestore={() => setGenerateDialog(prev => ({ ...prev, minimized: false }))}
+                    onClose={() => setGenerateDialog({ open: false, minimized: false, targetFolder: undefined })}
+                    onSuccess={() => {
+                        setGenerateDialog({ open: false, minimized: false, targetFolder: undefined });
+                    }}
+                />
+            )}
 
             {/* Edit dialog */}
             <AddRepoDialog

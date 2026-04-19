@@ -291,7 +291,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     : toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-                toolResultInterceptors,
             };
 
             let result;
