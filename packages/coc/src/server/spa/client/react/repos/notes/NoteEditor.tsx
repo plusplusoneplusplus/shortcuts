@@ -521,6 +521,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             let freshHtml: string;
             try {
                 const { content } = await ioRef.current.loadContent(workspaceIdRef.current, path);
+                setRawMarkdown(content);
                 freshHtml = markdownToHtml(content);
                 freshHtml = rewriteHtmlImageSrc(freshHtml, ioRef.current, workspaceIdRef.current);
             } catch {
@@ -618,6 +619,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             // Skip reload if user has unsaved edits
             if (pendingContentRef.current !== null) return;
             ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content }) => {
+                // Skip redundant reload — content already matches what's displayed
+                // (e.g. applyAiEdit already loaded this version from disk)
+                if (content === rawMarkdownRef.current) return;
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
                 const ed = editorRef.current;

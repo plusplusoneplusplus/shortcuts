@@ -389,4 +389,67 @@ describe('NoteEditor.applyAiEdit', () => {
         // loadContent called for reload — verifies the reload path runs
         expect(mockLoadContent).toHaveBeenCalledTimes(2);
     });
+
+    // ── Regression: notes-changed WS event after applyAiEdit must not wipe decorations ──
+
+    it('notes-changed event with identical content skips redundant setContent (preserves decorations)', async () => {
+        const ref = await renderWithRef('test.md');
+
+        // applyAiEdit reloads content — the word "updated" is the new content on disk
+        const aiContent = 'The updated text here';
+        mockLoadContent.mockResolvedValueOnce({ content: aiContent, path: 'test.md' });
+
+        await act(async () => {
+            await ref.current!.applyAiEdit({ oldStr: 'The old text here', newStr: 'The updated text here' });
+        });
+
+        const setContentCallCount = mockSetContent.mock.calls.length;
+
+        // Now simulate the notes-changed WS event arriving with the same content
+        // (file watcher detected the same write that applyAiEdit already loaded)
+        mockLoadContent.mockResolvedValueOnce({ content: aiContent, path: 'test.md' });
+
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('notes-changed', {
+                detail: { wsId: 'ws1', changedPaths: ['test.md'] },
+            }));
+        });
+
+        // Wait for the async loadContent to resolve
+        await act(async () => {
+            await new Promise(r => setTimeout(r, 50));
+        });
+
+        // setContent should NOT have been called again — content dedup skipped it
+        expect(mockSetContent).toHaveBeenCalledTimes(setContentCallCount);
+    });
+
+    it('notes-changed event with different content still reloads', async () => {
+        const ref = await renderWithRef('test.md');
+
+        // applyAiEdit reloads content
+        mockLoadContent.mockResolvedValueOnce({ content: 'version-A', path: 'test.md' });
+
+        await act(async () => {
+            await ref.current!.applyAiEdit({ oldStr: 'old', newStr: 'no-match' });
+        });
+
+        const setContentCallCount = mockSetContent.mock.calls.length;
+
+        // notes-changed arrives with genuinely different content (e.g. external edit)
+        mockLoadContent.mockResolvedValueOnce({ content: 'version-B', path: 'test.md' });
+
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('notes-changed', {
+                detail: { wsId: 'ws1', changedPaths: ['test.md'] },
+            }));
+        });
+
+        await act(async () => {
+            await new Promise(r => setTimeout(r, 50));
+        });
+
+        // setContent SHOULD have been called — content actually changed
+        expect(mockSetContent).toHaveBeenCalledTimes(setContentCallCount + 1);
+    });
 });
