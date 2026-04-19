@@ -14,6 +14,7 @@ import { useScriptTemplates, type ScriptTemplate } from '../hooks/useScriptTempl
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { TaskDefs } from '../../../../task-types';
 
 export function RunScriptDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -71,7 +72,7 @@ export function RunScriptDialog() {
     const minimizedEntry = useMemo(() => {
         if (!minimized || !open) return null;
         return {
-            id: 'run-script',
+            id: TaskDefs.runScript.kind,
             icon: '🛠️',
             label: 'Run Script',
             preview: pillPreview,
@@ -108,7 +109,7 @@ export function RunScriptDialog() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'run-script',
+                    type: TaskDefs.runScript.kind,
                     displayName,
                     payload,
                     config,

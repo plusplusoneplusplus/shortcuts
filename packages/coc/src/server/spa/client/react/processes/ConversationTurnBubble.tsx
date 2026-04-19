@@ -21,6 +21,7 @@ import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './to
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './toolGroupUtils';
 import type { WhisperGroupChunk } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
+import { TaskDefs } from '../../../../task-types';
 import { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
@@ -626,7 +627,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
 
 export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
-    const isScript = !isUser && processType === 'run-script';
+    const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId) : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});

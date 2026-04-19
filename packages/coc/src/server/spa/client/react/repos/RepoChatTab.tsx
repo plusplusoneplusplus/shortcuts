@@ -22,6 +22,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useProcessSearch } from '../hooks/useProcessSearch';
 import { adaptSearchResults } from '../utils/search-adapter';
 import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
+import { TaskDefs } from '../../../../task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
 export interface RepoChatTabProps {
@@ -300,7 +301,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [rawMarkUnseen, scheduleUnseenRefresh]);
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
-        if (task?.type === 'run-workflow' && !task?.payload?.workItemId && !task?.workItemId) {
+        if (task?.type === TaskDefs.runWorkflow.kind && !task?.payload?.workItemId && !task?.workItemId) {
             const processId = task.processId || task.id;
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;

@@ -7,13 +7,14 @@
 
 import { useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
+import { TaskDefs } from '../../../../task-types';
 
 export interface RepoQueueStats {
     running: number;
     queued: number;
 }
 
-export const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
+export const isHidden = (t: { type?: string; payload?: any }) => t.type === TaskDefs.chat.kind && t.payload?.processId;
 
 export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();

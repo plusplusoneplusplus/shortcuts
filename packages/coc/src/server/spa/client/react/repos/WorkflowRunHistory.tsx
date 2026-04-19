@@ -10,6 +10,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 import { toQueueProcessId } from '../utils/queue-process-id';
+import { TaskDefs } from '../../../../task-types';
 
 export interface WorkflowRunHistoryProps {
     workspaceId: string;
@@ -44,7 +45,7 @@ export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: Wo
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const activeTasks = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
-            t.type === 'run-workflow' && (
+            t.type === TaskDefs.runWorkflow.kind && (
                 t.metadata?.pipelineName === pipelineName ||
                 t.displayName?.includes(pipelineName)
             )

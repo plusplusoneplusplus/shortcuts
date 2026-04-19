@@ -16,6 +16,7 @@ import type {
     PauseMarker,
 } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../task-types';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
 import * as path from 'path';
 
@@ -24,14 +25,10 @@ import * as path from 'path';
 // ============================================================================
 
 export const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-export const VALID_TASK_TYPES: Set<string> = new Set(['chat', 'run-workflow', 'run-script', 'custom']);
+export const VALID_TASK_TYPES: Set<string> = new Set([...VALID_ENQUEUE_TYPES, 'custom']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
-export const TYPE_LABELS: Record<string, string> = {
-    'chat': 'Chat',
-    'run-workflow': 'Run Workflow',
-    'run-script': 'Run Script',
-};
+export const TYPE_LABELS: Record<string, string> = VISIBLE_TASK_TYPE_LABELS;
 
 /**
  * Maximum number of conversation turns to include in a cold-resume context prompt.
@@ -253,8 +250,8 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         if (!payload.kind) payload.kind = 'chat';
         if (!payload.mode) payload.mode = 'autopilot';
     }
-    if (taskSpec.type === 'run-script' && !payload.kind) payload.kind = 'run-script';
-    if (taskSpec.type === 'run-workflow' && !payload.kind) payload.kind = 'run-workflow';
+    if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
+    if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;
 
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim() && !payload.prompt) {
         payload.prompt = taskSpec.prompt.trim();

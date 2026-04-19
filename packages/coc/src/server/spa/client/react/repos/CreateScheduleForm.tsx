@@ -4,6 +4,7 @@ import { getApiBase } from '../utils/config';
 import { fetchWorkflows } from './workflow-api';
 import { parseCronToInterval, describeCron, intervalToCron, CRON_EXAMPLES } from '../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
+import { TaskDefs } from '../../../../task-types';
 import type { PipelineInfo } from './repoGrouping';
 
 export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode = 'create', scheduleId, initialValues }: {
@@ -47,7 +48,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
     // Fetch pipelines when run-workflow template is selected
     useEffect(() => {
-        if (selectedTemplate !== 'run-workflow') {
+        if (selectedTemplate !== TaskDefs.runWorkflow.kind) {
             setPipelines([]);
             setPipelinesLoading(false);
             setManualPipeline(false);
@@ -93,7 +94,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
         setSelectedTemplate(templateId);
         setManualPipeline(false);
         setName(tpl.name);
-        setTarget(templateId === 'run-workflow' ? '' : tpl.target);
+        setTarget(templateId === TaskDefs.runWorkflow.kind ? '' : tpl.target);
         setTargetType(tpl.targetType || 'prompt');
         setMode(tpl.mode);
         setCron(tpl.cronExpr);
@@ -201,7 +202,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 </div>
 
                 {/* Target field — pipeline selector for run-workflow, plain input otherwise */}
-                {selectedTemplate === 'run-workflow' && !manualPipeline ? (
+                {selectedTemplate === TaskDefs.runWorkflow.kind && !manualPipeline ? (
                     pipelinesLoading ? (
                         <span className="text-xs px-2 py-1.5 text-[#848484] italic" data-testid="workflow-loading">Loading workflows…</span>
                     ) : pipelines.length > 0 ? (
@@ -238,7 +239,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                             data-testid="target-workflow-input"
                         />
                     )
-                ) : selectedTemplate === 'run-workflow' && manualPipeline ? (
+                ) : selectedTemplate === TaskDefs.runWorkflow.kind && manualPipeline ? (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
                         placeholder="Target (e.g., workflows/daily-report/pipeline.yaml)"
@@ -269,7 +270,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 )}
 
                 {/* Working directory — only for script type */}
-                {targetType === 'script' && selectedTemplate !== 'run-script' && (
+                {targetType === 'script' && selectedTemplate !== TaskDefs.runScript.kind && (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
                         placeholder="Working directory (optional)"

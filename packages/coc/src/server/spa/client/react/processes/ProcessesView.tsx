@@ -17,6 +17,7 @@ import { ChatListPane } from '../repos/ChatListPane';
 import { ChatDetailPane } from '../repos/ChatDetailPane';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
+import { TaskDefs } from '../../../../task-types';
 
 export function ProcessesView() {
     const [running, setRunning] = useState<any[]>([]);
@@ -139,7 +140,7 @@ export function ProcessesView() {
     }, [selectedTaskId, isMobile]);
 
     const selectTask = useCallback((id: string, task?: any) => {
-        if (task?.type === 'run-workflow' && !task?.payload?.workItemId) {
+        if (task?.type === TaskDefs.runWorkflow.kind && !task?.payload?.workItemId) {
             const repoId = task.repoId || task.workingDirectory || task.payload?.workingDirectory;
             if (repoId) {
                 const processId = task.processId || task.id;

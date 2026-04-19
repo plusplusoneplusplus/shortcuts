@@ -13,6 +13,7 @@ import { WorkflowDAGPreview } from './WorkflowDAGPreview';
 import { WorkflowAIRefinePanel } from './WorkflowAIRefinePanel';
 import { WorkflowDetailView } from '../processes/dag/WorkflowDetailView';
 import type { WorkflowInfo } from './repoGrouping';
+import { TaskDefs } from '../../../../task-types';
 
 export interface WorkflowDetailProps {
     workspaceId: string;
@@ -44,7 +45,7 @@ export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const activeTaskCount = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
-            t.type === 'run-workflow' && (
+            t.type === TaskDefs.runWorkflow.kind && (
                 t.metadata?.pipelineName === pipeline.name ||
                 t.displayName?.includes(pipeline.name)
             )

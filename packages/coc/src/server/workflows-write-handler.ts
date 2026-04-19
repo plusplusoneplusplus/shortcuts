@@ -11,6 +11,7 @@ import * as yaml from 'js-yaml';
 import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from './task-types';
+import { TaskDefs } from './task-types';
 import { denyAllPermissions, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
@@ -476,7 +477,7 @@ Return the complete modified workflow YAML.`;
             }
 
             const payload: RunWorkflowPayload = {
-                kind: 'run-workflow',
+                kind: TaskDefs.runWorkflow.kind,
                 workflowPath: resolvedDir,
                 workingDirectory: ws.rootPath,
                 model: body?.model,
@@ -486,7 +487,7 @@ Return the complete modified workflow YAML.`;
             };
 
             const taskInput: CreateTaskInput = {
-                type: 'run-workflow',
+                type: TaskDefs.runWorkflow.kind,
                 priority: body?.priority || 'normal',
                 payload: payload as unknown as Record<string, unknown>,
                 config: { model: body?.model },

@@ -17,9 +17,14 @@ import {
     hasResolveDiffCommentsMultiContext,
     hasReplicationContext,
     hasCommitChatContext,
+    TaskDefs,
+    getTaskDef,
+    VISIBLE_TASK_TYPE_LABELS,
+    VALID_ENQUEUE_TYPES,
 } from '../../src/server/task-types';
 import type {
     RunWorkflowPayload,
+    CocTaskKind,
 } from '../../src/server/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
 
@@ -386,5 +391,117 @@ describe('type narrowing', () => {
         expect(hasTaskGenerationContext(commitChatPayload)).toBe(false);
         expect(hasResolveCommentsContext(commitChatPayload)).toBe(false);
         expect(hasReplicationContext(commitChatPayload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// TaskDefs struct
+// ============================================================================
+
+describe('TaskDefs', () => {
+    it('defines all expected task types', () => {
+        expect(TaskDefs.chat.kind).toBe('chat');
+        expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
+        expect(TaskDefs.runScript.kind).toBe('run-script');
+        expect(TaskDefs.memoryAggregate.kind).toBe('memory-aggregate');
+        expect(TaskDefs.backgroundReview.kind).toBe('background-review');
+    });
+
+    it('has correct labels', () => {
+        expect(TaskDefs.chat.label).toBe('Chat');
+        expect(TaskDefs.runWorkflow.label).toBe('Run Workflow');
+        expect(TaskDefs.runScript.label).toBe('Run Script');
+        expect(TaskDefs.memoryAggregate.label).toBe('Memory Aggregate');
+        expect(TaskDefs.backgroundReview.label).toBe('Background Review');
+    });
+
+    it('has correct exclusivity', () => {
+        expect(TaskDefs.chat.exclusive).toBe(false);
+        expect(TaskDefs.runWorkflow.exclusive).toBe(true);
+        expect(TaskDefs.runScript.exclusive).toBe(true);
+        expect(TaskDefs.memoryAggregate.exclusive).toBe(false);
+        expect(TaskDefs.backgroundReview.exclusive).toBe(false);
+    });
+
+    it('has correct visibility', () => {
+        expect(TaskDefs.chat.visible).toBe(true);
+        expect(TaskDefs.runWorkflow.visible).toBe(true);
+        expect(TaskDefs.runScript.visible).toBe(true);
+        expect(TaskDefs.memoryAggregate.visible).toBe(false);
+        expect(TaskDefs.backgroundReview.visible).toBe(false);
+    });
+
+    it('kind values match payload interface literal types', () => {
+        expect(TaskDefs.chat.kind).toBe('chat');
+        expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
+        expect(TaskDefs.runScript.kind).toBe('run-script');
+        expect(TaskDefs.memoryAggregate.kind).toBe('memory-aggregate');
+        expect(TaskDefs.backgroundReview.kind).toBe('background-review');
+    });
+});
+
+// ============================================================================
+// getTaskDef
+// ============================================================================
+
+describe('getTaskDef', () => {
+    it('returns the correct def for each known kind', () => {
+        expect(getTaskDef('chat')).toBe(TaskDefs.chat);
+        expect(getTaskDef('run-workflow')).toBe(TaskDefs.runWorkflow);
+        expect(getTaskDef('run-script')).toBe(TaskDefs.runScript);
+        expect(getTaskDef('memory-aggregate')).toBe(TaskDefs.memoryAggregate);
+        expect(getTaskDef('background-review')).toBe(TaskDefs.backgroundReview);
+    });
+
+    it('returns undefined for unknown kind', () => {
+        expect(getTaskDef('unknown')).toBeUndefined();
+        expect(getTaskDef('')).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// VISIBLE_TASK_TYPE_LABELS
+// ============================================================================
+
+describe('VISIBLE_TASK_TYPE_LABELS', () => {
+    it('contains only visible task types', () => {
+        expect(VISIBLE_TASK_TYPE_LABELS).toEqual({
+            'chat': 'Chat',
+            'run-workflow': 'Run Workflow',
+            'run-script': 'Run Script',
+        });
+    });
+
+    it('does not contain hidden task types', () => {
+        expect(VISIBLE_TASK_TYPE_LABELS).not.toHaveProperty('memory-aggregate');
+        expect(VISIBLE_TASK_TYPE_LABELS).not.toHaveProperty('background-review');
+    });
+});
+
+// ============================================================================
+// VALID_ENQUEUE_TYPES
+// ============================================================================
+
+describe('VALID_ENQUEUE_TYPES', () => {
+    it('contains visible task kinds', () => {
+        expect(VALID_ENQUEUE_TYPES.has('chat')).toBe(true);
+        expect(VALID_ENQUEUE_TYPES.has('run-workflow')).toBe(true);
+        expect(VALID_ENQUEUE_TYPES.has('run-script')).toBe(true);
+    });
+
+    it('does not contain hidden task kinds', () => {
+        expect(VALID_ENQUEUE_TYPES.has('memory-aggregate')).toBe(false);
+        expect(VALID_ENQUEUE_TYPES.has('background-review')).toBe(false);
+    });
+});
+
+// ============================================================================
+// CocTaskKind type
+// ============================================================================
+
+describe('CocTaskKind type', () => {
+    it('accepts all valid task kind strings at type level', () => {
+        const kinds: CocTaskKind[] = ['chat', 'run-workflow', 'run-script', 'memory-aggregate', 'background-review'];
+        expect(kinds).toHaveLength(5);
     });
 });

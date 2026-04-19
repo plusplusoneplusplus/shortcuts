@@ -16,6 +16,7 @@ import * as yaml from 'js-yaml';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from './task-types';
+import { TaskDefs } from './task-types';
 import { getErrorMessage } from './shared/fs-utils';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 import type { SqliteScheduleRunPersistence } from './sqlite-schedule-run-persistence';
@@ -627,10 +628,10 @@ export class ScheduleManager extends EventEmitter {
                     run.processId = toQueueProcessId(taskId);
                 } else if (schedule.targetType === 'script') {
                     const taskId = this.queueManager.enqueue({
-                        type: 'run-script',
+                        type: TaskDefs.runScript.kind,
                         priority: 'normal',
                         payload: {
-                            kind: 'run-script',
+                            kind: TaskDefs.runScript.kind,
                             script: schedule.target,
                             workingDirectory: schedule.params?.workingDirectory ?? '',
                             scheduleId: schedule.id,

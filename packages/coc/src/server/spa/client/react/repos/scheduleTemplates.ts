@@ -1,5 +1,7 @@
 /** Static schedule template data. */
 
+import { TaskDefs } from '../../../../task-types';
+
 interface ScheduleTemplateParam {
     key: string;
     placeholder: string;
@@ -23,7 +25,7 @@ export interface ScheduleTemplate {
 
 export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
     {
-        id: 'run-workflow',
+        id: TaskDefs.runWorkflow.kind,
         label: 'Run workflow',
         emoji: '🚀',
         name: 'Run Workflow',
@@ -36,7 +38,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         hint: 'Ensure the workflow YAML file exists at the specified target path',
     },
     {
-        id: 'run-script',
+        id: TaskDefs.runScript.kind,
         label: 'Run Script',
         emoji: '🖥️',
         name: 'Script Runner',

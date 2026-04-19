@@ -20,6 +20,81 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 export type TargetType = 'prompt' | 'script';
 
 // ============================================================================
+// Task Type Definitions (Single Source of Truth)
+// ============================================================================
+
+/** Metadata for a single task type. */
+export interface TaskTypeDef {
+    /** The wire-format string used in QueuedTask.type and payload.kind */
+    readonly kind: string;
+    /** Human-readable label for UI display */
+    readonly label: string;
+    /** Whether this task type runs in the exclusive (serial) queue slot */
+    readonly exclusive: boolean;
+    /** Whether this task type appears in the activity list / filter UI */
+    readonly visible: boolean;
+}
+
+/**
+ * Single source of truth for all CoC task types.
+ *
+ * Usage:
+ *   TaskDefs.chat.kind              // 'chat'
+ *   TaskDefs.backgroundReview.kind  // 'background-review'
+ *   TaskDefs.runWorkflow.label      // 'Run Workflow'
+ */
+export const TaskDefs = {
+    chat: {
+        kind: 'chat',
+        label: 'Chat',
+        exclusive: false,
+        visible: true,
+    },
+    runWorkflow: {
+        kind: 'run-workflow',
+        label: 'Run Workflow',
+        exclusive: true,
+        visible: true,
+    },
+    runScript: {
+        kind: 'run-script',
+        label: 'Run Script',
+        exclusive: true,
+        visible: true,
+    },
+    memoryAggregate: {
+        kind: 'memory-aggregate',
+        label: 'Memory Aggregate',
+        exclusive: false,
+        visible: false,
+    },
+    backgroundReview: {
+        kind: 'background-review',
+        label: 'Background Review',
+        exclusive: false,
+        visible: false,
+    },
+} as const satisfies Record<string, TaskTypeDef>;
+
+/** Union of all task type kind strings, derived from TaskDefs. */
+export type CocTaskKind = typeof TaskDefs[keyof typeof TaskDefs]['kind'];
+
+/** Lookup a TaskTypeDef by its wire-format kind string. */
+export function getTaskDef(kind: string): TaskTypeDef | undefined {
+    return Object.values(TaskDefs).find(d => d.kind === kind);
+}
+
+/** Labels for visible task types (used by ActivityListPane, queue-shared). */
+export const VISIBLE_TASK_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+    Object.values(TaskDefs).filter(d => d.visible).map(d => [d.kind, d.label]),
+);
+
+/** Set of task kinds accepted by the public enqueue API. */
+export const VALID_ENQUEUE_TYPES: ReadonlySet<string> = new Set(
+    Object.values(TaskDefs).filter(d => d.visible).map(d => d.kind),
+);
+
+// ============================================================================
 // Task Type Union
 // ============================================================================
 

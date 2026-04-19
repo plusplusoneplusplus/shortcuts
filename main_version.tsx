@@ -28,13 +28,10 @@ import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 import { groupHistoryByPlanFile, type HistoryGroup } from './history-grouping';
 import { HistoryGroupHeader } from './HistoryGroupHeader';
+import { TaskDefs, VISIBLE_TASK_TYPE_LABELS } from '../../../../task-types';
 
 /** Primary task types surfaced as individual filter options. */
-export const TASK_TYPE_LABELS: Record<string, string> = {
-    'chat': 'Chat',
-    'run-workflow': 'Run Workflow',
-    'run-script': 'Run Script',
-};
+export const TASK_TYPE_LABELS = VISIBLE_TASK_TYPE_LABELS;
 
 /** Mode-based labels for chat tasks. */
 const CHAT_MODE_LABELS: Record<string, string> = {
@@ -74,9 +71,9 @@ export function getTaskTypeIcon(task: any): string {
         if (mode === 'plan') return '≡ƒôï';
         return '≡ƒñû';
     }
-    if (type === 'run-workflow') return 'Γû╢∩╕Å';
-    if (type === 'run-script') return '≡ƒ¢á∩╕Å';
-    return '≡ƒñû';
+    if (type === TaskDefs.runWorkflow.kind) return '▶️';
+    if (type === TaskDefs.runScript.kind) return '🛠️';
+    return '🤖';
 }
 
 /** Extract a short preview of the user prompt from the task payload. */
@@ -1469,7 +1466,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
-    const showProgress = task.type === 'run-workflow' && status === 'running';
+    const showProgress = task.type === TaskDefs.runWorkflow.kind && status === 'running';
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
     const hasDraft = !!getDraft(task.id);
     const isHeld = isAutopilotPaused === true
