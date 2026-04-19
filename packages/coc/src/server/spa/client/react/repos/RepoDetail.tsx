@@ -435,6 +435,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={visibleSubTabs}
+                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'git'] : undefined}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
