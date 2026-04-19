@@ -1,9 +1,10 @@
 /**
  * Admin Config, Display Settings, Chat Settings & Restart E2E Tests
  *
- * Covers the Configuration card (load, save, validation, error state),
- * Display Settings (intent toggle, tool compactness), Chat Settings
- * (save, count validation), and the Server Restart flow.
+ * Covers the per-card save model: AI & Execution card (load, save, validation,
+ * error state), Chat Experience card (intent toggle, tool compactness, follow-up
+ * save, count validation), Workspace Features card (terminal toggle), and the
+ * Server Restart flow.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -99,16 +100,19 @@ test.describe('Admin: Configuration section', () => {
         await navigateToAdmin(page, serverUrl);
         await expect(page.locator('#admin-config-parallel')).toHaveValue('2', { timeout: 5000 });
 
+        // Change a value to make the AI & Execution card dirty
+        await page.fill('#admin-config-parallel', '4');
+
         // Intercept the PUT request to verify payload
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
 
-        await page.click('#admin-config-save');
+        await page.click('[data-testid="settings-ai-execution-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
-        expect(body.parallel).toBe(2);
+        expect(body.parallel).toBe(4);
         expect(body.output).toBe('json');
 
         // Toast should appear
@@ -133,7 +137,7 @@ test.describe('Admin: Configuration section', () => {
 
         // Set invalid parallel value
         await page.fill('#admin-config-parallel', '0');
-        await page.click('#admin-config-save');
+        await page.click('[data-testid="settings-ai-execution-save"]');
 
         // Error toast should appear with validation message
         await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });
@@ -157,7 +161,7 @@ test.describe('Admin: Configuration section', () => {
 
         // Set invalid timeout value (-5)
         await page.fill('#admin-config-timeout', '-5');
-        await page.click('#admin-config-save');
+        await page.click('[data-testid="settings-ai-execution-save"]');
 
         // Error toast should appear
         await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });
@@ -188,7 +192,7 @@ test.describe('Admin: Configuration section', () => {
 
 test.describe('Admin: Display settings', () => {
 
-    test('toggle show intent announcements sends PUT to config', async ({ page, serverUrl }) => {
+    test('toggle show intent announcements sends PUT via card save', async ({ page, serverUrl }) => {
         await page.route('**/api/admin/config', (route, req) => {
             if (req.method() === 'GET') {
                 return route.fulfill({
@@ -210,13 +214,14 @@ test.describe('Admin: Display settings', () => {
         await navigateToAdmin(page, serverUrl);
         await expect(page.locator('[data-testid="toggle-show-report-intent"]')).toBeVisible({ timeout: 5000 });
 
-        // Intercept PUT
+        // Click toggle (sr-only checkbox — use force to click through overlay)
+        await page.locator('[data-testid="toggle-show-report-intent"]').click({ force: true });
+
+        // Intercept PUT and click per-card save
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
-
-        // Click toggle (sr-only checkbox — use force to click through overlay)
-        await page.locator('[data-testid="toggle-show-report-intent"]').click({ force: true });
+        await page.click('[data-testid="settings-chat-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
@@ -227,7 +232,7 @@ test.describe('Admin: Display settings', () => {
         await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
-    test('tool compactness Minimal button sends PUT with toolCompactness=2', async ({ page, serverUrl }) => {
+    test('tool compactness Minimal button sends PUT via card save', async ({ page, serverUrl }) => {
         await page.route('**/api/admin/config', (route, req) => {
             if (req.method() === 'GET') {
                 return route.fulfill({
@@ -249,11 +254,13 @@ test.describe('Admin: Display settings', () => {
         await navigateToAdmin(page, serverUrl);
         await expect(page.locator('[data-testid="tool-compactness-minimal"]')).toBeVisible({ timeout: 5000 });
 
+        await page.locator('[data-testid="tool-compactness-minimal"]').click();
+
+        // Click per-card save to persist the change
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
-
-        await page.locator('[data-testid="tool-compactness-minimal"]').click();
+        await page.click('[data-testid="settings-chat-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
@@ -263,7 +270,7 @@ test.describe('Admin: Display settings', () => {
         await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
-    test('toggle terminal enabled sends PUT to config', async ({ page, serverUrl }) => {
+    test('toggle terminal enabled sends PUT via card save', async ({ page, serverUrl }) => {
         await page.route('**/api/admin/config', (route, req) => {
             if (req.method() === 'GET') {
                 return route.fulfill({
@@ -288,13 +295,14 @@ test.describe('Admin: Display settings', () => {
         await navigateToAdmin(page, serverUrl);
         await expect(page.locator('[data-testid="toggle-terminal-enabled"]')).toBeVisible({ timeout: 5000 });
 
-        // Intercept PUT
+        // Click toggle
+        await page.locator('[data-testid="toggle-terminal-enabled"]').click({ force: true });
+
+        // Click per-card save to persist the change
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
-
-        // Click toggle
-        await page.locator('[data-testid="toggle-terminal-enabled"]').click({ force: true });
+        await page.click('[data-testid="settings-features-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
@@ -332,7 +340,6 @@ test.describe('Admin: Chat settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await expect(page.locator('#admin-config-save')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[data-testid="input-chat-followup-count"]')).toHaveValue('3', { timeout: 5000 });
 
         // Change count to 5
@@ -342,7 +349,7 @@ test.describe('Admin: Chat settings', () => {
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
 
-        await page.click('#admin-config-save');
+        await page.click('[data-testid="settings-chat-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
@@ -369,7 +376,7 @@ test.describe('Admin: Chat settings', () => {
 
         // Set invalid count (0)
         await page.fill('[data-testid="input-chat-followup-count"]', '0');
-        await page.click('#admin-config-save');
+        await page.click('[data-testid="settings-chat-save"]');
 
         await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('.toast-error')).toContainText('Follow-up count must be an integer between 1 and 5');

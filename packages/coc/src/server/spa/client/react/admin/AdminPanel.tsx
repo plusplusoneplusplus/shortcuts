@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
-import { PreferencesSection } from './PreferencesSection';
+import { SettingsCard } from './SettingsCard';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
 import { DbBrowserSection } from './DbBrowserSection';
@@ -43,7 +43,6 @@ export function AdminPanel() {
         dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
         window.location.hash = `admin/${tab}`;
     };
-    const [showAdvanced, setShowAdvanced] = useState(false);
 
     useEffect(() => {
         if (!state.onboardingProgress?.settingsVisited) {
@@ -60,38 +59,41 @@ export function AdminPanel() {
     const [configLoading, setConfigLoading] = useState(true);
     const [configError, setConfigError] = useState<string | null>(null);
     const [configForm, setConfigForm] = useState<Record<string, string>>({});
-    const [configSaving, setConfigSaving] = useState(false);
-
     // Display settings
     const [showReportIntent, setShowReportIntent] = useState(false);
     const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(3);
     const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('dense');
     const [historyGrouping, setHistoryGrouping] = useState(true);
-    const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
     const [chatAskUserEnabled, setChatAskUserEnabled] = useState(true);
 
-    // Server name (cosmetic display name in title bar)
+    // Server name
     const [serverName, setServerName] = useState('');
 
-    // Terminal settings
+    // Feature toggles
     const [terminalEnabled, setTerminalEnabled] = useState(false);
-
-    // Notes settings
     const [notesEnabled, setNotesEnabled] = useState(false);
-
-    // My Work settings
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
-
-    // My Life settings
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
 
-    // Client pool settings
-    const [clientPoolEnabled, setClientPoolEnabled] = useState(false);
-    const [clientPoolSize, setClientPoolSize] = useState('3');
+    // Preferences (theme, reposSidebarCollapsed) — for Appearance card
+    const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
+    const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
+
+    // Per-card saving state
+    const [aiExecSaving, setAiExecSaving] = useState(false);
+    const [chatSaving, setChatSaving] = useState(false);
+    const [appearanceSaving, setAppearanceSaving] = useState(false);
+    const [featuresSaving, setFeaturesSaving] = useState(false);
+
+    // Snapshots for per-card dirty tracking (set when config/prefs loads)
+    const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
+    const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: true, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -145,26 +147,40 @@ export function AdminPanel() {
             const data = await res.json();
             setConfig(data);
             const resolved = data.resolved ?? {};
-            setConfigForm({
+            const form = {
                 model: resolved.model ?? '',
                 parallel: String(resolved.parallel ?? 1),
                 timeout: resolved.timeout != null ? String(resolved.timeout) : '',
                 output: resolved.output ?? 'table',
-            });
-            setShowReportIntent(resolved.showReportIntent ?? false);
-            setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3);
-            setTaskCardDensity((resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense');
-            setHistoryGrouping(resolved.historyGrouping ?? true);
-            setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
-            setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
-            setChatAskUserEnabled(resolved.chat?.askUser?.enabled ?? true);
+            };
+            setConfigForm(form);
+            setAiExecSnapshot({ ...form });
+            const sri = resolved.showReportIntent ?? false;
+            const tc = (resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3;
+            const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
+            const fuc = String(resolved.chat?.followUpSuggestions?.count ?? 3);
+            const aue = resolved.chat?.askUser?.enabled ?? true;
+            setShowReportIntent(sri);
+            setToolCompactness(tc);
+            setChatFollowUpEnabled(fue);
+            setChatFollowUpCount(fuc);
+            setChatAskUserEnabled(aue);
+            setChatSnapshot({ followUpEnabled: fue, followUpCount: fuc, askUserEnabled: aue, showReportIntent: sri, toolCompactness: tc });
+            const tcd = (resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense';
+            const hg = resolved.historyGrouping ?? true;
+            setTaskCardDensity(tcd);
+            setHistoryGrouping(hg);
+            setAppearanceSnapshot(prev => ({ ...prev, taskCardDensity: tcd, historyGrouping: hg }));
             setServerName(resolved.serve?.serverName ?? '');
-            setTerminalEnabled(resolved.terminal?.enabled ?? false);
-            setNotesEnabled(resolved.notes?.enabled ?? false);
-            setMyWorkEnabled(resolved.myWork?.enabled ?? false);
-            setMyLifeEnabled(resolved.myLife?.enabled ?? false);
-            setClientPoolEnabled(resolved.clientPool?.enabled ?? false);
-            setClientPoolSize(String(resolved.clientPool?.size ?? 3));
+            const te = resolved.terminal?.enabled ?? false;
+            const ne = resolved.notes?.enabled ?? false;
+            const mwe = resolved.myWork?.enabled ?? false;
+            const mle = resolved.myLife?.enabled ?? false;
+            setTerminalEnabled(te);
+            setNotesEnabled(ne);
+            setMyWorkEnabled(mwe);
+            setMyLifeEnabled(mle);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -172,16 +188,53 @@ export function AdminPanel() {
         }
     }, []);
 
+    const loadPreferences = useCallback(async () => {
+        try {
+            const res = await fetch(getApiBase() + '/preferences');
+            if (!res.ok) return;
+            const data = await res.json();
+            const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
+            const r = data.reposSidebarCollapsed ?? false;
+            setTheme(t);
+            setReposSidebarCollapsed(r);
+            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r }));
+        } catch { /* ignore */ }
+    }, []);
+
     useEffect(() => {
         loadStats();
         loadConfig();
+        loadPreferences();
         fetch(getApiBase() + '/admin/version')
             .then(r => r.ok ? r.json() : null)
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
-    }, [loadStats, loadConfig]);
+    }, [loadStats, loadConfig, loadPreferences]);
 
-    const handleSaveSettings = useCallback(async () => {
+    // ── Per-card dirty state ──
+    const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
+        configForm.parallel !== aiExecSnapshot.parallel ||
+        configForm.timeout !== aiExecSnapshot.timeout ||
+        configForm.output !== aiExecSnapshot.output;
+
+    const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
+        chatFollowUpCount !== chatSnapshot.followUpCount ||
+        chatAskUserEnabled !== chatSnapshot.askUserEnabled ||
+        showReportIntent !== chatSnapshot.showReportIntent ||
+        toolCompactness !== chatSnapshot.toolCompactness;
+
+    const appearanceDirty = theme !== appearanceSnapshot.theme ||
+        reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
+        taskCardDensity !== appearanceSnapshot.taskCardDensity ||
+        historyGrouping !== appearanceSnapshot.historyGrouping;
+
+    const featuresDirty = terminalEnabled !== featuresSnapshot.terminal ||
+        notesEnabled !== featuresSnapshot.notes ||
+        myWorkEnabled !== featuresSnapshot.myWork ||
+        myLifeEnabled !== featuresSnapshot.myLife;
+
+    // ── AI & Execution card ──
+    const handleSaveAiExec = useCallback(async () => {
         const errors: string[] = [];
         const parallel = Number(configForm.parallel);
         if (isNaN(parallel) || parallel < 1) errors.push('Parallelism must be at least 1');
@@ -198,23 +251,10 @@ export function AdminPanel() {
         if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(configForm.output)) {
             errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}`);
         }
-        const count = Number(chatFollowUpCount);
-        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
-            errors.push('Follow-up count must be an integer between 1 and 5');
-        }
-        if (errors.length) {
-            addToast(errors.join('; '), 'error');
-            return;
-        }
-        setConfigSaving(true);
+        if (errors.length) { addToast(errors.join('; '), 'error'); return; }
+        setAiExecSaving(true);
         try {
-            const payload: Record<string, unknown> = {
-                parallel,
-                output: configForm.output,
-                'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
-                'chat.followUpSuggestions.count': count,
-                'chat.askUser.enabled': chatAskUserEnabled,
-            };
+            const payload: Record<string, unknown> = { parallel, output: configForm.output };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
             const res = await fetch(getApiBase() + '/admin/config', {
@@ -227,23 +267,39 @@ export function AdminPanel() {
                 throw new Error(body.error || 'Save failed');
             }
             addToast('Settings saved', 'success');
-            await loadConfig();
+            setAiExecSnapshot({ ...configForm });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
-            setConfigSaving(false);
+            setAiExecSaving(false);
         }
-    }, [configForm, chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, addToast, loadConfig]);
+    }, [configForm, addToast]);
 
-    const handleToggleShowReportIntent = useCallback(async (newValue: boolean) => {
-        const prevValue = showReportIntent;
-        setShowReportIntent(newValue);
-        setDisplaySaving(true);
+    const handleCancelAiExec = useCallback(() => {
+        setConfigForm({ ...aiExecSnapshot });
+    }, [aiExecSnapshot]);
+
+    // ── Chat Experience card ──
+    const handleSaveChat = useCallback(async () => {
+        const errors: string[] = [];
+        const count = Number(chatFollowUpCount);
+        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
+            errors.push('Follow-up count must be an integer between 1 and 5');
+        }
+        if (errors.length) { addToast(errors.join('; '), 'error'); return; }
+        setChatSaving(true);
         try {
+            const payload: Record<string, unknown> = {
+                'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
+                'chat.followUpSuggestions.count': count,
+                'chat.askUser.enabled': chatAskUserEnabled,
+                showReportIntent,
+                toolCompactness,
+            };
             const res = await fetch(getApiBase() + '/admin/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ showReportIntent: newValue }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
@@ -251,23 +307,82 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
+            setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled, showReportIntent, toolCompactness });
         } catch (err: any) {
-            setShowReportIntent(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+            addToast(err.message || 'Save failed', 'error');
         } finally {
-            setDisplaySaving(false);
+            setChatSaving(false);
         }
-    }, [showReportIntent, addToast]);
+    }, [chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, showReportIntent, toolCompactness, addToast]);
 
-    const handleToggleTerminalEnabled = useCallback(async (newValue: boolean) => {
-        const prevValue = terminalEnabled;
-        setTerminalEnabled(newValue);
-        setDisplaySaving(true);
+    const handleCancelChat = useCallback(() => {
+        setChatFollowUpEnabled(chatSnapshot.followUpEnabled);
+        setChatFollowUpCount(chatSnapshot.followUpCount);
+        setChatAskUserEnabled(chatSnapshot.askUserEnabled);
+        setShowReportIntent(chatSnapshot.showReportIntent);
+        setToolCompactness(chatSnapshot.toolCompactness);
+    }, [chatSnapshot]);
+
+    // ── Appearance & Navigation card ──
+    const handleSaveAppearance = useCallback(async () => {
+        setAppearanceSaving(true);
+        try {
+            // Save preferences (theme, reposSidebarCollapsed)
+            const prefsChanged = theme !== appearanceSnapshot.theme || reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed;
+            if (prefsChanged) {
+                const prefsRes = await fetch(getApiBase() + '/preferences', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme, reposSidebarCollapsed }),
+                });
+                if (!prefsRes.ok) {
+                    const body = await prefsRes.json().catch(() => ({}));
+                    throw new Error((body as any).error || 'Save failed');
+                }
+            }
+            // Save config (taskCardDensity, historyGrouping)
+            const configChanged = taskCardDensity !== appearanceSnapshot.taskCardDensity || historyGrouping !== appearanceSnapshot.historyGrouping;
+            if (configChanged) {
+                const configRes = await fetch(getApiBase() + '/admin/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ taskCardDensity, historyGrouping }),
+                });
+                if (!configRes.ok) {
+                    const body = await configRes.json().catch(() => ({}));
+                    throw new Error(body.error || 'Save failed');
+                }
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+            setAppearanceSnapshot({ theme, reposSidebarCollapsed, taskCardDensity, historyGrouping });
+        } catch (err: any) {
+            addToast(err.message || 'Save failed', 'error');
+        } finally {
+            setAppearanceSaving(false);
+        }
+    }, [theme, reposSidebarCollapsed, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
+
+    const handleCancelAppearance = useCallback(() => {
+        setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
+        setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
+        setTaskCardDensity(appearanceSnapshot.taskCardDensity);
+        setHistoryGrouping(appearanceSnapshot.historyGrouping);
+    }, [appearanceSnapshot]);
+
+    // ── Workspace Features card ──
+    const handleSaveFeatures = useCallback(async () => {
+        setFeaturesSaving(true);
         try {
             const res = await fetch(getApiBase() + '/admin/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'terminal.enabled': newValue }),
+                body: JSON.stringify({
+                    'terminal.enabled': terminalEnabled,
+                    'notes.enabled': notesEnabled,
+                    'myWork.enabled': myWorkEnabled,
+                    'myLife.enabled': myLifeEnabled,
+                }),
             });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
@@ -275,203 +390,20 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled });
         } catch (err: any) {
-            setTerminalEnabled(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+            addToast(err.message || 'Save failed', 'error');
         } finally {
-            setDisplaySaving(false);
+            setFeaturesSaving(false);
         }
-    }, [terminalEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, addToast]);
 
-    const handleToggleNotesEnabled = useCallback(async (newValue: boolean) => {
-        const prevValue = notesEnabled;
-        setNotesEnabled(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'notes.enabled': newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setNotesEnabled(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [notesEnabled, addToast]);
-
-    const handleToggleMyWorkEnabled = useCallback(async (newValue: boolean) => {
-        const prevValue = myWorkEnabled;
-        setMyWorkEnabled(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'myWork.enabled': newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setMyWorkEnabled(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [myWorkEnabled, addToast]);
-
-    const handleToggleMyLifeEnabled = useCallback(async (newValue: boolean) => {
-        const prevValue = myLifeEnabled;
-        setMyLifeEnabled(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'myLife.enabled': newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setMyLifeEnabled(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [myLifeEnabled, addToast]);
-
-    const handleToggleClientPoolEnabled = useCallback(async (newValue: boolean) => {
-        const prevEnabled = clientPoolEnabled;
-        setClientPoolEnabled(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'clientPool.enabled': newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-        } catch (err: any) {
-            setClientPoolEnabled(prevEnabled);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [clientPoolEnabled, addToast]);
-
-    const handleChangeClientPoolSize = useCallback(async (newSize: number) => {
-        const prevSize = clientPoolSize;
-        setClientPoolSize(String(newSize));
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'clientPool.size': newSize }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-        } catch (err: any) {
-            setClientPoolSize(prevSize);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [clientPoolSize, addToast]);
-
-    const handleChangeToolCompactness= useCallback(async (newValue: 0 | 1 | 2 | 3) => {
-        const prevValue = toolCompactness;
-        setToolCompactness(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ toolCompactness: newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setToolCompactness(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [toolCompactness, addToast]);
-
-    const handleChangeTaskCardDensity = useCallback(async (newValue: 'compact' | 'dense') => {
-        const prevValue = taskCardDensity;
-        setTaskCardDensity(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ taskCardDensity: newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setTaskCardDensity(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [taskCardDensity, addToast]);
-
-    const handleChangeHistoryGrouping = useCallback(async (newValue: boolean) => {
-        const prevValue = historyGrouping;
-        setHistoryGrouping(newValue);
-        setDisplaySaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ historyGrouping: newValue }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-        } catch (err: any) {
-            setHistoryGrouping(prevValue);
-            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
-        } finally {
-            setDisplaySaving(false);
-        }
-    }, [historyGrouping, addToast]);
+    const handleCancelFeatures = useCallback(() => {
+        setTerminalEnabled(featuresSnapshot.terminal);
+        setNotesEnabled(featuresSnapshot.notes);
+        setMyWorkEnabled(featuresSnapshot.myWork);
+        setMyLifeEnabled(featuresSnapshot.myLife);
+    }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
         const trimmed = serverName.trim();
@@ -766,15 +698,27 @@ export function AdminPanel() {
 
                 {/* ── Settings tab ── */}
                 {activeTab === 'settings' && (
-                    <Card className="p-2 md:p-3">
+                    <div className="space-y-3" data-testid="settings-cards">
                         {configLoading ? (
-                            <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
+                            <Card className="p-3 md:p-4">
+                                <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
+                            </Card>
                         ) : configError ? (
-                            <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
+                            <Card className="p-3 md:p-4">
+                                <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
+                            </Card>
                         ) : (
                             <>
-                                {/* Config section */}
-                                <div className="space-y-1.5">
+                                {/* ── 1. AI & Execution ── */}
+                                <SettingsCard
+                                    title="AI & Execution"
+                                    description="Default model, parallelism, timeout, and output format for AI tasks."
+                                    dirty={aiExecDirty}
+                                    saving={aiExecSaving}
+                                    onSave={handleSaveAiExec}
+                                    onCancel={handleCancelAiExec}
+                                    data-testid="settings-ai-execution"
+                                >
                                     <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
                                         <label className={labelClass} title="AI model identifier (leave blank to use server default)">Model</label>
                                         <input
@@ -823,32 +767,67 @@ export function AdminPanel() {
                                         </select>
                                         <SourceBadge source={sources['output']} />
                                     </div>
-                                </div>
+                                </SettingsCard>
 
-                                {/* Advanced accordion — read-only fields */}
-                                <div className="mt-2">
-                                    <button
-                                        type="button"
-                                        className="flex items-center gap-1 text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                                        onClick={() => setShowAdvanced(v => !v)}
-                                        aria-expanded={showAdvanced}
-                                    >
-                                        <span className={`inline-block transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
-                                        Advanced
-                                    </button>
-                                    {showAdvanced && (
-                                        <div className="mt-2 text-xs space-y-1 text-[#616161] dark:text-[#999]">
-                                            <div>Approve Permissions: {String(resolved.approvePermissions ?? '—')} <SourceBadge source={sources['approvePermissions']} /></div>
-                                            <div>MCP Config: {String(resolved.mcpConfig ?? '—')} <SourceBadge source={sources['mcpConfig']} /></div>
-                                            <div>Persist: {String(resolved.persist ?? '—')} <SourceBadge source={sources['persist']} /></div>
+                                {/* ── 2. Chat Experience ── */}
+                                <SettingsCard
+                                    title="Chat Experience"
+                                    description="Controls how the AI assistant behaves during conversations."
+                                    dirty={chatDirty}
+                                    saving={chatSaving}
+                                    onSave={handleSaveChat}
+                                    onCancel={handleCancelChat}
+                                    data-testid="settings-chat"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Generate clickable follow-up suggestions after each response">
+                                            Follow-up suggestions
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={chatFollowUpEnabled}
+                                                    onChange={e => setChatFollowUpEnabled(e.target.checked)}
+                                                    data-testid="toggle-chat-followup-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
                                         </div>
-                                    )}
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* Display section */}
-                                <div className="space-y-2">
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="Number of follow-up suggestions (1–5)">Count</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={5}
+                                            className={inputClass}
+                                            value={chatFollowUpCount}
+                                            onChange={e => setChatFollowUpCount(e.target.value)}
+                                            data-testid="input-chat-followup-count"
+                                        />
+                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Allow the AI to ask interactive questions during a conversation">
+                                            Ask user (interactive questions)
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['chat.askUser.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={chatAskUserEnabled}
+                                                    onChange={e => setChatAskUserEnabled(e.target.checked)}
+                                                    data-testid="toggle-chat-askuser-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
                                     <div className="flex items-center justify-between">
                                         <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Show or hide report_intent tool calls in the conversation view">
                                             Intent announcements
@@ -860,8 +839,7 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={showReportIntent}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleShowReportIntent(e.target.checked)}
+                                                    onChange={e => setShowReportIntent(e.target.checked)}
                                                     data-testid="toggle-show-report-intent"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
@@ -888,11 +866,10 @@ export function AdminPanel() {
                                                     <button
                                                         key={level}
                                                         type="button"
-                                                        disabled={displaySaving}
-                                                        onClick={() => void handleChangeToolCompactness(level)}
+                                                        onClick={() => setToolCompactness(level)}
                                                         data-testid={`tool-compactness-${label.toLowerCase()}`}
                                                         className={[
-                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
+                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4]',
                                                             'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
                                                             toolCompactness === level
                                                                 ? 'bg-[#0078d4] text-white'
@@ -905,6 +882,48 @@ export function AdminPanel() {
                                                 ))}
                                             </div>
                                         </div>
+                                    </div>
+                                </SettingsCard>
+
+                                {/* ── 3. Appearance & Navigation ── */}
+                                <SettingsCard
+                                    title="Appearance & Navigation"
+                                    badge="Global"
+                                    description="Theme, layout density, and navigation preferences."
+                                    dirty={appearanceDirty}
+                                    saving={appearanceSaving}
+                                    onSave={handleSaveAppearance}
+                                    onCancel={handleCancelAppearance}
+                                    data-testid="settings-appearance"
+                                >
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
+                                        <label className={labelClass}>Theme</label>
+                                        <select
+                                            className={inputClass}
+                                            value={theme}
+                                            onChange={e => setTheme(e.target.value as 'light' | 'dark' | 'auto')}
+                                            data-testid="pref-theme"
+                                        >
+                                            <option value="auto">auto</option>
+                                            <option value="light">light</option>
+                                            <option value="dark">dark</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Repos sidebar collapsed</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Whether the repos sidebar is collapsed on load.</div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={reposSidebarCollapsed}
+                                                onChange={e => setReposSidebarCollapsed(e.target.checked)}
+                                                data-testid="pref-repos-sidebar-collapsed"
+                                            />
+                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                        </label>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Density of task cards in the activity tab">
@@ -924,11 +943,10 @@ export function AdminPanel() {
                                                     <button
                                                         key={value}
                                                         type="button"
-                                                        disabled={displaySaving}
-                                                        onClick={() => void handleChangeTaskCardDensity(value)}
+                                                        onClick={() => setTaskCardDensity(value)}
                                                         data-testid={`task-card-density-${label.toLowerCase()}`}
                                                         className={[
-                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
+                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4]',
                                                             'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
                                                             taskCardDensity === value
                                                                 ? 'bg-[#0078d4] text-white'
@@ -954,83 +972,30 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={historyGrouping}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleChangeHistoryGrouping(e.target.checked)}
+                                                    onChange={e => setHistoryGrouping(e.target.checked)}
                                                     data-testid="toggle-history-grouping"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>
                                         </div>
                                     </div>
-                                </div>
+                                </SettingsCard>
 
-                                <hr className={dividerClass} />
-
-                                {/* Chat section */}
-                                <div className="space-y-1.5">
+                                {/* ── 4. Workspace Features ── */}
+                                <SettingsCard
+                                    title="Workspace Features"
+                                    description="Enable or disable optional dashboard features."
+                                    dirty={featuresDirty}
+                                    saving={featuresSaving}
+                                    onSave={handleSaveFeatures}
+                                    onCancel={handleCancelFeatures}
+                                    data-testid="settings-features"
+                                >
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Generate clickable follow-up suggestions after each response">
-                                            Follow-up suggestions
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={chatFollowUpEnabled}
-                                                    disabled={configSaving}
-                                                    onChange={e => setChatFollowUpEnabled(e.target.checked)}
-                                                    data-testid="toggle-chat-followup-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Terminal</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Web terminal for shell access to the server machine.</div>
                                         </div>
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="Number of follow-up suggestions (1–5)">Count</label>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={5}
-                                            className={inputClass}
-                                            value={chatFollowUpCount}
-                                            disabled={configSaving}
-                                            onChange={e => setChatFollowUpCount(e.target.value)}
-                                            data-testid="input-chat-followup-count"
-                                        />
-                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Allow the AI to ask interactive questions during a conversation">
-                                            Ask user (interactive questions)
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['chat.askUser.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={chatAskUserEnabled}
-                                                    disabled={configSaving}
-                                                    onChange={e => setChatAskUserEnabled(e.target.checked)}
-                                                    data-testid="toggle-chat-askuser-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* Terminal section */}
-                                <div className="space-y-1.5">
-                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Terminal</div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the web terminal feature in the dashboard">
-                                            Enable web terminal
-                                        </label>
                                         <div className="flex items-center gap-2">
                                             <SourceBadge source={sources['terminal.enabled']} />
                                             <label className="relative inline-flex items-center cursor-pointer">
@@ -1038,28 +1003,18 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={terminalEnabled}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleTerminalEnabled(e.target.checked)}
+                                                    onChange={e => setTerminalEnabled(e.target.checked)}
                                                     data-testid="toggle-terminal-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-[#616161] dark:text-[#999]">
-                                        When enabled, a Terminal tab appears in the dashboard providing shell access to the server machine.
-                                    </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* Notes section */}
-                                <div className="space-y-1.5">
-                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Notes</div>
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the notes feature in the dashboard">
-                                            Enable notes
-                                        </label>
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Notes</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Markdown notebooks for creating and editing notes.</div>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <SourceBadge source={sources['notes.enabled']} />
                                             <label className="relative inline-flex items-center cursor-pointer">
@@ -1067,28 +1022,18 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={notesEnabled}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleNotesEnabled(e.target.checked)}
+                                                    onChange={e => setNotesEnabled(e.target.checked)}
                                                     data-testid="toggle-notes-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-[#616161] dark:text-[#999]">
-                                        When enabled, a Notes tab appears in the dashboard for creating and editing markdown notebooks.
-                                    </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* My Work section */}
-                                <div className="space-y-1.5">
-                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">My Work</div>
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the My Work landing page">
-                                            Enable My Work
-                                        </label>
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">My Work</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Personal landing page with action items and weekly summaries.</div>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <SourceBadge source={sources['myWork.enabled']} />
                                             <label className="relative inline-flex items-center cursor-pointer">
@@ -1096,28 +1041,18 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={myWorkEnabled}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleMyWorkEnabled(e.target.checked)}
+                                                    onChange={e => setMyWorkEnabled(e.target.checked)}
                                                     data-testid="toggle-mywork-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-[#616161] dark:text-[#999]">
-                                        When enabled, the logo navigates to a personal My Work page with action items, follow-ups, and weekly summaries.
-                                    </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* My Life section */}
-                                <div className="space-y-1.5">
-                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">My Life</div>
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the My Life landing page">
-                                            Enable My Life
-                                        </label>
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">My Life</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Personal page with goals, journal, and life admin.</div>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <SourceBadge source={sources['myLife.enabled']} />
                                             <label className="relative inline-flex items-center cursor-pointer">
@@ -1125,81 +1060,29 @@ export function AdminPanel() {
                                                     type="checkbox"
                                                     className="sr-only peer"
                                                     checked={myLifeEnabled}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleMyLifeEnabled(e.target.checked)}
+                                                    onChange={e => setMyLifeEnabled(e.target.checked)}
                                                     data-testid="toggle-mylife-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-[#616161] dark:text-[#999]">
-                                        When enabled, a 🏠 icon appears in the top bar for a personal My Life page with goals, journal, and life admin.
+                                </SettingsCard>
+
+                                {/* ── 5. Advanced & Recovery ── */}
+                                <SettingsCard
+                                    title="Advanced & Recovery"
+                                    badge="Advanced"
+                                    description="Read-only diagnostics and recovery actions."
+                                    data-testid="settings-advanced"
+                                >
+                                    <div className="text-xs space-y-1 text-[#616161] dark:text-[#999]">
+                                        <div>Approve Permissions: {String(resolved.approvePermissions ?? '—')} <SourceBadge source={sources['approvePermissions']} /></div>
+                                        <div>MCP Config: {String(resolved.mcpConfig ?? '—')} <SourceBadge source={sources['mcpConfig']} /></div>
+                                        <div>Persist: {String(resolved.persist ?? '—')} <SourceBadge source={sources['persist']} /></div>
                                     </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-
-                                {/* Client Pool section */}
-                                <div className="space-y-1.5">
-                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Client Pool</div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Pre-warm Copilot SDK clients for faster first response">
-                                            Enable client pool
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['clientPool.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={clientPoolEnabled}
-                                                    disabled={displaySaving}
-                                                    onChange={e => void handleToggleClientPoolEnabled(e.target.checked)}
-                                                    data-testid="toggle-clientpool-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    {clientPoolEnabled && (
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <label className={labelClass} title="Number of pre-warmed clients to keep ready">Pool size</label>
-                                            <div className="flex items-center gap-2">
-                                                <SourceBadge source={sources['clientPool.size']} />
-                                                <input
-                                                    type="number"
-                                                    className={inputClass + ' !w-20'}
-                                                    min={1}
-                                                    max={10}
-                                                    value={clientPoolSize}
-                                                    disabled={displaySaving}
-                                                    onChange={e => {
-                                                        const v = Number(e.target.value);
-                                                        if (!isNaN(v) && v >= 1 && v <= 10) {
-                                                            void handleChangeClientPoolSize(v);
-                                                        }
-                                                    }}
-                                                    data-testid="input-clientpool-size"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="text-xs text-[#616161] dark:text-[#999]">
-                                        Pre-warms Copilot SDK clients so the first message gets a faster response. Disable to create clients on demand.
-                                    </div>
-                                </div>
-
-                                <hr className={dividerClass} />
-                                <PreferencesSection
-                                    onError={msg => addToast(msg, 'error')}
-                                    onSuccess={msg => addToast(msg, 'success')}
-                                />
-
-                                {SHOW_WELCOME_TUTORIAL && (
-                                    <>
-                                        <hr className={dividerClass} />
-                                        <div className="space-y-1">
+                                    {SHOW_WELCOME_TUTORIAL && (
+                                        <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] space-y-1">
                                             <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Welcome Tour</div>
                                             <div className="text-xs text-[#616161] dark:text-[#999]">
                                                 Re-show the welcome modal and reset onboarding progress.
@@ -1214,15 +1097,11 @@ export function AdminPanel() {
                                                 Relaunch Welcome Tour
                                             </Button>
                                         </div>
-                                    </>
-                                )}
-
-                                <div className="flex justify-end mt-3">
-                                    <Button id="admin-config-save" size="sm" onClick={handleSaveSettings} loading={configSaving}>Save</Button>
-                                </div>
+                                    )}
+                                </SettingsCard>
                             </>
                         )}
-                    </Card>
+                    </div>
                 )}
 
                 {/* ── Providers tab ── */}

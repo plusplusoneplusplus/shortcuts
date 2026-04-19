@@ -205,7 +205,7 @@ describe('AdminPanel', () => {
         expect(deleteCalls[0][0]).toContain('confirm=abc');
     });
 
-    it('renders Display section with show intent announcements toggle', async () => {
+    it('renders Display section with show intent announcements toggle in Chat Experience card', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) {
                 return Promise.resolve({
@@ -260,13 +260,20 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
-        // Wait for config to load
+        // Wait for the AI & Execution card to load
         await waitFor(() => {
-            expect(screen.getAllByText('Save').length).toBeGreaterThan(0);
+            expect(screen.getByTestId('settings-ai-execution')).toBeDefined();
         });
 
+        // Change a field to make the card dirty (parallel already has value, just touch output)
+        const parallelInput = document.getElementById('admin-config-parallel') as HTMLInputElement;
         await act(async () => {
-            fireEvent.click(screen.getAllByText('Save')[0]);
+            fireEvent.change(parallelInput, { target: { value: '4' } });
+        });
+
+        // Click the AI & Execution card Save
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('settings-ai-execution-save'));
         });
 
         await waitFor(() => {
@@ -314,8 +321,15 @@ describe('AdminPanel', () => {
             expect(screen.getByDisplayValue('gpt-4')).toBeDefined();
         });
 
+        // Change parallel to make the card dirty
+        const parallelInput = document.getElementById('admin-config-parallel') as HTMLInputElement;
         await act(async () => {
-            fireEvent.click(screen.getAllByText('Save')[0]);
+            fireEvent.change(parallelInput, { target: { value: '5' } });
+        });
+
+        // Click the AI & Execution card Save
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('settings-ai-execution-save'));
         });
 
         await waitFor(() => {
@@ -329,7 +343,7 @@ describe('AdminPanel', () => {
         expect(capturedBody.model).toBe('gpt-4');
     });
 
-    it('Display toggle sends PUT with showReportIntent when clicked', async () => {
+    it('Intent toggle marks Chat Experience card dirty, Save sends PUT with showReportIntent', async () => {
         mockFetch.mockImplementation((url: string, options?: any) => {
             if (url.includes('/admin/config') && options?.method === 'PUT') {
                 const body = JSON.parse(options.body);
@@ -362,8 +376,14 @@ describe('AdminPanel', () => {
             expect(screen.getByTestId('toggle-show-report-intent')).toBeDefined();
         });
 
+        // Toggle intent announcements — makes Chat card dirty
         await act(async () => {
             fireEvent.click(screen.getByTestId('toggle-show-report-intent'));
+        });
+
+        // Click Chat Experience card Save
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('settings-chat-save'));
         });
 
         const putCalls = mockFetch.mock.calls.filter(
@@ -439,7 +459,7 @@ describe('AdminPanel', () => {
             expect(whisper.getAttribute('aria-pressed')).toBe('true');
         });
 
-        it('clicking a segment fires PUT with the new value', async () => {
+        it('clicking a segment marks Chat card dirty, Save fires PUT with the new value', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
                 if (url.includes('/admin/config') && options?.method === 'PUT') {
@@ -458,20 +478,24 @@ describe('AdminPanel', () => {
             await act(async () => { renderWithProviders(); });
             await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal')).toBeDefined());
 
+            // Click Minimal segment — marks Chat card dirty
             await act(async () => {
                 fireEvent.click(screen.getByTestId('tool-compactness-minimal'));
             });
 
+            expect((screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+
+            // Click Chat Experience card Save
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-chat-save'));
+            });
+
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody.toolCompactness).toBe(2);
-            expect((screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
         });
 
-        it('reverts to previous value on server error', async () => {
-            mockFetch.mockImplementation((url: string, options?: any) => {
-                if (url.includes('/admin/config') && options?.method === 'PUT') {
-                    return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Save failed' }) });
-                }
+        it('cancel reverts to previous value', async () => {
+            mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {
                     return Promise.resolve({
                         ok: true,
@@ -484,15 +508,21 @@ describe('AdminPanel', () => {
             await act(async () => { renderWithProviders(); });
             await waitFor(() => expect(screen.getByTestId('tool-compactness-compact')).toBeDefined());
 
+            // Click Full segment
             await act(async () => {
                 fireEvent.click(screen.getByTestId('tool-compactness-full'));
             });
 
-            await waitFor(() => {
-                // Should revert back to compact (value 1)
-                expect((screen.getByTestId('tool-compactness-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
-                expect((screen.getByTestId('tool-compactness-full') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
+            expect((screen.getByTestId('tool-compactness-full') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+
+            // Click Cancel on Chat card
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-chat-cancel'));
             });
+
+            // Should revert back to compact (value 1)
+            expect((screen.getByTestId('tool-compactness-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+            expect((screen.getByTestId('tool-compactness-full') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
         });
 
         it('renders SourceBadge for toolCompactness source', async () => {
@@ -552,7 +582,7 @@ describe('AdminPanel', () => {
             expect(dense.getAttribute('aria-pressed')).toBe('true');
         });
 
-        it('clicking Dense fires PUT with taskCardDensity dense', async () => {
+        it('clicking Dense marks Appearance card dirty, Save fires PUT with taskCardDensity dense', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
                 if (options?.method === 'PUT' && url.includes('/admin/config')) {
@@ -571,20 +601,24 @@ describe('AdminPanel', () => {
             await act(async () => { renderWithProviders(); });
             await waitFor(() => expect(screen.getByTestId('task-card-density-dense')).toBeDefined());
 
+            // Click Dense segment
             await act(async () => {
                 fireEvent.click(screen.getByTestId('task-card-density-dense'));
             });
 
+            expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+
+            // Click Appearance card Save
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-appearance-save'));
+            });
+
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody.taskCardDensity).toBe('dense');
-            expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
         });
 
-        it('reverts to previous value on server error', async () => {
-            mockFetch.mockImplementation((url: string, options?: any) => {
-                if (url.includes('/admin/config') && options?.method === 'PUT') {
-                    return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Save failed' }) });
-                }
+        it('cancel reverts to previous value', async () => {
+            mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {
                     return Promise.resolve({
                         ok: true,
@@ -597,14 +631,18 @@ describe('AdminPanel', () => {
             await act(async () => { renderWithProviders(); });
             await waitFor(() => expect(screen.getByTestId('task-card-density-compact')).toBeDefined());
 
+            // Click Dense
             await act(async () => {
                 fireEvent.click(screen.getByTestId('task-card-density-dense'));
             });
 
-            await waitFor(() => {
-                expect((screen.getByTestId('task-card-density-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
-                expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
+            // Click Cancel on Appearance card
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-appearance-cancel'));
             });
+
+            expect((screen.getByTestId('task-card-density-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+            expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
         });
     });
 
@@ -718,6 +756,141 @@ describe('AdminPanel', () => {
             await act(async () => {
                 resolvePatch({ ok: true, json: () => Promise.resolve({}) });
             });
+        });
+    });
+
+    describe('Settings card structure', () => {
+        function mockFullConfig() {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                model: 'gpt-4', parallel: 2, timeout: 60, output: 'json',
+                                showReportIntent: false, toolCompactness: 1,
+                                taskCardDensity: 'compact', historyGrouping: true,
+                                terminal: { enabled: false }, notes: { enabled: false },
+                                myWork: { enabled: false }, myLife: { enabled: false },
+                                chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
+                                approvePermissions: false, mcpConfig: false, persist: true,
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                if (url.includes('/preferences')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ theme: 'auto', reposSidebarCollapsed: false }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+        }
+
+        it('renders 5 settings cards in the Settings tab', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('settings-ai-execution')).toBeDefined();
+                expect(screen.getByTestId('settings-chat')).toBeDefined();
+                expect(screen.getByTestId('settings-appearance')).toBeDefined();
+                expect(screen.getByTestId('settings-features')).toBeDefined();
+                expect(screen.getByTestId('settings-advanced')).toBeDefined();
+            });
+        });
+
+        it('renders card titles', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByText('AI & Execution')).toBeDefined();
+                expect(screen.getByText('Chat Experience')).toBeDefined();
+                expect(screen.getByText('Appearance & Navigation')).toBeDefined();
+                expect(screen.getByText('Workspace Features')).toBeDefined();
+                expect(screen.getByText('Advanced & Recovery')).toBeDefined();
+            });
+        });
+
+        it('Save buttons are disabled when cards are not dirty', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('settings-ai-execution-save')).toBeDefined());
+            expect((screen.getByTestId('settings-ai-execution-save') as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByTestId('settings-chat-save') as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByTestId('settings-appearance-save') as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        it('AI & Execution Save enables when model is changed', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByDisplayValue('gpt-4')).toBeDefined());
+
+            const modelInput = document.getElementById('admin-config-model') as HTMLInputElement;
+            await act(async () => {
+                fireEvent.change(modelInput, { target: { value: 'gpt-5' } });
+            });
+            expect((screen.getByTestId('settings-ai-execution-save') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('Workspace Features Save enables when a toggle is changed', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-terminal-enabled'));
+            });
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('Features card Save sends PUT with all feature flags', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { terminal: { enabled: false }, notes: { enabled: false }, myWork: { enabled: false }, myLife: { enabled: false } },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
+
+            // Enable terminal
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-terminal-enabled'));
+            });
+
+            // Save
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody['terminal.enabled']).toBe(true);
+            expect(capturedBody['notes.enabled']).toBe(false);
+        });
+
+        it('Advanced card shows read-only diagnostics without Save button', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('settings-advanced')).toBeDefined());
+
+            const advancedCard = screen.getByTestId('settings-advanced');
+            expect(advancedCard.querySelector('[data-testid="settings-advanced-save"]')).toBeNull();
+            expect(screen.getByText(/Approve Permissions/)).toBeDefined();
         });
     });
 });
