@@ -21,6 +21,12 @@ function writeMemoryFile(dataDir: string, workspaceId: string, content: string):
     fs.writeFileSync(path.join(memoryDir, 'MEMORY.md'), content, 'utf-8');
 }
 
+function writeSystemMemoryFile(dataDir: string, content: string): void {
+    const systemDir = path.join(dataDir, 'memory', 'system');
+    fs.mkdirSync(systemDir, { recursive: true });
+    fs.writeFileSync(path.join(systemDir, 'MEMORY.md'), content, 'utf-8');
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -104,5 +110,52 @@ describe('buildBoundedMemoryAddon', () => {
         expect(addon.systemMessageSuffix).toContain('Short fact about project');
         // The snapshot header should show the 100 char limit
         expect(addon.systemMessageSuffix).toContain('/100');
+    });
+
+    it('includes system store content in systemMessageSuffix when system MEMORY.md has entries', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
+        writeSystemMemoryFile(tmpDir, 'Cross-repo system fact');
+
+        const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+        expect(addon.systemMessageSuffix).toBeDefined();
+        expect(addon.systemMessageSuffix).toContain('Cross-repo system fact');
+        expect(addon.systemMessageSuffix).toContain('SYSTEM MEMORY');
+    });
+
+    it('includes both repo and system content when both MEMORY.md files have entries', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
+        writeMemoryFile(tmpDir, WORKSPACE_ID, 'Repo-scoped fact');
+        writeSystemMemoryFile(tmpDir, 'System-level fact');
+
+        const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+        expect(addon.systemMessageSuffix).toBeDefined();
+        expect(addon.systemMessageSuffix).toContain('Repo-scoped fact');
+        expect(addon.systemMessageSuffix).toContain('System-level fact');
+        expect(addon.systemMessageSuffix).toContain('MEMORY (your persistent notes)');
+        expect(addon.systemMessageSuffix).toContain('SYSTEM MEMORY (cross-project notes)');
+    });
+
+    it('system target is available in the tool when enabled', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
+
+        const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+        expect(addon.tools).toHaveLength(1);
+        const tool = addon.tools[0] as any;
+        const result = await tool.handler({ action: 'add', target: 'system', content: 'test system fact' });
+        expect(result.success).toBe(true);
+    });
+
+    it('memory target is available in the tool when enabled', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
+
+        const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+        expect(addon.tools).toHaveLength(1);
+        const tool = addon.tools[0] as any;
+        const result = await tool.handler({ action: 'add', target: 'memory', content: 'test repo fact' });
+        expect(result.success).toBe(true);
     });
 });

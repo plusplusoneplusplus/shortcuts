@@ -13,6 +13,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as path from 'path';
 import type { Tool } from '@plusplusoneplusplus/forge';
 import {
     BoundedMemoryStore,
@@ -79,11 +80,18 @@ export async function buildBoundedMemoryAddon(
         });
         await store.load();
 
-        const builder = new MemoryPromptBuilder({ store });
+        const systemMemoryPath = path.join(dataDir, 'memory', 'system', 'MEMORY.md');
+        const systemStore = new BoundedMemoryStore({
+            filePath: systemMemoryPath,
+            ...(charLimit ? { charLimit } : {}),
+        });
+        await systemStore.load();
+
+        const builder = new MemoryPromptBuilder({ store, systemStore });
         const systemMessageSuffix = builder.getSystemPromptBlock() ?? undefined;
 
         const { tool } = createMemoryTool(
-            { memory: store },
+            { memory: store, system: systemStore },
             { source: 'coc-chat' },
         );
 
