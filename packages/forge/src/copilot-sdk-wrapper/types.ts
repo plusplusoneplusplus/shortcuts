@@ -38,7 +38,13 @@ export type {
  */
 export function defineTool<T = unknown>(
     name: string,
-    config: { description?: string; parameters?: _ZodSchema<T> | Record<string, unknown>; handler: _ToolHandler<T> },
+    config: {
+        description?: string;
+        parameters?: _ZodSchema<T> | Record<string, unknown>;
+        handler: _ToolHandler<T>;
+        overridesBuiltInTool?: boolean;
+        skipPermission?: boolean;
+    },
 ): _Tool<T> {
     return { name, ...config };
 }

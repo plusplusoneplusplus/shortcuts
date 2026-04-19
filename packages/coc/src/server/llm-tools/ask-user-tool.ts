@@ -74,6 +74,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     }>();
 
     const tool = defineTool<AskUserArgs>('ask_user', {
+        overridesBuiltInTool: true,
         description:
             'Ask the user a question and wait for their response. Use this when you need ' +
             'clarification, confirmation, or a choice from the user before proceeding. ' +

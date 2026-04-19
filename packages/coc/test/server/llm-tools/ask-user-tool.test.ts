@@ -30,6 +30,11 @@ describe('createAskUserTool', () => {
         expect(typeof tool.handler).toBe('function');
     });
 
+    it('sets overridesBuiltInTool to true', () => {
+        const { tool } = createAskUserTool(deps);
+        expect(tool.overridesBuiltInTool).toBe(true);
+    });
+
     it('parameters match the expected JSON schema', () => {
         const { tool } = createAskUserTool(deps);
         const params = tool.parameters as Record<string, unknown>;
