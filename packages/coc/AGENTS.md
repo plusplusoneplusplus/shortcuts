@@ -153,6 +153,8 @@ src/
     │   ├── notes-git-types.ts        # Shared type definitions for notes git tracking (NotesGitConfig, NotesGitStatus, NotesGitLogEntry, NotesGitDiff)
     │   ├── notes-git-service.ts      # Git operations for the notes directory — init, status, log, diff, commit against a standalone repo in ~/.coc/repos/<wsId>/notes/
     │   ├── notes-git-handler.ts      # REST API routes for notes git operations — 6 routes: init, status, log, diff, diff/:hash, commit
+    │   ├── notes-git-autocommit.ts   # Auto-commit script generation (PS1/Bash) and schedule integration helpers — generateAutoCommitScript, writeAutoCommitScript, deleteAutoCommitScript, buildAutoCommitScheduleTarget, findAutoCommitSchedule
+    │   ├── notes-git-autocommit-handler.ts # REST API for notes auto-commit schedule — 4 routes: enable (POST), disable (DELETE), update (PATCH), status (GET)
 │   ├── wiki/                     # Wiki integration
 │   │   ├── index.ts              # Wiki module exports
 │   │   ├── types.ts              # Wiki types

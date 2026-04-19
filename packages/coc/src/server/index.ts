@@ -379,3 +379,4 @@ export type { HeapSnapshot, HeapMonitorConfig } from './heap-monitor';
 /** @internal */ export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
 /** @internal */ export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 /** @internal */ export { registerScheduleRoutes } from './schedule-handler';
+/** @internal */ export { registerNotesGitAutoCommitRoutes } from './notes-git-autocommit-handler';
