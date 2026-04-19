@@ -295,6 +295,7 @@ function makeTask(overrides?: Partial<any>): any {
 
 function makePendingTask(overrides?: Partial<any>): any {
     return makeTask({
+        type: 'workflow',
         status: 'queued',
         processId: undefined,
         ...overrides,
@@ -410,13 +411,13 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('hides mode selector by default', async () => {
+        it('shows mode selector by default (hideModeSelector defaults to false)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-selector')).toBeTruthy();
         });
 
         it('renders copy-conversation button', async () => {
@@ -630,14 +631,14 @@ describe('ChatDetail', () => {
     // ── Mode selector ──────────────────────────────────────────────────────
 
     describe('mode selector', () => {
-        it('mode selector is hidden by default (hideModeSelector defaults to true)', async () => {
+        it('mode selector is visible by default (hideModeSelector defaults to false)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeNull();
-            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+            expect(screen.queryByTestId('mode-selector')).toBeTruthy();
+            expect(screen.queryByTestId('mode-dropdown')).toBeTruthy();
         });
 
         it('shows mode selector when hideModeSelector is false', async () => {
@@ -652,7 +653,7 @@ describe('ChatDetail', () => {
 
         it('initializes mode from task payload.mode when visible', async () => {
             const task = makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'test' } });
-            const proc = makeProcess({ metadata: {} });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
