@@ -34,13 +34,13 @@ const MOCK_PROMPTS = {
         description: 'System message blocking file edits',
         text: 'You are in read-only mode.',
     },
-    'memory-consolidation': {
-        id: 'memory-consolidation',
-        title: 'Memory Consolidation',
+    'memory-tool-schema': {
+        id: 'memory-tool-schema',
+        title: 'Memory Tool Schema',
         group: 'Memory',
-        source: 'forge/memory/memory-aggregator.ts',
-        description: 'Rules for deduplication',
-        text: 'Produce an updated memory document.',
+        source: 'forge/memory/memory-tool.ts',
+        description: 'Schema for write_memory tool',
+        text: 'The write_memory tool schema.',
     },
     'follow-up-suggestions': {
         id: 'follow-up-suggestions',
@@ -79,7 +79,7 @@ describe('PromptsPanel', () => {
 
         // Prompt titles
         expect(screen.getByText('Read-only Mode')).toBeDefined();
-        expect(screen.getByText('Memory Consolidation')).toBeDefined();
+        expect(screen.getByText('Memory Tool Schema')).toBeDefined();
         expect(screen.getByText('Follow-up Suggestions')).toBeDefined();
     });
 

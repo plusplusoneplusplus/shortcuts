@@ -46,7 +46,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedNotePath: null,
         conversationCache: {},
         wsStatus: 'closed',
-        activeMemorySubTab: 'entries',
+        activeMemorySubTab: 'bounded',
         activeSkillsSubTab: 'installed',
         repoTabState: {},
         notePathState: {},

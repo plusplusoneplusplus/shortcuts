@@ -37,7 +37,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialTab: null,
         repoWikiInitialAdminTab: null,
         repoWikiInitialComponentId: null,
-        activeMemorySubTab: 'config',
+        activeMemorySubTab: 'bounded',
         activeSkillsSubTab: 'installed',
         activeAdminSubTab: 'settings',
         repoTabState: {},
@@ -986,15 +986,15 @@ describe('AppContext reducer', () => {
 
     // ── SET_MEMORY_SUB_TAB ─────────────────────────────────────────
     describe('SET_MEMORY_SUB_TAB', () => {
-        it('defaults activeMemorySubTab to "config"', () => {
+        it('defaults activeMemorySubTab to "bounded"', () => {
             const state = makeState();
-            expect(state.activeMemorySubTab).toBe('config');
+            expect(state.activeMemorySubTab).toBe('bounded');
         });
 
-        it('switches to entries', () => {
+        it('switches to bounded', () => {
             const state = makeState();
-            const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'entries' });
-            expect(result.activeMemorySubTab).toBe('entries');
+            const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'bounded' });
+            expect(result.activeMemorySubTab).toBe('bounded');
         });
 
         it('switches to files', () => {
@@ -1004,7 +1004,7 @@ describe('AppContext reducer', () => {
         });
 
         it('switches to config', () => {
-            const state = makeState({ activeMemorySubTab: 'entries' });
+            const state = makeState({ activeMemorySubTab: 'bounded' });
             const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'config' });
             expect(result.activeMemorySubTab).toBe('config');
         });

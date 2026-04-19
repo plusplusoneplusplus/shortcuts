@@ -25,7 +25,7 @@ export type SettingsSection = 'info' | 'preferences' | 'mcp' | 'skills' | 'instr
 export type CopilotSection = SettingsSection;
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
 export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
-export type MemorySubTab = 'entries' | 'config' | 'files';
+export type MemorySubTab = 'bounded' | 'config' | 'files';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database';
 

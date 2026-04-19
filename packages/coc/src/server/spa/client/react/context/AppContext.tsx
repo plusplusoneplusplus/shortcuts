@@ -134,7 +134,7 @@ const initialState: AppContextState = {
     selectedNotePath: null,
     conversationCache: {},
     wsStatus: 'closed',
-    activeMemorySubTab: 'config',
+    activeMemorySubTab: 'bounded',
     activeSkillsSubTab: 'installed',
     activeAdminSubTab: 'settings',
     adminDbTable: null,

@@ -298,29 +298,8 @@ describe('PUT /api/memory/config — strict validation', () => {
     });
 });
 
-describe('GET /api/memory/observations/levels — 3-level hierarchy', () => {
-    it('returns response with global, repos, and gitRemotes keys', async () => {
-        const { status, body } = await apiGet('/api/memory/observations/levels');
-        expect(status).toBe(200);
-        expect(body).toHaveProperty('global');
-        expect(body).toHaveProperty('repos');
-        expect(body).toHaveProperty('gitRemotes');
-        expect(Array.isArray(body.repos)).toBe(true);
-        expect(Array.isArray(body.gitRemotes)).toBe(true);
-    });
-});
-
 describe('GET /api/memory/observations/:filename — nonexistent file', () => {
-    it('returns 404 for nonexistent observation file', async () => {
-        const storageDir = path.join(tmpDir, 'obs-storage');
-        await apiPut('/api/memory/config', {
-            storageDir,
-            backend: 'file',
-            maxEntries: 100,
-            ttlDays: 0,
-            autoInject: false,
-        });
-
+    it('returns 404 since observation routes are removed', async () => {
         const { status } = await apiGet('/api/memory/observations/no-such-file.md?level=system');
         expect(status).toBe(404);
     });

@@ -211,4 +211,4 @@ export function createRequestHandler(
 }
 
 // Re-export helpers for backward compatibility
-export { readJsonBody, sendJson, send404, send400, send500 } from './shared/router';
+export { readJsonBody, sendJson, send404, send400, send500, sendError } from './shared/router';

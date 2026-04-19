@@ -30,6 +30,30 @@ const INVISIBLE_CHARS = new Set([
     '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
 ]);
 
+/**
+ * Human-readable description of all blocked security patterns.
+ * Exported for admin dashboard prompt inspection.
+ */
+export const SECURITY_PATTERNS_DESCRIPTION =
+    'The memory security scanner blocks content matching these threat patterns:\n\n'
+    + '**Prompt Injection:**\n'
+    + '- "ignore previous/all/above/prior instructions"\n'
+    + '- "you are now ..." (role hijacking)\n'
+    + '- "do not tell the user" (deception)\n'
+    + '- "system prompt override"\n'
+    + '- "disregard your/all/any instructions/rules/guidelines"\n'
+    + '- "act as if you have no restrictions/limits/rules" (bypass)\n\n'
+    + '**Exfiltration:**\n'
+    + '- curl/wget commands referencing KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL, or API variables\n'
+    + '- cat commands targeting .env, credentials, .netrc, .pgpass, .npmrc, .pypirc\n\n'
+    + '**Persistence:**\n'
+    + '- References to authorized_keys (SSH backdoor)\n'
+    + '- References to $HOME/.ssh or ~/.ssh\n'
+    + '- References to $HOME/.hermes/.env or ~/.hermes/.env\n\n'
+    + '**Invisible Unicode:**\n'
+    + '- Zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF)\n'
+    + '- Bidirectional override characters (U+202A–U+202E)';
+
 /** Scan content for injection/exfiltration threats. Pure function, no side effects. */
 export function scanMemoryContent(content: string): MemoryScanResult {
     for (const char of content) {

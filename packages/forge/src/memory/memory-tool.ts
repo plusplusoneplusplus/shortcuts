@@ -40,7 +40,11 @@ export type MemoryToolStores = {
 // Tool description — behavioral guidance embedded in the schema (Hermes pattern)
 // ---------------------------------------------------------------------------
 
-const TOOL_DESCRIPTION =
+/**
+ * Full tool description with parameter docs and behavioral guidance.
+ * Exported for admin dashboard prompt inspection.
+ */
+export const MEMORY_SCHEMA =
     'Save durable information to persistent memory that survives across sessions.\n'
     + 'Memory is injected into future turns, so keep it compact and focused on facts\n'
     + 'that will still matter later.\n'
@@ -77,7 +81,7 @@ export function createMemoryTool(
     const allowedTargets = options.allowedTargets ?? ['memory', 'system'];
 
     const tool = defineTool<MemoryToolArgs>('memory', {
-        description: TOOL_DESCRIPTION,
+        description: MEMORY_SCHEMA,
         parameters: {
             type: 'object',
             properties: {

@@ -516,7 +516,7 @@ export function Router() {
             // Parse memory sub-tab deep links: #memory/:subTab
             if (tab === 'memory') {
                 const parts = hash.split('/');
-                if (parts.length >= 2 && (parts[1] === 'entries' || parts[1] === 'config' || parts[1] === 'files')) {
+                if (parts.length >= 2 && (parts[1] === 'bounded' || parts[1] === 'config' || parts[1] === 'files')) {
                     dispatch({ type: 'SET_MEMORY_SUB_TAB', tab: parts[1] as MemorySubTab });
                 }
             }

@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { MEMORY_CONSOLIDATION_INSTRUCTIONS } from '@plusplusoneplusplus/forge';
+import { MEMORY_SCHEMA, MEMORY_GUIDANCE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, invalidJSON, badRequest, forbidden } from './errors';
 import type { Route } from './types';
@@ -1046,37 +1046,29 @@ The plan file should include:
 [Task]
 \${mainPrompt}`,
         },
-        'memory-consolidation': {
-            id: 'memory-consolidation',
-            title: 'Memory Consolidation',
+        'memory-tool-schema': {
+            id: 'memory-tool-schema',
+            title: 'Memory Tool — Schema & Behavioral Guidance',
             group: 'Memory',
-            source: 'forge/memory/memory-aggregator.ts',
-            description: 'Structured prompt for deduplication, conflict resolution, pruning (<100 facts) with required sections',
-            text: `## Existing Memory\n\${existingMemory}\n\n## New Observations (\${count} sessions)\n\${rawSection}\n\n${MEMORY_CONSOLIDATION_INSTRUCTIONS}`,
+            source: 'forge/memory/memory-tool.ts',
+            description: 'Tool definition with add/replace/remove actions, capacity-awareness, and proactive-save guidance',
+            text: MEMORY_SCHEMA,
         },
-        'memory-consolidation-sections': {
-            id: 'memory-consolidation-sections',
-            title: 'Memory Consolidation — Required Sections',
+        'memory-system-prompt': {
+            id: 'memory-system-prompt',
+            title: 'Memory — System Prompt Injection',
             group: 'Memory',
-            source: 'forge/memory/memory-aggregator.ts',
-            description: 'Required section headings for consolidated memory documents',
-            text: `## Conventions\n## Architecture\n## Patterns & Tools\n## Gotchas\n## Pending Decisions\n\nSections must appear in this order. If a section has no facts, write "None." under it.`,
+            source: 'forge/memory/memory-prompt.ts',
+            description: 'Frozen snapshot format and behavioral guidance injected at session start',
+            text: MEMORY_GUIDANCE,
         },
-        'memory-identifier-preservation': {
-            id: 'memory-identifier-preservation',
-            title: 'Memory — Identifier Preservation',
+        'memory-security-patterns': {
+            id: 'memory-security-patterns',
+            title: 'Memory — Security Scanning Patterns',
             group: 'Memory',
-            source: 'forge/memory/memory-aggregator.ts',
-            description: 'Instructions to preserve opaque identifiers exactly as written during consolidation',
-            text: 'Preserve all opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.',
-        },
-        'memory-language-preservation': {
-            id: 'memory-language-preservation',
-            title: 'Memory — Language Preservation',
-            group: 'Memory',
-            source: 'forge/memory/memory-aggregator.ts',
-            description: 'Instructions to preserve conversation language and code artifacts during consolidation',
-            text: 'Write the document in the primary language used in the observations.\nFocus on factual content: what was discussed, decisions made, and current state.\nDo not translate or alter code, file paths, identifiers, or error messages.',
+            source: 'forge/memory/memory-security.ts',
+            description: 'Injection/exfiltration patterns blocked before memory writes are accepted',
+            text: SECURITY_PATTERNS_DESCRIPTION,
         },
         'tool-call-cache': {
             id: 'tool-call-cache',

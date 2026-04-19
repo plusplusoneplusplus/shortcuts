@@ -185,8 +185,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     registerRepoMemoryRoutes(routes, dataDir, {
         store,
-        aiInvoker: aiInvoker,
-        queueFacade,
     });
 
     registerModelRoutes(routes, modelMetadataStore, {

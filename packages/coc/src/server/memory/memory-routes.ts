@@ -27,8 +27,6 @@ import * as path from 'path';
 import * as url from 'url';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import {
-    FileMemoryStore as ObservationStore,
-    type MemoryLevel,
     FileToolCallCacheStore,
     resolveToolCallCacheOptions,
     type ToolCallCacheLevel,
@@ -38,7 +36,7 @@ import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
 import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
-import { getRepoDataPath } from '../paths';
+import { registerBoundedMemoryRoutes } from './bounded-memory-routes';
 
 // ============================================================================
 // Types
@@ -263,135 +261,6 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         },
     });
 
-    // -- Observation browsing (forge memory files) --------------------
-
-    const getObsStore = (workspaceId?: string): ObservationStore => {
-        const config = readMemoryConfig(dataDir);
-        if (workspaceId) {
-            const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations'));
-            return new ObservationStore({ dataDir: config.storageDir, repoDir });
-        }
-        return new ObservationStore({ dataDir: config.storageDir });
-    };
-
-    // Overview of all 3 memory levels with stats and metadata
-    routes.push({
-        method: 'GET',
-        pattern: '/api/memory/observations/levels',
-        handler: async (_req, res) => {
-            try {
-                const store = getObsStore();
-
-                const [globalStats, repoHashes, remoteHashes] = await Promise.all([
-                    store.getStats('system'),
-                    store.listRepos(),
-                    store.listGitRemotes(),
-                ]);
-
-                const repos = await Promise.all(
-                    repoHashes.map(async (hash: string) => {
-                        const [info, stats] = await Promise.all([
-                            store.getRepoInfo(hash),
-                            store.getStats('repo', hash),
-                        ]);
-                        return { hash, ...(info ?? {}), ...stats };
-                    }),
-                );
-
-                const gitRemotes = await Promise.all(
-                    remoteHashes.map(async (hash: string) => {
-                        const [info, stats] = await Promise.all([
-                            store.getGitRemoteInfo(hash),
-                            store.getStats('git-remote' as MemoryLevel, hash),
-                        ]);
-                        return { hash, ...(info ?? {}), ...stats };
-                    }),
-                );
-
-                sendJson(res, { global: globalStats, repos, gitRemotes });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // List observation files at a specific level
-    routes.push({
-        method: 'GET',
-        pattern: '/api/memory/observations',
-        handler: async (req, res) => {
-            try {
-                const parsedUrl = url.parse(req.url ?? '', true);
-                const level = (parsedUrl.query.level as string) || 'system';
-                const hash = typeof parsedUrl.query.hash === 'string' ? parsedUrl.query.hash : undefined;
-                const workspaceId = typeof parsedUrl.query.workspaceId === 'string' ? parsedUrl.query.workspaceId : undefined;
-
-                if (!['system', 'git-remote', 'repo'].includes(level)) {
-                    send400(res, `Invalid level: ${level}. Must be system, git-remote, or repo`);
-                    return;
-                }
-
-                const store = (level === 'repo' && workspaceId)
-                    ? getObsStore(workspaceId)
-                    : getObsStore();
-
-                const mlevel = level as MemoryLevel;
-                const [files, consolidated, stats] = await Promise.all([
-                    store.listRaw(mlevel, hash),
-                    store.readConsolidated(mlevel, hash),
-                    store.getStats(mlevel, hash),
-                ]);
-
-                sendJson(res, { level, hash, workspaceId, files, consolidatedExists: !!consolidated, stats });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // Read a single observation file
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/memory\/observations\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            try {
-                const filename = decodeURIComponent(match![1]);
-                const parsedUrl = url.parse(req.url ?? '', true);
-                const level = (parsedUrl.query.level as string) || 'system';
-                const hash = typeof parsedUrl.query.hash === 'string' ? parsedUrl.query.hash : undefined;
-                const workspaceId = typeof parsedUrl.query.workspaceId === 'string' ? parsedUrl.query.workspaceId : undefined;
-
-                if (!['system', 'git-remote', 'repo'].includes(level)) {
-                    send400(res, `Invalid level: ${level}. Must be system, git-remote, or repo`);
-                    return;
-                }
-
-                const store = (level === 'repo' && workspaceId)
-                    ? getObsStore(workspaceId)
-                    : getObsStore();
-
-                if (filename === 'consolidated') {
-                    const content = await store.readConsolidated(level as MemoryLevel, hash);
-                    if (content === null) {
-                        send404(res, 'No consolidated memory at this level');
-                        return;
-                    }
-                    sendJson(res, { filename: 'consolidated.md', content });
-                    return;
-                }
-
-                const obs = await store.readRaw(level as MemoryLevel, hash, filename);
-                if (!obs) {
-                    send404(res, `Observation not found: ${filename}`);
-                    return;
-                }
-                sendJson(res, obs);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
     // -- Explore-cache browsing -----------------------------------------------
 
     /**
@@ -440,7 +309,6 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
             try {
                 const config = readMemoryConfig(dataDir);
                 const storageDir = config.storageDir;
-                const obsStore = new ObservationStore({ dataDir: storageDir });
 
                 const systemStore = getExploreCacheStore(storageDir, 'system');
                 const systemStats = await systemStore.getStats();
@@ -452,17 +320,17 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
 
                 const gitRemotes = await Promise.all(
                     remoteHashes.map(async (hash) => {
-                        const [info, store] = [await obsStore.getGitRemoteInfo(hash), getExploreCacheStore(storageDir, 'git-remote', hash)];
+                        const store = getExploreCacheStore(storageDir, 'git-remote', hash);
                         const stats = await store.getStats();
-                        return { hash, ...(info ?? {}), ...stats };
+                        return { hash, ...stats };
                     }),
                 );
 
                 const repos = await Promise.all(
                     repoHashes.map(async (hash) => {
-                        const [info, store] = [await obsStore.getRepoInfo(hash), getExploreCacheStore(storageDir, 'repo', hash)];
+                        const store = getExploreCacheStore(storageDir, 'repo', hash);
                         const stats = await store.getStats();
-                        return { hash, ...(info ?? {}), ...stats };
+                        return { hash, ...stats };
                     }),
                 );
 
@@ -586,4 +454,8 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
             }
         },
     });
+
+    // -- Bounded memory endpoints ---------------------------------------------
+
+    registerBoundedMemoryRoutes(routes, dataDir);
 }

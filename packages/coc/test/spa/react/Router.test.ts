@@ -2160,14 +2160,14 @@ describe('memory sub-tab deep-link parsing', () => {
         const hash = rawHash.replace(/^#/, '');
         const parts = hash.split('/');
         if (parts[0] !== 'memory') return null;
-        if (parts.length >= 2 && (parts[1] === 'entries' || parts[1] === 'config' || parts[1] === 'files')) {
+        if (parts.length >= 2 && (parts[1] === 'bounded' || parts[1] === 'config' || parts[1] === 'files')) {
             return parts[1];
         }
         return null;
     }
 
-    it('returns "entries" for #memory/entries', () => {
-        expect(parseMemorySubTab('#memory/entries')).toBe('entries');
+    it('returns "bounded" for #memory/bounded', () => {
+        expect(parseMemorySubTab('#memory/bounded')).toBe('bounded');
     });
 
     it('returns "config" for #memory/config', () => {

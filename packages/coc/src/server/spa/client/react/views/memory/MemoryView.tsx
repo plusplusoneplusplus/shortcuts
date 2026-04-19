@@ -1,7 +1,7 @@
 /**
  * MemoryView — top-level route component for #memory.
  *
- * Renders sub-tabs: Entries | Config
+ * Renders sub-tabs: Memory | Files | Config
  */
 
 import { useCallback } from 'react';
@@ -9,13 +9,13 @@ import { useApp } from '../../context/AppContext';
 import { cn } from '../../shared/cn';
 import type { MemorySubTab } from '../../types/dashboard';
 import { FeatureTip } from '../../welcome/FeatureTip';
-import { MemoryEntriesPanel } from './MemoryEntriesPanel';
+import { BoundedMemoryPanel } from './BoundedMemoryPanel';
 import { MemoryConfigPanel } from './MemoryConfigPanel';
-import { MemoryFilesPanel } from './MemoryFilesPanel';
+import { ExploreCacheBrowserPanel } from './ExploreCacheBrowserPanel';
 
 const SUB_TABS: { id: MemorySubTab; label: string }[] = [
-    { id: 'entries', label: 'Entries' },
-    { id: 'files', label: 'Files' },
+    { id: 'bounded', label: 'Memory' },
+    { id: 'files', label: 'Explore Cache' },
     { id: 'config', label: 'Config' },
 ];
 
@@ -52,8 +52,8 @@ export function MemoryView() {
 
             {/* Sub-tab content */}
             <div className="flex-1 overflow-auto">
-                {activeSubTab === 'entries' && <MemoryEntriesPanel />}
-                {activeSubTab === 'files' && <MemoryFilesPanel />}
+                {activeSubTab === 'bounded' && <BoundedMemoryPanel />}
+                {activeSubTab === 'files' && <ExploreCacheBrowserPanel />}
                 {activeSubTab === 'config' && <MemoryConfigPanel />}
             </div>
         </div>

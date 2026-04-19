@@ -35,6 +35,19 @@ export interface DiffLine {
     text: string;
 }
 
+export interface BoundedMemoryResponse {
+    content: string;
+    charCount: number;
+    charLimit: number;
+    lastModified: string | null;
+}
+
+export interface BoundedMemorySaveResponse {
+    charCount: number;
+    charLimit: number;
+    lastModified: string;
+}
+
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const memoryApi = {
@@ -86,5 +99,30 @@ export const memoryApi = {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/aggregate/revert`, {
             method: 'POST',
         });
+    },
+
+    /** Read bounded MEMORY.md for a workspace. */
+    getBounded(repoId: string): Promise<BoundedMemoryResponse> {
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/bounded`);
+    },
+
+    /** Write bounded MEMORY.md for a workspace. Runs security scan server-side. */
+    async saveBounded(repoId: string, content: string): Promise<BoundedMemorySaveResponse> {
+        const res = await fetch(`${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/bounded`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (res.status === 422) {
+                throw new Error(`Security violation: ${data.violations?.join(', ') ?? 'Content blocked'}`);
+            }
+            if (res.status === 413) {
+                throw new Error(`Content exceeds limit: ${data.charCount}/${data.charLimit} chars`);
+            }
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+        }
+        return data;
     },
 };

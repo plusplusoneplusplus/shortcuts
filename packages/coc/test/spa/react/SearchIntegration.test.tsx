@@ -88,7 +88,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedExplorerPath: null,
         conversationCache: {},
         wsStatus: 'closed',
-        activeMemorySubTab: 'entries',
+        activeMemorySubTab: 'bounded',
         activeSkillsSubTab: 'installed',
         repoTabState: {},
         wikiTabState: {},
