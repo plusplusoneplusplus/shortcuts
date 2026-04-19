@@ -10,7 +10,6 @@ import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../shared/SourceEditor';
-import { ModeToggleToolbar } from '../../shared/ModeToggleToolbar';
 import type { ModeOption } from '../../shared/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -697,26 +696,35 @@ export function NoteEditor({
     return (
         <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid={isEmpty ? 'note-editor-empty' : 'note-editor'}>
             {!editorHidden && (
-                <>
-                    <ModeToggleToolbar<NoteViewMode>
-                        modes={NOTE_MODE_OPTIONS}
-                        activeMode={viewMode}
-                        onModeChange={(mode) => { mode === 'source' ? switchToSource() : switchToRich(); }}
-                        dirty={sourceDirty}
-                        showSave={viewMode === 'source'}
-                        onSave={flushSourceSave}
-                        testId="note-mode-toggle"
-                        saveTestId="note-source-save-btn"
-                    />
-
-                    <NoteEditorToolbar
-                        editor={editor}
-                        hidden={viewMode === 'source'}
-                        commentsPanelOpen={commentsPanelOpen}
-                        onToggleCommentsPanel={onToggleCommentsPanel}
-                        commentCount={commentCount}
-                    />
-                </>
+                <NoteEditorToolbar
+                    editor={editor}
+                    hidden={viewMode === 'source'}
+                    commentsPanelOpen={commentsPanelOpen}
+                    onToggleCommentsPanel={onToggleCommentsPanel}
+                    commentCount={commentCount}
+                    modeToggle={
+                        <div className="flex items-center gap-1" data-testid="note-mode-toggle">
+                            {NOTE_MODE_OPTIONS.map((m) => {
+                                const isActive = m.value === viewMode;
+                                const showDirty = isActive && sourceDirty;
+                                return (
+                                    <button
+                                        key={m.value}
+                                        className={`mode-btn${isActive ? ' active' : ''}`}
+                                        onClick={() => { if (!isActive) { m.value === 'source' ? switchToSource() : switchToRich(); } }}
+                                        aria-label={showDirty ? `${m.label} (modified)` : undefined}
+                                        data-testid={m.testId}
+                                    >{showDirty ? `${m.label} ●` : m.label}</button>
+                                );
+                            })}
+                            {viewMode === 'source' && sourceDirty && (
+                                <button className="save-btn" onClick={flushSourceSave} disabled={saveState === 'saving'} data-testid="note-source-save-btn">
+                                    {saveState === 'saving' ? 'Saving…' : 'Save'}
+                                </button>
+                            )}
+                        </div>
+                    }
+                />
             )}
 
             {/* Source editor — mounted only when in source mode */}

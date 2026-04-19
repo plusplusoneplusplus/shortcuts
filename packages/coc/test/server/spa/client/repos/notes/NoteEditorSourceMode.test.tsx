@@ -157,11 +157,14 @@ describe('NoteEditor — Source Mode', () => {
             expect(notesApi.getContent).toHaveBeenCalledTimes(callsBefore + 1);
         });
 
-        it('hides the formatting toolbar', async () => {
+        it('hides the formatting buttons but keeps toolbar visible', async () => {
             await renderAndWaitForLoad();
             await switchToSource();
 
-            expect(screen.queryByTestId('note-editor-toolbar')).toBeNull();
+            // Toolbar row remains (hosts mode toggle + comments)
+            expect(screen.getByTestId('note-editor-toolbar')).toBeTruthy();
+            // But formatting buttons are hidden
+            expect(screen.queryByLabelText('Bold')).toBeNull();
         });
 
         it('hides WYSIWYG editor and shows SourceEditor', async () => {

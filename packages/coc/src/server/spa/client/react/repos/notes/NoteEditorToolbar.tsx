@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
+    /** When true, formatting buttons are hidden but the right-end controls (mode toggle, comments) remain visible. */
     hidden?: boolean;
     commentsPanelOpen?: boolean;
     onToggleCommentsPanel?: () => void;
     commentCount?: number;
+    /** Inline Rich/Source mode toggle rendered at the right end of the toolbar. */
+    modeToggle?: ReactNode;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -227,8 +231,8 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount }: NoteEditorToolbarProps) {
-    if (!editor || hidden) return null;
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle }: NoteEditorToolbarProps) {
+    if (!editor) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
 
@@ -250,69 +254,77 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             aria-label="Formatting toolbar"
             data-testid="note-editor-toolbar"
         >
-            {/* Text formatting */}
-            <TB editor={editor} label="Bold" icon="B" command={() => c().toggleBold().run()} activeName="bold" />
-            <TB editor={editor} label="Italic" icon="I" command={() => c().toggleItalic().run()} activeName="italic" />
-            <TB editor={editor} label="Strikethrough" icon="S̶" command={() => c().toggleStrike().run()} activeName="strike" />
-            <HighlightButton editor={editor} />
-            <Sep />
+            {/* Formatting buttons — hidden in source mode */}
+            {!hidden && (
+                <>
+                    {/* Text formatting */}
+                    <TB editor={editor} label="Bold" icon="B" command={() => c().toggleBold().run()} activeName="bold" />
+                    <TB editor={editor} label="Italic" icon="I" command={() => c().toggleItalic().run()} activeName="italic" />
+                    <TB editor={editor} label="Strikethrough" icon="S̶" command={() => c().toggleStrike().run()} activeName="strike" />
+                    <HighlightButton editor={editor} />
+                    <Sep />
 
-            {/* Headings */}
-            <TB editor={editor} label="Heading 1" icon="H1" command={() => c().toggleHeading({ level: 1 }).run()} activeName="heading" activeAttrs={{ level: 1 }} />
-            <TB editor={editor} label="Heading 2" icon="H2" command={() => c().toggleHeading({ level: 2 }).run()} activeName="heading" activeAttrs={{ level: 2 }} />
-            <TB editor={editor} label="Heading 3" icon="H3" command={() => c().toggleHeading({ level: 3 }).run()} activeName="heading" activeAttrs={{ level: 3 }} />
-            <Sep />
+                    {/* Headings */}
+                    <TB editor={editor} label="Heading 1" icon="H1" command={() => c().toggleHeading({ level: 1 }).run()} activeName="heading" activeAttrs={{ level: 1 }} />
+                    <TB editor={editor} label="Heading 2" icon="H2" command={() => c().toggleHeading({ level: 2 }).run()} activeName="heading" activeAttrs={{ level: 2 }} />
+                    <TB editor={editor} label="Heading 3" icon="H3" command={() => c().toggleHeading({ level: 3 }).run()} activeName="heading" activeAttrs={{ level: 3 }} />
+                    <Sep />
 
-            {/* Lists */}
-            <TB editor={editor} label="Bullet list" icon="•" command={() => c().toggleBulletList().run()} activeName="bulletList" />
-            <TB editor={editor} label="Ordered list" icon="1." command={() => c().toggleOrderedList().run()} activeName="orderedList" />
-            <TB editor={editor} label="Task list" icon="☑" command={() => c().toggleTaskList().run()} activeName="taskList" />
-            <Sep />
+                    {/* Lists */}
+                    <TB editor={editor} label="Bullet list" icon="•" command={() => c().toggleBulletList().run()} activeName="bulletList" />
+                    <TB editor={editor} label="Ordered list" icon="1." command={() => c().toggleOrderedList().run()} activeName="orderedList" />
+                    <TB editor={editor} label="Task list" icon="☑" command={() => c().toggleTaskList().run()} activeName="taskList" />
+                    <Sep />
 
-            {/* Block elements */}
-            <TB editor={editor} label="Blockquote" icon="❝" command={() => c().toggleBlockquote().run()} activeName="blockquote" />
-            <TB editor={editor} label="Code" icon="<>" command={() => c().toggleCode().run()} activeName="code" />
-            <TB editor={editor} label="Code block" icon="⌘" command={() => c().toggleCodeBlock().run()} activeName="codeBlock" />
-            <Sep />
+                    {/* Block elements */}
+                    <TB editor={editor} label="Blockquote" icon="❝" command={() => c().toggleBlockquote().run()} activeName="blockquote" />
+                    <TB editor={editor} label="Code" icon="<>" command={() => c().toggleCode().run()} activeName="code" />
+                    <TB editor={editor} label="Code block" icon="⌘" command={() => c().toggleCodeBlock().run()} activeName="codeBlock" />
+                    <Sep />
 
-            {/* Misc */}
-            <TB editor={editor} label="Link" icon="🔗" command={handleLink} activeName="link" />
-            <TB editor={editor} label="Horizontal rule" icon="—" command={() => c().setHorizontalRule().run()} />
+                    {/* Misc */}
+                    <TB editor={editor} label="Link" icon="🔗" command={handleLink} activeName="link" />
+                    <TB editor={editor} label="Horizontal rule" icon="—" command={() => c().setHorizontalRule().run()} />
 
-            {/* Table — insert */}
-            <Sep />
-            <TB
-                editor={editor}
-                label="Insert table"
-                icon="⊞"
-                command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-            />
+                    {/* Table — insert */}
+                    <Sep />
+                    <TB
+                        editor={editor}
+                        label="Insert table"
+                        icon="⊞"
+                        command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+                    />
 
-            {/* Table — contextual operations (visible only inside a table) */}
-            <TableControls editor={editor} />
+                    {/* Table — contextual operations (visible only inside a table) */}
+                    <TableControls editor={editor} />
+                </>
+            )}
 
-            {/* Comments panel toggle */}
-            {onToggleCommentsPanel && (
+            {/* Right-end controls — always visible */}
+            {(onToggleCommentsPanel || modeToggle) && (
                 <>
                     <div className="ml-auto" />
-                    <button
-                        type="button"
-                        className={
-                            'text-xs px-2 py-0.5 rounded ' +
-                            (commentsPanelOpen
-                                ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
-                                : 'text-[#888] hover:text-[#333] dark:hover:text-white')
-                        }
-                        onClick={onToggleCommentsPanel}
-                        data-testid="comments-panel-toggle"
-                        aria-label={commentsPanelOpen ? 'Hide comments' : 'Show comments'}
-                    >
-                        💬{(commentCount ?? 0) > 0 && (
-                            <span className="ml-1 text-[10px]" data-testid="comments-toggle-count">
-                                {commentCount}
-                            </span>
-                        )}
-                    </button>
+                    {onToggleCommentsPanel && (
+                        <button
+                            type="button"
+                            className={
+                                'text-xs px-2 py-0.5 rounded ' +
+                                (commentsPanelOpen
+                                    ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
+                                    : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                            }
+                            onClick={onToggleCommentsPanel}
+                            data-testid="comments-panel-toggle"
+                            aria-label={commentsPanelOpen ? 'Hide comments' : 'Show comments'}
+                        >
+                            💬{(commentCount ?? 0) > 0 && (
+                                <span className="ml-1 text-[10px]" data-testid="comments-toggle-count">
+                                    {commentCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    {modeToggle}
                 </>
             )}
         </div>
