@@ -150,6 +150,9 @@ src/
 │   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
 │   ├── notes-watcher.ts          # File watcher for notes directories — debounced, .md-only, broadcasts notes-changed WS events
 │   ├── notes-order.ts            # .order.json helpers — readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename, applyOrder for per-directory custom sort order
+    │   ├── notes-git-types.ts        # Shared type definitions for notes git tracking (NotesGitConfig, NotesGitStatus, NotesGitLogEntry, NotesGitDiff)
+    │   ├── notes-git-service.ts      # Git operations for the notes directory — init, status, log, diff, commit against a standalone repo in ~/.coc/repos/<wsId>/notes/
+    │   ├── notes-git-handler.ts      # REST API routes for notes git operations — 6 routes: init, status, log, diff, diff/:hash, commit
 │   ├── wiki/                     # Wiki integration
 │   │   ├── index.ts              # Wiki module exports
 │   │   ├── types.ts              # Wiki types
