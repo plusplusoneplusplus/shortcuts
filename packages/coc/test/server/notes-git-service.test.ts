@@ -140,7 +140,7 @@ describe('NotesGitService', () => {
 
             const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
             await execGitAsync(['add', 'tracked.md'], tmpDir);
-            await execGitAsync(['commit', '-m', process.platform === 'win32' ? '"add tracked"' : "'add tracked'"], tmpDir);
+            await execGitAsync(['commit', '-m', 'add tracked'], tmpDir);
 
             // Now modify without staging
             writeFile('tracked.md', '# Tracked - modified');
@@ -243,7 +243,7 @@ describe('NotesGitService', () => {
             writeFile('test.md', '# Test');
             const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
             await execGitAsync(['add', 'test.md'], tmpDir);
-            await execGitAsync(['commit', '-m', process.platform === 'win32' ? '"add test"' : "'add test'"], tmpDir);
+            await execGitAsync(['commit', '-m', 'add test'], tmpDir);
 
             // Modify
             writeFile('test.md', '# Test\n\nUpdated content');
@@ -346,6 +346,47 @@ describe('NotesGitService', () => {
 
             // Verify it was actually committed
             const status = await service.getStatus();
+            expect(status.clean).toBe(true);
+        });
+    });
+
+    // ========================================================================
+    // Paths with spaces
+    // ========================================================================
+    describe('paths with spaces', () => {
+        let spacedDir: string;
+        let spacedService: NotesGitService;
+
+        beforeEach(() => {
+            // Create a temp directory whose name contains spaces
+            const base = fs.mkdtempSync(path.join(os.tmpdir(), 'notes git svc '));
+            spacedDir = base;
+            spacedService = new NotesGitService(spacedDir);
+        });
+
+        afterEach(() => {
+            fs.rmSync(spacedDir, { recursive: true, force: true });
+        });
+
+        it('init succeeds when path contains spaces', async () => {
+            await spacedService.init();
+            expect(await spacedService.isInitialized()).toBe(true);
+        });
+
+        it('commit succeeds when path contains spaces', async () => {
+            await spacedService.init();
+            const filePath = path.join(spacedDir, 'note.md');
+            fs.writeFileSync(filePath, '# Hello', 'utf-8');
+
+            const result = await spacedService.commit('test commit');
+            expect(result.committed).toBe(true);
+            expect(result.hash).toBeTruthy();
+        });
+
+        it('getStatus works when path contains spaces', async () => {
+            await spacedService.init();
+            const status = await spacedService.getStatus();
+            expect(status.initialized).toBe(true);
             expect(status.clean).toBe(true);
         });
     });
