@@ -2,7 +2,7 @@
  * useUiLayoutMode — persisted UI layout mode hook.
  *
  * 'classic'      → unified Activity tab (all processes in one view)
- * 'dev-workflow'  → split Chats + Work Items + Tasks tabs (default)
+ * 'dev-workflow'  → split Chats + Work Items + Tasks tabs
  */
 
 import { useState, useCallback } from 'react';
@@ -15,7 +15,7 @@ function readMode(): UiLayoutMode {
         const v = localStorage.getItem(STORAGE_KEY);
         if (v === 'classic' || v === 'dev-workflow') return v;
     } catch { /* ignore */ }
-    return 'dev-workflow';
+    return 'classic';
 }
 
 export function useUiLayoutMode(): [UiLayoutMode, (mode: UiLayoutMode) => void] {
