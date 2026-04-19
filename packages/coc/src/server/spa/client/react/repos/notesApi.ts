@@ -177,4 +177,37 @@ export const notesApi = {
             { method: 'DELETE' },
         );
     },
+
+    // ── Auto-commit schedule endpoints ──────────────────────────────────
+
+    getAutoCommitStatus(wsId: string): Promise<{
+        enabled: boolean;
+        schedule?: { id: string; cron: string; status: string; nextRun: string | null; cronDescription?: string };
+        lastRun?: { status: string } | null;
+        warning?: string;
+    }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit/status`);
+    },
+
+    enableAutoCommit(wsId: string, cron?: string): Promise<{ schedule: any; scriptPath: string }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cron: cron ?? '*/30 * * * *' }),
+        });
+    },
+
+    disableAutoCommit(wsId: string): Promise<{ deleted: boolean }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
+            method: 'DELETE',
+        });
+    },
+
+    updateAutoCommitInterval(wsId: string, cron: string): Promise<{ schedule: any }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cron }),
+        });
+    },
 };

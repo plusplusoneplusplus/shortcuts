@@ -230,4 +230,77 @@ describe('notesApi', () => {
             );
         });
     });
+
+    describe('auto-commit endpoints', () => {
+        it('getAutoCommitStatus — calls GET /workspaces/:id/notes/git/auto-commit/status', async () => {
+            const data = { enabled: true, schedule: { id: 'sched-1', cron: '*/30 * * * *', status: 'active', nextRun: null }, lastRun: null };
+            mockOk(data);
+            const result = await notesApi.getAutoCommitStatus('ws-1');
+            expect(result).toEqual(data);
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/git/auto-commit/status',
+                {},
+            );
+        });
+
+        it('enableAutoCommit — sends POST with cron body', async () => {
+            const data = { schedule: { id: 'sched-1' }, scriptPath: '/tmp/script.sh' };
+            mockOk(data);
+            const result = await notesApi.enableAutoCommit('ws-1', '*/15 * * * *');
+            expect(result).toEqual(data);
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/git/auto-commit',
+                expect.objectContaining({
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cron: '*/15 * * * *' }),
+                }),
+            );
+        });
+
+        it('enableAutoCommit — uses default cron when none provided', async () => {
+            mockOk({ schedule: {}, scriptPath: '' });
+            await notesApi.enableAutoCommit('ws-1');
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/git/auto-commit',
+                expect.objectContaining({
+                    body: JSON.stringify({ cron: '*/30 * * * *' }),
+                }),
+            );
+        });
+
+        it('disableAutoCommit — sends DELETE', async () => {
+            mockOk({ deleted: true });
+            const result = await notesApi.disableAutoCommit('ws-1');
+            expect(result).toEqual({ deleted: true });
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/git/auto-commit',
+                expect.objectContaining({ method: 'DELETE' }),
+            );
+        });
+
+        it('updateAutoCommitInterval — sends PATCH with cron body', async () => {
+            const data = { schedule: { id: 'sched-1' } };
+            mockOk(data);
+            const result = await notesApi.updateAutoCommitInterval('ws-1', '*/10 * * * *');
+            expect(result).toEqual(data);
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/git/auto-commit',
+                expect.objectContaining({
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cron: '*/10 * * * *' }),
+                }),
+            );
+        });
+
+        it('encodes workspaceId in auto-commit endpoints', async () => {
+            mockOk({ enabled: false });
+            await notesApi.getAutoCommitStatus('ws/special');
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws%2Fspecial/notes/git/auto-commit/status',
+                {},
+            );
+        });
+    });
 });

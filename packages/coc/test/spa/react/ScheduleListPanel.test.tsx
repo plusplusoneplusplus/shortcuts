@@ -48,7 +48,7 @@ function makeSchedule(overrides: Partial<Schedule> = {}): Schedule {
 const USER_SCHEDULE = makeSchedule({ id: 'sch-1', name: 'My User Schedule' });
 const REPO_SCHEDULE = makeSchedule({ id: 'repo:daily', name: 'Daily Cleanup', source: 'repo' });
 
-function renderPanel(schedules: Schedule[], selectedId: string | null = null) {
+function renderPanel(schedules: Schedule[], selectedId: string | null = null, notesAutoCommit?: any) {
     return render(
         <Wrap>
             <ScheduleListPanel
@@ -57,6 +57,7 @@ function renderPanel(schedules: Schedule[], selectedId: string | null = null) {
                 onSelect={vi.fn()}
                 onNew={vi.fn()}
                 loading={false}
+                notesAutoCommit={notesAutoCommit}
             />
         </Wrap>
     );
@@ -203,5 +204,86 @@ describe('ScheduleListPanel — two-section UI', () => {
         );
         fireEvent.click(screen.getByTestId('schedules-refresh-btn'));
         expect(onRefresh).toHaveBeenCalled();
+    });
+});
+
+describe('ScheduleListPanel — Quick Actions & Notes badge', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('renders Quick Actions bar when notesAutoCommit.available && !enabled', () => {
+        renderPanel([USER_SCHEDULE], null, {
+            available: true,
+            enabled: false,
+            enabling: false,
+            onEnable: vi.fn(),
+        });
+        expect(screen.getByTestId('quick-actions-bar')).toBeTruthy();
+        expect(screen.getByTestId('enable-autocommit-btn')).toBeTruthy();
+        expect(screen.getByText(/Enable Notes Auto-Commit/)).toBeTruthy();
+    });
+
+    it('hides Quick Actions when notesAutoCommit.enabled', () => {
+        renderPanel([USER_SCHEDULE], null, {
+            available: true,
+            enabled: true,
+            enabling: false,
+            onEnable: vi.fn(),
+        });
+        expect(screen.queryByTestId('quick-actions-bar')).toBeNull();
+    });
+
+    it('hides Quick Actions when notesAutoCommit.available is false', () => {
+        renderPanel([USER_SCHEDULE], null, {
+            available: false,
+            enabled: false,
+            enabling: false,
+            onEnable: vi.fn(),
+        });
+        expect(screen.queryByTestId('quick-actions-bar')).toBeNull();
+    });
+
+    it('Enable button calls onEnable and shows spinner during enabling', () => {
+        const onEnable = vi.fn();
+        renderPanel([], null, {
+            available: true,
+            enabled: false,
+            enabling: true,
+            onEnable,
+        });
+        const btn = screen.getByTestId('enable-autocommit-btn');
+        expect(btn.textContent).toContain('⏳');
+        expect(btn).toHaveProperty('disabled', true);
+    });
+
+    it('[Notes] badge renders on schedule named "Notes Auto-Commit"', () => {
+        const autoCommitSchedule = makeSchedule({
+            id: 'ac-1',
+            name: 'Notes Auto-Commit',
+            targetType: 'script',
+        });
+        renderPanel([autoCommitSchedule]);
+        expect(screen.getByTestId('notes-badge')).toBeTruthy();
+        expect(screen.getByText('[Notes]')).toBeTruthy();
+    });
+
+    it('[Notes] badge does not render on other schedules', () => {
+        renderPanel([USER_SCHEDULE]);
+        expect(screen.queryByTestId('notes-badge')).toBeNull();
+        expect(screen.queryByText('[Notes]')).toBeNull();
+    });
+
+    it('Quick Actions is hidden when MY SCHEDULES section is collapsed', () => {
+        renderPanel([], null, {
+            available: true,
+            enabled: false,
+            enabling: false,
+            onEnable: vi.fn(),
+        });
+        // Verify it's visible initially
+        expect(screen.getByTestId('quick-actions-bar')).toBeTruthy();
+
+        // Collapse
+        fireEvent.click(screen.getByTestId('my-schedules-header'));
+        expect(screen.queryByTestId('quick-actions-bar')).toBeNull();
     });
 });

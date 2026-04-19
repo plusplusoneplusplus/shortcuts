@@ -32,6 +32,7 @@ import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import { useGitInfo } from '../hooks/useGitInfo';
 import { useTerminalEnabled } from '../hooks/useTerminalEnabled';
 import { useNotesEnabled } from '../hooks/useNotesEnabled';
+import { useNotesAutoCommit } from '../hooks/useNotesAutoCommit';
 import { MobileTabBar } from '../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../layout/TopBar';
 import type { RepoData } from './repoGrouping';
@@ -96,6 +97,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
+    const notesAutoCommit = useNotesAutoCommit(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
@@ -381,6 +383,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             data-testid="wiki-warning-badge"
                                             title="Needs attention"
                                         />
+                                    )}
+                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && notesAutoCommit.status === 'active' && (
+                                        <span className="ml-1 text-[10px] bg-amber-600 text-white px-1 py-px rounded-full"
+                                              data-testid="notes-autocommit-badge" title="Auto-commit active">
+                                            ⏰
+                                        </span>
+                                    )}
+                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && notesAutoCommit.status === 'paused' && (
+                                        <span className="ml-1 text-[10px] bg-yellow-500 text-white px-1 py-px rounded-full"
+                                              data-testid="notes-autocommit-paused-badge" title="Auto-commit paused">
+                                            ⏸
+                                        </span>
                                     )}
                                     {activeSubTab === t.key && (
                                         <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />

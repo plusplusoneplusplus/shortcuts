@@ -4,6 +4,13 @@ import { formatRelativeTime } from '../utils/format';
 import { StatusDot } from './ScheduleStatusBadge';
 import type { Schedule } from './scheduleTypes';
 
+interface NotesAutoCommitProps {
+    available: boolean;
+    enabled: boolean;
+    enabling: boolean;
+    onEnable: () => void;
+}
+
 interface ScheduleListPanelProps {
     schedules: Schedule[];
     selectedId: string | null;
@@ -12,9 +19,13 @@ interface ScheduleListPanelProps {
     loading: boolean;
     onMove?: (scheduleId: string, destination: 'user' | 'repo') => Promise<void>;
     onRefresh?: () => void;
+    notesAutoCommit?: NotesAutoCommitProps;
 }
 
+const NOTES_AUTOCOMMIT_NAME = 'Notes Auto-Commit';
+
 function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule: Schedule; isActive: boolean; onSelect: (id: string) => void; onDragStart?: (e: React.DragEvent, schedule: Schedule) => void }) {
+    const isNotesAutoCommit = schedule.name === NOTES_AUTOCOMMIT_NAME;
     return (
         <li
             className={
@@ -38,7 +49,11 @@ function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule:
                 (isActive ? ' font-medium' : '')
             }>
                 {schedule.name}
-                {schedule.source === 'repo' ? (
+                {isNotesAutoCommit ? (
+                    <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium align-middle" data-testid="notes-badge">
+                        [Notes]
+                    </span>
+                ) : schedule.source === 'repo' ? (
                     <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 font-medium align-middle">
                         [Repo]
                     </span>
@@ -51,7 +66,7 @@ function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule:
                         [Prompt]
                     </span>
                 )}
-                {schedule.source !== 'repo' && (!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
+                {!isNotesAutoCommit && schedule.source !== 'repo' && (!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
                     <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium align-middle capitalize" data-testid="list-mode-badge">{schedule.mode}</span>
                 )}
             </span>
@@ -67,7 +82,7 @@ function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule:
     );
 }
 
-export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading, onMove, onRefresh }: ScheduleListPanelProps) {
+export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading, onMove, onRefresh, notesAutoCommit }: ScheduleListPanelProps) {
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [repoCollapsed, setRepoCollapsed] = useState(false);
     const [dropTarget, setDropTarget] = useState<'user' | 'repo' | null>(null);
@@ -142,6 +157,27 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
 
             {!userCollapsed && (
                 <>
+                    {/* Quick Actions: show when notes git is available but auto-commit not enabled */}
+                    {notesAutoCommit?.available && !notesAutoCommit.enabled && (
+                        <div className="mx-4 mb-2 px-3 py-2 rounded border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10" data-testid="quick-actions-bar">
+                            <div className="text-[11px] uppercase text-[#848484] font-medium mb-1.5">💡 Quick Actions</div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] font-medium">📝 Enable Notes Auto-Commit</div>
+                                    <div className="text-[11px] text-[#848484]">Auto-save notes every 30 min</div>
+                                </div>
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={notesAutoCommit.onEnable}
+                                    disabled={notesAutoCommit.enabling}
+                                    data-testid="enable-autocommit-btn"
+                                >
+                                    {notesAutoCommit.enabling ? '⏳' : 'Enable'}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     {userSchedules.length === 0 ? (
                         <div
                             className={'px-4 pb-2 text-center text-sm text-[#848484] rounded transition-colors ' +

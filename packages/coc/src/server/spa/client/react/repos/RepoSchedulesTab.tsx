@@ -2,13 +2,14 @@
  * RepoSchedulesTab — workspace-scoped schedule management with CRUD, run history.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useApp } from '../context/AppContext';
+import { useNotesAutoCommit } from '../hooks/useNotesAutoCommit';
 import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';
 import { CreateScheduleForm } from './CreateScheduleForm';
@@ -42,6 +43,22 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         storageKey: 'schedules-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+
+    const notesAC = useNotesAutoCommit(workspaceId);
+
+    // Lightweight check: is notes git initialized?
+    const [notesGitInitialized, setNotesGitInitialized] = useState(false);
+    const notesGitCheckedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (notesGitCheckedRef.current === workspaceId) return;
+        notesGitCheckedRef.current = workspaceId;
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/notes/git/status`)
+            .then((data: any) => {
+                if (data?.initialized) setNotesGitInitialized(true);
+                else setNotesGitInitialized(false);
+            })
+            .catch(() => setNotesGitInitialized(false));
+    }, [workspaceId]);
 
     const fetchSchedules = useCallback(async () => {
         try {
@@ -157,6 +174,12 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             loading={loading}
             onMove={handleMove}
             onRefresh={fetchSchedules}
+            notesAutoCommit={{
+                available: notesAC.autoCommitEnabled || notesGitInitialized,
+                enabled: notesAC.autoCommitEnabled,
+                enabling: notesAC.enabling,
+                onEnable: () => notesAC.enable(),
+            }}
         />
     );
 
