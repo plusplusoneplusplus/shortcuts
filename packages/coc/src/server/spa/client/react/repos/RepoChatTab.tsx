@@ -458,7 +458,6 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                 onBack={() => setMobileShowDetail(false)}
                                 workspaceId={workspaceId}
                                 readOnly={mode === 'tasks'}
-                                hideModeSelector={mode === 'chats'}
                             />
                         </div>
                     ) : (
@@ -503,7 +502,6 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
                     readOnly={mode === 'tasks'}
-                    hideModeSelector={mode === 'chats'}
                 />
             </div>
         </div>
