@@ -49,7 +49,6 @@ import {
     isRunWorkflowPayload,
 } from '../task-types';
 import type { CopilotClientCache } from './copilot-client-cache';
-import { recordUserMessage } from '../memory/conversation-recorder';
 import { BaseExecutor } from './base-executor';
 
 // ============================================================================
@@ -293,15 +292,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             }
         } else {
             process.conversationTurns = initialTurns;
-        }
-
-        // Record initial prompt to memory (skip scheduled/template-generated runs)
-        const isScheduledRun = isChatPayload(task.payload) && !!task.payload.context?.scheduleId;
-        if (this.dataDir && task.type === 'chat' && !isScheduledRun) {
-            const wsId = (process.metadata?.workspaceId as string) ?? '';
-            if (wsId) {
-                try { recordUserMessage(this.dataDir, wsId, prompt); } catch { /* never block */ }
-            }
         }
 
         try {

@@ -20,24 +20,11 @@ import { sendJson, readJsonBody, send400, send500 } from '../router';
 
 export type MemoryBackend = 'file' | 'sqlite' | 'vector';
 
-export interface MemoryRecordingConfig {
-    /** When true, user messages in conversations are saved to repo memory. */
-    enabled: boolean;
-}
-
 export interface MemoryConfig {
     /** Directory where memory entries are stored. Defaults to ~/.coc/memory/ */
     storageDir: string;
     /** Storage backend type. */
     backend: MemoryBackend;
-    /** Maximum number of entries to retain (oldest deleted first). */
-    maxEntries: number;
-    /** Time-to-live in days; entries older than this are pruned. 0 = no TTL. */
-    ttlDays: number;
-    /** Automatically inject relevant memories as context into AI prompts. */
-    autoInject: boolean;
-    /** Conversation recording settings. */
-    recording: MemoryRecordingConfig;
 }
 
 // ============================================================================
@@ -49,10 +36,6 @@ export const MEMORY_CONFIG_FILE_NAME = 'memory-config.json';
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     storageDir: path.join(os.homedir(), '.coc', 'memory'),
     backend: 'file',
-    maxEntries: 10000,
-    ttlDays: 90,
-    autoInject: false,
-    recording: { enabled: false },
 };
 
 // ============================================================================
@@ -109,24 +92,6 @@ export function validateMemoryConfig(raw: unknown): MemoryConfig {
     if (obj.backend === 'file' || obj.backend === 'sqlite' || obj.backend === 'vector') {
         result.backend = obj.backend;
     }
-    if (typeof obj.maxEntries === 'number' && obj.maxEntries > 0) {
-        result.maxEntries = Math.floor(obj.maxEntries);
-    }
-    if (typeof obj.ttlDays === 'number' && obj.ttlDays >= 0) {
-        result.ttlDays = Math.floor(obj.ttlDays);
-    }
-    if (typeof obj.autoInject === 'boolean') {
-        result.autoInject = obj.autoInject;
-    }
-
-    // recording sub-config
-    const rawRec = (obj as Record<string, unknown>).recording;
-    if (typeof rawRec === 'object' && rawRec !== null) {
-        const rec = rawRec as Record<string, unknown>;
-        if (typeof rec.enabled === 'boolean') {
-            result.recording = { enabled: rec.enabled };
-        }
-    }
 
     return result;
 }
@@ -161,15 +126,6 @@ export async function handlePutMemoryConfig(
 ): Promise<void> {
     try {
         const body = await readJsonBody(req);
-        // Strict validation: reject explicitly invalid numeric fields
-        if (typeof (body as any).maxEntries === 'number' && (body as any).maxEntries <= 0) {
-            send400(res, 'Invalid config: maxEntries must be a positive number');
-            return;
-        }
-        if (typeof (body as any).ttlDays === 'number' && (body as any).ttlDays < 0) {
-            send400(res, 'Invalid config: ttlDays must be 0 or a positive number');
-            return;
-        }
         const config = validateMemoryConfig(body);
         writeMemoryConfig(dataDir, config);
         sendJson(res, config);

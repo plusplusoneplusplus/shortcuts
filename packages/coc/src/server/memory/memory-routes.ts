@@ -5,14 +5,6 @@
  *
  * GET  /api/memory/config          — read config
  * PUT  /api/memory/config          — write config
- * GET  /api/memory/entries         — list/search entries
- * POST /api/memory/entries         — create entry
- * GET  /api/memory/entries/:id     — get single entry
- * PATCH /api/memory/entries/:id    — update tags/content
- * DELETE /api/memory/entries/:id   — delete entry
- * GET  /api/memory/observations/levels    — overview of all 3 memory levels
- * GET  /api/memory/observations           — list files at a level
- * GET  /api/memory/observations/:filename — read a single observation file
  * GET  /api/memory/explore-cache/levels              — overview of all explore-cache levels
  * GET  /api/memory/explore-cache/raw                 — list raw Q&A files at a level
  * GET  /api/memory/explore-cache/raw/:filename       — read a single raw Q&A entry
@@ -25,17 +17,13 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as url from 'url';
-import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import {
     FileToolCallCacheStore,
-    resolveToolCallCacheOptions,
     type ToolCallCacheLevel,
 } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
-import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
+import { sendJson, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
-import { FileMemoryStore } from './memory-store';
-import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
 import { registerBoundedMemoryRoutes } from './bounded-memory-routes';
 
 // ============================================================================
@@ -43,11 +31,6 @@ import { registerBoundedMemoryRoutes } from './bounded-memory-routes';
 // ============================================================================
 
 export interface MemoryRouteOptions {
-    /**
-     * AI invoker for the POST /api/memory/aggregate-tool-calls endpoint.
-     * When absent the endpoint returns 503 Service Unavailable.
-     */
-    aggregateToolCallsAIInvoker?: AIInvoker;
     /**
      * Optional working directory for scoping the explore cache.
      * When provided, the cache resolves to git-remote or repo level;
@@ -85,179 +68,6 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         pattern: '/api/memory/config',
         handler: async (req, res) => {
             await handlePutMemoryConfig(req, res, dataDir);
-        },
-    });
-
-    // -- Entries list/create -------------------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: '/api/memory/entries',
-        handler: async (req, res) => {
-            try {
-                const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir, {
-                    ttlDays: config.ttlDays,
-                    maxEntries: config.maxEntries,
-                });
-
-                const parsedUrl = url.parse(req.url ?? '', true);
-                const q = typeof parsedUrl.query.q === 'string' ? parsedUrl.query.q : undefined;
-                const tag = typeof parsedUrl.query.tag === 'string' ? parsedUrl.query.tag : undefined;
-                const page = parsedUrl.query.page ? parseInt(String(parsedUrl.query.page), 10) : 1;
-                const pageSize = parsedUrl.query.pageSize ? parseInt(String(parsedUrl.query.pageSize), 10) : 20;
-
-                const result = store.list({ q, tag, page, pageSize });
-                sendJson(res, result);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    routes.push({
-        method: 'POST',
-        pattern: '/api/memory/entries',
-        handler: async (req, res) => {
-            try {
-                const body = await readJsonBody<{
-                    content?: string;
-                    summary?: string;
-                    tags?: string[];
-                    source?: string;
-                }>(req);
-
-                if (!body.content || typeof body.content !== 'string' || body.content.trim() === '') {
-                    send400(res, 'Missing required field: content');
-                    return;
-                }
-
-                const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir, {
-                    ttlDays: config.ttlDays,
-                    maxEntries: config.maxEntries,
-                });
-
-                const entry = store.create({
-                    content: body.content,
-                    summary: typeof body.summary === 'string' ? body.summary : undefined,
-                    tags: Array.isArray(body.tags) ? body.tags.filter(t => typeof t === 'string') : [],
-                    source: typeof body.source === 'string' ? body.source : 'manual',
-                });
-
-                sendJson(res, entry, 201);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Single entry endpoints (by ID) --------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/memory\/entries\/([^/]+)$/,
-        handler: async (_req, res, match) => {
-            try {
-                const id = decodeURIComponent(match![1]);
-                const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir);
-
-                const entry = store.get(id);
-                if (!entry) {
-                    send404(res, `Memory entry not found: ${id}`);
-                    return;
-                }
-                sendJson(res, entry);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    routes.push({
-        method: 'PATCH',
-        pattern: /^\/api\/memory\/entries\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            try {
-                const id = decodeURIComponent(match![1]);
-                const body = await readJsonBody<{
-                    tags?: string[];
-                    content?: string;
-                    summary?: string;
-                }>(req);
-
-                const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir);
-
-                const patch: { tags?: string[]; content?: string; summary?: string } = {};
-                if (Array.isArray(body.tags)) {
-                    patch.tags = body.tags.filter(t => typeof t === 'string');
-                }
-                if (typeof body.content === 'string') {
-                    patch.content = body.content;
-                }
-                if (typeof body.summary === 'string') {
-                    patch.summary = body.summary;
-                }
-
-                const updated = store.update(id, patch);
-                if (!updated) {
-                    send404(res, `Memory entry not found: ${id}`);
-                    return;
-                }
-                sendJson(res, updated);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    routes.push({
-        method: 'DELETE',
-        pattern: /^\/api\/memory\/entries\/([^/]+)$/,
-        handler: async (_req, res, match) => {
-            try {
-                const id = decodeURIComponent(match![1]);
-                const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir);
-
-                const deleted = store.delete(id);
-                if (!deleted) {
-                    send404(res, `Memory entry not found: ${id}`);
-                    return;
-                }
-                sendJson(res, { success: true, id });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Batch aggregation ---------------------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: '/api/memory/aggregate-tool-calls/stats',
-        handler: async (_req, res) => {
-            try {
-                const config = readMemoryConfig(dataDir);
-                const store = new FileToolCallCacheStore(
-                    resolveToolCallCacheOptions(options?.workingDirectory, config.storageDir),
-                );
-                const stats = await store.getStats();
-                sendJson(res, stats);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    routes.push({
-        method: 'POST',
-        pattern: '/api/memory/aggregate-tool-calls',
-        handler: async (req, res) => {
-            await handleAggregateToolCalls(req, res, dataDir, options?.aggregateToolCallsAIInvoker, options?.workingDirectory);
         },
     });
 

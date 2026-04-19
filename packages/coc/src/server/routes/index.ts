@@ -179,9 +179,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         return workspaces.find(w => w.id === repoId)?.rootPath;
     });
 
-    registerMemoryRoutes(routes, dataDir, {
-        aggregateToolCallsAIInvoker: aiInvoker,
-    });
+    registerMemoryRoutes(routes, dataDir);
 
     registerRepoMemoryRoutes(routes, dataDir, {
         store,

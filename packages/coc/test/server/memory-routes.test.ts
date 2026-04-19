@@ -2,17 +2,14 @@
  * Tests for memory-routes — HTTP handler unit tests using in-process HTTP.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
 import { registerMemoryRoutes } from '../../src/server/memory/memory-routes';
-import type { MemoryRouteOptions } from '../../src/server/memory/memory-routes';
 import type { Route } from '../../src/server/types';
-import type { AIInvoker } from '@plusplusoneplusplus/forge';
-import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../../src/server/memory/memory-config-handler';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -20,9 +17,9 @@ let tmpDir: string;
 let server: http.Server;
 let baseUrl: string;
 
-function makeServer(dataDir: string, options?: MemoryRouteOptions): http.Server {
+function makeServer(dataDir: string): http.Server {
     const routes: Route[] = [];
-    registerMemoryRoutes(routes, dataDir, options);
+    registerMemoryRoutes(routes, dataDir);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -58,32 +55,6 @@ async function apiPut(path: string, data: unknown): Promise<{ status: number; bo
     return { status: res.status, body };
 }
 
-async function apiPost(path: string, data: unknown): Promise<{ status: number; body: any }> {
-    const res = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    });
-    const body = await res.json();
-    return { status: res.status, body };
-}
-
-async function apiPatch(path: string, data: unknown): Promise<{ status: number; body: any }> {
-    const res = await fetch(`${baseUrl}${path}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    });
-    const body = await res.json();
-    return { status: res.status, body };
-}
-
-async function apiDelete(path: string): Promise<{ status: number; body: any }> {
-    const res = await fetch(`${baseUrl}${path}`, { method: 'DELETE' });
-    const body = await res.json();
-    return { status: res.status, body };
-}
-
 // ── Test suite ────────────────────────────────────────────────────────────────
 
 beforeEach(async () => {
@@ -103,9 +74,6 @@ describe('GET /api/memory/config', () => {
         expect(status).toBe(200);
         expect(body.backend).toBe('file');
         expect(typeof body.storageDir).toBe('string');
-        expect(typeof body.maxEntries).toBe('number');
-        expect(typeof body.ttlDays).toBe('number');
-        expect(typeof body.autoInject).toBe('boolean');
     });
 });
 
@@ -114,242 +82,18 @@ describe('PUT /api/memory/config', () => {
         const { status, body } = await apiPut('/api/memory/config', {
             storageDir: path.join(tmpDir, 'custom'),
             backend: 'sqlite',
-            maxEntries: 500,
-            ttlDays: 60,
-            autoInject: true,
         });
         expect(status).toBe(200);
         expect(body.backend).toBe('sqlite');
-        expect(body.maxEntries).toBe(500);
-        expect(body.autoInject).toBe(true);
     });
 
     it('persists config so GET returns updated values', async () => {
         await apiPut('/api/memory/config', {
             storageDir: path.join(tmpDir, 'saved'),
             backend: 'vector',
-            maxEntries: 200,
-            ttlDays: 14,
-            autoInject: false,
         });
         const { body } = await apiGet('/api/memory/config');
         expect(body.backend).toBe('vector');
-        expect(body.maxEntries).toBe(200);
-    });
-});
-
-describe('POST /api/memory/entries', () => {
-    it('creates an entry and returns 201', async () => {
-        // Use the configured storageDir (default from tmpDir)
-        // First set storageDir to a sub-folder we control
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', {
-            storageDir,
-            backend: 'file',
-            maxEntries: 100,
-            ttlDays: 0,
-            autoInject: false,
-        });
-
-        const { status, body } = await apiPost('/api/memory/entries', {
-            content: 'Test memory',
-            tags: ['tag1'],
-            source: 'test',
-        });
-        expect(status).toBe(201);
-        expect(body.id).toBeTruthy();
-        expect(body.content).toBe('Test memory');
-        expect(body.tags).toEqual(['tag1']);
-    });
-
-    it('returns 400 when content is missing', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { status } = await apiPost('/api/memory/entries', { tags: [] });
-        expect(status).toBe(400);
-    });
-});
-
-describe('GET /api/memory/entries', () => {
-    it('returns paginated list', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        await apiPost('/api/memory/entries', { content: 'entry1', tags: [], source: 'manual' });
-        await apiPost('/api/memory/entries', { content: 'entry2', tags: [], source: 'manual' });
-
-        const { status, body } = await apiGet('/api/memory/entries');
-        expect(status).toBe(200);
-        expect(body.total).toBe(2);
-        expect(Array.isArray(body.entries)).toBe(true);
-    });
-});
-
-describe('GET /api/memory/entries/:id', () => {
-    it('returns full entry by id', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { body: created } = await apiPost('/api/memory/entries', {
-            content: 'Full content here',
-            tags: ['a'],
-            source: 'test',
-        });
-        const { status, body } = await apiGet(`/api/memory/entries/${created.id}`);
-        expect(status).toBe(200);
-        expect(body.content).toBe('Full content here');
-    });
-
-    it('returns 404 for unknown id', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { status } = await apiGet('/api/memory/entries/nonexistent');
-        expect(status).toBe(404);
-    });
-});
-
-describe('PATCH /api/memory/entries/:id', () => {
-    it('updates tags', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { body: created } = await apiPost('/api/memory/entries', {
-            content: 'patch me',
-            tags: ['old'],
-            source: 'manual',
-        });
-        const { status, body } = await apiPatch(`/api/memory/entries/${created.id}`, {
-            tags: ['new', 'updated'],
-        });
-        expect(status).toBe(200);
-        expect(body.tags).toEqual(['new', 'updated']);
-    });
-
-    it('returns 404 for unknown id', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { status } = await apiPatch('/api/memory/entries/nonexistent', { tags: [] });
-        expect(status).toBe(404);
-    });
-});
-
-describe('DELETE /api/memory/entries/:id', () => {
-    it('deletes an entry', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { body: created } = await apiPost('/api/memory/entries', {
-            content: 'delete me',
-            tags: [],
-            source: 'manual',
-        });
-        const { status, body } = await apiDelete(`/api/memory/entries/${created.id}`);
-        expect(status).toBe(200);
-        expect(body.success).toBe(true);
-
-        // Should be gone now
-        const { status: getStatus } = await apiGet(`/api/memory/entries/${created.id}`);
-        expect(getStatus).toBe(404);
-    });
-
-    it('returns 404 for unknown id', async () => {
-        const storageDir = path.join(tmpDir, 'storage');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
-
-        const { status } = await apiDelete('/api/memory/entries/nonexistent');
-        expect(status).toBe(404);
-    });
-});
-
-// ── Helper for seeding raw files ──────────────────────────────────────────────
-
-function seedRawFiles(storageDir: string, count: number): void {
-    const rawDir = path.join(storageDir, 'explore-cache', 'raw');
-    fs.mkdirSync(rawDir, { recursive: true });
-    for (let i = 0; i < count; i++) {
-        const entry = {
-            id: `entry-${i}`,
-            toolName: 'grep',
-            question: `Find pattern ${i}`,
-            answer: `Result ${i}`,
-            args: { pattern: `p-${i}` },
-            timestamp: new Date(Date.now() + i * 1000).toISOString(),
-        };
-        fs.writeFileSync(
-            path.join(rawDir, `${Date.now() + i}-grep.json`),
-            JSON.stringify(entry, null, 2),
-            'utf-8',
-        );
-    }
-}
-
-function makeConsolidatedJson(count: number): string {
-    const entries = Array.from({ length: count }, (_, i) => ({
-        id: `c-${i}`,
-        question: `Q ${i}`,
-        answer: `A ${i}`,
-        topics: ['test'],
-        toolSources: ['grep'],
-        createdAt: new Date().toISOString(),
-        hitCount: 1,
-    }));
-    return JSON.stringify(entries);
-}
-
-// ── POST /api/memory/aggregate-tool-calls ─────────────────────────────────────
-
-describe('POST /api/memory/aggregate-tool-calls', () => {
-    it('returns 503 when no aiInvoker is configured (no options)', async () => {
-        // server is created with no options in beforeEach → no aiInvoker
-        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
-        expect(res.status).toBe(503);
-        const body = await res.json();
-        expect(body.error).toBe('AI invoker not configured');
-    });
-
-    it('returns 200 aggregated: false when raw dir is empty', async () => {
-        await stopServer();
-
-        const storageDir = path.join(tmpDir, 'storage2');
-        writeMemoryConfig(tmpDir, { ...DEFAULT_MEMORY_CONFIG, storageDir });
-
-        const mockInvoker: AIInvoker = vi.fn();
-        server = makeServer(tmpDir, { aggregateToolCallsAIInvoker: mockInvoker });
-        await startServer();
-
-        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
-        expect(res.status).toBe(200);
-        const body = await res.json();
-        expect(body.aggregated).toBe(false);
-        expect(body.reason).toBe('no raw entries');
-        expect(mockInvoker).not.toHaveBeenCalled();
-    });
-
-    it('returns 200 aggregated: true when raw files exist', async () => {
-        await stopServer();
-
-        const storageDir = path.join(tmpDir, 'storage3');
-        writeMemoryConfig(tmpDir, { ...DEFAULT_MEMORY_CONFIG, storageDir });
-
-        const N = 3;
-        seedRawFiles(storageDir, N);
-
-        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
-            success: true,
-            response: makeConsolidatedJson(2),
-        });
-        server = makeServer(tmpDir, { aggregateToolCallsAIInvoker: mockInvoker });
-        await startServer();
-
-        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
-        expect(res.status).toBe(200);
-        const body = await res.json();
-        expect(body.aggregated).toBe(true);
-        expect(body.rawCount).toBe(N);
-        expect(typeof body.consolidatedCount).toBe('number');
     });
 });
 
@@ -399,7 +143,7 @@ function seedExploreCacheConsolidated(storageDir: string, level: 'system' | 'git
 describe('GET /api/memory/explore-cache/levels', () => {
     it('returns system, repos, and gitRemotes overview', async () => {
         const storageDir = path.join(tmpDir, 'ec-levels');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         seedExploreCacheRaw(storageDir, 'system', undefined, 2);
         seedExploreCacheRaw(storageDir, 'repo', 'repohash1', 1);
@@ -418,7 +162,7 @@ describe('GET /api/memory/explore-cache/levels', () => {
 
     it('returns empty arrays when no explore-cache exists', async () => {
         const storageDir = path.join(tmpDir, 'ec-empty');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         const { status, body } = await apiGet('/api/memory/explore-cache/levels');
         expect(status).toBe(200);
@@ -431,7 +175,7 @@ describe('GET /api/memory/explore-cache/levels', () => {
 describe('GET /api/memory/explore-cache/raw', () => {
     it('lists raw files at system level', async () => {
         const storageDir = path.join(tmpDir, 'ec-raw-list');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
         seedExploreCacheRaw(storageDir, 'system', undefined, 3);
 
         const { status, body } = await apiGet('/api/memory/explore-cache/raw?level=system');
@@ -442,7 +186,7 @@ describe('GET /api/memory/explore-cache/raw', () => {
 
     it('lists files at git-remote level', async () => {
         const storageDir = path.join(tmpDir, 'ec-raw-remote');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
         seedExploreCacheRaw(storageDir, 'git-remote', 'rhash', 2);
 
         const { status, body } = await apiGet('/api/memory/explore-cache/raw?level=git-remote&hash=rhash');
@@ -452,7 +196,7 @@ describe('GET /api/memory/explore-cache/raw', () => {
 
     it('returns 400 for invalid level', async () => {
         const storageDir = path.join(tmpDir, 'ec-raw-bad');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         const { status } = await apiGet('/api/memory/explore-cache/raw?level=invalid');
         expect(status).toBe(400);
@@ -462,7 +206,7 @@ describe('GET /api/memory/explore-cache/raw', () => {
 describe('GET /api/memory/explore-cache/raw/:filename', () => {
     it('reads a single raw Q&A entry', async () => {
         const storageDir = path.join(tmpDir, 'ec-raw-single');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
         seedExploreCacheRaw(storageDir, 'system', undefined, 1);
 
         const { body: listBody } = await apiGet('/api/memory/explore-cache/raw?level=system');
@@ -477,7 +221,7 @@ describe('GET /api/memory/explore-cache/raw/:filename', () => {
 
     it('returns 404 for non-existent file', async () => {
         const storageDir = path.join(tmpDir, 'ec-raw-404');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         const { status } = await apiGet('/api/memory/explore-cache/raw/nonexistent.json?level=system');
         expect(status).toBe(404);
@@ -487,7 +231,7 @@ describe('GET /api/memory/explore-cache/raw/:filename', () => {
 describe('GET /api/memory/explore-cache/consolidated', () => {
     it('lists consolidated index entries', async () => {
         const storageDir = path.join(tmpDir, 'ec-con-list');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
         seedExploreCacheConsolidated(storageDir, 'system', undefined);
 
         const { status, body } = await apiGet('/api/memory/explore-cache/consolidated?level=system');
@@ -500,7 +244,7 @@ describe('GET /api/memory/explore-cache/consolidated', () => {
 
     it('returns empty entries when no consolidated data', async () => {
         const storageDir = path.join(tmpDir, 'ec-con-empty');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         const { status, body } = await apiGet('/api/memory/explore-cache/consolidated?level=system');
         expect(status).toBe(200);
@@ -511,7 +255,7 @@ describe('GET /api/memory/explore-cache/consolidated', () => {
 describe('GET /api/memory/explore-cache/consolidated/:id', () => {
     it('reads a consolidated entry with answer', async () => {
         const storageDir = path.join(tmpDir, 'ec-con-id');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
         seedExploreCacheConsolidated(storageDir, 'system', undefined);
 
         const { status, body } = await apiGet('/api/memory/explore-cache/consolidated/c-1?level=system');
@@ -523,7 +267,7 @@ describe('GET /api/memory/explore-cache/consolidated/:id', () => {
 
     it('returns 404 for non-existent id', async () => {
         const storageDir = path.join(tmpDir, 'ec-con-404');
-        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        await apiPut('/api/memory/config', { storageDir });
 
         const { status } = await apiGet('/api/memory/explore-cache/consolidated/nonexistent?level=system');
         expect(status).toBe(404);

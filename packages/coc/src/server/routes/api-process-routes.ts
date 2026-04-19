@@ -26,7 +26,6 @@ import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-
 import { processMessageAttachments } from '../attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { recordUserMessage } from '../memory/conversation-recorder';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import type { ApiRouteContext } from './api-shared';
 
@@ -436,11 +435,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['content']));
             }
 
-            // Record user message to repo memory (fire-and-forget)
-            const recordWsId = (proc.metadata?.workspaceId as string) ?? '';
-            if (dataDir && recordWsId && body.content) {
-                try { recordUserMessage(dataDir, recordWsId, body.content); } catch { /* never block the response */ }
-            }
 
             // Process both new-style attachments and legacy images
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));

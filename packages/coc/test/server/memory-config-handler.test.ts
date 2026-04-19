@@ -47,42 +47,10 @@ describe('validateMemoryConfig', () => {
         expect(validateMemoryConfig({ backend: 'invalid' }).backend).toBe('file');
     });
 
-    it('validates maxEntries as positive integer', () => {
-        expect(validateMemoryConfig({ maxEntries: 500 }).maxEntries).toBe(500);
-        expect(validateMemoryConfig({ maxEntries: 0 }).maxEntries).toBe(DEFAULT_MEMORY_CONFIG.maxEntries);
-        expect(validateMemoryConfig({ maxEntries: -1 }).maxEntries).toBe(DEFAULT_MEMORY_CONFIG.maxEntries);
-        expect(validateMemoryConfig({ maxEntries: 10.7 }).maxEntries).toBe(10);
-    });
-
-    it('validates ttlDays as non-negative integer', () => {
-        expect(validateMemoryConfig({ ttlDays: 30 }).ttlDays).toBe(30);
-        expect(validateMemoryConfig({ ttlDays: 0 }).ttlDays).toBe(0);
-        expect(validateMemoryConfig({ ttlDays: -1 }).ttlDays).toBe(DEFAULT_MEMORY_CONFIG.ttlDays);
-        expect(validateMemoryConfig({ ttlDays: 3.9 }).ttlDays).toBe(3);
-    });
-
-    it('validates autoInject as boolean', () => {
-        expect(validateMemoryConfig({ autoInject: true }).autoInject).toBe(true);
-        expect(validateMemoryConfig({ autoInject: false }).autoInject).toBe(false);
-        expect(validateMemoryConfig({ autoInject: 'yes' }).autoInject).toBe(false);
-    });
-
-    it('validates recording.enabled as boolean', () => {
-        expect(validateMemoryConfig({ recording: { enabled: true } }).recording.enabled).toBe(true);
-        expect(validateMemoryConfig({ recording: { enabled: false } }).recording.enabled).toBe(false);
-    });
-
-    it('defaults recording.enabled to false', () => {
-        expect(validateMemoryConfig({}).recording.enabled).toBe(false);
-        expect(validateMemoryConfig({ recording: {} }).recording.enabled).toBe(false);
-        expect(validateMemoryConfig({ recording: null }).recording.enabled).toBe(false);
-        expect(validateMemoryConfig({ recording: 'yes' }).recording.enabled).toBe(false);
-    });
-
     it('ignores unknown fields', () => {
-        const result = validateMemoryConfig({ unknown: 'field', maxEntries: 100 });
+        const result = validateMemoryConfig({ unknown: 'field', storageDir: '/test' });
         expect((result as any).unknown).toBeUndefined();
-        expect(result.maxEntries).toBe(100);
+        expect(result.storageDir).toBe('/test');
     });
 });
 
@@ -105,34 +73,11 @@ describe('readMemoryConfig / writeMemoryConfig', () => {
             const config = {
                 storageDir: '/tmp/test-memory',
                 backend: 'sqlite' as const,
-                maxEntries: 5000,
-                ttlDays: 30,
-                autoInject: true,
-                recording: { enabled: false },
             };
             writeMemoryConfig(tmpDir, config);
             const result = readMemoryConfig(tmpDir);
             expect(result.storageDir).toBe(config.storageDir);
             expect(result.backend).toBe(config.backend);
-            expect(result.maxEntries).toBe(config.maxEntries);
-            expect(result.ttlDays).toBe(config.ttlDays);
-            expect(result.autoInject).toBe(config.autoInject);
-            expect(result.recording.enabled).toBe(false);
-        } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        }
-    });
-
-    it('round-trips recording.enabled = true', () => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-config-test-'));
-        try {
-            const config = {
-                ...DEFAULT_MEMORY_CONFIG,
-                recording: { enabled: true },
-            };
-            writeMemoryConfig(tmpDir, config);
-            const result = readMemoryConfig(tmpDir);
-            expect(result.recording.enabled).toBe(true);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
