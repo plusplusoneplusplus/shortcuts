@@ -1249,6 +1249,61 @@ describe('Per-Repo Preferences REST API', () => {
         expect(body.boundedMemory).toBeUndefined();
     });
 
+    // -- notesGit --
+
+    it('validates notesGit with enabled only', async () => {
+        await putJSON(repoUrl(repoId), { notesGit: { enabled: true } });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({ enabled: true });
+    });
+
+    it('validates notesGit with full autoCommit', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: { enabled: true, autoCommit: { enabled: true, scheduleId: 'abc' } },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({
+            enabled: true,
+            autoCommit: { enabled: true, scheduleId: 'abc' },
+        });
+    });
+
+    it('drops notesGit when enabled has wrong type', async () => {
+        await putJSON(repoUrl(repoId), { notesGit: { enabled: 'yes' } });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toBeUndefined();
+    });
+
+    it('preserves notesGit.enabled but drops invalid autoCommit', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: { enabled: true, autoCommit: { enabled: 'yes' } },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({ enabled: true });
+        expect(body.notesGit.autoCommit).toBeUndefined();
+    });
+
+    it('drops notesGit when value is null', async () => {
+        await putJSON(repoUrl(repoId), { notesGit: null });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toBeUndefined();
+    });
+
+    it('round-trips notesGit through write and read', async () => {
+        const prefs = {
+            notesGit: { enabled: true, autoCommit: { enabled: false } },
+        };
+        await putJSON(repoUrl(repoId), prefs);
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual(prefs.notesGit);
+    });
+
     // -- Isolation --
 
     it('two repos have independent preferences', async () => {

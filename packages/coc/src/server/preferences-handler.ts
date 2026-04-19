@@ -15,6 +15,7 @@ import { sendJSON, sendError } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
+import type { NotesGitConfig } from './notes-git-types';
 
 // ============================================================================
 // Types
@@ -111,6 +112,8 @@ export interface PerRepoPreferences {
         /** Max characters for MEMORY.md content. Default: 16384. */
         charLimit?: number;
     };
+    /** Notes directory git tracking settings. */
+    notesGit?: NotesGitConfig;
 }
 
 /** backward-compat alias */
@@ -321,6 +324,23 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 validated.charLimit = bm.charLimit;
             }
             result.boundedMemory = validated;
+        }
+    }
+
+    if (typeof obj.notesGit === 'object' && obj.notesGit !== null) {
+        const ng = obj.notesGit as Record<string, unknown>;
+        if (typeof ng.enabled === 'boolean') {
+            const validated: NotesGitConfig = { enabled: ng.enabled };
+            if (typeof ng.autoCommit === 'object' && ng.autoCommit !== null) {
+                const ac = ng.autoCommit as Record<string, unknown>;
+                if (typeof ac.enabled === 'boolean') {
+                    validated.autoCommit = { enabled: ac.enabled };
+                    if (typeof ac.scheduleId === 'string' && ac.scheduleId.length > 0) {
+                        validated.autoCommit.scheduleId = ac.scheduleId;
+                    }
+                }
+            }
+            result.notesGit = validated;
         }
     }
 

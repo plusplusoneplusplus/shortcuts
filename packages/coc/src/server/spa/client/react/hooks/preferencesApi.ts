@@ -1,4 +1,5 @@
 import { getApiBase } from '../utils/config';
+import type { NotesGitConfig } from '../../../../notes-git-types';
 
 /**
  * Client-side subset of PerRepoPreferences (server: preferences-handler.ts).
@@ -13,6 +14,8 @@ export interface PerRepoPrefsClient {
     enabled?: boolean;
     charLimit?: number;
   };
+  /** Notes directory git tracking settings. */
+  notesGit?: NotesGitConfig;
 }
 
 /**

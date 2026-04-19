@@ -29,6 +29,7 @@ interface PerRepoPreferences {
     lastDepth?: 'deep' | 'normal';
     lastEffort?: 'low' | 'medium' | 'high';
     lastSkills?: LastSkillsByMode;
+    notesGit?: { enabled: boolean; autoCommit?: { enabled: boolean; scheduleId?: string } };
 }
 
 const STATUS_ICON: Record<string, string> = {
