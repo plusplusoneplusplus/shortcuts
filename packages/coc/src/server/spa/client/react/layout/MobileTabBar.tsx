@@ -10,6 +10,7 @@ import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
 const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
+const CLASSIC_PINNED: RepoSubTab[] = ['activity', 'git'];
 
 export interface MobileTabBarAction {
     label: string;
@@ -48,7 +49,7 @@ export function MobileTabBar({
 
     const getBadgeCount = (key: RepoSubTab): number => {
         if (key === 'tasks') return taskCount;
-        if (key === 'chats') return activityCount;
+        if (key === 'chats' || key === 'activity') return activityCount;
         if (key === 'work-items') return workItemCount;
         if (key === 'git') return gitPendingCount;
         return 0;

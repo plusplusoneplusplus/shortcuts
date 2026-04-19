@@ -434,7 +434,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <MobileTabBar
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
-                    tabs={VISIBLE_SUB_TABS}
+                    tabs={visibleSubTabs}
+                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'git'] : undefined}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
