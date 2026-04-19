@@ -833,6 +833,148 @@ describe('ChatListPane', () => {
         });
     });
 
+    // ── Group selection ────────────────────────────────────────────────
+    describe('Group selection', () => {
+        function makeGroupedHistory() {
+            // startTime used by history-grouping for sort order (descending).
+            // Group 2 (500) → standalone (300) → Group 1 (200) in visual order.
+            return [
+                makeHistoryTask({ id: 'g1-a', displayName: 'G1 Task A', planFilePath: '/plans/plan1.md', startTime: 100 }),
+                makeHistoryTask({ id: 'g1-b', displayName: 'G1 Task B', planFilePath: '/plans/plan1.md', startTime: 200 }),
+                makeHistoryTask({ id: 'standalone', displayName: 'Standalone', startTime: 300 }),
+                makeHistoryTask({ id: 'g2-a', displayName: 'G2 Task A', planFilePath: '/plans/plan2.md', startTime: 400 }),
+                makeHistoryTask({ id: 'g2-b', displayName: 'G2 Task B', planFilePath: '/plans/plan2.md', startTime: 500 }),
+            ];
+        }
+
+        function renderGrouped(extra: Partial<any> = {}) {
+            mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true } as any;
+            return renderPane({ history: makeGroupedHistory(), ...extra });
+        }
+
+        it('plain click on group header selects all children', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[0]);
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('2 selected');
+        });
+
+        it('selected group header shows checkbox icon', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[0]);
+            expect(screen.getByTestId('group-selection-checkbox')).toBeTruthy();
+        });
+
+        it('selected group header has data-selected attribute', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[0]);
+            expect(headers[0].getAttribute('data-selected')).toBe('true');
+        });
+
+        it('selected group header has blue tint', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[0]);
+            expect(headers[0].className).toContain('bg-[#0078d4]/10');
+        });
+
+        it('chevron click toggles expand/collapse without selecting', () => {
+            renderGrouped();
+            const chevrons = screen.getAllByTestId('group-chevron');
+            fireEvent.click(chevrons[0]);
+            // Should toggle but not select
+            expect(screen.queryByTestId('selection-count-pill')).toBeNull();
+        });
+
+        it('ctrl+click on group header toggles group in selection', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            // Select first group
+            fireEvent.click(headers[0]);
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('2 selected');
+            // Ctrl+click second group to add it
+            fireEvent.click(headers[1], { ctrlKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('4 selected');
+        });
+
+        it('ctrl+click on already-selected group deselects it', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            // Select both groups
+            fireEvent.click(headers[0]);
+            fireEvent.click(headers[1], { ctrlKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('4 selected');
+            // Ctrl+click first group to deselect it
+            fireEvent.click(headers[0], { ctrlKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('2 selected');
+        });
+
+        it('shift+click from group to group selects range including standalone items between', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            // Visual order: Group2(g2-a,g2-b) → standalone → Group1(g1-a,g1-b)
+            // headers[0] = Group 2, headers[1] = Group 1
+            fireEvent.click(headers[0]);
+            fireEvent.click(headers[1], { shiftKey: true });
+            // All 5 items included (both groups + standalone in between)
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('5 selected');
+        });
+
+        it('shift+click from group header to individual item selects range', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            // Click Group 2 (headers[0]) to set anchor → selects g2-a, g2-b
+            fireEvent.click(headers[0]);
+            // Shift+click on standalone item → range from g2-a..standalone = 3
+            fireEvent.click(document.querySelector('[data-task-id="standalone"]')!, { shiftKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('3 selected');
+        });
+
+        it('shift+click from individual item to group header selects range', () => {
+            renderGrouped();
+            // Click standalone to set anchor
+            fireEvent.click(document.querySelector('[data-task-id="standalone"]')!);
+            // Shift+click on Group 1 (headers[1]) → standalone, g1-a, g1-b = 3
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[1], { shiftKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('3 selected');
+        });
+
+        it('plain click on group clears previous multi-selection', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            // Select Group 2 first
+            fireEvent.click(headers[0]);
+            // Ctrl+click standalone to add
+            fireEvent.click(document.querySelector('[data-task-id="standalone"]')!, { ctrlKey: true });
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('3 selected');
+            // Now plain click on Group 1 → replaces selection with group 1 children only
+            fireEvent.click(headers[1]);
+            expect(screen.getByTestId('selection-count-pill').textContent).toContain('2 selected');
+        });
+
+        it('right-click on group header opens context menu with bulk ids', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.contextMenu(headers[0]);
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+            expect(screen.getByText(/tasks selected/)).toBeTruthy();
+        });
+
+        it('Escape clears group selection', () => {
+            renderGrouped();
+            const headers = screen.getAllByTestId('history-group-header');
+            fireEvent.click(headers[0]);
+            expect(screen.getByTestId('selection-count-pill')).toBeTruthy();
+            // Simulate Escape via searchVisible toggle to rebind handler
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByTestId('selection-count-pill')).toBeNull();
+        });
+    });
+
     // ── Search ─────────────────────────────────────────────────────────
     describe('Search', () => {
         it('Ctrl+F opens search bar', () => {

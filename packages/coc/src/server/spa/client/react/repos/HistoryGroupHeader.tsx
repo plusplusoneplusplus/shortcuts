@@ -12,7 +12,9 @@ import type { HistoryGroup } from './history-grouping';
 interface HistoryGroupHeaderProps {
     group: HistoryGroup;
     isExpanded: boolean;
+    isSelected?: boolean;
     onToggle: () => void;
+    onClick?: (e: React.MouseEvent) => void;
     onContextMenu: (e: React.MouseEvent) => void;
     isDense: boolean;
 }
@@ -31,7 +33,7 @@ const BADGE_BG: Record<string, string> = {
     cancelled: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
 };
 
-export function HistoryGroupHeader({ group, isExpanded, onToggle, onContextMenu, isDense }: HistoryGroupHeaderProps) {
+export function HistoryGroupHeader({ group, isExpanded, isSelected, onToggle, onClick, onContextMenu, isDense }: HistoryGroupHeaderProps) {
     const chevron = isExpanded ? '▾' : '▸';
     const timestamp = group.latestTimestamp
         ? formatRelativeTime(new Date(group.latestTimestamp).toISOString())
@@ -50,19 +52,32 @@ export function HistoryGroupHeader({ group, isExpanded, onToggle, onContextMenu,
         <div
             className={cn(
                 "rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] border-l-[3px] cursor-pointer",
-                "bg-[#f5f5f5] dark:bg-[#2a2a2a] hover:bg-[#eaeaea] dark:hover:bg-[#333] transition-colors",
+                isSelected
+                    ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
+                    : "bg-[#f5f5f5] dark:bg-[#2a2a2a] hover:bg-[#eaeaea] dark:hover:bg-[#333]",
+                "transition-colors",
                 isDense ? "px-2 py-1.5" : "px-2.5 py-2",
                 ACCENT_COLOR[group.aggregateStatus] ?? ACCENT_COLOR.completed,
             )}
-            onClick={onToggle}
+            onClick={onClick ?? onToggle}
             onContextMenu={onContextMenu}
             data-testid="history-group-header"
             data-plan-file={group.planFilePath}
+            data-selected={isSelected || undefined}
         >
             <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                 <span className="flex items-center gap-1.5 min-w-0 truncate">
-                    {/* Leading chevron — makes it obvious this is expandable */}
-                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] w-3 text-center">{chevron}</span>
+                    {/* Chevron — dedicated collapse/expand target */}
+                    <button
+                        type="button"
+                        className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] w-4 h-4 flex items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10"
+                        onClick={e => { e.stopPropagation(); onToggle(); }}
+                        data-testid="group-chevron"
+                        aria-label={isExpanded ? 'Collapse group' : 'Expand group'}
+                    >
+                        {chevron}
+                    </button>
+                    {isSelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="group-selection-checkbox">☑</span>}
                     {group.hasUnseen && (
                         <span
                             className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]"

@@ -321,6 +321,21 @@ export function ActivityListPane({
         [filteredUnpinned, unseenProcessIds, historyGrouping],
     );
 
+    // Flat visible order of tasks matching the grouped display order.
+    // Used for range-selection (shift+click) across groups and standalone items.
+    const unpinnedVisibleList = useMemo(() => {
+        if (!groupedUnpinned) return filteredUnpinned;
+        const tasks: any[] = [];
+        for (const entry of groupedUnpinned) {
+            if (entry.kind === 'group') {
+                tasks.push(...entry.children);
+            } else {
+                tasks.push(entry);
+            }
+        }
+        return tasks;
+    }, [groupedUnpinned, filteredUnpinned]);
+
     // Expand/collapse state for plan-file groups
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const toggleGroup = useCallback((planFilePath: string) => {
@@ -489,10 +504,30 @@ export function ActivityListPane({
 
             if (e.shiftKey && anchorHistoryId) {
                 const ids = taskList.map((t: any) => t.id as string);
-                const aIdx = ids.indexOf(anchorHistoryId);
+
+                // Resolve anchor position — may span multiple IDs if anchor is a group header
+                let anchorStart: number;
+                let anchorEnd: number;
+                if (anchorHistoryId.startsWith('group:') && groupedUnpinned) {
+                    const planFile = anchorHistoryId.slice(6);
+                    const group = groupedUnpinned.find(
+                        (g): g is HistoryGroup => g.kind === 'group' && g.planFilePath === planFile,
+                    );
+                    if (group) {
+                        const childIds = group.children.map(c => c.id);
+                        anchorStart = ids.indexOf(childIds[0]);
+                        anchorEnd = ids.indexOf(childIds[childIds.length - 1]);
+                    } else {
+                        anchorStart = anchorEnd = -1;
+                    }
+                } else {
+                    anchorStart = anchorEnd = ids.indexOf(anchorHistoryId);
+                }
+
                 const bIdx = ids.indexOf(id);
-                if (aIdx !== -1 && bIdx !== -1) {
-                    const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+                if (anchorStart !== -1 && bIdx !== -1) {
+                    const lo = Math.min(anchorStart, bIdx);
+                    const hi = Math.max(anchorEnd, bIdx);
                     setSelectedHistoryIds(new Set(ids.slice(lo, hi + 1)));
                     return;
                 }
@@ -513,7 +548,7 @@ export function ActivityListPane({
             setAnchorHistoryId(id);
             onSelectTask(id, task);
         },
-        [anchorHistoryId, onSelectTask],
+        [anchorHistoryId, onSelectTask, groupedUnpinned],
     );
 
     const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed') => {
@@ -532,6 +567,68 @@ export function ActivityListPane({
 
         setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus, bulkIds });
     }, [selectedHistoryIds]);
+
+    /** Handle clicks on a group header for selection (plain / Ctrl / Shift). */
+    const handleGroupHeaderClick = useCallback(
+        (e: React.MouseEvent, group: HistoryGroup) => {
+            const childIds = group.children.map(c => c.id);
+            const groupAnchor = `group:${group.planFilePath}`;
+
+            if (e.shiftKey && anchorHistoryId) {
+                const ids = unpinnedVisibleList.map((t: any) => t.id as string);
+
+                // Resolve anchor span
+                let anchorStart: number;
+                let anchorEnd: number;
+                if (anchorHistoryId.startsWith('group:') && groupedUnpinned) {
+                    const planFile = anchorHistoryId.slice(6);
+                    const aGroup = groupedUnpinned.find(
+                        (g): g is HistoryGroup => g.kind === 'group' && g.planFilePath === planFile,
+                    );
+                    if (aGroup) {
+                        const aChildIds = aGroup.children.map(c => c.id);
+                        anchorStart = ids.indexOf(aChildIds[0]);
+                        anchorEnd = ids.indexOf(aChildIds[aChildIds.length - 1]);
+                    } else {
+                        anchorStart = anchorEnd = -1;
+                    }
+                } else {
+                    anchorStart = anchorEnd = ids.indexOf(anchorHistoryId);
+                }
+
+                // Resolve target group span
+                const targetStart = ids.indexOf(childIds[0]);
+                const targetEnd = ids.indexOf(childIds[childIds.length - 1]);
+
+                if (anchorStart !== -1 && targetStart !== -1) {
+                    const lo = Math.min(anchorStart, targetStart);
+                    const hi = Math.max(anchorEnd, targetEnd);
+                    setSelectedHistoryIds(new Set(ids.slice(lo, hi + 1)));
+                }
+                return;
+            }
+
+            if (e.ctrlKey || e.metaKey) {
+                setSelectedHistoryIds(prev => {
+                    const next = new Set(prev);
+                    const allSelected = childIds.every(id => next.has(id));
+                    if (allSelected) {
+                        childIds.forEach(id => next.delete(id));
+                    } else {
+                        childIds.forEach(id => next.add(id));
+                    }
+                    return next;
+                });
+                setAnchorHistoryId(groupAnchor);
+                return;
+            }
+
+            // Plain click: select all children in the group
+            setSelectedHistoryIds(new Set(childIds));
+            setAnchorHistoryId(groupAnchor);
+        },
+        [anchorHistoryId, unpinnedVisibleList, groupedUnpinned],
+    );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -685,7 +782,7 @@ export function ActivityListPane({
                 )}
                 onClick={e => {
                     if (historyLongPress.didLongPress()) return;
-                    handleHistoryItemClick(e, task, filteredUnpinned);
+                    handleHistoryItemClick(e, task, unpinnedVisibleList);
                 }}
                 onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
                 onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
@@ -720,7 +817,7 @@ export function ActivityListPane({
             </Card>
             </SwipeableHistoryItem>
         );
-    }, [unseenProcessIds, selectedHistoryIds, isDense, isMobile, isSelected, handleHistoryItemClick, handleTaskContextMenu, filteredUnpinned, onArchiveChat, onUnarchiveChat]);
+    }, [unseenProcessIds, selectedHistoryIds, isDense, isMobile, isSelected, handleHistoryItemClick, handleTaskContextMenu, unpinnedVisibleList, onArchiveChat, onUnarchiveChat]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -1199,12 +1296,15 @@ export function ActivityListPane({
                                     if (entry.kind === 'group') {
                                         // Expanded by default if group has unseen items; user toggle overrides
                                         const expanded = !collapsedGroups.has(entry.planFilePath);
+                                        const isGroupSelected = entry.children.every(c => selectedHistoryIds.has(c.id));
                                         return (
                                             <div key={entry.planFilePath} data-testid="history-group">
                                                 <HistoryGroupHeader
                                                     group={entry}
                                                     isExpanded={expanded}
+                                                    isSelected={isGroupSelected}
                                                     onToggle={() => toggleGroup(entry.planFilePath)}
+                                                    onClick={e => handleGroupHeaderClick(e, entry)}
                                                     onContextMenu={e => {
                                                         e.preventDefault();
                                                         e.stopPropagation();
