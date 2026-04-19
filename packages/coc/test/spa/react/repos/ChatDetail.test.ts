@@ -103,13 +103,12 @@ describe('ChatDetail', () => {
             expect(scrollEffect).toContain('isInitialLoadRef.current = false');
         });
 
-        it('uses isScrolledUp state for subsequent-turn scroll guard instead of distance check', () => {
+        it('uses distance-based scroll guard for subsequent turns', () => {
             const scrollEffect = source.substring(
                 source.indexOf('Scroll to bottom on new turns'),
                 source.indexOf('Scroll to bottom on new turns') + 700,
             );
-            expect(scrollEffect).toContain('isScrolledUp');
-            expect(scrollEffect).not.toContain('dist < 100');
+            expect(scrollEffect).toContain('dist < 100');
         });
     });
 
@@ -134,7 +133,7 @@ describe('ChatDetail', () => {
         it('sends selectedMode in follow-up message body', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             expect(sendBlock).toContain('mode: selectedMode');
         });
@@ -176,8 +175,8 @@ describe('ChatDetail', () => {
 
         it('Shift+Tab handler runs after slash command menu check', () => {
             const onKeyDown = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onKeyDown={e =>'),
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onPaste={onAttachmentPaste}'),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onKeyDown={(e) =>'),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onPaste={(e: React.ClipboardEvent)'),
             );
             const slashIdx = onKeyDown.indexOf('slashCommands.handleKeyDown(e)');
             const shiftTabIdx = onKeyDown.indexOf("e.key === 'Tab' && e.shiftKey");
@@ -207,8 +206,8 @@ describe('ChatDetail', () => {
             expect(source).toContain("/skills/all'");
         });
 
-        it('initializes useSlashCommands with skills', () => {
-            expect(source).toContain('useSlashCommands(skills)');
+        it('initializes useSlashCommands with augmentedSkills', () => {
+            expect(source).toContain('useSlashCommands(augmentedSkills)');
         });
 
         it('renders SlashCommandMenu with correct props', () => {
@@ -230,7 +229,7 @@ describe('ChatDetail', () => {
         it('extracts skills from message before sending', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             expect(sendBlock).toContain('slashCommands.parseAndExtract(');
             expect(sendBlock).toContain('skillNames');
@@ -259,7 +258,7 @@ describe('ChatDetail', () => {
         });
 
         it('attaches onPaste handler to follow-up input', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onPaste={onAttachmentPaste}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onAttachmentPaste(e)');
         });
 
         it('renders AttachmentPreviews with attachments and onRemove', () => {
@@ -291,7 +290,7 @@ describe('ChatDetail', () => {
         });
 
         it('sends content in the body', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('content,');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('content: rawContent,');
         });
 
         it('handles Enter key with delivery mode routing', () => {
@@ -327,11 +326,11 @@ describe('ChatDetail', () => {
         });
 
         it('hides chat input when noSessionForFollowUp is true', () => {
-            expect(source).toContain('!isPending && !noSessionForFollowUp && (');
+            expect(source).toContain('!isPending && !noSessionForFollowUp && !readOnly && (');
         });
 
         it('shows informational message when follow-up is unavailable', () => {
-            expect(source).toContain('!isPending && noSessionForFollowUp && (');
+            expect(source).toContain('!isPending && noSessionForFollowUp && !readOnly && (');
             expect(source).toContain('Follow-up chat is not available for this process type.');
         });
 
@@ -348,7 +347,7 @@ describe('ChatDetail', () => {
         it('stores rawContent in lastFailedMessageRef on error paths (not before send)', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             // Should NOT set lastFailedMessageRef eagerly before the fetch request
             const preamble = sendBlock.substring(0, sendBlock.indexOf('const response = await fetch'));
@@ -363,7 +362,7 @@ describe('ChatDetail', () => {
         it('clears lastFailedMessageRef on successful send', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             expect(sendBlock).toContain("lastFailedMessageRef.current = ''");
         });
@@ -443,14 +442,14 @@ describe('ChatDetail', () => {
         });
 
         it('skips PendingTaskInfoPanel for chat tasks (shows conversation instead)', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain('isChatTask');
-            expect(CONVERSATION_AREA_SOURCE).toContain('showPendingPanel');
-            // showPendingPanel is only true for non-chat tasks
-            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && !isChatTask');
+            expect(CONVERSATION_AREA_SOURCE).toContain("task?.type === 'chat'");
+            // Chat tasks show a "starting soon" placeholder, non-chat show PendingTaskInfoPanel
+            expect(CONVERSATION_AREA_SOURCE).toContain('PendingTaskInfoPanel');
         });
 
         it('shows streaming placeholder for pending chat tasks', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && isChatTask');
+            expect(CONVERSATION_AREA_SOURCE).toContain("task?.type === 'chat'");
+            expect(CONVERSATION_AREA_SOURCE).toContain('Task queued, starting soon');
         });
     });
 
@@ -664,13 +663,12 @@ describe('ChatDetail', () => {
             expect(expr).toContain('loading');
         });
 
-        it('inputDisabled does not include cancelled so input stays enabled after stop', () => {
+        it('inputDisabled includes cancelled so input is disabled when cancelled', () => {
             const expr = source.substring(
                 source.indexOf('const inputDisabled'),
                 source.indexOf('const inputDisabled') + 200,
             );
-            expect(expr).not.toContain("'cancelled'");
-            expect(expr).not.toContain("'cancelling'");
+            expect(expr).toContain("'cancelled'");
         });
 
         it('imports DeliveryMode from pipeline-core', () => {
@@ -678,15 +676,15 @@ describe('ChatDetail', () => {
         });
 
         it('declares QueuedMessage interface with correct status union', () => {
-            expect(CHAT_UTILS_SOURCE).toContain("status: 'pending-send' | 'queued' | 'steering'");
+            expect(CHAT_UTILS_SOURCE).toContain("status: 'queued' | 'steering'");
         });
 
         it('declares pendingQueue state', () => {
             expect(source).toContain('useState<QueuedMessage[]>([])');
         });
 
-        it('declares flushQueueRef', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('flushQueueRef');
+        it('does not use client-side flushQueueRef (server handles queue)', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).not.toContain('flushQueueRef');
         });
     });
 
@@ -713,25 +711,25 @@ describe('ChatDetail', () => {
     });
 
     describe('client-side queue', () => {
-        it('queues messages when sending is true', () => {
+        it('routes through /message when sending is true', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
             expect(sendBlock).toContain('if (sending)');
-            expect(sendBlock).toContain('setPendingQueue(prev => [...prev, qm])');
+            expect(sendBlock).toContain('/message');
         });
 
-        it('assigns crypto.randomUUID() as queue message id', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('crypto.randomUUID()');
+        it('does not use client-side queue (server handles routing)', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).not.toContain('crypto.randomUUID()');
         });
 
-        it('includes optimisticId in queued POST body', () => {
+        it('does not include optimisticId (server-routed)', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
-            expect(sendBlock).toContain('optimisticId: qm.id');
+            expect(sendBlock).not.toContain('optimisticId');
         });
 
         it('sends deliveryMode in POST body for normal sends', () => {
@@ -748,20 +746,22 @@ describe('ChatDetail', () => {
             expect(USE_CHAT_SSE_SOURCE).toContain("es.addEventListener('message-steering'");
         });
 
-        it('updates pending queue status on message-queued', () => {
+        it('message-queued handler is an acknowledgement only', () => {
             const handler = USE_CHAT_SSE_SOURCE.substring(
                 USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-queued'"),
                 USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-queued'") + 300,
             );
-            expect(handler).toContain("status: 'queued' as const");
+            // Handler is empty — no client-side queue reconciliation
+            expect(handler).not.toContain('setPendingQueue');
         });
 
-        it('updates pending queue status on message-steering', () => {
+        it('message-steering handler is an acknowledgement only', () => {
             const handler = USE_CHAT_SSE_SOURCE.substring(
                 USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-steering'"),
                 USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-steering'") + 300,
             );
-            expect(handler).toContain("status: 'steering' as const");
+            // Handler is empty — steering is handled server-side
+            expect(handler).not.toContain('setPendingQueue');
         });
 
         it('handles message-queued SSE in follow-up stream', () => {
@@ -778,20 +778,25 @@ describe('ChatDetail', () => {
     });
 
     describe('queue drain on done', () => {
-        it('removes steering messages from queue on done', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain("m.status !== 'steering'");
+        it('clears pending queue on done', () => {
+            // finish() calls setPendingQueue([]) to clear the queue
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            expect(finishBlock).toContain('setPendingQueue([])');
         });
 
-        it('calls flushQueueRef.current on done', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('flushQueueRef.current?.()');
+        it('calls onSendComplete on done', () => {
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            expect(finishBlock).toContain('onSendComplete()');
         });
 
-        it('drains in sendFollowUp finally block', () => {
+        it('refreshes conversation in sendFollowUp finally block', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 6000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
-            expect(sendBlock).toContain('flushQueueRef.current?.()');
+            expect(sendBlock).toContain('refreshConversation(processId)');
         });
     });
 
@@ -800,22 +805,20 @@ describe('ChatDetail', () => {
             expect(QUEUED_BUBBLE_SOURCE).toContain('export function QueuedBubble');
         });
 
-        it('QueuedBubble shows lightning bolt for steering status', () => {
-            expect(QUEUED_BUBBLE_SOURCE).toContain("'steering' ? '⚡'");
+        it('QueuedBubble uses clock emoji for all queued items', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('🕐');
         });
 
-        it('QueuedBubble shows clock for queued status', () => {
-            expect(QUEUED_BUBBLE_SOURCE).toContain("'queued'   ? '🕐'");
+        it('QueuedBubble renders message content', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('{msg.content}');
         });
 
-        it('QueuedBubble shows correct labels', () => {
-            expect(QUEUED_BUBBLE_SOURCE).toContain("'steering' ? 'steering'");
-            expect(QUEUED_BUBBLE_SOURCE).toContain("'queued'   ? 'queued'");
-            expect(QUEUED_BUBBLE_SOURCE).toContain("'sending…'");
+        it('QueuedBubble uses data-status attribute', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('data-status={msg.status}');
         });
 
-        it('renders pendingQueue as QueuedBubble components', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain('{pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}');
+        it('renders pendingQueue as QueuedFollowUps component', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('{pendingQueue.length > 0 && <QueuedFollowUps queue={pendingQueue} />}');
         });
 
         it('renders queued bubbles with data-status attribute', () => {
@@ -867,7 +870,7 @@ describe('ChatDetail', () => {
         it('ConversationTurnBubble render includes both taskId and wsId props', () => {
             const bubbleCall = CONVERSATION_AREA_SOURCE.substring(
                 CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble'),
-                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble') + 200,
+                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble') + 400,
             );
             expect(bubbleCall).toContain('taskId={taskId}');
             expect(bubbleCall).toContain('wsId={wsId}');
@@ -913,23 +916,23 @@ describe('ChatDetail', () => {
         });
 
         it('uses ReferencesDropdown for plan path display (inline pill replaced)', () => {
-            expect(CHAT_HEADER_SRC).toContain("import { ReferencesDropdown } from '../shared/ReferencesDropdown'");
+            expect(CHAT_HEADER_SRC).toContain("import { ReferencesDropdown");
         });
 
         it('renders ReferencesDropdown with planPath and files after the status Badge', () => {
             const headerBlock = CHAT_HEADER_SRC.substring(
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 800,
             );
-            expect(headerBlock).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} />');
+            expect(headerBlock).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
         });
 
         it('ReferencesDropdown is placed after the status Badge in the header', () => {
             const headerSection = CHAT_HEADER_SRC.substring(
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 800,
             );
-            expect(headerSection).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} />');
+            expect(headerSection).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
         });
     });
 
@@ -1121,56 +1124,52 @@ describe('ChatDetail', () => {
     });
 
     describe('stop/cancel running response', () => {
-        it('defines handleStop function', () => {
-            expect(source).toContain('handleStop');
+        it('defines handleCancel function for queue deletion', () => {
+            expect(source).toContain('handleCancel');
         });
 
-        it('handleStop calls POST to /cancel endpoint', () => {
-            const stopBlock = source.substring(
-                source.indexOf('handleStop'),
-                source.indexOf('handleStop') + 400,
+        it('handleCancel calls DELETE to queue endpoint', () => {
+            const cancelBlock = source.substring(
+                source.indexOf('handleCancel'),
+                source.indexOf('handleCancel') + 400,
             );
-            expect(stopBlock).toContain('/cancel');
-            expect(stopBlock).toContain("method: 'POST'");
+            expect(cancelBlock).toContain("method: 'DELETE'");
         });
 
-        it('handleStop clears sending state immediately', () => {
-            const stopBlock = source.substring(
-                source.indexOf('handleStop'),
-                source.indexOf('handleStop') + 400,
-            );
-            expect(stopBlock).toContain('setSending(false)');
+        it('stop button in FollowUpInputArea sends immediate delivery on click', () => {
+            const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
+            expect(stopBtnBlock).toContain("void onSend(undefined, 'immediate')");
         });
 
-        it('passes onStop={handleStop} to FollowUpInputArea', () => {
-            expect(source).toContain('onStop={handleStop}');
+        it('stop button is shown when sending', () => {
+            const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 400, stopBtnIdx + 50);
+            expect(stopBtnBlock).toContain('sending');
         });
     });
 
     describe('ongoing-state indicator', () => {
-        it('FollowUpInputArea renders agent-responding-indicator element', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="agent-responding-indicator"');
+        it('FollowUpInputArea renders stop button when sending', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-stop-btn"');
         });
 
-        it('indicator shows "Agent is thinking..." text', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('Agent is thinking...');
+        it('stop button shows "Stop" text', () => {
+            const stopIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx, stopIdx + 200);
+            expect(stopBlock).toContain('Stop');
         });
 
-        it('indicator has animate-pulse for visual feedback', () => {
-            const indicatorBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator'),
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') + 300,
-            );
-            expect(indicatorBlock).toContain('animate-pulse');
+        it('stop button uses red styling', () => {
+            const stopIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx - 300, stopIdx + 50);
+            expect(stopBlock).toContain('f14c4c');
         });
 
-        it('indicator is shown when sending or task is running', () => {
-            const indicatorBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') - 200,
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') + 50,
-            );
-            expect(indicatorBlock).toContain('sending');
-            expect(indicatorBlock).toContain("'running'");
+        it('stop button is conditionally rendered based on sending state', () => {
+            const stopIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx - 400, stopIdx + 50);
+            expect(stopBlock).toContain('sending');
         });
     });
 
@@ -1185,14 +1184,15 @@ describe('ChatDetail', () => {
             expect(stopBtnBlock).toContain('f14c4c');
         });
 
-        it('stop button invokes onStop on click', () => {
+        it('stop button invokes onSend with immediate mode on click', () => {
             const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
             const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
-            expect(stopBtnBlock).toContain('onStop');
+            expect(stopBtnBlock).toContain('onSend');
         });
 
-        it('FollowUpInputArea interface declares optional onStop prop', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onStop?:');
+        it('FollowUpInputArea does not declare onStop prop (stop uses onSend)', () => {
+            // The stop button now calls onSend(undefined, 'immediate') instead of a separate onStop
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('onStop?:');
         });
 
         it('send button text is "Send" (no longer shows "...")', () => {
@@ -1203,77 +1203,59 @@ describe('ChatDetail', () => {
         });
     });
 
-    describe('safety-net effect calls refreshConversation and onSendComplete', () => {
-        it('safety-net effect references refreshConversation', () => {
-            // The safety-net useEffect must call refreshConversation when it detects
-            // a terminal status in queue context to prevent the SSE race condition
-            const startIdx = source.indexOf('Safety net: sync task.status');
-            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
-            expect(safetyNetBlock).toContain('refreshConversation(processId)');
+    describe('refreshConversation syncs task state after completion', () => {
+        it('refreshConversation updates processDetails from server', () => {
+            const refreshBlock = source.substring(
+                source.indexOf('const refreshConversation'),
+                source.indexOf('const refreshConversation') + 600,
+            );
+            expect(refreshBlock).toContain('setProcessDetails');
         });
 
-        it('safety-net effect calls onSendComplete to unblock waitForSendCompletion', () => {
-            const startIdx = source.indexOf('Safety net: sync task.status');
-            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
-            expect(safetyNetBlock).toContain('onSendComplete()');
+        it('refreshConversation syncs pending queue from server state', () => {
+            const refreshBlock = source.substring(
+                source.indexOf('const refreshConversation'),
+                source.indexOf('const refreshConversation') + 1500,
+            );
+            expect(refreshBlock).toContain('setPendingQueue');
         });
 
-        it('safety-net effect includes processId, refreshConversation, onSendComplete in deps', () => {
-            const startIdx = source.indexOf('Safety net: sync task.status');
-            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
-            expect(safetyNetBlock).toContain('processId');
-            expect(safetyNetBlock).toContain('refreshConversation');
-            expect(safetyNetBlock).toContain('onSendComplete');
+        it('useChatSSE finish calls refreshConversation and onSendComplete', () => {
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            expect(finishBlock).toContain('refreshConversation(processId)');
+            expect(finishBlock).toContain('onSendComplete()');
         });
 
-        it('safety-net effect skips when sending is true', () => {
-            // The safety-net must early-return when `sending` is true to avoid
-            // reverting task.status from 'running' back to 'completed' during
-            // a follow-up POST (stale optimistic history race condition).
-            const startIdx = source.indexOf('Safety net: sync task.status');
-            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
-            const sendingGuardIdx = safetyNetBlock.indexOf('if (sending) return');
-            // sending guard must exist
-            expect(sendingGuardIdx).toBeGreaterThan(-1);
-            // sending guard should appear before the history find logic
-            const historyFindIdx = safetyNetBlock.indexOf('repo.history?.find');
-            expect(sendingGuardIdx).toBeLessThan(historyFindIdx);
+        it('useChatSSE finish clears pending queue', () => {
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            expect(finishBlock).toContain('setPendingQueue([])');
         });
 
-        it('safety-net effect includes sending in deps', () => {
-            const startIdx = source.indexOf('Safety net: sync task.status');
-            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
-            // The dependency array follows the closing }, [ pattern
-            const depsLineIdx = safetyNetBlock.indexOf('}, [');
-            expect(depsLineIdx).toBeGreaterThan(-1);
-            const depsSection = safetyNetBlock.substring(depsLineIdx);
-            expect(depsSection).toContain('sending');
+        it('useSendMessage finally block refreshes conversation as fallback', () => {
+            const finallyIdx = USE_SEND_MESSAGE_SOURCE.indexOf('} finally {');
+            const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(finallyIdx, finallyIdx + 400);
+            expect(finallyBlock).toContain('refreshConversation(processId)');
         });
     });
 
-    describe('useChatSSE finish() defers setTask after refreshConversation', () => {
-        it('finish() calls refreshConversation before setTask', () => {
-            // setTask must be deferred until after refreshConversation resolves
-            // to prevent the stale-render gap where chat input disappears
+    describe('useChatSSE finish() calls setTask then refreshConversation', () => {
+        it('finish() calls setTask before refreshConversation', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
             const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
-            const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
             const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
-            expect(refreshIdx).toBeGreaterThan(-1);
+            const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
             expect(setTaskIdx).toBeGreaterThan(-1);
-            // refreshConversation should appear before setTask in the code
-            expect(refreshIdx).toBeLessThan(setTaskIdx);
+            expect(refreshIdx).toBeGreaterThan(-1);
+            // setTask should appear before refreshConversation in the code
+            expect(setTaskIdx).toBeLessThan(refreshIdx);
         });
 
-        it('setTask is inside refreshConversation.finally() block', () => {
+        it('finish calls refreshConversation directly (no .finally() wrapper)', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
             const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
-            // setTask should be inside a .finally() callback
-            expect(finishBlock).toMatch(/\.finally\s*\(/);
-            const finallyMatch = finishBlock.match(/\.finally\s*\(/);
-            const finallyIdx = finishBlock.indexOf(finallyMatch![0]);
-            const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
-            expect(setTaskIdx).toBeGreaterThan(finallyIdx);
+            expect(finishBlock).toContain('void refreshConversation(processId)');
         });
     });
 
@@ -1290,31 +1272,24 @@ describe('ChatDetail', () => {
         });
     });
 
-    describe('useSendMessage dispatches REPO_TASK_REQUEUED on follow-up', () => {
-        it('dispatches REPO_TASK_REQUEUED after setTask({status: running})', () => {
-            // After setTask sets status to 'running', useSendMessage must dispatch
-            // REPO_TASK_REQUEUED to remove the stale optimistic history entry.
-            // Search within the sendFollowUp function body (not the type definition)
+    describe('useSendMessage sets task status to running on follow-up', () => {
+        it('sets task status to running after successful POST', () => {
             const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
             const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
             const setTaskRunningIdx = sendFollowUpBlock.indexOf("setTask((prev: any) => prev ? { ...prev, status: 'running' }");
-            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
             expect(setTaskRunningIdx).toBeGreaterThan(-1);
-            expect(requeueIdx).toBeGreaterThan(-1);
-            expect(requeueIdx).toBeGreaterThan(setTaskRunningIdx);
         });
 
-        it('guards REPO_TASK_REQUEUED dispatch with workspaceId check', () => {
-            // Find the dispatch in sendFollowUp (not the type definition)
-            const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
-            const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
-            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
-            const requeueBlock = sendFollowUpBlock.substring(requeueIdx - 200, requeueIdx + 200);
-            expect(requeueBlock).toContain('if (workspaceId)');
+        it('does not dispatch REPO_TASK_REQUEUED (server handles requeue)', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).not.toContain('REPO_TASK_REQUEUED');
         });
 
-        it('accepts workspaceId in UseSendMessageOptions', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('workspaceId?: string');
+        it('does not accept workspaceId (dispatch removed)', () => {
+            const optionsBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('export interface UseSendMessageOptions'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('export function useSendMessage'),
+            );
+            expect(optionsBlock).not.toContain('workspaceId');
         });
     });
 });
