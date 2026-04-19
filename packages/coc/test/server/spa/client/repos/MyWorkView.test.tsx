@@ -47,6 +47,23 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
     ),
 }));
 
+// Stub RepoGitTab — just render a marker div
+vi.mock('../../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
+    RepoGitTab: (props: any) => (
+        <div data-testid="repo-git-tab" data-workspace-id={props.workspaceId} />
+    ),
+}));
+
+// Stub RepoSettingsTab — just render a marker div
+vi.mock('../../../../../src/server/spa/client/react/repos/RepoSettingsTab', () => ({
+    RepoSettingsTab: (props: any) => (
+        <div data-testid="repo-settings-tab" data-workspace-id={props.workspaceId} data-repo-id={props.repo?.workspace?.id} />
+    ),
+}));
+
+// Stub repoGrouping — provide the RepoData type import
+vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
+
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from '../../../../../src/server/spa/client/react/repos/MyWorkView';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -72,6 +89,8 @@ describe('MyWorkView', () => {
         expect(screen.getByTestId('my-work-generate-btn')).toBeTruthy();
         expect(screen.getByTestId('my-work-tab-activity')).toBeTruthy();
         expect(screen.getByTestId('my-work-tab-notes')).toBeTruthy();
+        expect(screen.getByTestId('my-work-tab-git')).toBeTruthy();
+        expect(screen.getByTestId('my-work-tab-settings')).toBeTruthy();
     });
 
     it('renders a vertical splitter between tabs and action buttons', () => {
@@ -79,8 +98,8 @@ describe('MyWorkView', () => {
         expect(screen.getByTestId('my-work-header-splitter')).toBeTruthy();
     });
 
-    it('defaults to Notes tab when activeRepoSubTab is not activity/notes', () => {
-        mockActiveRepoSubTab = 'settings';
+    it('defaults to Notes tab when activeRepoSubTab is not in tabs list', () => {
+        mockActiveRepoSubTab = 'templates';
         renderView();
 
         // Notes view should be visible (not display:none)
@@ -206,6 +225,77 @@ describe('MyWorkView', () => {
             renderView();
             const notesView = screen.getByTestId('notes-view');
             expect(notesView.getAttribute('data-has-toggle')).toBe('true');
+        });
+    });
+
+    describe('git tab', () => {
+        it('shows RepoGitTab when git tab is active', () => {
+            mockActiveRepoSubTab = 'git';
+            renderView();
+
+            const gitContainer = screen.getByTestId('repo-git-tab').parentElement!;
+            expect(gitContainer.style.display).not.toBe('none');
+        });
+
+        it('hides RepoGitTab when another tab is active', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            const gitContainer = screen.getByTestId('repo-git-tab').parentElement!;
+            expect(gitContainer.style.display).toBe('none');
+        });
+
+        it('passes my_work workspace ID to RepoGitTab', () => {
+            mockActiveRepoSubTab = 'git';
+            renderView();
+
+            const gitTab = screen.getByTestId('repo-git-tab');
+            expect(gitTab.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
+        });
+
+        it('clicking Git tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-work-tab-git'));
+
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            expect(location.hash).toBe('#repos/my_work/git');
+        });
+    });
+
+    describe('settings tab', () => {
+        it('renders RepoSettingsTab when settings tab is active', () => {
+            mockActiveRepoSubTab = 'settings';
+            renderView();
+
+            expect(screen.getByTestId('repo-settings-tab')).toBeTruthy();
+        });
+
+        it('does not render RepoSettingsTab when another tab is active', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            expect(screen.queryByTestId('repo-settings-tab')).toBeNull();
+        });
+
+        it('passes my_work workspace ID and virtual repo to RepoSettingsTab', () => {
+            mockActiveRepoSubTab = 'settings';
+            renderView();
+
+            const settingsTab = screen.getByTestId('repo-settings-tab');
+            expect(settingsTab.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
+            expect(settingsTab.getAttribute('data-repo-id')).toBe(MY_WORK_WORKSPACE_ID);
+        });
+
+        it('clicking Settings tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-work-tab-settings'));
+
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+            expect(location.hash).toBe('#repos/my_work/settings');
         });
     });
 });

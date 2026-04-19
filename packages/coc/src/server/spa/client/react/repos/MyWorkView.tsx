@@ -9,17 +9,26 @@
 import { useState, useCallback, useEffect } from 'react';
 import { NotesView } from './NotesView';
 import { RepoChatTab } from './RepoChatTab';
+import { RepoGitTab } from './RepoGitTab';
+import { RepoSettingsTab } from './RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
 import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
+import type { RepoData } from './repoGrouping';
 
 export const MY_WORK_WORKSPACE_ID = 'my_work';
 
 const MY_WORK_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
+    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
+    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
 ];
+
+const VIRTUAL_REPO: RepoData = {
+    workspace: { id: MY_WORK_WORKSPACE_ID, rootPath: '', color: undefined, description: undefined, remoteUrl: undefined },
+};
 
 export function MyWorkView() {
     const { state, dispatch } = useApp();
@@ -171,6 +180,10 @@ export function MyWorkView() {
                         onToggleChatPanel={() => setChatPanelOpen((v) => !v)}
                     />
                 </div>
+                <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    <RepoGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                </div>
+                {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
             </div>
         </div>
     );
