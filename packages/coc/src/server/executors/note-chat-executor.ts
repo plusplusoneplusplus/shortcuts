@@ -68,7 +68,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         );
 
         // Inject note content into the system message
-        const noteContent = await this.readNoteContent(wsId, notePath);
+        const noteContent = await this.readNoteContentForWs(wsId, notePath);
         if (noteContent !== undefined && systemMessage) {
             systemMessage = {
                 ...systemMessage,
@@ -95,30 +95,18 @@ export class NoteChatExecutor extends ChatBaseExecutor {
     }
 
     /** Read the note's markdown content from the data directory. */
-    private async readNoteContent(wsId: string | undefined, notePath: string): Promise<string | undefined> {
+    private async readNoteContentForWs(wsId: string | undefined, notePath: string): Promise<string | undefined> {
         if (!wsId || !notePath) return undefined;
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-        const notesRoot = getRepoDataPath(effectiveDataDir, wsId, 'notes');
-        const resolved = path.resolve(notesRoot, notePath);
-
-        // Security: ensure path stays within notes dir
-        const normalizedResolved = path.normalize(resolved);
-        const normalizedRoot = path.normalize(notesRoot);
-        if (!normalizedResolved.startsWith(normalizedRoot)) return undefined;
-
-        try {
-            return await fs.promises.readFile(resolved, 'utf-8');
-        } catch {
-            return undefined;
-        }
+        return readNoteContent(effectiveDataDir, wsId, notePath);
     }
 }
 
 // ============================================================================
-// Helpers
+// Shared helpers (exported for reuse by FollowUpExecutor)
 // ============================================================================
 
-function buildNoteContextBlock(notePath: string, noteTitle: string, content: string): string {
+export function buildNoteContextBlock(notePath: string, noteTitle: string, content: string): string {
     const truncated = content.length > 8000
         ? content.slice(0, 8000) + '\n\n... (content truncated)'
         : content;
@@ -129,4 +117,25 @@ function buildNoteContextBlock(notePath: string, noteTitle: string, content: str
         truncated +
         '\n</note_context>'
     );
+}
+
+/**
+ * Read the note's markdown content from the data directory.
+ * Returns undefined if the note cannot be read or the path escapes the notes root.
+ */
+export async function readNoteContent(dataDir: string, wsId: string, notePath: string): Promise<string | undefined> {
+    if (!wsId || !notePath) return undefined;
+    const notesRoot = getRepoDataPath(dataDir, wsId, 'notes');
+    const resolved = path.resolve(notesRoot, notePath);
+
+    // Security: ensure path stays within notes dir
+    const normalizedResolved = path.normalize(resolved);
+    const normalizedRoot = path.normalize(notesRoot);
+    if (!normalizedResolved.startsWith(normalizedRoot)) return undefined;
+
+    try {
+        return await fs.promises.readFile(resolved, 'utf-8');
+    } catch {
+        return undefined;
+    }
 }

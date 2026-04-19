@@ -47,6 +47,7 @@ import {
     isChatFollowUp,
     isChatPayload,
     isRunWorkflowPayload,
+    hasNoteChatContext,
 } from '../task-types';
 import type { CopilotClientCache } from './copilot-client-cache';
 import { BaseExecutor } from './base-executor';
@@ -244,6 +245,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ? task.payload.context?.files?.[0]
                     : undefined,
                 workItemId: (task.payload as any)?.workItemId,
+                notePath: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
+                    ? task.payload.context?.noteChat?.notePath
+                    : undefined,
+                noteTitle: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
+                    ? task.payload.context?.noteChat?.noteTitle
+                    : undefined,
             },
         };
 

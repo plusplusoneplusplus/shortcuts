@@ -62,6 +62,15 @@ vi.mock('../../../src/server/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => mockResolveTaskRoot(...args),
 }));
 
+const mockReadNoteContent = vi.fn().mockResolvedValue(undefined);
+const mockBuildNoteContextBlock = vi.fn().mockImplementation((notePath: string, noteTitle: string, content: string) => {
+    return `\n\n<note_context>\nTitle: ${noteTitle}\nPath: ${notePath}\n\n${content}\n</note_context>`;
+});
+vi.mock('../../../src/server/executors/note-chat-executor', () => ({
+    readNoteContent: (...args: any[]) => mockReadNoteContent(...args),
+    buildNoteContextBlock: (...args: any[]) => mockBuildNoteContextBlock(...args),
+}));
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -71,6 +80,7 @@ const sdkMocks = createMockSDKService();
 function makeExecutor(
     store: ReturnType<typeof createMockProcessStore>,
     overrides?: Partial<ConstructorParameters<typeof FollowUpExecutor>[1]>,
+    dataDir?: string,
 ) {
     return new FollowUpExecutor(store, {
         aiService: sdkMocks.service as any,
@@ -78,7 +88,7 @@ function makeExecutor(
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         ...overrides,
-    });
+    }, dataDir);
 }
 
 function makeProcess(overrides?: Partial<AIProcess>): AIProcess {
@@ -110,6 +120,10 @@ describe('FollowUpExecutor', () => {
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
+        mockReadNoteContent.mockReset().mockResolvedValue(undefined);
+        mockBuildNoteContextBlock.mockReset().mockImplementation((notePath: string, noteTitle: string, content: string) => {
+            return `\n\n<note_context>\nTitle: ${noteTitle}\nPath: ${notePath}\n\n${content}\n</note_context>`;
+        });
     });
 
     // -------------------------------------------------------------------------
@@ -497,5 +511,85 @@ describe('FollowUpExecutor', () => {
             ([, updates]) => 'metadata' in updates && (updates as any).metadata?.model === 'gpt-5.4',
         );
         expect(metadataUpdateCall).toBeUndefined();
+    });
+
+    // -------------------------------------------------------------------------
+    // Note context injection for note-chat follow-ups
+    // -------------------------------------------------------------------------
+
+    it('injects note context into system message when metadata has notePath', async () => {
+        mockReadNoteContent.mockResolvedValue('# My Note\nSome content.');
+        const proc = makeProcess({
+            id: 'proc-note',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-note',
+                notePath: 'my-note.md',
+                noteTitle: 'My Note',
+            },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, undefined, '/tmp/coc-data');
+        await executor.executeFollowUp('proc-note', 'update the note');
+
+        expect(mockReadNoteContent).toHaveBeenCalledWith('/tmp/coc-data', 'ws-note', 'my-note.md');
+        expect(mockBuildNoteContextBlock).toHaveBeenCalledWith('my-note.md', 'My Note', '# My Note\nSome content.');
+
+        // System message sent to AI should contain note context
+        const sendCall = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(sendCall.systemMessage?.content).toContain('<note_context>');
+    });
+
+    it('uses notePath as fallback title when noteTitle is missing', async () => {
+        mockReadNoteContent.mockResolvedValue('content');
+        const proc = makeProcess({
+            id: 'proc-note-no-title',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-note',
+                notePath: 'untitled.md',
+            },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, undefined, '/tmp/coc-data');
+        await executor.executeFollowUp('proc-note-no-title', 'msg');
+
+        expect(mockBuildNoteContextBlock).toHaveBeenCalledWith('untitled.md', 'untitled.md', 'content');
+    });
+
+    it('does not inject note context when metadata has no notePath', async () => {
+        const proc = makeProcess({
+            id: 'proc-no-note',
+            metadata: { type: 'chat', workspaceId: 'ws-1' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, undefined, '/tmp/coc-data');
+        await executor.executeFollowUp('proc-no-note', 'msg');
+
+        expect(mockReadNoteContent).not.toHaveBeenCalled();
+        expect(mockBuildNoteContextBlock).not.toHaveBeenCalled();
+    });
+
+    it('does not inject note context when note content cannot be read', async () => {
+        mockReadNoteContent.mockResolvedValue(undefined);
+        const proc = makeProcess({
+            id: 'proc-note-missing',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-note',
+                notePath: 'deleted.md',
+                noteTitle: 'Deleted',
+            },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, undefined, '/tmp/coc-data');
+        await executor.executeFollowUp('proc-note-missing', 'msg');
+
+        expect(mockReadNoteContent).toHaveBeenCalled();
+        expect(mockBuildNoteContextBlock).not.toHaveBeenCalled();
     });
 });

@@ -565,3 +565,94 @@ describe('ProcessLifecycleRunner — metadata.planFilePath from context.files', 
         expect(proc?.metadata?.planFilePath).toBe('/first/plan.md');
     });
 });
+
+// ============================================================================
+// metadata.notePath / noteTitle from payload.context.noteChat
+// ============================================================================
+
+describe('ProcessLifecycleRunner — metadata.notePath from context.noteChat', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('copies noteChat.notePath and noteTitle to metadata for note-chat tasks', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Update the note',
+                workspaceId: 'ws-abc',
+                context: {
+                    noteChat: {
+                        notePath: 'my-note.md',
+                        noteTitle: 'My Note',
+                    },
+                },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.notePath).toBe('my-note.md');
+        expect(proc?.metadata?.noteTitle).toBe('My Note');
+    });
+
+    it('sets notePath without noteTitle when noteTitle is absent', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Edit note',
+                workspaceId: 'ws-abc',
+                context: {
+                    noteChat: {
+                        notePath: 'untitled.md',
+                    },
+                },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.notePath).toBe('untitled.md');
+        expect(proc?.metadata?.noteTitle).toBeUndefined();
+    });
+
+    it('sets notePath and noteTitle to undefined when context has no noteChat', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.notePath).toBeUndefined();
+        expect(proc?.metadata?.noteTitle).toBeUndefined();
+    });
+
+    it('sets notePath and noteTitle to undefined for non-chat task types', async () => {
+        const task = makeTask({
+            type: 'run-workflow',
+            payload: {
+                kind: 'run-workflow',
+                workflowPath: '/wf.yaml',
+                workingDirectory: '/tmp',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.notePath).toBeUndefined();
+        expect(proc?.metadata?.noteTitle).toBeUndefined();
+    });
+});

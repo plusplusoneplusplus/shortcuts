@@ -39,6 +39,7 @@ import {
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
+import { buildNoteContextBlock, readNoteContent } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
@@ -190,7 +191,7 @@ export class FollowUpExecutor extends BaseExecutor {
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
-        const systemMessage = appendAutoFolderBlock(
+        let systemMessage = appendAutoFolderBlock(
             appendBoundedMemoryContext(
                 await withRepoInstructions(
                     buildModeSystemMessage(currentMode),
@@ -201,6 +202,20 @@ export class FollowUpExecutor extends BaseExecutor {
             ),
             autoFolderContextForFollowUp,
         );
+
+        // Inject note context for note-chat follow-ups
+        const notePath = process.metadata?.notePath as string | undefined;
+        const noteTitle = process.metadata?.noteTitle as string | undefined;
+        if (notePath && wsId) {
+            const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+            const noteContent = await readNoteContent(effectiveDataDir, wsId, notePath);
+            if (noteContent !== undefined && systemMessage) {
+                systemMessage = {
+                    ...systemMessage,
+                    content: (systemMessage.content ?? '') + buildNoteContextBlock(notePath, noteTitle ?? notePath, noteContent),
+                };
+            }
+        }
 
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);
 
