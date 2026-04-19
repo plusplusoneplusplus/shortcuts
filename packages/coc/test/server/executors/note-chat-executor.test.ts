@@ -124,11 +124,11 @@ describe('NoteChatExecutor', () => {
             expect(opts.agentMode).toBe('autopilot');
         });
 
-        it('sets toolResultInterceptors for all FILE_EDIT_TOOLS when notePath is set', async () => {
+        it('sets toolResultInterceptors for all edit tools when notePath is set', async () => {
             const task = makeNoteChatTask();
             const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
             expect(opts.toolResultInterceptors).toBeDefined();
-            for (const toolName of ['edit_file', 'str_replace_editor', 'str_replace_based_edit_tool']) {
+            for (const toolName of ['edit_file', 'str_replace_editor', 'str_replace_based_edit_tool', 'edit', 'apply_patch']) {
                 expect(opts.toolResultInterceptors).toHaveProperty(toolName);
                 expect(typeof opts.toolResultInterceptors[toolName]).toBe('function');
             }
@@ -218,6 +218,91 @@ describe('NoteChatExecutor', () => {
                 { old_str: 'x', new_str: 'y' },
                 undefined,
                 'tc-004',
+            );
+
+            expect(store.emitProcessEvent).not.toHaveBeenCalled();
+        });
+
+        it('emits note-file-edit via "edit" tool (Claude tool name)', async () => {
+            const task = makeNoteChatTask();
+            const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
+            const interceptor = opts.toolResultInterceptors?.['edit'];
+            expect(interceptor).toBeDefined();
+
+            interceptor(
+                { path: ABSOLUTE_NOTE_PATH, old_str: 'old text', new_str: 'new text' },
+                undefined,
+                'tc-005',
+            );
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    type: 'note-file-edit',
+                    noteFileEdit: expect.objectContaining({
+                        toolCallId: 'tc-005',
+                        oldStr: 'old text',
+                        newStr: 'new text',
+                    }),
+                }),
+            );
+        });
+
+        it('emits note-file-edit via "apply_patch" when patch contains note path', async () => {
+            const task = makeNoteChatTask();
+            const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
+            const interceptor = opts.toolResultInterceptors?.['apply_patch'];
+            expect(interceptor).toBeDefined();
+
+            const patch = `*** Begin Patch\n*** Update File: ${ABSOLUTE_NOTE_PATH}\n@@\n- old line\n+ new line\n*** End Patch`;
+
+            interceptor(
+                { patch },
+                undefined,
+                'tc-006',
+            );
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    type: 'note-file-edit',
+                    noteFileEdit: expect.objectContaining({
+                        toolCallId: 'tc-006',
+                        oldStr: '',
+                        newStr: '',
+                    }),
+                }),
+            );
+        });
+
+        it('emits note-file-edit via "apply_patch" when file path is in the result', async () => {
+            const task = makeNoteChatTask();
+            const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
+            const interceptor = opts.toolResultInterceptors?.['apply_patch'];
+
+            interceptor(
+                { patch: 'some patch without Update File header' },
+                `Modified 1 file(s): ${ABSOLUTE_NOTE_PATH}`,
+                'tc-007',
+            );
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ type: 'note-file-edit' }),
+            );
+        });
+
+        it('does NOT emit event via "apply_patch" when patch targets a different file', async () => {
+            const task = makeNoteChatTask();
+            const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
+            const interceptor = opts.toolResultInterceptors?.['apply_patch'];
+
+            const patch = `*** Begin Patch\n*** Update File: /other/file.md\n@@\n- old\n+ new\n*** End Patch`;
+
+            interceptor(
+                { patch },
+                undefined,
+                'tc-008',
             );
 
             expect(store.emitProcessEvent).not.toHaveBeenCalled();

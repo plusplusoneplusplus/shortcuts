@@ -33,7 +33,12 @@ import { getRepoDataPath } from '../paths';
 // NoteChatExecutor
 // ============================================================================
 
-const FILE_EDIT_TOOLS = ['edit_file', 'str_replace_editor', 'str_replace_based_edit_tool'];
+const STR_REPLACE_TOOLS = [
+    'edit_file',
+    'str_replace_editor',
+    'str_replace_based_edit_tool',
+    'edit',
+];
 
 export class NoteChatExecutor extends ChatBaseExecutor {
     constructor(
@@ -104,7 +109,9 @@ export class NoteChatExecutor extends ChatBaseExecutor {
 
         if (absoluteNotePath && wsId) {
             const store = this.store;
-            const interceptor = (params: Record<string, unknown>, _result: string | undefined, toolCallId: string) => {
+
+            // Interceptor for str_replace-style tools (path + old_str + new_str)
+            const strReplaceInterceptor = (params: Record<string, unknown>, _result: string | undefined, toolCallId: string) => {
                 const filePath = String(params.path ?? params.filePath ?? '');
                 const oldStr = String(params.old_str ?? params.oldStr ?? '');
                 const newStr = String(params.new_str ?? params.newStr ?? '');
@@ -115,7 +122,23 @@ export class NoteChatExecutor extends ChatBaseExecutor {
                 });
             };
 
-            toolResultInterceptors = Object.fromEntries(FILE_EDIT_TOOLS.map(n => [n, interceptor]));
+            // Interceptor for apply_patch (unified diff — extract file path from patch text)
+            const applyPatchInterceptor = (params: Record<string, unknown>, result: string | undefined, toolCallId: string) => {
+                const patchText = String(params.patch ?? params.diff ?? '');
+                const filePath = extractFilePathFromPatch(patchText)
+                    ?? extractFilePathFromResult(result);
+                if (!filePath || !isNoteFile(filePath, absoluteNotePath, notesRoot)) return;
+                store.emitProcessEvent(processId, {
+                    type: 'note-file-edit',
+                    noteFileEdit: { toolCallId, filePath, oldStr: '', newStr: '' },
+                });
+            };
+
+            const entries: [string, typeof strReplaceInterceptor][] = [
+                ...STR_REPLACE_TOOLS.map(n => [n, strReplaceInterceptor] as [string, typeof strReplaceInterceptor]),
+                ['apply_patch', applyPatchInterceptor],
+            ];
+            toolResultInterceptors = Object.fromEntries(entries);
         }
 
         return {
@@ -170,6 +193,26 @@ function isNoteFile(filePath: string, absoluteNotePath: string, notesRoot: strin
     }
 
     return false;
+}
+
+/**
+ * Extract the first file path from a unified-diff/patch string.
+ * Matches `*** Update File: <path>` (GPT apply_patch format).
+ */
+function extractFilePathFromPatch(patch: string): string | undefined {
+    if (!patch) return undefined;
+    const m = patch.match(/\*\*\*\s*Update File:\s*(.+)/);
+    return m?.[1]?.trim() || undefined;
+}
+
+/**
+ * Extract a file path from the tool result string.
+ * Matches patterns like "Modified 1 file(s): <path>".
+ */
+function extractFilePathFromResult(result: string | undefined): string | undefined {
+    if (!result) return undefined;
+    const m = result.match(/Modified \d+ file\(s\):\s*(.+)/);
+    return m?.[1]?.trim() || undefined;
 }
 
 function buildNoteContextBlock(notePath: string, noteTitle: string, content: string): string {
