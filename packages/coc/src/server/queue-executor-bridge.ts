@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from './task-types';
-import { isChatPayload } from './task-types';
+import { isChatPayload, isBackgroundReviewPayload, isMemoryAggregatePayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { processToQueuedTask } from './shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
@@ -10,6 +10,7 @@ import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
 import { ExecutorRegistry } from './executors/executor-registry';
 import type { CopilotClientCache } from './executors/copilot-client-cache';
+import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from './memory/background-review';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -86,6 +87,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
+            onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             getWsServer: options.getWsServer,
             clientCache: options.clientCache,
         });
@@ -94,6 +96,24 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     setQueueManager(qm: TaskQueueManager): void { this.queueManager = qm; }
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { generateTitleIfNeededFn(processId, turns, this.store, this.aiService, this.defaultWorkingDirectory, this.queueManager); }
+    private enqueueBackgroundReview(processId: string, workspaceId: string, turns: ConversationTurn[]): void {
+        if (!this.queueManager) return;
+        const payload = shouldEnqueueReview(processId, workspaceId, turns, DEFAULT_REVIEW_CONFIG);
+        if (!payload) return;
+        // Dedup: skip if a review for this process is already queued or running
+        const existing = this.queueManager.getAll()
+            .find(t => t.type === 'background-review' && (t.payload as any)?.sourceProcessId === processId
+                && (t.status === 'queued' || t.status === 'running'));
+        if (existing) return;
+        this.queueManager.enqueue({
+            type: 'background-review',
+            repoId: workspaceId,
+            priority: 'low',
+            payload: payload as any,
+            config: {},
+            displayName: `Memory review (${processId})`,
+        });
+    }
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
         const ws = (await this.store.getWorkspaces())
             .find(w => pathsReferToSameWorkspace(w.rootPath, rootPath));
@@ -128,6 +148,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
+        // Background-review and memory-aggregate tasks bypass the lifecycle
+        // runner — they don't create visible processes or conversation turns.
+        if (isBackgroundReviewPayload(task.payload) || isMemoryAggregatePayload(task.payload)) {
+            try {
+                const result = await this.executors.dispatch(task, '');
+                return { success: true, result, durationMs: 0 };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error : new Error(String(error)), durationMs: 0 };
+            }
+        }
         try {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
@@ -246,6 +276,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
     if (task.type === 'run-workflow' || task.type === 'run-script') return true;
+    if (task.type === 'memory-aggregate' || task.type === 'background-review') return false;
     if (isChatPayload(task.payload)) { const mode = (task.payload as any).mode; return mode === 'autopilot'; }
     return true;
 }

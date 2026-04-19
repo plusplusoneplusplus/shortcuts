@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext } from '../task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, isBackgroundReviewPayload, isMemoryAggregatePayload } from '../task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -20,6 +20,7 @@ import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 import { CopilotClientCache } from './copilot-client-cache';
+import { BackgroundReviewExecutor } from '../memory/background-review-executor';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -33,6 +34,8 @@ export interface ExecutorRegistryOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
+    onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
+    getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
     /** Shared CopilotClient cache (optional — when provided, executors reuse clients). */
     clientCache?: CopilotClientCache;
@@ -47,6 +50,7 @@ export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
     readonly runner: ProcessLifecycleRunner;
     readonly clientCache: CopilotClientCache;
+    readonly backgroundReviewExecutor: BackgroundReviewExecutor;
 
     private readonly store: ProcessStore;
     private readonly approvePermissions: boolean;
@@ -102,11 +106,17 @@ export class ExecutorRegistry {
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache);
+        this.backgroundReviewExecutor = new BackgroundReviewExecutor(
+            options.aiService,
+            options.getMemoryStore ?? (() => undefined),
+        );
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache, options.onBackgroundReview);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {
+        if (isBackgroundReviewPayload(task.payload)) return this.backgroundReviewExecutor.execute(task);
+        if (isMemoryAggregatePayload(task.payload)) return { status: 'completed', message: 'memory-aggregate handled externally' };
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {

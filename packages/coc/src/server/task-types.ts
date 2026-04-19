@@ -157,11 +157,19 @@ export interface MemoryAggregatePayload {
     model?: string;
 }
 
+export interface BackgroundReviewPayload {
+    readonly kind: 'background-review';
+    sourceProcessId: string;
+    workspaceId: string;
+    conversationSnapshot: Array<{ role: 'user' | 'assistant'; content: string }>;
+    timeoutMs?: number;
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryAggregatePayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryAggregatePayload | BackgroundReviewPayload;
 
 // ============================================================================
 // Type Guards
@@ -185,6 +193,10 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
 
 export function isMemoryAggregatePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & MemoryAggregatePayload {
     return payload.kind === 'memory-aggregate';
+}
+
+export function isBackgroundReviewPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & BackgroundReviewPayload {
+    return payload.kind === 'background-review';
 }
 
 /** Check whether a chat payload carries task-generation context. */

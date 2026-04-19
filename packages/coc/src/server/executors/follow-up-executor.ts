@@ -43,6 +43,7 @@ import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
 import type { CopilotClientCache } from './copilot-client-cache';
+import { flushMemories } from '../memory/pre-compression-flush';
 // ============================================================================
 // Types
 // ============================================================================
@@ -102,6 +103,30 @@ export class FollowUpExecutor extends BaseExecutor {
         this._resolveWorkspaceIdForPath = options.resolveWorkspaceIdForPath;
         this._resolveSkillConfig = options.resolveSkillConfig;
         this.onTitleNeeded = options.onTitleNeeded;
+    }
+
+    /**
+     * Resolve a BoundedMemoryStore for pre-compression flush.
+     * Returns undefined if memory is not enabled for the workspace.
+     */
+    private async resolveMemoryStoreForFlush(wsId: string | undefined): Promise<import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined> {
+        if (!this.dataDir || !wsId) return undefined;
+        try {
+            const { readRepoPreferences } = await import('../preferences-handler');
+            const { getRepoDataPath } = await import('../paths');
+            const { BoundedMemoryStore } = await import('@plusplusoneplusplus/forge');
+            const prefs = readRepoPreferences(this.dataDir, wsId);
+            if (!prefs.boundedMemory?.enabled) return undefined;
+            const memoryPath = getRepoDataPath(this.dataDir, wsId, 'memory/MEMORY.md');
+            const store = new BoundedMemoryStore({
+                filePath: memoryPath,
+                ...(prefs.boundedMemory.charLimit ? { charLimit: prefs.boundedMemory.charLimit } : {}),
+            });
+            await store.load();
+            return store;
+        } catch {
+            return undefined;
+        }
     }
 
     /**
@@ -180,6 +205,30 @@ export class FollowUpExecutor extends BaseExecutor {
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);
 
         const canResumeSession = !!process.sdkSessionId;
+
+        // Pre-compression flush: if the previous session cannot be resumed
+        // and it used most of its context, flush memories before the context
+        // is discarded and rebuilt from history.
+        if (!canResumeSession && boundedMemory.tools.length > 0) {
+            const tokenLimit = process.tokenLimit;
+            const currentTokens = process.currentTokens;
+            if (tokenLimit && currentTokens && currentTokens / tokenLimit > 0.80) {
+                try {
+                    const memoryStore = boundedMemory.tools[0]
+                        ? await this.resolveMemoryStoreForFlush(wsId)
+                        : undefined;
+                    if (memoryStore) {
+                        await flushMemories({
+                            turns: process.conversationTurns ?? [],
+                            memoryStore,
+                            aiService: this.aiService,
+                            minTurns: 0,
+                            timeoutMs: 30_000,
+                        });
+                    }
+                } catch { /* non-fatal — don't block the follow-up */ }
+            }
+        }
 
         const historyContext = canResumeSession
             ? undefined

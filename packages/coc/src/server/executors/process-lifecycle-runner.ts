@@ -133,15 +133,18 @@ export interface LifecycleRunnerOptions {
 
 export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
+    private readonly onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
         clientCache?: CopilotClientCache,
+        onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void,
     ) {
         super(store, dataDir, clientCache);
         this.onGenerateTitle = onGenerateTitle;
+        this.onBackgroundReview = onBackgroundReview;
     }
 
     /**
@@ -384,6 +387,14 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 }
 
                 setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
+
+                // Queue background memory review if conversation was substantial
+                if (this.onBackgroundReview) {
+                    const wsId = (task.payload as any)?.workspaceId as string | undefined;
+                    if (wsId) {
+                        try { this.onBackgroundReview(processId, wsId, combinedTurns); } catch { /* non-fatal */ }
+                    }
+                }
             } catch {
                 // Non-fatal
             }
