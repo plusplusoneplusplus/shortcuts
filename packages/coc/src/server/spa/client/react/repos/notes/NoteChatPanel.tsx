@@ -13,11 +13,9 @@ export interface NoteChatPanelProps {
     onClose: () => void;
     /** Called before creating a new chat to flush pending editor saves. */
     onBeforeSend?: () => Promise<void>;
-    /** Called when the server emits a `note-file-edit` SSE event. */
-    onNoteFileEdit?: (data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => void;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, onNoteFileEdit }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend }: NoteChatPanelProps) {
     const { taskId, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -104,7 +102,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         title="Notes Chat"
                         hideModeSelector
                         onBack={onClose}
-                        onNoteFileEdit={onNoteFileEdit}
                     />
                 </ChatPreferencesProvider>
             )}

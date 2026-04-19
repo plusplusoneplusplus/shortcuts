@@ -144,20 +144,9 @@ describe('NoteChatPanel', () => {
         });
     });
 
-    describe('onNoteFileEdit prop', () => {
-        it('declares onNoteFileEdit in NoteChatPanelProps', () => {
-            expect(source).toContain('onNoteFileEdit');
-        });
-
-        it('passes onNoteFileEdit to ActivityChatDetail', () => {
-            const panelIdx = source.indexOf('onNoteFileEdit');
-            const activityIdx = source.indexOf('<ActivityChatDetail');
-            expect(panelIdx).toBeGreaterThan(-1);
-            // onNoteFileEdit appears in the JSX block where ActivityChatDetail is rendered
-            expect(activityIdx).toBeGreaterThan(-1);
-            // Find the onNoteFileEdit usage inside ActivityChatDetail's props
-            const activityBlock = source.slice(activityIdx);
-            expect(activityBlock).toContain('onNoteFileEdit');
+    describe('onNoteFileEdit prop removed', () => {
+        it('does not declare onNoteFileEdit in NoteChatPanelProps', () => {
+            expect(source).not.toContain('onNoteFileEdit');
         });
     });
 });

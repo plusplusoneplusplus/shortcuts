@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { NotesSidebar } from './notes/NotesSidebar';
 import { NoteEditor } from './notes/NoteEditor';
-import type { NoteViewMode, NoteEditorHandle } from './notes/NoteEditor';
+import type { NoteViewMode } from './notes/NoteEditor';
 import { CommentsSidebar } from './notes/CommentsSidebar';
 import { NoteChatPanel } from './notes/NoteChatPanel';
 import { useComments } from './notes/useComments';
@@ -61,7 +61,6 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
     });
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
     const editorRef = useRef<Editor | null>(null);
-    const noteEditorRef = useRef<NoteEditorHandle | null>(null);
     const flushSaveRef = useRef<(() => Promise<void>) | null>(null);
 
     useEffect(() => {
@@ -221,14 +220,6 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
         }
     }, [selectedPath, dispatch, updateHash]);
 
-    // ── AI edit: relay SSE note-file-edit to the editor ─────────────────────
-
-    const handleNoteFileEdit = useCallback((data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => {
-        // Server already matched the path, but do a client-side sanity check
-        if (!selectedPath) return;
-        noteEditorRef.current?.applyAiEdit({ oldStr: data.oldStr, newStr: data.newStr });
-    }, [selectedPath]);
-
     // ── Render ──────────────────────────────────────────────────────────────
 
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
@@ -297,7 +288,6 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                 )}
                 {/* Desktop/tablet comments toggle — now merged into NoteEditorToolbar */}
                 <NoteEditor
-                    ref={noteEditorRef}
                     workspaceId={workspaceId}
                     notePath={selectedPath}
                     threads={comments.allThreads}
@@ -379,7 +369,6 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                             noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
                             onClose={() => onToggleChatPanel?.()}
                             onBeforeSend={async () => { await flushSaveRef.current?.(); }}
-                            onNoteFileEdit={handleNoteFileEdit}
                         />
                     </div>
                 </>

@@ -63,13 +63,11 @@ export interface ChatDetailProps {
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
-    /** Called when the server emits a `note-file-edit` SSE event. */
-    onNoteFileEdit?: (data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => void;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, onNoteFileEdit, readOnly = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -317,7 +315,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        onNoteFileEdit,
         onAskUserQuestion: setPendingAskUserQuestion,
     });
 

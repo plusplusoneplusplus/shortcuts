@@ -76,27 +76,12 @@ describe('NotesView (notes chat refactor)', () => {
     });
 
     describe('AI edit change indicator wiring', () => {
-        it('imports NoteEditorHandle', () => {
-            expect(source).toContain('NoteEditorHandle');
+        it('does not contain handleNoteFileEdit (removed)', () => {
+            expect(source).not.toContain('handleNoteFileEdit');
         });
 
-        it('creates a noteEditorRef', () => {
-            expect(source).toContain('noteEditorRef');
-        });
-
-        it('passes ref to NoteEditor', () => {
-            expect(source).toContain('ref={noteEditorRef}');
-        });
-
-        it('defines handleNoteFileEdit callback', () => {
-            expect(source).toContain('handleNoteFileEdit');
-        });
-
-        it('passes onNoteFileEdit to NoteChatPanel', () => {
-            const chatPanelIdx = source.indexOf('<NoteChatPanel');
-            expect(chatPanelIdx).toBeGreaterThan(-1);
-            const chatPanelBlock = source.slice(chatPanelIdx);
-            expect(chatPanelBlock).toContain('onNoteFileEdit');
+        it('does not pass onNoteFileEdit to NoteChatPanel (removed)', () => {
+            expect(source).not.toContain('onNoteFileEdit');
         });
     });
 });

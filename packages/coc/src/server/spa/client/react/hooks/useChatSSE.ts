@@ -38,8 +38,6 @@ export interface UseChatSSEOptions {
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
-    /** Called when the server emits a `note-file-edit` SSE event. */
-    onNoteFileEdit?: (data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => void;
     /** Called when the server emits an `ask-user` SSE event. */
     onAskUserQuestion?: (question: AskUserQuestion) => void;
 }
@@ -59,7 +57,6 @@ export function useChatSSE({
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
-    onNoteFileEdit,
     onAskUserQuestion,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -274,13 +271,6 @@ export function useChatSSE({
                     backgroundTotalActive: data.backgroundTotalActive ?? 0,
                     backgroundWaitingForDrain: data.backgroundWaitingForDrain ?? false,
                 });
-            } catch { /* ignore */ }
-        });
-
-        es.addEventListener('note-file-edit', (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                onNoteFileEdit?.(data);
             } catch { /* ignore */ }
         });
 
