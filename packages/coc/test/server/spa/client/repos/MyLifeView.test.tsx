@@ -42,14 +42,14 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
     ),
 }));
 
-// Stub RepoGitTab — just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
-    RepoGitTab: (props: any) => (
-        <div data-testid="repo-git-tab" data-workspace-id={props.workspaceId} />
+// Stub NotesGitTab — just render a marker div
+vi.mock('../../../../../src/server/spa/client/react/repos/NotesGitTab', () => ({
+    NotesGitTab: (props: any) => (
+        <div data-testid="notes-git-tab" data-workspace-id={props.workspaceId} />
     ),
 }));
 
-// Stub RepoSettingsTab — just render a marker div
+// Stub RepoSettingsTab— just render a marker div
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoSettingsTab', () => ({
     RepoSettingsTab: (props: any) => (
         <div data-testid="repo-settings-tab" data-workspace-id={props.workspaceId} data-repo-id={props.repo?.workspace?.id} />
@@ -194,27 +194,27 @@ describe('MyLifeView', () => {
     });
 
     describe('git tab', () => {
-        it('shows RepoGitTab when git tab is active', () => {
+        it('shows NotesGitTab when git tab is active', () => {
             mockActiveRepoSubTab = 'git';
             renderView();
 
-            const gitContainer = screen.getByTestId('repo-git-tab').parentElement!;
+            const gitContainer = screen.getByTestId('notes-git-tab').parentElement!;
             expect(gitContainer.style.display).not.toBe('none');
         });
 
-        it('hides RepoGitTab when another tab is active', () => {
+        it('hides NotesGitTab when another tab is active', () => {
             mockActiveRepoSubTab = 'notes';
             renderView();
 
-            const gitContainer = screen.getByTestId('repo-git-tab').parentElement!;
+            const gitContainer = screen.getByTestId('notes-git-tab').parentElement!;
             expect(gitContainer.style.display).toBe('none');
         });
 
-        it('passes my_life workspace ID to RepoGitTab', () => {
+        it('passes my_life workspace ID to NotesGitTab', () => {
             mockActiveRepoSubTab = 'git';
             renderView();
 
-            const gitTab = screen.getByTestId('repo-git-tab');
+            const gitTab = screen.getByTestId('notes-git-tab');
             expect(gitTab.getAttribute('data-workspace-id')).toBe(MY_LIFE_WORKSPACE_ID);
         });
 

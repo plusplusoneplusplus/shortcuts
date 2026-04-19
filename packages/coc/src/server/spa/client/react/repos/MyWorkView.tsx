@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { NotesView } from './NotesView';
 import { RepoChatTab } from './RepoChatTab';
-import { RepoGitTab } from './RepoGitTab';
+import { NotesGitTab } from './NotesGitTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
@@ -181,7 +181,7 @@ export function MyWorkView() {
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <RepoGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                    <NotesGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
                 </div>
                 {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
             </div>
