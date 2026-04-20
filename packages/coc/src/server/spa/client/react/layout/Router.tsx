@@ -215,6 +215,7 @@ export function buildNoteHash(wsId: string, notePath: string): string {
 }
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'chats', 'work-items', 'pull-requests', 'terminal', 'notes']);
+const ACTIVITY_VIRTUAL_WORKSPACE_IDS: Set<string> = new Set(['my_work', 'my_life']);
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
@@ -336,7 +337,7 @@ export function Router() {
                     const repoId = decodeURIComponent(parts[1]);
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
                     // Redirect legacy #repos/:id/activity deep-links to chats
-                    if (parts[2] === 'activity') {
+                    if (parts[2] === 'activity' && !ACTIVITY_VIRTUAL_WORKSPACE_IDS.has(repoId)) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' as RepoSubTab });
                         const suffix = parts.slice(3).join('/');
                         if (suffix) {
