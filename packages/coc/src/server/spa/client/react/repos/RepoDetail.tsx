@@ -516,9 +516,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
-                        <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                            <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
-                        </div>
+                        {uiLayoutMode === 'dev-workflow' && (
+                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                                <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
+                            </div>
+                        )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <RepoGitTab key={ws.id} workspaceId={ws.id} />
