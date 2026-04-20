@@ -596,40 +596,48 @@ export function formatCostTime(ms: number): string {
     return `${minutes}m ${seconds}s`;
 }
 
-/** Small badge showing elapsed response time on assistant bubbles. */
-function CostTimeBadge({ costTimeMs }: { costTimeMs: number }) {
-    return (
-        <span
-            className="cost-time-badge inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484] border border-transparent"
-            title={`Response time: ${costTimeMs.toLocaleString()}ms`}
-        >
-            ⏱ {formatCostTime(costTimeMs)}
-        </span>
-    );
+/** Format a timestamp into a compact MM/DD h:mm AM/PM string. */
+export function formatShortTimestamp(date: Date): string {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    let hours = date.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes} ${ampm}`;
 }
 
-/** Small badge showing per-turn token cost on assistant bubbles. */
-function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
+function fmtTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    return String(n);
+}
+
+/** Merged badge showing token usage and response time in a single compact chip. */
+function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTokenUsage; costTimeMs?: number }) {
     const [expanded, setExpanded] = useState(false);
 
-    function fmt(n: number): string {
-        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-        if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-        return String(n);
-    }
+    const parts: string[] = [];
+    if (tokenUsage) parts.push(`↓${fmtTokens(tokenUsage.inputTokens)} ↑${fmtTokens(tokenUsage.outputTokens)}`);
+    if (costTimeMs != null) parts.push(formatCostTime(costTimeMs));
+    const summary = parts.join(' · ');
 
-    const summary = `↓${fmt(tokenUsage.inputTokens)} ↑${fmt(tokenUsage.outputTokens)}`;
-    const detail = [
-        `Input: ${tokenUsage.inputTokens.toLocaleString()}`,
-        `Output: ${tokenUsage.outputTokens.toLocaleString()}`,
-        tokenUsage.cacheReadTokens > 0 ? `Cache read: ${tokenUsage.cacheReadTokens.toLocaleString()}` : null,
-        tokenUsage.cacheWriteTokens > 0 ? `Cache write: ${tokenUsage.cacheWriteTokens.toLocaleString()}` : null,
-        `Total: ${tokenUsage.totalTokens.toLocaleString()}`,
-    ].filter(Boolean).join(' · ');
+    const detailParts: string[] = [];
+    if (tokenUsage) {
+        detailParts.push(`Input: ${tokenUsage.inputTokens.toLocaleString()}`);
+        detailParts.push(`Output: ${tokenUsage.outputTokens.toLocaleString()}`);
+        if (tokenUsage.cacheReadTokens > 0) detailParts.push(`Cache read: ${tokenUsage.cacheReadTokens.toLocaleString()}`);
+        if (tokenUsage.cacheWriteTokens > 0) detailParts.push(`Cache write: ${tokenUsage.cacheWriteTokens.toLocaleString()}`);
+        detailParts.push(`Total: ${tokenUsage.totalTokens.toLocaleString()}`);
+    }
+    if (costTimeMs != null) detailParts.push(`Time: ${costTimeMs.toLocaleString()}ms`);
+    const detail = detailParts.join(' · ');
+
+    if (!summary) return null;
 
     return (
         <button
-            className="token-usage-badge inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#383838] transition-colors cursor-pointer border border-transparent hover:border-[#d0d0d0] dark:hover:border-[#505050]"
+            className="assistant-stats-badge inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#383838] transition-colors cursor-pointer border border-transparent hover:border-[#d0d0d0] dark:hover:border-[#505050]"
             title={expanded ? 'Click to collapse' : detail}
             onClick={() => setExpanded(v => !v)}
         >
@@ -879,13 +887,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     turn.pinnedAt && 'ring-2 ring-amber-400/60 dark:ring-amber-500/40'
                 )}
             >
-                <div className="flex items-center gap-2 text-[11px] text-[#848484] mb-2">
+                <div className="flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1">
                     {turn.pinnedAt && (
                         <span className="text-amber-500 dark:text-amber-400" title="Pinned">📌</span>
                     )}
                     <span
                         className={cn(
-                            'font-medium uppercase tracking-wide role-label',
+                            'font-medium uppercase tracking-wide role-label min-w-0 truncate',
                             isUser
                                 ? 'text-[#005a9e] dark:text-[#7bbef3]'
                                 : isScript
@@ -898,17 +906,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     {turn.isError && (
                         <span className="text-[#f14c4c] error-indicator text-[10px]">⚠ Error</span>
                     )}
-                    {turn.timestamp && (
-                        <span className="ml-auto timestamp">{new Date(turn.timestamp).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })} {new Date(turn.timestamp).toLocaleTimeString()}</span>
-                    )}
+                    {turn.timestamp && (() => {
+                        const d = new Date(turn.timestamp);
+                        return (
+                            <span className="ml-auto timestamp whitespace-nowrap" title={d.toLocaleString()}>
+                                {formatShortTimestamp(d)}
+                            </span>
+                        );
+                    })()}
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator">Live</span>
                     )}
-                    {!isUser && turn.tokenUsage && !turn.streaming && (
-                        <TokenUsageBadge tokenUsage={turn.tokenUsage} />
-                    )}
-                    {!isUser && turn.costTimeMs != null && !turn.streaming && (
-                        <CostTimeBadge costTimeMs={turn.costTimeMs} />
+                    {!isUser && !turn.streaming && (turn.tokenUsage || turn.costTimeMs != null) && (
+                        <AssistantStatsBadge tokenUsage={turn.tokenUsage} costTimeMs={turn.costTimeMs} />
                     )}
                     {!isUser && turn.isError && onRetry && (
                         <button

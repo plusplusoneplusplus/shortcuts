@@ -37,6 +37,7 @@ function createConversationDOM(): HTMLDivElement {
                     <span class="streaming-indicator">Live</span>
                     <span class="token-usage-badge">1234 tokens</span>
                     <span class="cost-time-badge">⏱ 12.3s</span>
+                    <button class="assistant-stats-badge">↓114.8k ↑761 · 16.8s</button>
                 </div>
                 <div class="chat-message-content">I'm doing well, thank you!</div>
                 <div class="tool-call-body collapsed">Tool call result: success</div>
@@ -92,11 +93,13 @@ describe('stripInteractiveElements', () => {
         expect(container.querySelector('[data-testid="retry-images-btn"]')).toBeNull();
     });
 
-    it('removes TokenUsageBadge elements', () => {
+    it('removes stats badge elements (legacy and merged)', () => {
         const container = createConversationDOM();
         stripInteractiveElements(container);
 
         expect(container.querySelector('.token-usage-badge')).toBeNull();
+        expect(container.querySelector('.cost-time-badge')).toBeNull();
+        expect(container.querySelector('.assistant-stats-badge')).toBeNull();
     });
 
     it('preserves non-interactive content', () => {
