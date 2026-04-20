@@ -27,6 +27,7 @@ import { AddRepoDialog } from './AddRepoDialog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
+import { TasksPanel } from '../tasks/TasksPanel';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
@@ -136,10 +137,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
-            // Classic: replace Chats with Activity, hide Work Items and Tasks
+            // Classic: replace Chats with Activity, hide Work Items, relabel Tasks as Plans
             tabs = tabs
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .filter(t => t.key !== 'work-items' && t.key !== 'tasks');
+                .filter(t => t.key !== 'work-items')
+                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans' } : t);
         }
         return tabs;
     }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);
@@ -169,7 +171,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     // Redirect when switching layout modes
     useEffect(() => {
-        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items' || activeSubTab === 'tasks')) {
+        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items')) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
@@ -483,7 +485,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={visibleSubTabs}
-                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'git'] : undefined}
+                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'tasks', 'git'] : undefined}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
@@ -505,7 +507,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="h-full min-w-0 overflow-hidden">
-                        <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
+                        {uiLayoutMode === 'classic' ? (
+                            <TasksPanel
+                                key={ws.id}
+                                wsId={ws.id}
+                                repos={repos}
+                                onOpenGenerateDialog={handleOpenGenerateDialog}
+                                initialNavState={state.repoSubTabNavState?.[ws.id]}
+                                onNavStateChange={(ns) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState: ns })}
+                            />
+                        ) : (
+                            <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
+                        )}
                     </div>
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>

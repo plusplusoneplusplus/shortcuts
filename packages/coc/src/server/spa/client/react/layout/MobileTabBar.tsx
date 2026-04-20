@@ -10,7 +10,7 @@ import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
 const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
-const CLASSIC_PINNED: RepoSubTab[] = ['activity', 'git'];
+const CLASSIC_PINNED: RepoSubTab[] = ['activity', 'tasks', 'git'];
 
 export interface MobileTabBarAction {
     label: string;

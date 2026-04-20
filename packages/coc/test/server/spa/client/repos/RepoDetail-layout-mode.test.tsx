@@ -138,6 +138,11 @@ vi.mock('../../../../../src/server/spa/client/react/repos/TerminalView', () => (
 vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({ NotesView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({ AddRepoDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({ GenerateTaskDialog: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
+    TasksPanel: (props: any) => (
+        <div data-testid="tasks-panel" data-workspace-id={props.wsId} />
+    ),
+}));
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
 import { RepoDetail } from '../../../../../src/server/spa/client/react/repos/RepoDetail';
@@ -221,5 +226,35 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
 
         // Activity should NOT be mounted at all
         expect(screen.queryByTestId('repo-chat-tab-activity')).toBeNull();
+    });
+
+    it('classic mode: Tasks (Plans) tab renders TasksPanel (miller columns), not RepoChatTab', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'tasks';
+        renderDetail();
+
+        expect(screen.getByTestId('tasks-panel')).toBeTruthy();
+        // RepoChatTab with mode="tasks" should NOT be mounted in classic mode
+        expect(screen.queryByTestId('repo-chat-tab-tasks')).toBeNull();
+    });
+
+    it('classic mode: switching to classic does NOT redirect away from tasks sub-tab', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'tasks';
+        renderDetail();
+
+        // Should NOT have dispatched a redirect to 'activity'
+        const redirectCalls = mockDispatch.mock.calls.filter(
+            (c: any[]) => c[0]?.type === 'SET_REPO_SUB_TAB' && c[0]?.tab === 'activity'
+        );
+        expect(redirectCalls.length).toBe(0);
+    });
+
+    it('classic mode: switching to classic DOES redirect away from work-items', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'work-items';
+        renderDetail();
+
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
     });
 });
