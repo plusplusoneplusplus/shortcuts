@@ -111,7 +111,7 @@ export interface CLIConfig {
     };
     /** Client pool configuration (pre-warmed CopilotClient processes) */
     clientPool?: {
-        /** Enable the pre-warmed client pool (default: true) */
+        /** Enable the pre-warmed client pool (default: false) */
         enabled?: boolean;
         /** Number of pre-warmed idle clients to maintain (default: 3) */
         size?: number;
@@ -301,7 +301,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoUpdate: true,
     },
     clientPool: {
-        enabled: true,
+        enabled: false,
         size: 3,
     },
 };
@@ -489,7 +489,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
         },
         clientPool: {
-            enabled: override.clientPool?.enabled ?? base.clientPool?.enabled ?? true,
+            enabled: override.clientPool?.enabled ?? base.clientPool?.enabled ?? false,
             size: override.clientPool?.size ?? base.clientPool?.size ?? 3,
         },
     };

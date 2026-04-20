@@ -985,14 +985,14 @@ timeout: 300
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        it('defaults to enabled with size 3', () => {
-            expect(DEFAULT_CONFIG.clientPool.enabled).toBe(true);
+        it('defaults to disabled with size 3', () => {
+            expect(DEFAULT_CONFIG.clientPool.enabled).toBe(false);
             expect(DEFAULT_CONFIG.clientPool.size).toBe(3);
         });
 
         it('mergeConfig uses defaults when no override', () => {
             const resolved = mergeConfig(DEFAULT_CONFIG, {});
-            expect(resolved.clientPool.enabled).toBe(true);
+            expect(resolved.clientPool.enabled).toBe(false);
             expect(resolved.clientPool.size).toBe(3);
         });
 
@@ -1004,7 +1004,7 @@ timeout: 300
 
         it('mergeConfig overrides size', () => {
             const resolved = mergeConfig(DEFAULT_CONFIG, { clientPool: { size: 5 } });
-            expect(resolved.clientPool.enabled).toBe(true);
+            expect(resolved.clientPool.enabled).toBe(false);
             expect(resolved.clientPool.size).toBe(5);
         });
 
