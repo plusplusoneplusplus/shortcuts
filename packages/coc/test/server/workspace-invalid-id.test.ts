@@ -71,7 +71,7 @@ describe('Invalid Workspace ID → 404 NOT 500', () => {
     beforeAll(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-invalid-id-'));
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
     });
 
     afterAll(async () => {

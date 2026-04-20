@@ -78,13 +78,13 @@ describe('DB Browser Handler', () => {
 
     async function startSqliteServer(): Promise<ExecutionServer> {
         sqliteStore = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir , skipNonEssentialInit: true });
         return server;
     }
 
     async function startFileServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 

@@ -115,7 +115,7 @@ describe('API Handler', () => {
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
         const { service: mockAiService } = createMockSDKService();
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockAiService as any });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockAiService as any, skipNonEssentialInit: true });
         return server;
     }
 

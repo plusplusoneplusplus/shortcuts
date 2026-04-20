@@ -66,7 +66,7 @@ describe('Import Corrupt / Malformed Payload (HTTP) — Section 3', () => {
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-corrupt-test-'));
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

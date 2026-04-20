@@ -230,7 +230,7 @@ describe('batch-resolve endpoints', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-batch-resolve-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

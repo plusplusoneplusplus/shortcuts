@@ -143,7 +143,7 @@ describe('Admin Directory Import API', () => {
             host: 'localhost',
             store,
             dataDir,
-            tokenTtlMs: 60_000,
+            tokenTtlMs: 60_000, skipNonEssentialInit: true,
         });
         return server;
     }

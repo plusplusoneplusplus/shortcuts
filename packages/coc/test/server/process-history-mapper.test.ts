@@ -350,7 +350,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const res = await request(`${server.url}/api/queue/history`);
             expect(res.status).toBe(200);
@@ -389,7 +389,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const clearRes = await request(`${server.url}/api/queue/history`, { method: 'DELETE' });
             expect(clearRes.status).toBe(200);
@@ -428,7 +428,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const res = await request(`${server.url}/api/queue/fallback-task-1`);
             expect(res.status).toBe(200);
@@ -452,7 +452,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const res = await request(`${server.url}/api/queue/nonexistent-task`);
             expect(res.status).toBe(404);
@@ -482,7 +482,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const res = await request(`${server.url}/api/queue/failed-task-1`);
             expect(res.status).toBe(200);
@@ -515,7 +515,7 @@ describe('Store-backed history across restart', () => {
         const store = new SqliteProcessStore({ dbPath });
         let server: ExecutionServer | undefined;
         try {
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             const res = await request(`${server.url}/api/queue/bare-id-task`);
             expect(res.status).toBe(200);

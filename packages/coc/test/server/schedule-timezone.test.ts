@@ -134,7 +134,7 @@ describe('Schedule API — nextRun is UTC ISO format', () => {
     it('active schedule has nextRun in UTC ISO format', async () => {
         dataDir = createTempDir();
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
         try {
             const wsId = 'tz-test-ws';
@@ -166,7 +166,7 @@ describe('Schedule API — nextRun is UTC ISO format', () => {
     it('paused schedule has null nextRun', async () => {
         dataDir = createTempDir();
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
         try {
             const wsId = 'tz-paused-ws';

@@ -90,7 +90,7 @@ describe('Queue Cross-Repo Pause Isolation', () => {
     });
 
     async function startServer() {
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         return server;
     }
 
@@ -205,7 +205,7 @@ describe('Global Pause vs Per-Repo Pause', () => {
     });
 
     async function startServer() {
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         return server;
     }
 

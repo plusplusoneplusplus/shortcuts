@@ -109,7 +109,7 @@ describe('Schedule Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 
@@ -417,7 +417,7 @@ describe('Schedule Handler', () => {
     describe('Persistence across server restarts', () => {
         it('should persist schedules and restore them', async () => {
             const store = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             // Create a schedule
             await postJSON(schedulesUrl(), makeSchedule({ name: 'Persistent Schedule' }));
@@ -430,7 +430,7 @@ describe('Schedule Handler', () => {
             await server.close();
 
             const store2 = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir , skipNonEssentialInit: true });
 
             // Verify restored
             listRes = await request(schedulesUrl());
@@ -522,14 +522,14 @@ describe('Schedule Handler', () => {
 
         it('should persist outputFolder across server restarts', async () => {
             const store = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             await postJSON(schedulesUrl(), makeSchedule({ name: 'Output Folder Schedule', outputFolder: '~/.coc/repos/persist/tasks' }));
 
             await server.close();
 
             const store2 = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir , skipNonEssentialInit: true });
 
             const listRes = await request(schedulesUrl());
             const body = JSON.parse(listRes.body);
@@ -596,14 +596,14 @@ describe('Schedule Handler', () => {
 
         it('should persist model across server restarts', async () => {
             const store = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             await postJSON(schedulesUrl(), makeSchedule({ name: 'Model Schedule', model: 'claude-opus-4.6' }));
 
             await server.close();
 
             const store2 = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir , skipNonEssentialInit: true });
 
             const listRes = await request(schedulesUrl());
             const body = JSON.parse(listRes.body);
@@ -686,14 +686,14 @@ describe('Schedule Handler', () => {
 
         it('should persist mode across server restarts', async () => {
             const store = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
             await postJSON(schedulesUrl(), makeSchedule({ name: 'Mode Schedule', mode: 'plan' }));
 
             await server.close();
 
             const store2 = new FileProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir , skipNonEssentialInit: true });
 
             const listRes = await request(schedulesUrl());
             const body = JSON.parse(listRes.body);

@@ -86,7 +86,7 @@ describe('Workspace MCP Config and Skills Config Isolation', () => {
         wsDirB = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-mcp-dir-b-'));
 
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
         // Register both workspaces
         await jsonReq(`${server.url}/api/workspaces`, 'POST', { id: wsIdA, name: 'WS A', rootPath: wsDirA });

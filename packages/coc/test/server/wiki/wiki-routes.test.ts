@@ -1293,7 +1293,7 @@ describe('Wiki Routes Always Available', () => {
     beforeEach(async () => {
         // Create server WITHOUT wiki options — routes should still be registered
         server = await createExecutionServer({
-            port: 0,
+            port: 0, skipNonEssentialInit: true,
         });
     });
 
@@ -1354,7 +1354,7 @@ describe('Wiki Registration with repoPath', () => {
 
         server = await createExecutionServer({
             port: 0,
-            dataDir,
+            dataDir, skipNonEssentialInit: true,
         });
     });
 
@@ -1492,7 +1492,7 @@ describe('Wiki Store Persistence', () => {
         const server1 = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         const reg = await postJSON(`${server1.url}/api/wikis`, {
@@ -1510,7 +1510,7 @@ describe('Wiki Store Persistence', () => {
         const server2 = await createExecutionServer({
             port: 0,
             dataDir,
-            store: store2,
+            store: store2, skipNonEssentialInit: true,
         });
 
         // Wait a tick for async store restoration
@@ -1532,7 +1532,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         // Register
@@ -1560,7 +1560,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         // Register
@@ -1596,7 +1596,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         await postJSON(`${server.url}/api/wikis`, {
@@ -1626,7 +1626,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         await postJSON(`${server.url}/api/wikis`, {
@@ -1668,7 +1668,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         const patch = await patchJSON(`${server.url}/api/wikis/store-only`, {
@@ -1707,7 +1707,7 @@ describe('Wiki Store Persistence', () => {
         const server = await createExecutionServer({
             port: 0,
             dataDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
 
         const getBefore = await getJSON(`${server.url}/api/wikis/store-only-admin/admin/config`);

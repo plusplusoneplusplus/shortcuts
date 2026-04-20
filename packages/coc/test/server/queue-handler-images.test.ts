@@ -143,7 +143,7 @@ describe('Queue Handler — image promotion', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 
@@ -358,7 +358,7 @@ describe('Queue Handler — legacy enqueue image forwarding', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 

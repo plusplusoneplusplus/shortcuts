@@ -136,6 +136,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const host = options.host ?? '0.0.0.0';
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
+    const fast = options.skipNonEssentialInit ?? false;
     fs.mkdirSync(dataDir, { recursive: true });
 
     const resolvedConfig = resolveConfig(options.configPath, options.fileConfig);
@@ -158,37 +159,43 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let cleanupInfra: ReturnType<typeof createCleanupInfrastructure>;
 
     const heapMonitor = new HeapMonitor(resolvedConfig.monitoring.heapCheck);
-    heapMonitor.start();
+    if (!fast) { heapMonitor.start(); }
 
-    // Auto-migrate legacy workspace/wiki registries from JSON to SQLite
-    await migrateWorkspaceRegistryIfNeeded(dataDir, store);
+    if (!fast) {
+        // Auto-migrate legacy workspace/wiki registries from JSON to SQLite
+        await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
-    // Auto-migrate legacy file-based process histories to SQLite
-    await migrateProcessHistoryIfNeeded(dataDir, store);
+        // Auto-migrate legacy file-based process histories to SQLite
+        await migrateProcessHistoryIfNeeded(dataDir, store);
 
-    // Auto-update stale globally-installed bundled skills (non-blocking on errors)
-    if (resolvedConfig.skills.autoUpdate) {
-        const globalSkillsDir = path.join(dataDir, 'skills');
-        autoUpdateBundledSkills(globalSkillsDir).then(result => {
-            if (result.updated.length > 0) {
-                for (const u of result.updated) {
-                    process.stderr.write(`[skills] Auto-updated "${u.name}" ${u.previousVersion} → ${u.newVersion}\n`);
+        // Auto-update stale globally-installed bundled skills (non-blocking on errors)
+        if (resolvedConfig.skills.autoUpdate) {
+            const globalSkillsDir = path.join(dataDir, 'skills');
+            autoUpdateBundledSkills(globalSkillsDir).then(result => {
+                if (result.updated.length > 0) {
+                    for (const u of result.updated) {
+                        process.stderr.write(`[skills] Auto-updated "${u.name}" ${u.previousVersion} → ${u.newVersion}\n`);
+                    }
                 }
-            }
-            for (const e of result.errors) {
-                process.stderr.write(`[skills] Failed to update "${e.name}": ${e.error}\n`);
-            }
-        }).catch(() => { /* best-effort — never block startup */ });
+                for (const e of result.errors) {
+                    process.stderr.write(`[skills] Failed to update "${e.name}": ${e.error}\n`);
+                }
+            }).catch(() => { /* best-effort — never block startup */ });
+        }
     }
 
+    // Global / my-work / my-life workspaces are needed for correct queue routing
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
+    const globalWorkspaceRootPath = globalWorkspace.rootPath;
 
-    const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
-    bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
+    if (!fast) {
+        const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
+        bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
 
-    const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
-    bridge.registerRepoId(myLifeWorkspace.id, myLifeWorkspace.rootPath);
+        const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
+        bridge.registerRepoId(myLifeWorkspace.id, myLifeWorkspace.rootPath);
+    }
 
     const resolvedAiService = options.aiService ?? getCopilotSDKService();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
@@ -199,7 +206,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         store, bridge, queueFacade, scheduleManager,
         dataDir, configPath: options.configPath,
         tokenTtlMs: options.tokenTtlMs,
-        globalWorkspaceRootPath: globalWorkspace.rootPath,
+        globalWorkspaceRootPath,
         resolvedAiService, getWsServer: () => wsServer,
         queuePersistence, wikiOptions: options.wiki,
         aiInvoker,
@@ -218,18 +225,42 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const server = http.createServer(handler);
 
     // Terminal infrastructure (optional — gated by config + node-pty availability)
-    terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
+    if (!fast) {
+        terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
+    }
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
-    const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
+
+    const noopWatcher = { closeAll() { /* noop */ } };
+    let taskWatcher: { closeAll(): void } = noopWatcher;
+    let pipelineWatcher: { closeAll(): void } = noopWatcher;
+    let templateWatcher: { closeAll(): void } = noopWatcher;
+    let notesWatcher: { closeAll(): void } = noopWatcher;
+    if (!fast) {
+        const watchers = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
+        taskWatcher = watchers.taskWatcher;
+        pipelineWatcher = watchers.pipelineWatcher;
+        templateWatcher = watchers.templateWatcher;
+        notesWatcher = watchers.notesWatcher;
+    } else if (store.registerWorkspace) {
+        // In fast mode, watchers are skipped but we still need workspace → bridge
+        // registration so queue routing resolves workspace IDs correctly.
+        const originalRegister = store.registerWorkspace.bind(store);
+        store.registerWorkspace = async (workspace) => {
+            await originalRegister(workspace);
+            bridge.registerRepoId(workspace.id, workspace.rootPath);
+        };
+    }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
-    modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
-        process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
-    });
-    cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
-    bridge.clientCache.initialize().catch(() => { /* best-effort — pool is optional */ });
+
+    if (!fast) {
+        modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
+            process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
+        });
+        cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
+        bridge.clientCache.initialize().catch(() => { /* best-effort — pool is optional */ });
+    }
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;

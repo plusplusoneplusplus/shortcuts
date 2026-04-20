@@ -131,7 +131,7 @@ describe('Admin Storage Routes', () => {
             host: 'localhost',
             store,
             dataDir,
-            tokenTtlMs: opts?.tokenTtlMs,
+            tokenTtlMs: opts?.tokenTtlMs, skipNonEssentialInit: true,
         });
         return server;
     }
@@ -166,7 +166,7 @@ describe('Admin Storage Routes', () => {
 
             const store = new FileProcessStore({ dataDir });
             server = await createExecutionServer({
-                port: 0, host: 'localhost', store, dataDir, configPath,
+                port: 0, host: 'localhost', store, dataDir, configPath, skipNonEssentialInit: true,
             });
             const res = await request(`${server.url}/api/admin/storage/status`);
 

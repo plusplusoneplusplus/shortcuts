@@ -99,7 +99,7 @@ describe('POST /ask-ai', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-ask-ai-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
         mockAIResponse = { success: true, response: 'AI mock response' };
         mockAIThrow = false;

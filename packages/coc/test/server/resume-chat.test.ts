@@ -152,7 +152,7 @@ describe('POST /api/queue/:id/resume-chat', () => {
     });
 
     async function startServer(): Promise<ExecutionServer> {
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 

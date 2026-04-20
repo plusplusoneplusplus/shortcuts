@@ -95,7 +95,7 @@ describe('Import Large Payload — Section 4', () => {
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-large-test-'));
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

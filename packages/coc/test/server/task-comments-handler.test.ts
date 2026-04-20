@@ -584,7 +584,7 @@ describe('Task Comments REST API', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-comments-api-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 
@@ -956,7 +956,7 @@ describe('Task Comments REST API', () => {
             await server.close();
 
             // Restart with same data dir
-            server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+            server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
             baseUrl = server.url;
 
             const res = await getJSON(`${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}`);

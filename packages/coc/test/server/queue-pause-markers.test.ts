@@ -68,7 +68,7 @@ describe('Queue Pause Markers', () => {
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-pause-marker-'));
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         await post(`${server.url}/api/queue/pause`, {});
     });
 
@@ -213,7 +213,7 @@ describe('Queue Pause Markers', () => {
         await server!.close();
         server = undefined;
 
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
 
         // After restart, marker should NOT be present
         const after = await request(`${server.url}/api/queue`);

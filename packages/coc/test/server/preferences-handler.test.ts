@@ -792,7 +792,7 @@ describe('Preferences REST API', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-prefs-api-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 
@@ -933,7 +933,7 @@ describe('Preferences REST API', () => {
         await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         await server.close();
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
@@ -989,7 +989,7 @@ describe('Preferences REST API', () => {
         await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         await server.close();
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
@@ -1045,7 +1045,7 @@ describe('Preferences REST API', () => {
         await patchJSON(`${baseUrl}/api/preferences`, { gitGroupOrder: order });
         await server.close();
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
@@ -1094,7 +1094,7 @@ describe('Per-Repo Preferences REST API', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-prefs-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 
@@ -1249,7 +1249,7 @@ describe('Per-Repo Preferences REST API', () => {
         await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', lastDepth: 'deep' });
         await server.close();
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
 
         const res = await getJSON(repoUrl(repoId));

@@ -242,7 +242,7 @@ describe('Task Comments Anchor Relocation', () => {
         server = await createExecutionServer({
             dataDir,
             port: 0,
-            store: mockStore,
+            store: mockStore, skipNonEssentialInit: true,
         });
         baseUrl = server.url;
     });

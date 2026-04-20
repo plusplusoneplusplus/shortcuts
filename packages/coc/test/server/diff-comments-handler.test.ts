@@ -539,7 +539,7 @@ describe('Diff Comments REST API', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-diff-comments-api-'));
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

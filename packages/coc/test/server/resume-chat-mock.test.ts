@@ -98,7 +98,7 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
         sdkMocks.resetAll();
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-chat-mock-'));
         store = createMockProcessStore();
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
     });
 
     afterEach(async () => {

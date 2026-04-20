@@ -110,7 +110,7 @@ describe('Per-Repo WebSocket Events', () => {
             port: 0,
             host: '127.0.0.1',
             dataDir: tmpDir,
-            store,
+            store, skipNonEssentialInit: true,
         });
         baseUrl = server.url;
     });

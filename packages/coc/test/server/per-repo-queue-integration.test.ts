@@ -149,7 +149,7 @@ describe('Per-Repo Queue Integration', () => {
             host: '127.0.0.1',
             dataDir: tmpDir,
             store,
-            aiService: sharedMock.service as any,
+            aiService: sharedMock.service as any, skipNonEssentialInit: true,
         });
         baseUrl = server.url;
 
@@ -404,7 +404,7 @@ describe('Per-Repo Queue Integration', () => {
                 host: '127.0.0.1',
                 dataDir: tmpDir,
                 store: store1,
-                aiService: sharedMock.service as any,
+                aiService: sharedMock.service as any, skipNonEssentialInit: true,
             });
             baseUrl = server.url;
 
@@ -453,7 +453,7 @@ describe('Per-Repo Queue Integration', () => {
                 host: '127.0.0.1',
                 dataDir: tmpDir,
                 store: store2,
-                aiService: sharedMock.service as any,
+                aiService: sharedMock.service as any, skipNonEssentialInit: true,
             });
             baseUrl = server.url;
 
@@ -498,7 +498,7 @@ describe('Per-Repo Queue Integration', () => {
                 host: '127.0.0.1',
                 dataDir: tmpDir,
                 store: restoreStore,
-                aiService: sharedMock.service as any,
+                aiService: sharedMock.service as any, skipNonEssentialInit: true,
             });
             baseUrl = server.url;
             const parsedRestore = new URL(baseUrl);
@@ -1125,7 +1125,7 @@ describe('Per-Repo Queue Integration', () => {
                     port: 0,
                     host: '127.0.0.1',
                     dataDir: drainTmpDir,
-                    aiService: drainMockAiService as any,
+                    aiService: drainMockAiService as any, skipNonEssentialInit: true,
                 });
                 const drainUrl = drainServer.url;
 

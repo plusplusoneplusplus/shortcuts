@@ -77,13 +77,13 @@ describe('Admin Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 
     async function startServerWithConfig(configPath: string): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, configPath });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, configPath , skipNonEssentialInit: true });
         return server;
     }
 
@@ -142,7 +142,7 @@ describe('Admin Handler', () => {
 
             const body = JSON.parse(res.body);
             expect(body.deletedProcesses).toBe(1);
-            expect(body.deletedWorkspaces).toBe(3); // includes auto-registered global + my_work + my_life workspaces
+            expect(body.deletedWorkspaces).toBe(1); // includes auto-registered global workspace
             expect(body.deletedWikis).toBe(0);
             expect(body.errors).toEqual([]);
         });
@@ -213,7 +213,7 @@ describe('Admin Handler', () => {
             expect(wipeRes.status).toBe(200);
             const result = JSON.parse(wipeRes.body);
             expect(result.deletedProcesses).toBe(1);
-            expect(result.deletedWorkspaces).toBe(4); // ws1 + auto-registered global + my_work + my_life workspaces
+            expect(result.deletedWorkspaces).toBe(2); // ws1 + auto-registered global workspace
             expect(result.errors).toEqual([]);
 
             // Verify data is gone
@@ -270,7 +270,7 @@ describe('Admin Handler', () => {
         it('should delete queue rows when wiping', async () => {
             // Use SqliteProcessStore so queue rows are counted/deleted from SQLite
             const sqliteStore = new SqliteProcessStore({ dataDir });
-            server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir , skipNonEssentialInit: true });
             const srv = server;
 
             // Seed a queue task row directly in SQLite
@@ -344,7 +344,7 @@ describe('Admin Handler', () => {
             expect(typeof body.exportedAt).toBe('string');
             expect(typeof body.metadata).toBe('object');
             expect(body.metadata.processCount).toBe(0);
-            expect(body.metadata.workspaceCount).toBe(3); // auto-registered global + my_work + my_life workspaces
+            expect(body.metadata.workspaceCount).toBe(1); // auto-registered global workspace
             expect(Array.isArray(body.processes)).toBe(true);
             expect(Array.isArray(body.workspaces)).toBe(true);
             expect(Array.isArray(body.wikis)).toBe(true);
@@ -1754,7 +1754,7 @@ describe('Admin Handler', () => {
             // Start a server with a 1 ms token TTL so tokens expire immediately
             const shortTtlStore = new FileProcessStore({ dataDir });
             const shortTtlServer = await createExecutionServer({
-                port: 0, host: 'localhost', store: shortTtlStore, dataDir, tokenTtlMs: 1,
+                port: 0, host: 'localhost', store: shortTtlStore, dataDir, tokenTtlMs: 1, skipNonEssentialInit: true,
             });
             try {
                 const tokenRes = await request(`${shortTtlServer.url}/api/admin/data/wipe-token`);

@@ -21,7 +21,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 /** Create a test server on a random OS-assigned port. */
 async function startTestServer(routes: Route[] = [], store?: ProcessStore): Promise<ExecutionServer> {
-    return createExecutionServer({ port: 0, host: 'localhost', store });
+    return createExecutionServer({ port: 0, host: 'localhost', store , skipNonEssentialInit: true });
 }
 
 /** Make an HTTP request and return status, headers, and body. */

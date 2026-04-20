@@ -89,6 +89,12 @@ export interface ExecutionServerOptions {
         /** Delay in ms before restored tasks are picked up after server restart (default: 0). */
         restartPickupDelayMs?: number;
     };
+    /**
+     * Skip non-essential initialization (migrations, watchers, heap monitor,
+     * global workspaces, skill updates, paste cleanup, model metadata).
+     * Use in tests to speed up server startup when those features are not under test.
+     */
+    skipNonEssentialInit?: boolean;
 }
 
 /** Options for graceful shutdown with queue draining. */

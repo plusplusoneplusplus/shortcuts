@@ -63,7 +63,7 @@ describe('Export Completeness — Section 7', () => {
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-completeness-test-'));
         store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

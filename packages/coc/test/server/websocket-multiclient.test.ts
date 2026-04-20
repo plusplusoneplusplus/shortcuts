@@ -107,7 +107,7 @@ describe('Section 1: Multi-Client Fan-Out', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 
@@ -507,7 +507,7 @@ describe('Section 3: Connection Lifecycle', () => {
 
     it('new client connects after process-added → does not receive old event (no replay)', async () => {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
 
         // Add process BEFORE client connects
         const proc = makeProcess();

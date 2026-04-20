@@ -95,7 +95,7 @@ describe('Workflows Refine Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockService.service as any });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockService.service as any , skipNonEssentialInit: true });
         return server;
     }
 

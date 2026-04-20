@@ -88,7 +88,7 @@ describe('Turn Actions REST API', () => {
             rootPath: '/tmp/test-repo',
         });
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir, store });
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir, store , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

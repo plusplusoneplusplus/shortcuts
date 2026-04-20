@@ -88,7 +88,7 @@ describe('Concurrent Import Requests — Section 6', () => {
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-concurrent-test-'));
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         baseUrl = server.url;
     });
 

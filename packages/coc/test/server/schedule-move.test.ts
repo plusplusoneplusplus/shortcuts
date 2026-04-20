@@ -316,7 +316,7 @@ describe('Schedule Handler — move route', () => {
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
         await store.registerWorkspace({ id: WORKSPACE_ID, rootPath: workspaceRoot, name: 'Test', addedAt: new Date().toISOString() });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 

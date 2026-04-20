@@ -89,7 +89,7 @@ describe('Schedule Handler — repo schedule enforcement', () => {
         const store = new FileProcessStore({ dataDir });
         // Register the workspace so getWorkspaces() returns it
         await store.registerWorkspace({ id: WORKSPACE_ID, rootPath: workspaceRoot, name: 'Test', addedAt: new Date().toISOString() });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir , skipNonEssentialInit: true });
         return server;
     }
 

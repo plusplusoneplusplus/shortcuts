@@ -107,7 +107,7 @@ describe('Workspace Comment Isolation', () => {
     });
 
     async function startServer(): Promise<ExecutionServer> {
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         return server;
     }
 

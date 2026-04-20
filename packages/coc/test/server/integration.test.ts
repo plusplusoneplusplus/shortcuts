@@ -110,13 +110,13 @@ describe('Server Integration', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-'));
         store = new FileProcessStore({ dataDir: tmpDir });
         const { service: mockAiService } = createMockSDKService();
-        server = await createExecutionServer({ store, port: 0, host: '127.0.0.1', dataDir: tmpDir, aiService: mockAiService as any });
+        server = await createExecutionServer({ store, port: 0, host: '127.0.0.1', dataDir: tmpDir, aiService: mockAiService as any , skipNonEssentialInit: true });
         baseUrl = server.url;
 
         // Create a second server using the default stub store (no store option)
         stubTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-stub-'));
         const { service: stubMockAiService } = createMockSDKService();
-        stubServer = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: stubTmpDir, aiService: stubMockAiService as any });
+        stubServer = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: stubTmpDir, aiService: stubMockAiService as any , skipNonEssentialInit: true });
         stubBaseUrl = stubServer.url;
     });
 
@@ -719,7 +719,7 @@ describe('Server Integration', () => {
             const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-persist-'));
             const persistStore = new FileProcessStore({ dataDir: persistDir });
             const { service: persistMockAi } = createMockSDKService();
-            const persistServer = await createExecutionServer({ store: persistStore, port: 0, host: '127.0.0.1', dataDir: persistDir, aiService: persistMockAi as any });
+            const persistServer = await createExecutionServer({ store: persistStore, port: 0, host: '127.0.0.1', dataDir: persistDir, aiService: persistMockAi as any , skipNonEssentialInit: true });
 
             try {
                 // Create a process via API
@@ -757,7 +757,7 @@ describe('Server Integration', () => {
             // --- First server lifecycle ---
             const store1 = new FileProcessStore({ dataDir: restartDir });
             const { service: s1MockAi } = createMockSDKService();
-            const server1 = await createExecutionServer({ store: store1, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s1MockAi as any });
+            const server1 = await createExecutionServer({ store: store1, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s1MockAi as any , skipNonEssentialInit: true });
 
             await request(`${server1.url}/api/processes`, {
                 method: 'POST',
@@ -773,7 +773,7 @@ describe('Server Integration', () => {
             // --- Second server lifecycle (same dataDir) ---
             const store2 = new FileProcessStore({ dataDir: restartDir });
             const { service: s2MockAi } = createMockSDKService();
-            const server2 = await createExecutionServer({ store: store2, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s2MockAi as any });
+            const server2 = await createExecutionServer({ store: store2, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s2MockAi as any , skipNonEssentialInit: true });
 
             try {
                 const listRes = await request(`${server2.url}/api/processes`);
@@ -792,7 +792,7 @@ describe('Server Integration', () => {
             const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-ws-'));
             const wsStore = new FileProcessStore({ dataDir: wsDir });
             const { service: wsMockAi } = createMockSDKService();
-            const wsServer = await createExecutionServer({ store: wsStore, port: 0, host: '127.0.0.1', dataDir: wsDir, aiService: wsMockAi as any });
+            const wsServer = await createExecutionServer({ store: wsStore, port: 0, host: '127.0.0.1', dataDir: wsDir, aiService: wsMockAi as any , skipNonEssentialInit: true });
 
             try {
                 const res = await request(`${wsServer.url}/api/workspaces`, {

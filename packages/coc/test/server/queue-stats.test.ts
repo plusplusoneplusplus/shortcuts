@@ -66,7 +66,7 @@ describe('Queue Statistics', () => {
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-stats-'));
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         await post(`${server.url}/api/queue/pause`, {});
     });
 

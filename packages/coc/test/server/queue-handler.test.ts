@@ -114,12 +114,12 @@ describe('Queue Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
         return server;
     }
 
     async function startServerWith(store: SqliteProcessStore | FileProcessStore): Promise<ExecutionServer> {
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
         return server;
     }
 
@@ -2359,7 +2359,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
             await seedProcess(store, 'queue_id2', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2386,7 +2386,7 @@ describe('Queue Handler', () => {
         it('should accept a single processId (minimum boundary)', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2447,7 +2447,7 @@ describe('Queue Handler', () => {
             for (const id of ids) {
                 await seedProcess(store, `queue_${id}`, 'ws1');
             }
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2464,7 +2464,7 @@ describe('Queue Handler', () => {
             await seedProcess(store, 'queue_a', 'ws1');
             await seedProcess(store, 'queue_b', 'ws1');
             await seedProcess(store, 'queue_c', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2504,7 +2504,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_abc123', 'ws1');
             await seedProcess(store, 'queue_def456', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2526,7 +2526,7 @@ describe('Queue Handler', () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_abc123', 'ws1');
             await seedProcess(store, 'queue_def456', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2546,7 +2546,7 @@ describe('Queue Handler', () => {
         it('should forward userPrompt into the enqueued task prompt', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2567,7 +2567,7 @@ describe('Queue Handler', () => {
         it('should not include user prompt section when userPrompt is empty', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2587,7 +2587,7 @@ describe('Queue Handler', () => {
         it('should truncate userPrompt to 2000 characters', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_id1', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const longPrompt = 'x'.repeat(3000);
@@ -2610,7 +2610,7 @@ describe('Queue Handler', () => {
         it('should return 404 when none of the processes are found', async () => {
             const store = new FileProcessStore({ dataDir });
             await store.registerWorkspace({ id: 'ws1', name: 'test', rootPath: '/test' });
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
@@ -2625,7 +2625,7 @@ describe('Queue Handler', () => {
         it('should proceed with partial results when some processes are missing', async () => {
             const store = new FileProcessStore({ dataDir });
             await seedProcess(store, 'queue_existing', 'ws1');
-            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, skipNonEssentialInit: true });
             server = srv;
 
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {

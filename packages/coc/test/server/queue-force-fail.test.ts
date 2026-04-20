@@ -81,7 +81,7 @@ describe('Queue Force-Fail', () => {
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-force-fail-'));
-        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', dataDir , skipNonEssentialInit: true });
         // Pause to prevent auto-execution
         await post(`${server.url}/api/queue/pause`, {});
     });
