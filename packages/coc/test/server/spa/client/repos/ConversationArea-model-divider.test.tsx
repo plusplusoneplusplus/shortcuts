@@ -25,7 +25,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     ConversationTurnBubble: ({ turn }: any) => <div data-testid={`turn-${turn.turnIndex}`}>{turn.content}</div>,
 }));
 

@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { cn, Button } from '../../shared';
 import { CommentReply } from './CommentReply';
-import { MarkdownView } from '../../processes/MarkdownView';
+import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
 import type { AnyComment } from '../../../shared-comment-types';

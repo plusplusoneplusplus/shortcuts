@@ -47,3 +47,6 @@ export { SendButton, SplitSendButton } from './SplitSendButton';
 export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
 export { CommentPanelAdapter } from './CommentPanelAdapter';
 export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanelProps } from './CommentPanelAdapter';
+export { MarkdownView } from './MarkdownView';
+export type { MarkdownViewProps } from './MarkdownView';
+export { CopySectionBtn } from './CopySectionBtn';

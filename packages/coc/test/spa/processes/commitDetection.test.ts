@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectCommitsInToolGroup, type DetectedCommit } from '../../../src/server/spa/client/react/processes/commitDetection';
+import { detectCommitsInToolGroup, type DetectedCommit } from '../../../src/server/spa/client/react/chat/commitDetection';
 
 function makeShellCall(id: string, command: string, result: string, status = 'completed') {
     return { id, toolName: 'powershell', args: { command }, result, status };

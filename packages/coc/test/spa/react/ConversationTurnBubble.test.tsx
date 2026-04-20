@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
-import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
+import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
@@ -15,7 +15,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
 }));
 
 // Mock markdown renderer to avoid DOM-heavy dependencies
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 

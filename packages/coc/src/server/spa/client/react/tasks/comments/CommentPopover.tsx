@@ -8,7 +8,7 @@ import ReactDOM from 'react-dom';
 import { cn, Button, Spinner } from '../../shared';
 import { clampToViewport } from './InlineCommentPopup';
 import { AICommandMenu } from './AICommandMenu';
-import { MarkdownView } from '../../processes/MarkdownView';
+import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import type { AnyComment, AnyCommentCategory } from '../../../shared-comment-types';
 import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../shared-comment-types';

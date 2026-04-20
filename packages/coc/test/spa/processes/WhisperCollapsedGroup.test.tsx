@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
-import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/processes/WhisperCollapsedGroup';
-import type { WhisperSummary } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
-import type { DetectedCommit } from '../../../src/server/spa/client/react/processes/commitDetection';
+import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/chat/WhisperCollapsedGroup';
+import type { WhisperSummary } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
+import type { DetectedCommit } from '../../../src/server/spa/client/react/chat/commitDetection';
 
 function makeToolMap(entries: Array<[string, any]>): Map<string, any> {
     return new Map(entries);

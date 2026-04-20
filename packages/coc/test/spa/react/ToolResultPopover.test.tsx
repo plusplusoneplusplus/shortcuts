@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ToolResultPopover } from '../../../src/server/spa/client/react/processes/ToolResultPopover';
+import { ToolResultPopover } from '../../../src/server/spa/client/react/chat/ToolResultPopover';
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,

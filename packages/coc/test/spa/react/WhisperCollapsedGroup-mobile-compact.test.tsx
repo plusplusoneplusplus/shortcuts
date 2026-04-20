@@ -6,7 +6,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/processes/WhisperCollapsedGroup';
+import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/chat/WhisperCollapsedGroup';
 import { mockViewport } from '../helpers/viewport-mock';
 
 let viewportCleanup: (() => void) | undefined;

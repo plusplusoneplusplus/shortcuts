@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ToolCallGroupView } from '../../../src/server/spa/client/react/processes/ToolCallGroupView';
+import { ToolCallGroupView } from '../../../src/server/spa/client/react/chat/ToolCallGroupView';
 import { mockViewport } from '../helpers/viewport-mock';
 
 let viewportCleanup: (() => void) | undefined;

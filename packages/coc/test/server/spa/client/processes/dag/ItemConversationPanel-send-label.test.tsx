@@ -73,7 +73,7 @@ vi.mock('../../../../../../src/server/spa/client/react/shared', () => ({
     },
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     ConversationTurnBubble: ({ turn }: any) => <div data-testid="turn">{turn.content}</div>,
 }));
 

@@ -11,10 +11,10 @@ import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/co
 import { ProcessFilters } from '../../../src/server/spa/client/react/processes/ProcessFilters';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 import { ProcessesView } from '../../../src/server/spa/client/react/processes/ProcessesView';
-import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
-import { MarkdownView } from '../../../src/server/spa/client/react/processes/MarkdownView';
+import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
+import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 // QueuePanel merged into ProcessesSidebar
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
 import { ChatDetail } from '../../../src/server/spa/client/react/repos/ChatDetail';

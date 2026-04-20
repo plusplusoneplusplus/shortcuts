@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
     useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: mockToolCompactness }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => (
         <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />
     ),
@@ -27,7 +27,7 @@ vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
 }));
 
 // Track ToolCallView renders
-vi.mock('../../../src/server/spa/client/react/processes/ToolCallView', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/ToolCallView', () => ({
     ToolCallView: ({ toolCall, children }: { toolCall: { id: string; toolName: string }; children?: React.ReactNode }) => (
         <div data-testid="tool-call-view" data-tool-id={toolCall.id} data-tool-name={toolCall.toolName}>
             {children}
@@ -36,7 +36,7 @@ vi.mock('../../../src/server/spa/client/react/processes/ToolCallView', () => ({
 }));
 
 // Track ToolCallGroupView renders
-vi.mock('../../../src/server/spa/client/react/processes/ToolCallGroupView', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
     ToolCallGroupView: ({
         category,
         toolCalls,
@@ -59,7 +59,7 @@ vi.mock('../../../src/server/spa/client/react/processes/ToolCallGroupView', () =
 }));
 
 // Track WhisperCollapsedGroup renders
-vi.mock('../../../src/server/spa/client/react/processes/WhisperCollapsedGroup', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/WhisperCollapsedGroup', () => ({
     WhisperCollapsedGroup: ({
         summary,
     }: {

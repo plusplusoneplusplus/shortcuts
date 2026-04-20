@@ -94,7 +94,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () 
 vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
@@ -109,7 +109,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusIcon: vi.fn().mockReturnValue(''),
     statusLabel: vi.fn().mockReturnValue(''),
 }));
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue(''),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({

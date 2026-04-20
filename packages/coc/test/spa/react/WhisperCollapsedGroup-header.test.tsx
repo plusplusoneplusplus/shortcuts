@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
-import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/processes/WhisperCollapsedGroup';
-import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
+import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/chat/WhisperCollapsedGroup';
+import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -13,25 +13,25 @@ vi.mock('../../../src/server/spa/client/react/shared', () => ({
     cn: (...args: string[]) => args.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => (
         <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/commitDetection', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/commitDetection', () => ({
     detectCommitsInToolGroup: () => [],
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/CommitStrip', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/CommitStrip', () => ({
     CommitStrip: () => null,
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/ToolCallGroupView', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
     ToolCallGroupView: () => <div data-testid="tool-call-group-view" />,
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/toolGroupUtils', async (importOriginal) => {
+vi.mock('../../../src/server/spa/client/react/chat/toolGroupUtils', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

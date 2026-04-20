@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
 import React from 'react';
-import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
+import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({

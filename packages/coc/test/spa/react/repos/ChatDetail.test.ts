@@ -937,9 +937,9 @@ describe('ChatDetail', () => {
     });
 
     describe('ConversationMiniMap integration', () => {
-        it('imports ConversationMiniMap from processes directory', () => {
+        it('imports ConversationMiniMap from chat directory', () => {
             expect(source).toContain("import { ConversationMiniMap }");
-            expect(source).toContain("'../processes/ConversationMiniMap'");
+            expect(source).toContain("'../chat/ConversationMiniMap'");
         });
 
         it('declares turnsContainerRef', () => {

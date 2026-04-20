@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { CommitStrip } from '../../../src/server/spa/client/react/processes/CommitStrip';
-import type { DetectedCommit } from '../../../src/server/spa/client/react/processes/commitDetection';
+import { CommitStrip } from '../../../src/server/spa/client/react/chat/CommitStrip';
+import type { DetectedCommit } from '../../../src/server/spa/client/react/chat/commitDetection';
 
 function makeCommit(overrides: Partial<DetectedCommit> = {}): DetectedCommit {
     return {

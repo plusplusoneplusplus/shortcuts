@@ -170,7 +170,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
 
@@ -188,7 +188,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusLabel: (s: string) => s,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 

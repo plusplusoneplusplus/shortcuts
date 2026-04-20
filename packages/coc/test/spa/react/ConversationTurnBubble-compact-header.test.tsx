@@ -7,18 +7,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { ConversationTurnBubble, formatShortTimestamp, formatCostTime } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { ConversationTurnBubble, formatShortTimestamp, formatCostTime } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/JsonResponseView', () => ({
+vi.mock('../../../src/server/spa/client/react/chat/JsonResponseView', () => ({
     JsonResponseView: () => <div />,
 }));
 

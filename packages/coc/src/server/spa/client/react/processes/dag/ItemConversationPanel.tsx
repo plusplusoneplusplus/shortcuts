@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { Badge, Button, Spinner, SendButton } from '../../shared';
-import { ConversationTurnBubble } from '../ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../chat/ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
 import type { ClientConversationTurn } from '../../types/dashboard';

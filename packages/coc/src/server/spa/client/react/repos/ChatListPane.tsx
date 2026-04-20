@@ -12,7 +12,7 @@ import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
-import { buildRows } from '../processes/ConversationMetadataPopover';
+import { buildRows } from '../chat/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';

@@ -14,7 +14,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Badge, Spinner } from '../shared';
 import { ConversationArea } from './ConversationArea';
-import { ConversationMiniMap } from '../processes/ConversationMiniMap';
+import { ConversationMiniMap } from '../chat/ConversationMiniMap';
 import { useQueuedTaskPoll } from '../hooks/useQueuedTaskPoll';
 import { useChatSSE } from '../hooks/useChatSSE';
 import { getConversationTurns } from '../chat/chatConversationUtils';

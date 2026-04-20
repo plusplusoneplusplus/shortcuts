@@ -5,7 +5,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 // Mock useDisplaySettings
@@ -14,7 +14,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
 }));
 
 // Mock markdown renderer
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 

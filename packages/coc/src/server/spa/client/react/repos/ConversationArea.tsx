@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Spinner } from '../shared';
-import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../chat/ConversationTurnBubble';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import { cn } from '../shared/cn';
 import { QueuedFollowUps } from './QueuedBubble';

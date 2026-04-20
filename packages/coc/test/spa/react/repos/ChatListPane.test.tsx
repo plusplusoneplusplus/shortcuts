@@ -128,7 +128,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     buildRows: () => [{ label: 'Type', value: 'chat' }],
 }));
 

@@ -2,7 +2,7 @@
  * Tests for isJsonResponse() utility.
  */
 import { describe, it, expect } from 'vitest';
-import { isJsonResponse } from '../../../src/server/spa/client/react/processes/json-utils';
+import { isJsonResponse } from '../../../src/server/spa/client/react/chat/json-utils';
 
 describe('isJsonResponse', () => {
     // --- Valid JSON objects ---

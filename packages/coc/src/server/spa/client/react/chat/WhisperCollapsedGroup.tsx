@@ -9,7 +9,7 @@ import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
-import { MarkdownView } from './MarkdownView';
+import { MarkdownView } from '../shared/MarkdownView';
 import { detectCommitsInToolGroup } from './commitDetection';
 import type { DetectedCommit } from './commitDetection';
 import { CommitStrip } from './CommitStrip';

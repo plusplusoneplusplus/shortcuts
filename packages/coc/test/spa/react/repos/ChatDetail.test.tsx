@@ -195,12 +195,12 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 // ConversationMiniMap — stub
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMiniMap', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMiniMap', () => ({
     ConversationMiniMap: () => React.createElement('div', { 'data-testid': 'conversation-minimap' }),
 }));
 
 // ConversationTurnBubble — stub that renders turn content
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     ConversationTurnBubble: (props: any) =>
         React.createElement('div', { 'data-testid': `turn-${props.turn?.role}`, 'data-turn-index': props.turn?.turnIndex }, props.turn?.content ?? ''),
 }));
@@ -226,7 +226,7 @@ vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', ()
 }));
 
 // ConversationMetadataPopover — getSessionIdFromProcess + stub component
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     getSessionIdFromProcess: (proc: any) => proc?.metadata?.sessionId ?? null,
     ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
 }));

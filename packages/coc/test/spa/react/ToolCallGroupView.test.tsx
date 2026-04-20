@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import {
     ToolCallGroupView,
     type RenderToolCall,
-} from '../../../src/server/spa/client/react/processes/ToolCallGroupView';
+} from '../../../src/server/spa/client/react/chat/ToolCallGroupView';
 
 function makeTc(id: string, status: string, toolName = 'view'): RenderToolCall {
     return { id, toolName, status, startTime: '2026-01-01T00:00:00Z', endTime: '2026-01-01T00:00:01Z' };

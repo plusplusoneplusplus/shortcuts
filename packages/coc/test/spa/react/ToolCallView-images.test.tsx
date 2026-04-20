@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
+import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
 
 function makeToolCall(overrides: Record<string, any> = {}) {
     return {

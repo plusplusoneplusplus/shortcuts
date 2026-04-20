@@ -6,7 +6,7 @@ import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn, ClientTokenUsage } from '../types/dashboard';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
-import { MarkdownView } from './MarkdownView';
+import { MarkdownView } from '../shared/MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { JsonResponseView } from './JsonResponseView';
 import { isJsonResponse } from './json-utils';

@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: ({ isOpen, children }: any) => isOpen ? <div data-testid="refs-bottomsheet">{children}</div> : null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
 }));
 
@@ -70,7 +70,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusLabel: (s: string) => s,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 

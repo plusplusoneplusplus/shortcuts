@@ -7,7 +7,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { WorkflowResultCard } from '../../../src/server/spa/client/react/processes/WorkflowResultCard';
 
 // Mock MarkdownView
-vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 

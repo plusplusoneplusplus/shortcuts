@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCostTime } from '../../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { formatCostTime } from '../../../../src/server/spa/client/react/chat/ConversationTurnBubble';
 
 describe('formatCostTime', () => {
     it('formats sub-second durations as milliseconds', () => {
