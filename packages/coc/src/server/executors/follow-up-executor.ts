@@ -192,12 +192,17 @@ export class FollowUpExecutor extends BaseExecutor {
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
 
-            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
+            const agentMode = toAgentMode(currentMode);
+            // Skip follow-up suggestions for autopilot mode — they prime the model
+            // to produce text-only responses which terminate the agentic loop.
+            const isAutopilot = currentMode === 'autopilot';
+            const { tools: suggestTools, suffix: followUpSuffix } = isAutopilot
+                ? { tools: [] as import('@plusplusoneplusplus/forge').Tool<any>[], suffix: '' }
+                : buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
             const followUpMessage = prependSelectedSkillsDirective(
                 followUpSuffix ? `${message}${followUpSuffix}` : message,
                 selectedSkillNames,
             );
-            const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext
                 ? { mode: 'append' as const, content: historyContext + (systemMessage ? '\n\n' + systemMessage.content : '') }
@@ -278,6 +283,48 @@ export class FollowUpExecutor extends BaseExecutor {
                 }
 
                 result = await this.aiService.sendMessage(sendOptions);
+            }
+
+            // Auto-continue for autopilot follow-ups: if the model responded with
+            // text but no tool calls, send a continuation to resume the agentic loop.
+            if (
+                isAutopilot &&
+                result.success &&
+                result.response &&
+                result.response.length > 0 &&
+                (!result.toolCalls || result.toolCalls.length === 0) &&
+                result.sessionId
+            ) {
+                const MAX_AUTO_CONTINUE = 2;
+                for (let attempt = 0; attempt < MAX_AUTO_CONTINUE; attempt++) {
+                    logger.debug(LogCategory.AI,
+                        `[FollowUp] Autopilot auto-continue attempt ${attempt + 1}/${MAX_AUTO_CONTINUE} for ${processId}`);
+
+                    const continueResult = await this.aiService.sendMessage({
+                        ...sendOptions,
+                        prompt: 'Continue. Execute the remaining steps using tool calls. Do not just describe what you will do — actually do it now.',
+                        sessionId: result.sessionId,
+                        deliveryMode: 'immediate' as any,
+                    });
+
+                    if (!continueResult.success) break;
+
+                    result = {
+                        ...result,
+                        response: result.response + '\n\n' + (continueResult.response || ''),
+                        toolCalls: [
+                            ...(result.toolCalls || []),
+                            ...(continueResult.toolCalls || []),
+                        ],
+                        tokenUsage: continueResult.tokenUsage ?? result.tokenUsage,
+                    };
+
+                    if (continueResult.toolCalls && continueResult.toolCalls.length > 0) {
+                        logger.debug(LogCategory.AI,
+                            `[FollowUp] Auto-continue succeeded — model resumed tool calls`);
+                        break;
+                    }
+                }
             }
 
             if (resolvedDeliveryMode === 'immediate') {

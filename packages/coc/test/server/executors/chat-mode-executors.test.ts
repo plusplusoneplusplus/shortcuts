@@ -132,7 +132,7 @@ const executors: ExecutorFactory[] = [
     {
         label: 'AutopilotExecutor (autopilot)',
         expectedAgentMode: 'autopilot',
-        expectsSystemMessage: false,
+        expectsSystemMessage: true,
         makeExecutor: (store, overrides) => new AutopilotExecutor(store, makeOptions(store, overrides)),
         makeTask: (id) => makeChatTask('autopilot', id),
     },
@@ -150,7 +150,7 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
                 success: true,
                 response: 'AI answer',
                 sessionId: 'sess-1',
-                toolCalls: [],
+                toolCalls: [{ name: 'test_tool', arguments: {} }],
             });
         });
 
@@ -165,18 +165,18 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
             expect(call.mode).toBe(expectedAgentMode);
         });
 
-        it(`${expectsSystemMessage ? 'includes' : 'omits'} system message`, async () => {
+        it(`includes system message`, async () => {
             const executor = makeExecutor(store);
             const task = makeTask();
 
             await executor.execute(task, 'Hello');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            if (expectsSystemMessage) {
-                expect(call.systemMessage).toBeDefined();
-                expect(call.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(call.systemMessage).toBeDefined();
+            if (expectedAgentMode === 'autopilot') {
+                expect(call.systemMessage.content).toContain('autonomous execution mode');
             } else {
-                expect(call.systemMessage).toBeUndefined();
+                expect(call.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
             }
         });
 
@@ -297,17 +297,17 @@ describe('ChatExecutor system message content', () => {
     });
 });
 
-describe('AutopilotExecutor has no system message', () => {
+describe('AutopilotExecutor system message', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
-        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [{ name: 'tool' }] });
     });
 
-    it('passes undefined systemMessage even with workingDirectory', async () => {
+    it('passes autopilot system message with workingDirectory', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store));
         const task: QueuedTask = {
             id: 'task-auto-wd',
@@ -323,7 +323,109 @@ describe('AutopilotExecutor has no system message', () => {
         await executor.execute(task, 'Do it');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage).toBeUndefined();
+        expect(call.systemMessage).toBeDefined();
+        expect(call.systemMessage.content).toContain('autonomous execution mode');
+        expect(call.systemMessage.content).toContain('MUST complete the task entirely using tool calls');
+    });
+});
+
+// ============================================================================
+// Auto-continue tests
+// ============================================================================
+
+describe('AutopilotExecutor auto-continue', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it('sends continuation when autopilot responds with text but no tool calls', async () => {
+        // First call: text-only response (no tool calls)
+        // Second call (auto-continue): responds with tool calls
+        sdkMocks.mockSendMessage
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Now let me commit the changes...',
+                sessionId: 'sess-ac',
+                toolCalls: [],
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Done.',
+                sessionId: 'sess-ac',
+                toolCalls: [{ name: 'run_command', arguments: { command: 'git commit' } }],
+            });
+
+        const executor = new AutopilotExecutor(store, makeOptions(store));
+        const task = makeChatTask('autopilot');
+
+        const result = await executor.execute(task, 'Commit the changes') as any;
+
+        // Should have called sendMessage twice (original + 1 auto-continue)
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+        // Second call should be the continuation prompt
+        const secondCall = sdkMocks.mockSendMessage.mock.calls[1][0];
+        expect(secondCall.prompt).toContain('Continue');
+        expect(secondCall.sessionId).toBe('sess-ac');
+        // Result should include tool calls from the continuation
+        expect(result.toolCalls).toHaveLength(1);
+        expect(result.response).toContain('Now let me commit');
+        expect(result.response).toContain('Done.');
+    });
+
+    it('does not auto-continue when response includes tool calls', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Committed.',
+            sessionId: 'sess-no-ac',
+            toolCalls: [{ name: 'run_command', arguments: {} }],
+        });
+
+        const executor = new AutopilotExecutor(store, makeOptions(store));
+        const task = makeChatTask('autopilot');
+
+        await executor.execute(task, 'Do it');
+
+        // Only the initial call, no auto-continue
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not auto-continue for non-autopilot modes', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Here is the answer',
+            sessionId: 'sess-ask',
+            toolCalls: [],
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask');
+
+        await executor.execute(task, 'What is this?');
+
+        // Only the initial call, no auto-continue
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('limits auto-continue to 2 attempts', async () => {
+        // All calls return text-only (no tool calls) — should stop after 3 total calls
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Still thinking...',
+            sessionId: 'sess-limit',
+            toolCalls: [],
+        });
+
+        const executor = new AutopilotExecutor(store, makeOptions(store));
+        const task = makeChatTask('autopilot');
+
+        await executor.execute(task, 'Do the work');
+
+        // Original + 2 auto-continue attempts = 3 total
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(3);
     });
 });
 

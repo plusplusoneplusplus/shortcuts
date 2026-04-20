@@ -109,7 +109,7 @@ describe('suggest_follow_ups tool injection', () => {
             success: true,
             response: 'AI answer',
             sessionId: 'sess-1',
-            toolCalls: [],
+            toolCalls: [{ name: 'some_tool', arguments: {} }],
         });
     });
 
@@ -155,7 +155,7 @@ describe('suggest_follow_ups tool injection', () => {
         expect(suggestTool).toBeDefined();
     });
 
-    it('injects tool for AutopilotExecutor when enabled', async () => {
+    it('does NOT inject follow-up suggestions tool for AutopilotExecutor (prevents premature session end)', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store, {
             followUpSuggestions: { enabled: true, count: 3 },
         }));
@@ -164,9 +164,8 @@ describe('suggest_follow_ups tool injection', () => {
         await executor.execute(task, 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.tools).toBeDefined();
-        const suggestTool = call.tools.find((t: any) => t.name === 'suggest_follow_ups');
-        expect(suggestTool).toBeDefined();
+        const suggestTool = call.tools?.find((t: any) => t.name === 'suggest_follow_ups');
+        expect(suggestTool).toBeUndefined();
     });
 });
 

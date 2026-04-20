@@ -320,6 +320,51 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 result = await this.aiService.sendMessage(sendOptions);
             }
 
+            // Auto-continue for autopilot: if the model responded with text but no
+            // tool calls, it may have narrated intent without acting. Send a
+            // continuation prompt to nudge it back into tool-calling mode.
+            if (
+                agentMode === 'autopilot' &&
+                result.success &&
+                result.response &&
+                result.response.length > 0 &&
+                (!result.toolCalls || result.toolCalls.length === 0) &&
+                result.sessionId
+            ) {
+                const MAX_AUTO_CONTINUE = 2;
+                for (let attempt = 0; attempt < MAX_AUTO_CONTINUE; attempt++) {
+                    getLogger().debug(LogCategory.AI,
+                        `[ChatModeExecutor] Autopilot auto-continue attempt ${attempt + 1}/${MAX_AUTO_CONTINUE} for ${processId}`);
+
+                    const continueResult = await this.aiService.sendMessage({
+                        ...sendOptions,
+                        prompt: 'Continue. Execute the remaining steps using tool calls. Do not just describe what you will do — actually do it now.',
+                        sessionId: result.sessionId,
+                        deliveryMode: 'immediate' as any,
+                    });
+
+                    if (!continueResult.success) break;
+
+                    // Merge the continuation response
+                    result = {
+                        ...result,
+                        response: result.response + '\n\n' + (continueResult.response || ''),
+                        toolCalls: [
+                            ...(result.toolCalls || []),
+                            ...(continueResult.toolCalls || []),
+                        ],
+                        tokenUsage: continueResult.tokenUsage ?? result.tokenUsage,
+                    };
+
+                    // If the model used tools this time, we're good
+                    if (continueResult.toolCalls && continueResult.toolCalls.length > 0) {
+                        getLogger().debug(LogCategory.AI,
+                            `[ChatModeExecutor] Auto-continue succeeded — model resumed tool calls`);
+                        break;
+                    }
+                }
+            }
+
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');
             }
