@@ -772,6 +772,7 @@ describe('AdminPanel', () => {
                                 taskCardDensity: 'compact', historyGrouping: true,
                                 terminal: { enabled: false }, notes: { enabled: false },
                                 myWork: { enabled: false }, myLife: { enabled: false },
+                                clientPool: { enabled: false, size: 3 },
                                 chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
                                 approvePermissions: false, mcpConfig: false, persist: true,
                             },
@@ -857,7 +858,7 @@ describe('AdminPanel', () => {
                     return Promise.resolve({
                         ok: true,
                         json: () => Promise.resolve({
-                            resolved: { terminal: { enabled: false }, notes: { enabled: false }, myWork: { enabled: false }, myLife: { enabled: false } },
+                            resolved: { terminal: { enabled: false }, notes: { enabled: false }, myWork: { enabled: false }, myLife: { enabled: false }, clientPool: { enabled: false, size: 3 } },
                             sources: {},
                         }),
                     });
@@ -881,6 +882,109 @@ describe('AdminPanel', () => {
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody['terminal.enabled']).toBe(true);
             expect(capturedBody['notes.enabled']).toBe(false);
+            expect(capturedBody['clientPool.enabled']).toBe(false);
+            expect(capturedBody['clientPool.size']).toBe(3);
+        });
+
+        it('Client Pool toggle renders and reflects config', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-clientpool-enabled')).toBeDefined());
+
+            const toggle = screen.getByTestId('toggle-clientpool-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+        });
+
+        it('Client Pool size input renders when enabled, hidden when disabled', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-clientpool-enabled')).toBeDefined());
+
+            // Pool size hidden when disabled
+            expect(screen.queryByTestId('input-clientpool-size')).toBeNull();
+
+            // Enable pool
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-clientpool-enabled'));
+            });
+
+            // Pool size visible when enabled
+            expect(screen.getByTestId('input-clientpool-size')).toBeDefined();
+            expect((screen.getByTestId('input-clientpool-size') as HTMLInputElement).value).toBe('3');
+        });
+
+        it('Client Pool toggle marks Features card dirty', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-clientpool-enabled')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-clientpool-enabled'));
+            });
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('Features card Save sends clientPool.enabled and clientPool.size in PUT body', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { terminal: { enabled: false }, notes: { enabled: false }, myWork: { enabled: false }, myLife: { enabled: false }, clientPool: { enabled: false, size: 3 } },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-clientpool-enabled')).toBeDefined());
+
+            // Enable pool
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-clientpool-enabled'));
+            });
+
+            // Change pool size
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('input-clientpool-size'), { target: { value: '5' } });
+            });
+
+            // Save
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody['clientPool.enabled']).toBe(true);
+            expect(capturedBody['clientPool.size']).toBe(5);
+        });
+
+        it('Features card Cancel reverts Client Pool state', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-clientpool-enabled')).toBeDefined());
+
+            // Enable pool
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-clientpool-enabled'));
+            });
+            expect((screen.getByTestId('toggle-clientpool-enabled') as HTMLInputElement).checked).toBe(true);
+
+            // Cancel
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-cancel'));
+            });
+
+            // Reverted to disabled
+            expect((screen.getByTestId('toggle-clientpool-enabled') as HTMLInputElement).checked).toBe(false);
+            expect(screen.queryByTestId('input-clientpool-size')).toBeNull();
         });
 
         it('Advanced card shows read-only diagnostics without Save button', async () => {
