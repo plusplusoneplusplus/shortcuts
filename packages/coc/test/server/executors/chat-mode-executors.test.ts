@@ -165,6 +165,16 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
             expect(call.mode).toBe(expectedAgentMode);
         });
 
+        it('passes infiniteSessions enabled to sendMessage', async () => {
+            const executor = makeExecutor(store);
+            const task = makeTask();
+
+            await executor.execute(task, 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.infiniteSessions).toEqual({ enabled: true });
+        });
+
         it(`${expectsSystemMessage ? 'includes' : 'omits'} system message`, async () => {
             const executor = makeExecutor(store);
             const task = makeTask();

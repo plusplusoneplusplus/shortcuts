@@ -298,6 +298,7 @@ export class FollowUpExecutor extends BaseExecutor {
                 mode: agentMode,
                 workingDirectory,
                 reasoningEffort: 'high' as const,
+                infiniteSessions: { enabled: true } as const,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,

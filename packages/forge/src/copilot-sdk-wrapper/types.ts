@@ -454,6 +454,18 @@ export interface SendMessageOptions {
     reasoningEffort?: ReasoningEffort;
 
     /**
+     * Infinite session configuration for automatic context compaction.
+     * When enabled, the SDK automatically manages context window limits
+     * by summarizing older conversation history when thresholds are reached.
+     * Maps directly to the SDK's `InfiniteSessionConfig`.
+     */
+    infiniteSessions?: {
+        enabled?: boolean;
+        backgroundCompactionThreshold?: number;
+        bufferExhaustionThreshold?: number;
+    };
+
+    /**
      * Controls when the message is dispatched.
      * Defaults to `'immediate'` when omitted.
      */

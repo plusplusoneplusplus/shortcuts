@@ -198,6 +198,17 @@ describe('FollowUpExecutor', () => {
         );
     });
 
+    it('passes infiniteSessions enabled to sendMessage', async () => {
+        const proc = makeProcess({ id: 'proc-inf', sdkSessionId: 'sdk-inf' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-inf', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.infiniteSessions).toEqual({ enabled: true });
+    });
+
     it('prepends a selected-skills directive without inlining skill bodies', async () => {
         const proc = makeProcess({ id: 'proc-skills', sdkSessionId: 'sdk-session-skills' });
         await store.addProcess(proc);

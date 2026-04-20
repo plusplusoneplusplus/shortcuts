@@ -247,6 +247,72 @@ describe('RequestRunner.send() — onUserInputRequest', () => {
 });
 
 // ============================================================================
+// send() — infiniteSessions threading
+// ============================================================================
+
+describe('RequestRunner.send() — infiniteSessions', () => {
+    it('threads infiniteSessions into session config when provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+            infiniteSessions: { enabled: true },
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.infiniteSessions).toEqual({ enabled: true });
+    });
+
+    it('forwards custom thresholds to session config', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+            infiniteSessions: { enabled: true, backgroundCompactionThreshold: 0.7, bufferExhaustionThreshold: 0.9 },
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.infiniteSessions).toEqual({
+            enabled: true,
+            backgroundCompactionThreshold: 0.7,
+            bufferExhaustionThreshold: 0.9,
+        });
+    });
+
+    it('omits infiniteSessions from session config when not provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.infiniteSessions).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // transform()
 // ============================================================================
 

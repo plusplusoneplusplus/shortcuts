@@ -261,6 +261,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 mode: agentMode,
                 model: task.config.model,
                 reasoningEffort: task.config.reasoningEffort ?? 'high',
+                infiniteSessions: { enabled: true } as const,
                 workingDirectory,
                 timeoutMs,
                 attachments,
