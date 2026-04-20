@@ -515,6 +515,68 @@ describe('AddRepoDialog', () => {
 
             expect(screen.getByText('Unable to browse this path')).toBeTruthy();
         });
+
+        it('resets browserPath when browse API fails', async () => {
+            // First browse succeeds
+            (fetchApi as Mock).mockResolvedValueOnce({
+                path: '/home/user',
+                parent: '/home',
+                entries: [{ name: 'project' }],
+            });
+
+            renderDialog();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+
+            expect(screen.getByText('/home/user')).toBeTruthy();
+
+            // Navigate to a bad path — should reset browserPath
+            (fetchApi as Mock).mockRejectedValueOnce(new Error('ENOENT'));
+
+            await act(async () => {
+                const entries = screen.getAllByTestId('path-browser-entry');
+                fireEvent.click(entries[0]);
+            });
+
+            expect(screen.getByText('Unable to browse this path')).toBeTruthy();
+        });
+
+        it('Escape closes browser panel without closing the dialog', async () => {
+            (fetchApi as Mock).mockResolvedValueOnce({
+                path: '/home/user',
+                parent: '/home',
+                entries: [{ name: 'project' }],
+            });
+
+            const onClose = vi.fn();
+            render(
+                <AddRepoDialog
+                    open={true}
+                    onClose={onClose}
+                    repos={[]}
+                    onSuccess={vi.fn()}
+                />
+            );
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+
+            expect(screen.getByTestId('path-browser')).toBeTruthy();
+
+            // Press Escape — should close browser panel, NOT the dialog
+            await act(async () => {
+                fireEvent.keyDown(document, { key: 'Escape' });
+            });
+
+            // Browser panel should be gone
+            expect(screen.queryByTestId('path-browser')).toBeNull();
+            // Dialog should still be open (onClose not called)
+            expect(onClose).not.toHaveBeenCalled();
+            expect(screen.getByTestId('dialog')).toBeTruthy();
+        });
     });
 
     // =======================================================================

@@ -135,4 +135,15 @@ describe('detectRemoteUrl', () => {
         const url = await detectRemoteUrl('/repo');
         expect(url).toBeUndefined();
     });
+
+    it('uses a short 5s timeout to avoid blocking on non-git directories', async () => {
+        mockedExecGitAsync.mockResolvedValueOnce('https://github.com/owner/repo.git');
+
+        await detectRemoteUrl('/repo');
+        expect(mockedExecGitAsync).toHaveBeenCalledWith(
+            ['remote', 'get-url', 'origin'],
+            '/repo',
+            { timeout: 5_000 },
+        );
+    });
 });

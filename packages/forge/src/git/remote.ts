@@ -85,15 +85,16 @@ export function computeRemoteHash(remoteUrl: string): string {
  * @param repoRoot Absolute path to the repository root.
  */
 export async function detectRemoteUrl(repoRoot: string): Promise<string | undefined> {
+    const shortTimeout = { timeout: 5_000 };
     try {
-        const url = await execGitAsync(['remote', 'get-url', 'origin'], repoRoot);
+        const url = await execGitAsync(['remote', 'get-url', 'origin'], repoRoot, shortTimeout);
         return url || undefined;
     } catch {
         try {
-            const remotesOut = await execGitAsync(['remote'], repoRoot);
+            const remotesOut = await execGitAsync(['remote'], repoRoot, shortTimeout);
             const firstRemote = remotesOut.trim().split('\n').filter(Boolean)[0];
             if (firstRemote) {
-                const url = await execGitAsync(['remote', 'get-url', firstRemote], repoRoot);
+                const url = await execGitAsync(['remote', 'get-url', firstRemote], repoRoot, shortTimeout);
                 return url || undefined;
             }
         } catch { /* not a git repo or no remotes configured */ }

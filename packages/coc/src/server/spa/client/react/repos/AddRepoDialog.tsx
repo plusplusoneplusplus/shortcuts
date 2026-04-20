@@ -3,7 +3,7 @@
  * Includes inline filesystem browser.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
@@ -94,6 +94,22 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const [browserDrives, setBrowserDrives] = useState<string[]>([]);
     const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
     const [browserError, setBrowserError] = useState<string | null>(null);
+    const browserRef = useRef<HTMLDivElement>(null);
+
+    // Intercept Escape while browser panel is open — close the panel
+    // instead of letting Dialog close the entire dialog.
+    useEffect(() => {
+        if (!showBrowser) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                setShowBrowser(false);
+            }
+        };
+        // Use capture phase so we intercept before Dialog's bubble-phase listener
+        document.addEventListener('keydown', handler, true);
+        return () => document.removeEventListener('keydown', handler, true);
+    }, [showBrowser]);
 
     // Pre-fill for edit mode
     useEffect(() => {
@@ -124,6 +140,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
             setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
         } catch {
+            setBrowserPath('');
             setBrowserEntries([]);
             setBrowserParent(null);
             setBrowseRoots([]);
@@ -249,7 +266,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
                 {/* Inline browser */}
                 {showBrowser && (
-                    <div id="path-browser" data-testid="path-browser" className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs">
+                    <div ref={browserRef} id="path-browser" data-testid="path-browser" className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs" tabIndex={-1}>
                         <div id="path-breadcrumb" className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
                             {browserPath}
                         </div>
