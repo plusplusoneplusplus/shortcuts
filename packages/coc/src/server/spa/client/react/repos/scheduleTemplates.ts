@@ -100,4 +100,18 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         ],
         hint: 'Target file must exist at .vscode/schedules/clean-outputs.md',
     },
+    {
+        id: 'notes-auto-commit',
+        label: 'Notes auto-commit',
+        emoji: '📝',
+        name: 'Notes Auto-Commit',
+        target: '',
+        targetType: 'script',
+        cronExpr: '*/30 * * * *',
+        intervalValue: '30',
+        intervalUnit: 'minutes',
+        mode: 'interval',
+        params: [],
+        hint: 'Periodically commit changes in the notes git repo. Enable via the one-click button in the schedule list, or create manually here.',
+    },
 ];

@@ -10,6 +10,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { NotesView } from './NotesView';
 import { RepoChatTab } from './RepoChatTab';
 import { NotesGitTab } from './NotesGitTab';
+import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
@@ -23,6 +24,7 @@ const MY_WORK_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
+    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
 ];
 
@@ -182,6 +184,9 @@ export function MyWorkView() {
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                     <NotesGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                </div>
+                <div style={{ display: activeTab === 'schedules' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    <RepoSchedulesTab workspaceId={MY_WORK_WORKSPACE_ID} />
                 </div>
                 {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
             </div>

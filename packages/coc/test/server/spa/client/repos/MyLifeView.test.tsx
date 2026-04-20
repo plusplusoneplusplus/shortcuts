@@ -49,6 +49,13 @@ vi.mock('../../../../../src/server/spa/client/react/repos/NotesGitTab', () => ({
     ),
 }));
 
+// Stub RepoSchedulesTab — just render a marker div
+vi.mock('../../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({
+    RepoSchedulesTab: (props: any) => (
+        <div data-testid="repo-schedules-tab" data-workspace-id={props.workspaceId} />
+    ),
+}));
+
 // Stub RepoSettingsTab— just render a marker div
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoSettingsTab', () => ({
     RepoSettingsTab: (props: any) => (
@@ -85,6 +92,7 @@ describe('MyLifeView', () => {
         expect(screen.getByTestId('my-life-tab-activity')).toBeTruthy();
         expect(screen.getByTestId('my-life-tab-notes')).toBeTruthy();
         expect(screen.getByTestId('my-life-tab-git')).toBeTruthy();
+        expect(screen.getByTestId('my-life-tab-schedules')).toBeTruthy();
         expect(screen.getByTestId('my-life-tab-settings')).toBeTruthy();
     });
 
@@ -226,6 +234,42 @@ describe('MyLifeView', () => {
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
             expect(location.hash).toBe('#repos/my_life/git');
+        });
+    });
+
+    describe('schedules tab', () => {
+        it('shows RepoSchedulesTab when schedules tab is active', () => {
+            mockActiveRepoSubTab = 'schedules';
+            renderView();
+
+            const schedulesContainer = screen.getByTestId('repo-schedules-tab').parentElement!;
+            expect(schedulesContainer.style.display).not.toBe('none');
+        });
+
+        it('hides RepoSchedulesTab when another tab is active', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            const schedulesContainer = screen.getByTestId('repo-schedules-tab').parentElement!;
+            expect(schedulesContainer.style.display).toBe('none');
+        });
+
+        it('passes my_life workspace ID to RepoSchedulesTab', () => {
+            mockActiveRepoSubTab = 'schedules';
+            renderView();
+
+            const schedulesTab = screen.getByTestId('repo-schedules-tab');
+            expect(schedulesTab.getAttribute('data-workspace-id')).toBe(MY_LIFE_WORKSPACE_ID);
+        });
+
+        it('clicking Schedules tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-life-tab-schedules'));
+
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
+            expect(location.hash).toBe('#repos/my_life/schedules');
         });
     });
 
