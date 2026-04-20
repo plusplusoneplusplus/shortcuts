@@ -25,6 +25,7 @@ import { TaskDefs } from '../../../../task-types';
 import { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
+import { NoteEditCard } from './NoteEditCard';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -116,6 +117,18 @@ interface ConversationTurnBubbleProps {
     onPinTurn?: (turnIndex: number, pinned: boolean) => void;
     /** Called when user archives/unarchives a turn. */
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
+    /** Note edit snapshots from process.metadata.noteEdits — used to render NoteEditCard. */
+    noteEdits?: Array<{
+        editId: string;
+        notePath: string;
+        preEditContent: string;
+        postEditContent?: string;
+        timestamp: string;
+        turnIndex: number;
+        tooLarge?: boolean;
+    }>;
+    /** Process ID — needed for NoteEditCard undo API call. */
+    processId?: string;
 }
 
 interface RenderToolCall {
@@ -625,7 +638,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
@@ -1120,6 +1133,25 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         }
                         flushContent();
                         return nodes;
+                    })()}
+                    {/* Note edit cards for AI turns that modified a note */}
+                    {!isUser && noteEdits && processId && wsId && (() => {
+                        const editsForTurn = noteEdits.filter(
+                            e => e.turnIndex === turnIndex && e.postEditContent !== undefined
+                        );
+                        return editsForTurn.map(edit => (
+                            <NoteEditCard
+                                key={edit.editId}
+                                editId={edit.editId}
+                                processId={processId}
+                                wsId={wsId}
+                                notePath={edit.notePath}
+                                preEditContent={edit.preEditContent}
+                                postEditContent={edit.postEditContent!}
+                                turnIndex={edit.turnIndex}
+                                tooLarge={edit.tooLarge}
+                            />
+                        ));
                     })()}
                 </div>
             </div>

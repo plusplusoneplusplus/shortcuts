@@ -50,8 +50,6 @@ export interface NoteEditorProps {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-const AI_EDIT_HIGHLIGHT_DURATION_MS = 5000;
-
 /**
  * Find contiguous changed regions in the editor document from word diff chunks.
  * Groups runs of add/remove chunks, maps text offsets to ProseMirror positions.
@@ -117,7 +115,6 @@ function findChangedRegionsInDoc(
             from,
             to: to === -1 ? from : to,
             chunks: raw.chunks,
-            expiresAt: now + AI_EDIT_HIGHLIGHT_DURATION_MS,
         });
     }
 
@@ -149,6 +146,7 @@ export function NoteEditor({
 
     // AI edit navigator state
     const [aiEditCount, setAiEditCount] = useState(0);
+    const [aiEditsVisible, setAiEditsVisible] = useState(true);
     const aiEditRegionsRef = useRef<Array<{ id: string; from: number; to: number }>>([]);
 
     // Source mode state
@@ -480,6 +478,10 @@ export function NoteEditor({
         setRawMarkdown('');
         setSourceDirty(false);
         contentLoadedRef.current = false;
+        // Clear AI edit decorations from previous note
+        aiEditRegionsRef.current = [];
+        setAiEditCount(0);
+        setAiEditsVisible(false);
 
         if (!notePath) {
             editorRef.current?.commands.clearContent();
@@ -579,6 +581,7 @@ export function NoteEditor({
         }
         aiEditRegionsRef.current = [];
         setAiEditCount(0);
+        setAiEditsVisible(false);
     }, []);
 
     // ── AI edit navigator: jump to next region ──────────────────────────
@@ -589,6 +592,22 @@ export function NoteEditor({
         const first = aiEditRegionsRef.current[0];
         ed.chain().setTextSelection({ from: first.from, to: first.to }).scrollIntoView().run();
     }, []);
+
+    // ── AI edit toggle: show/hide decorations ───────────────────────────
+
+    const handleAiEditToggle = useCallback(() => {
+        const ed = editorRef.current;
+        if (!ed || ed.isDestroyed) return;
+        if (aiEditsVisible) {
+            ed.commands.clearAiEdits?.();
+            setAiEditsVisible(false);
+        } else {
+            if (aiEditRegionsRef.current.length > 0) {
+                ed.commands.setAiEdits(aiEditRegionsRef.current as any);
+            }
+            setAiEditsVisible(true);
+        }
+    }, [aiEditsVisible]);
 
     // ── Auto-reload on notes-changed WS event (with diff decorations) ───
 
@@ -648,6 +667,44 @@ export function NoteEditor({
         window.addEventListener('notes-changed', handler);
         return () => window.removeEventListener('notes-changed', handler);
     }, [notePath]);
+
+    // ── note-edit-show / note-edit-hide events from chat panel ──────────
+    useEffect(() => {
+        const showHandler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as {
+                editId: string; wsId: string;
+                preEditContent: string; postEditContent: string;
+                notePath: string;
+            } | undefined;
+            if (!detail || detail.wsId !== workspaceIdRef.current || detail.notePath !== notePath) return;
+            if (viewModeRef.current === 'source') return;
+            const ed = editorRef.current;
+            if (!ed || ed.isDestroyed) return;
+            const chunks = wordDiff(detail.preEditContent, detail.postEditContent);
+            if (chunks.every(c => c.type === 'equal')) return;
+            const regions = findChangedRegionsInDoc(chunks, ed.state.doc);
+            if (regions.length === 0) return;
+            aiEditRegionsRef.current = regions;
+            ed.commands.setAiEdits(regions as any);
+            setAiEditCount(regions.length);
+            setAiEditsVisible(true);
+        };
+        const hideHandler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { wsId: string } | undefined;
+            if (!detail || detail.wsId !== workspaceIdRef.current) return;
+            const ed = editorRef.current;
+            if (ed && !ed.isDestroyed) ed.commands.clearAiEdits?.();
+            setAiEditCount(0);
+            setAiEditsVisible(false);
+        };
+        window.addEventListener('note-edit-show', showHandler);
+        window.addEventListener('note-edit-hide', hideHandler);
+        return () => {
+            window.removeEventListener('note-edit-show', showHandler);
+            window.removeEventListener('note-edit-hide', hideHandler);
+        };
+    }, [notePath]);
+
     // ── Ctrl+S / Cmd+S: suppress browser dialog & flush save ──────────────
 
     useEffect(() => {
@@ -702,6 +759,10 @@ export function NoteEditor({
                     commentsPanelOpen={commentsPanelOpen}
                     onToggleCommentsPanel={onToggleCommentsPanel}
                     commentCount={commentCount}
+                    aiEditCount={aiEditCount}
+                    aiEditsVisible={aiEditsVisible}
+                    onDismissAiEdits={handleAiEditDismiss}
+                    onToggleAiEdits={handleAiEditToggle}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
                             {NOTE_MODE_OPTIONS.map((m) => {

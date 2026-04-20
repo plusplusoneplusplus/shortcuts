@@ -39,7 +39,7 @@ import {
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
-import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus } from './note-chat-executor';
+import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
@@ -206,9 +206,11 @@ export class FollowUpExecutor extends BaseExecutor {
         // Inject note context for note-chat follow-ups
         const notePath = process.metadata?.notePath as string | undefined;
         const noteTitle = process.metadata?.noteTitle as string | undefined;
+        let preEditContent: string | undefined;
         if (notePath && wsId) {
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
             const noteContent = await readNoteContent(effectiveDataDir, wsId, notePath);
+            preEditContent = noteContent;
             const noteContentStatus = resolveNoteContentStatus(noteContent);
 
             if (noteContent !== undefined && systemMessage) {
@@ -419,6 +421,28 @@ export class FollowUpExecutor extends BaseExecutor {
             );
             assistantTurn = appendResult!.turn;
             allTurns = appendResult!.allTurns;
+
+            // Capture note edit snapshot for inline diff
+            if (notePath && wsId && preEditContent !== undefined) {
+                try {
+                    const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+                    const postEditContent = await readNoteContent(effectiveDataDir, wsId, notePath);
+                    if (postEditContent !== undefined && postEditContent !== preEditContent) {
+                        const turnIndex = assistantTurn.turnIndex;
+                        const tooLarge = preEditContent.length > SNAPSHOT_SIZE_LIMIT
+                            || postEditContent.length > SNAPSHOT_SIZE_LIMIT;
+                        await appendNoteEditSnapshot(this.store, processId, {
+                            editId: `${processId}-${turnIndex}`,
+                            notePath,
+                            preEditContent: tooLarge ? '' : preEditContent,
+                            postEditContent: tooLarge ? '' : postEditContent,
+                            timestamp: new Date().toISOString(),
+                            turnIndex,
+                            ...(tooLarge ? { tooLarge: true } : {}),
+                        });
+                    }
+                } catch { /* best-effort */ }
+            }
 
             if (result.tokenUsage) {
                 try {

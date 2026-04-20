@@ -55,6 +55,18 @@ export interface ConversationAreaProps {
     undoDeleteTurnIndex?: number | null;
     /** Called when user clicks "Undo" on the delete toast. */
     onUndoDelete?: () => void;
+    /** Note edit snapshots from process.metadata.noteEdits — passed to ConversationTurnBubble for NoteEditCard. */
+    noteEdits?: Array<{
+        editId: string;
+        notePath: string;
+        preEditContent: string;
+        postEditContent?: string;
+        timestamp: string;
+        turnIndex: number;
+        tooLarge?: boolean;
+    }>;
+    /** Process ID — needed for NoteEditCard undo API call. */
+    processId?: string;
 }
 
 export function ConversationArea({
@@ -88,6 +100,8 @@ export function ConversationArea({
     onArchiveTurn,
     undoDeleteTurnIndex,
     onUndoDelete,
+    noteEdits,
+    processId,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     // Escape key exits selection mode
@@ -145,6 +159,8 @@ export function ConversationArea({
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onDeleteTurn={onDeleteTurn}
+                                                noteEdits={noteEdits}
+                                                processId={processId}
                                             />
                                         ))}
                                     </div>
@@ -235,6 +251,8 @@ export function ConversationArea({
                                                     onDeleteTurn={onDeleteTurn}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
+                                                    noteEdits={noteEdits}
+                                                    processId={processId}
                                                 />
                                             </div>
                                         </div>

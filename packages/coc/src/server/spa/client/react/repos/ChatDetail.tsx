@@ -103,6 +103,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [backgroundTasks, setBackgroundTasks] = useState<import('../hooks/useChatSSE').BackgroundTasksState | null>(null);
     const [pendingAskUserQuestion, setPendingAskUserQuestion] = useState<import('../hooks/useChatSSE').AskUserQuestion | null>(null);
+    const [noteEdits, setNoteEdits] = useState<Array<{
+        editId: string; notePath: string; preEditContent: string;
+        postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
+    }>>([]);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
@@ -194,6 +198,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             })
             .catch(() => { /* best-effort persist */ });
     }, [detectedPlanFile, planPath, task?.metadata?.planFilePath, processId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch note edit snapshots for note-chat processes (needed for NoteEditCard)
+    useEffect(() => {
+        if (!processId || !isTerminal) return;
+        // Only fetch for note-chat processes
+        if (task?.metadata?.notePath === undefined) return;
+        fetchApi(`/processes/${encodeURIComponent(processId)}/note-edits`)
+            .then((edits: any) => {
+                if (Array.isArray(edits) && edits.length > 0) setNoteEdits(edits);
+            })
+            .catch(() => { /* best-effort */ });
+    }, [processId, isTerminal, task?.metadata?.notePath]);
 
     // Reset patch guard when switching tasks
     useEffect(() => { planPatchedRef.current = false; }, [taskId]);
@@ -772,6 +788,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onArchiveTurn={handleArchiveTurn}
                     undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
                     onUndoDelete={handleUndoDelete}
+                    noteEdits={noteEdits}
+                    processId={processId ?? bareTaskId}
                 />
                 {variant !== 'floating' && !isMobile && (
                     <ConversationMiniMap

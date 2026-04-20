@@ -380,3 +380,4 @@ export type { HeapSnapshot, HeapMonitorConfig } from './heap-monitor';
 /** @internal */ export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 /** @internal */ export { registerScheduleRoutes } from './schedule-handler';
 /** @internal */ export { registerNotesGitAutoCommitRoutes } from './notes-git-autocommit-handler';
+/** @internal */ export { registerNotesEditsRoutes } from './notes-edits-handler';

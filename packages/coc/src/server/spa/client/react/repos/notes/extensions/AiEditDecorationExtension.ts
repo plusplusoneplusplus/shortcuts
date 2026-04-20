@@ -23,8 +23,8 @@ export interface AiEditRegion {
     to: number;
     /** Word diff chunks covering the `from..to` range. */
     chunks: DiffChunk[];
-    /** Epoch ms at which decorations should auto-clear. */
-    expiresAt: number;
+    /** Optional epoch ms at which decorations should auto-clear. Omit for persistent decorations. */
+    expiresAt?: number;
 }
 
 interface AiEditPluginState {
@@ -35,6 +35,37 @@ interface AiEditPluginState {
 // ── Plugin key ───────────────────────────────────────────────────────────────
 
 export const aiEditPluginKey = new PluginKey<AiEditPluginState>('aiEditDecoration');
+
+// ── Collapsible deleted block widget ──────────────────────────────────────────
+
+const INLINE_DELETE_THRESHOLD = 80;
+
+function buildDeletedBlock(text: string, key: string): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ai-edit-deleted-block';
+    wrapper.setAttribute('data-key', key);
+
+    const header = document.createElement('div');
+    header.className = 'ai-edit-deleted-header';
+    header.textContent = '⊘ Deleted content ▼';
+
+    const body = document.createElement('div');
+    body.className = 'ai-edit-deleted-body';
+    const inner = document.createElement('span');
+    inner.className = 'ai-edit-removed';
+    inner.textContent = text;
+    body.appendChild(inner);
+
+    header.addEventListener('click', () => {
+        const collapsed = body.style.display === 'none';
+        body.style.display = collapsed ? 'block' : 'none';
+        header.textContent = collapsed ? '⊘ Deleted content ▼' : '⊘ Deleted content ▶';
+    });
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(body);
+    return wrapper;
+}
 
 // ── Decoration builder ───────────────────────────────────────────────────────
 
@@ -60,16 +91,26 @@ function buildDecorations(regions: AiEditRegion[], doc: any): DecorationSet {
                 }
                 cursor += len;
             } else if (chunk.type === 'remove') {
-                // Ghost widget: inserted at the current cursor position (before add/equal text)
-                const ghost = document.createElement('span');
-                ghost.className = 'ai-edit-removed';
-                ghost.textContent = chunk.text;
-                decorations.push(
-                    Decoration.widget(Math.min(cursor, region.to), ghost, {
-                        side: -1,
-                        key: `removed-${region.id}-${cursor}`,
-                    }),
-                );
+                const pos = Math.min(cursor, region.to);
+                if (chunk.text.length > INLINE_DELETE_THRESHOLD) {
+                    const widget = buildDeletedBlock(chunk.text, `removed-block-${region.id}-${cursor}`);
+                    decorations.push(
+                        Decoration.widget(pos, widget, {
+                            side: -1,
+                            key: `removed-block-${region.id}-${cursor}`,
+                        }),
+                    );
+                } else {
+                    const ghost = document.createElement('span');
+                    ghost.className = 'ai-edit-removed';
+                    ghost.textContent = chunk.text;
+                    decorations.push(
+                        Decoration.widget(pos, ghost, {
+                            side: -1,
+                            key: `removed-${region.id}-${cursor}`,
+                        }),
+                    );
+                }
                 // Removed text is not in the new doc — don't advance cursor
             }
         }
@@ -167,6 +208,7 @@ export const AiEditDecorationExtension = Extension.create({
 
                             // Schedule auto-expiry RAF for each region
                             for (const region of pluginState.regions) {
+                                if (region.expiresAt === undefined) continue;
                                 if (rafIds.has(region.id)) continue;
                                 const delay = region.expiresAt - Date.now();
                                 if (delay <= 0) {

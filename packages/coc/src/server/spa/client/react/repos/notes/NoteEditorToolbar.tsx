@@ -11,6 +11,14 @@ export interface NoteEditorToolbarProps {
     commentCount?: number;
     /** Inline Rich/Source mode toggle rendered at the right end of the toolbar. */
     modeToggle?: ReactNode;
+    /** Number of active AI edit regions in the editor. */
+    aiEditCount?: number;
+    /** Called to dismiss AI edit decorations permanently. */
+    onDismissAiEdits?: () => void;
+    /** Called to toggle AI edit decoration visibility. */
+    onToggleAiEdits?: () => void;
+    /** Whether AI edit decorations are currently shown. */
+    aiEditsVisible?: boolean;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -231,7 +239,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits }: NoteEditorToolbarProps) {
     if (!editor) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -301,9 +309,25 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle) && (
+            {(onToggleCommentsPanel || modeToggle || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
+                    {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
+                        <button
+                            type="button"
+                            className={
+                                'text-xs px-2 py-0.5 rounded ' +
+                                (aiEditsVisible
+                                    ? 'bg-[#e8f5e9] dark:bg-[#1b3a1b] text-green-700 dark:text-green-300'
+                                    : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                            }
+                            onClick={onToggleAiEdits}
+                            title={aiEditsVisible ? 'Hide AI changes' : 'Show AI changes'}
+                            data-testid="ai-edits-toggle"
+                        >
+                            ✦ {aiEditCount}
+                        </button>
+                    )}
                     {onToggleCommentsPanel && (
                         <button
                             type="button"

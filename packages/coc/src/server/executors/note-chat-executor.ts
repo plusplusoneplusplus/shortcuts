@@ -18,7 +18,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
-import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
+import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResult } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     appendAutoFolderBlock,
@@ -77,6 +77,51 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         dataDir?: string,
     ) {
         super(store, options, dataDir);
+    }
+
+    /**
+     * Override execute to capture pre/post note snapshots for inline diff.
+     */
+    async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
+        const payload = task.payload as unknown as ChatPayload;
+        const noteChat = payload.context?.noteChat;
+        const notePath = noteChat?.notePath ?? '';
+        const wsId = payload.workspaceId;
+
+        // Capture pre-edit content
+        const preEditContent = notePath
+            ? await this.readNoteContentForWs(wsId, notePath)
+            : undefined;
+
+        const result = await super.execute(task, prompt);
+
+        // Capture post-edit content and store snapshot if changed
+        if (notePath && wsId && preEditContent !== undefined) {
+            const postEditContent = await this.readNoteContentForWs(wsId, notePath);
+            if (postEditContent !== undefined && postEditContent !== preEditContent) {
+                const processId = toQueueProcessId(task.id);
+                // The assistant turn hasn't been appended yet (lifecycle runner does that after execute()),
+                // so predict the next turnIndex as current turns length.
+                const process = await this.store.getProcess(processId).catch(() => undefined);
+                const turns = process?.conversationTurns ?? [];
+                const turnIndex = turns.length;
+
+                const tooLarge = preEditContent.length > SNAPSHOT_SIZE_LIMIT
+                    || postEditContent.length > SNAPSHOT_SIZE_LIMIT;
+
+                await appendNoteEditSnapshot(this.store, processId, {
+                    editId: `${processId}-${turnIndex}`,
+                    notePath,
+                    preEditContent: tooLarge ? '' : preEditContent,
+                    postEditContent: tooLarge ? '' : postEditContent,
+                    timestamp: new Date().toISOString(),
+                    turnIndex,
+                    ...(tooLarge ? { tooLarge: true } : {}),
+                });
+            }
+        }
+
+        return result;
     }
 
     protected async buildModeOptions(
@@ -159,6 +204,52 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         } catch {
             // best-effort — don't fail the task if metadata patch fails
         }
+    }
+}
+
+// ============================================================================
+// Note edit snapshot types (exported for reuse by REST handler and SPA)
+// ============================================================================
+
+export interface NoteEditSnapshot {
+    /** Unique ID for this edit (e.g. `${processId}-${turnIndex}`). */
+    editId: string;
+    /** Note path relative to the workspace notes root. */
+    notePath: string;
+    /** Full markdown content before the AI edit. */
+    preEditContent: string;
+    /** Full markdown content after the AI edit. Undefined until executor completes. */
+    postEditContent?: string;
+    /** ISO timestamp of the edit. */
+    timestamp: string;
+    /** The conversation turn index that produced this edit. */
+    turnIndex: number;
+    /** When true, content was too large to store — undo is disabled. */
+    tooLarge?: boolean;
+}
+
+/** Maximum snapshot content size (200 KB). Beyond this, store a flag instead. */
+export const SNAPSHOT_SIZE_LIMIT = 200_000;
+
+/**
+ * Append a note edit snapshot to process metadata. Best-effort — never throws.
+ */
+export async function appendNoteEditSnapshot(
+    store: ProcessStore,
+    processId: string,
+    snapshot: NoteEditSnapshot,
+): Promise<void> {
+    try {
+        const existing = await store.getProcess(processId);
+        if (!existing) return;
+        const noteEdits: NoteEditSnapshot[] =
+            (existing.metadata?.noteEdits as NoteEditSnapshot[] | undefined) ?? [];
+        noteEdits.push(snapshot);
+        await store.updateProcess(processId, {
+            metadata: { ...(existing.metadata ?? {}), noteEdits } as any,
+        });
+    } catch {
+        // best-effort — don't fail the task if metadata patch fails
     }
 }
 
