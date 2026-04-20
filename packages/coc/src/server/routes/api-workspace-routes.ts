@@ -106,7 +106,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 remoteUrl,
             };
 
-            await store.registerWorkspace(workspace);
+            try {
+                await store.registerWorkspace(workspace);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                return handleAPIError(res, { status: 500, message: `Failed to register workspace: ${msg}` });
+            }
             sendJSON(res, 201, workspace);
         },
     });

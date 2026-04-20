@@ -3,13 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { exec } from 'child_process';
 import { execGitAsync } from '../../src/git/exec';
 import { execFileAsync } from '../../src/utils/exec-utils';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
-    exec: vi.fn(),
     execFileSync: vi.fn(),
 }));
 
@@ -36,7 +34,6 @@ vi.mock('../../src/utils/workspace-execution', async (importOriginal) => {
     };
 });
 
-const mockedExec = exec as unknown as ReturnType<typeof vi.fn>;
 const mockedExecFileAsync = vi.mocked(execFileAsync);
 
 describe('execGitAsync', () => {
@@ -45,74 +42,93 @@ describe('execGitAsync', () => {
     });
 
     it('resolves with trimmed stdout on success', async () => {
-        mockedExec.mockImplementation((_cmd: string, _opts: any, cb: any) => {
-            cb(null, 'main\n', '');
-        });
+        mockedExecFileAsync.mockResolvedValue({ stdout: 'main\n', stderr: '' });
 
         const result = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], '/repo');
         expect(result).toBe('main');
     });
 
     it('strips \\r\\n from stdout', async () => {
-        mockedExec.mockImplementation((_cmd: string, _opts: any, cb: any) => {
-            cb(null, 'main\r\n', '');
-        });
+        mockedExecFileAsync.mockResolvedValue({ stdout: 'main\r\n', stderr: '' });
 
         const result = await execGitAsync(['rev-parse', 'HEAD'], '/repo');
         expect(result).toBe('main');
     });
 
-    it('passes git -C <repoRoot> with the provided args', async () => {
-        mockedExec.mockImplementation((_cmd: string, _opts: any, cb: any) => {
-            cb(null, '', '');
-        });
+    it('passes git -C <repoRoot> with the provided args as an array', async () => {
+        mockedExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
 
         await execGitAsync(['log', '--oneline'], '/my/repo');
 
-        const cmd = mockedExec.mock.calls[0][0] as string;
-        expect(cmd).toContain('git');
-        expect(cmd).toContain('-C');
-        expect(cmd).toContain('/my/repo');
-        expect(cmd).toContain('log');
-        expect(cmd).toContain('--oneline');
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['-C', '/my/repo', 'log', '--oneline'],
+            expect.objectContaining({ windowsHide: true }),
+        );
+    });
+
+    it('passes paths with spaces as a single discrete argument (not shell-split)', async () => {
+        mockedExecFileAsync.mockResolvedValue({ stdout: 'main\n', stderr: '' });
+
+        await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], '/Users/John Doe/my repo');
+
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['-C', '/Users/John Doe/my repo', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            expect.objectContaining({ windowsHide: true }),
+        );
+    });
+
+    it('passes Windows paths with spaces as a single discrete argument', async () => {
+        mockedExecFileAsync.mockResolvedValue({ stdout: 'main\n', stderr: '' });
+
+        await execGitAsync(['status'], 'C:\\My Projects\\my repo');
+
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            ['-C', 'C:\\My Projects\\my repo', 'status'],
+            expect.objectContaining({ windowsHide: true }),
+        );
     });
 
     it('rejects with stderr message on failure', async () => {
-        mockedExec.mockImplementation((_cmd: string, _opts: any, cb: any) => {
-            cb(new Error('fail'), '', 'fatal: not a git repository');
-        });
+        mockedExecFileAsync.mockRejectedValue(
+            Object.assign(new Error('fail'), { stderr: 'fatal: not a git repository' }),
+        );
 
         await expect(execGitAsync(['status'], '/bad'))
             .rejects.toThrow('git status failed: fatal: not a git repository');
     });
 
-    it('rejects with empty stderr when stderr is blank', async () => {
-        mockedExec.mockImplementation((_cmd: string, _opts: any, cb: any) => {
-            cb(new Error('fail'), '', '');
-        });
+    it('rejects with empty error when stderr is blank', async () => {
+        mockedExecFileAsync.mockRejectedValue(new Error('fail'));
 
         await expect(execGitAsync(['status'], '/bad'))
             .rejects.toThrow('git status failed:');
     });
 
     it('applies custom options (maxBuffer, timeout)', async () => {
-        mockedExec.mockImplementation((_cmd: string, opts: any, cb: any) => {
-            expect(opts.maxBuffer).toBe(1024);
-            expect(opts.timeout).toBe(5000);
-            cb(null, '', '');
-        });
+        mockedExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
 
         await execGitAsync(['status'], '/repo', { maxBuffer: 1024, timeout: 5000 });
+
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            expect.any(Array),
+            expect.objectContaining({ maxBuffer: 1024, timeout: 5000 }),
+        );
     });
 
     it('uses default maxBuffer and timeout when no options given', async () => {
-        mockedExec.mockImplementation((_cmd: string, opts: any, cb: any) => {
-            expect(opts.maxBuffer).toBe(50 * 1024 * 1024); // 50 MB
-            expect(opts.timeout).toBe(30_000);
-            cb(null, '', '');
-        });
+        mockedExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
 
         await execGitAsync(['status'], '/repo');
+
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            expect.any(Array),
+            expect.objectContaining({ maxBuffer: 50 * 1024 * 1024, timeout: 30_000 }),
+        );
     });
 
     it.runIf(process.platform === 'win32')('routes WSL repos through wsl.exe', async () => {
@@ -127,6 +143,5 @@ describe('execGitAsync', () => {
             ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'git', '-C', '/home/tester/repo', 'rev-parse', '--abbrev-ref', 'HEAD'],
             expect.objectContaining({ windowsHide: true }),
         );
-        expect(mockedExec).not.toHaveBeenCalled();
     });
 });

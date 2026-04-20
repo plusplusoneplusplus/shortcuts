@@ -68,7 +68,7 @@ function joinBrowserPath(basePath: string, childName: string): string {
 }
 
 function getPathPlaceholder(): string {
-    if (typeof navigator !== 'undefined' && /win/i.test(navigator.platform)) {
+    if (typeof navigator !== 'undefined' && /win/i.test(navigator.userAgent)) {
         return 'C:\\path\\to\\repo';
     }
     return '/path/to/repo';

@@ -4,7 +4,7 @@
  * Uses `child_process.execSync` with `git -C <repoRoot>` to run git commands.
  */
 
-import { exec, execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { execFileAsync } from '../utils/exec-utils';
 import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
 import {
@@ -70,20 +70,15 @@ export function execGitAsync(args: string[], repoRoot: string, options?: ExecGit
                     return;
                 }
 
-                const joined = ['git', '-C', repoRoot, ...args].join(' ');
-                const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
-                exec(cmd, {
+                execFileAsync('git', ['-C', repoRoot, ...args], {
                     maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
                     timeout: options?.timeout ?? DEFAULT_TIMEOUT,
                     encoding: 'utf-8',
                     cwd: options?.cwd,
-                }, (error, stdout, stderr) => {
-                    if (error) {
-                        reject(createGitExecError(args, { stderr }));
-                    } else {
-                        resolve((stdout as string).replace(/\r?\n$/, ''));
-                    }
-                });
+                    windowsHide: true,
+                })
+                    .then(({ stdout }) => resolve(stdout.replace(/\r?\n$/, '')))
+                    .catch(err => reject(createGitExecError(args, err)));
             })
             .catch(err => reject(createGitExecError(args, err)));
     });
@@ -109,13 +104,12 @@ export function execGit(args: string[], repoRoot: string, options?: ExecGitOptio
             return output.replace(/\r?\n$/, '');
         }
 
-        const joined = ['git', '-C', repoRoot, ...args].join(' ');
-        const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
-        const output = execSync(cmd, {
+        const output = execFileSync('git', ['-C', repoRoot, ...args], {
             maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
             timeout: options?.timeout ?? DEFAULT_TIMEOUT,
             encoding: 'utf-8',
             cwd: options?.cwd,
+            windowsHide: true,
         });
         // Strip trailing newline(s)
         return output.replace(/\r?\n$/, '');
