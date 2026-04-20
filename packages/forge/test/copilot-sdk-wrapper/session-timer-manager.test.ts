@@ -157,4 +157,85 @@ describe('SessionTimerManager', () => {
         expect(cb.onTurnEndGrace).not.toHaveBeenCalled();
         expect(tm.hasTurnEndGraceTimer).toBe(false);
     });
+
+    // ── Background drain timeout ─────────────────────────────────────────
+
+    it('fires onBackgroundDrainTimeout after default 120s', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 600_000 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+
+        vi.advanceTimersByTime(119_999);
+        expect(cb.onBackgroundDrainTimeout).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2);
+        expect(cb.onBackgroundDrainTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires onBackgroundDrainTimeout after custom duration', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 600_000, backgroundDrainTimeoutMs: 5000 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+        vi.advanceTimersByTime(5001);
+        expect(cb.onBackgroundDrainTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire background drain timeout when disabled (0ms)', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 600_000, backgroundDrainTimeoutMs: 0 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+        vi.advanceTimersByTime(300_000);
+        expect(cb.onBackgroundDrainTimeout).not.toHaveBeenCalled();
+    });
+
+    it('cancelBackgroundDrainTimeout prevents callback from firing', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 600_000, backgroundDrainTimeoutMs: 5000 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+        tm.cancelBackgroundDrainTimeout();
+        vi.advanceTimersByTime(10_000);
+        expect(cb.onBackgroundDrainTimeout).not.toHaveBeenCalled();
+    });
+
+    it('startBackgroundDrainTimeout is a no-op if already active', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 600_000, backgroundDrainTimeoutMs: 5000 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+        vi.advanceTimersByTime(3000);
+        tm.startBackgroundDrainTimeout(); // should not reset
+        vi.advanceTimersByTime(2001);
+        expect(cb.onBackgroundDrainTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleanup clears background drain timeout', () => {
+        const cb = { ...makeCallbacks(), onBackgroundDrainTimeout: vi.fn() };
+        const tm = new SessionTimerManager({ timeoutMs: 1000, backgroundDrainTimeoutMs: 500 }, cb);
+        tm.start();
+        tm.startBackgroundDrainTimeout();
+
+        tm.cleanup();
+
+        vi.advanceTimersByTime(10_000);
+        expect(cb.onBackgroundDrainTimeout).not.toHaveBeenCalled();
+    });
+
+    it('works without onBackgroundDrainTimeout callback', () => {
+        const cb = makeCallbacks(); // no onBackgroundDrainTimeout
+        const tm = new SessionTimerManager({ timeoutMs: 600_000, backgroundDrainTimeoutMs: 100 }, cb);
+        tm.start();
+
+        tm.startBackgroundDrainTimeout();
+        // Should not throw when timer fires without callback
+        expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+    });
 });

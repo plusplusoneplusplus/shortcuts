@@ -230,6 +230,16 @@ export class StreamingSession {
                         this.settleWithResult();
                     }
                 },
+                onBackgroundDrainTimeout: () => {
+                    this.sessionLog.warn(
+                        { turns: this.telemetry.turnCount, messages: this.telemetry.allMessages.length },
+                        'Background tasks drain timeout — session.idle never arrived, force-settling',
+                    );
+                    this.waitingForBackgroundTasks = false;
+                    if (this.stateMachine.isStreaming && (this.telemetry.allMessages.length > 0 || this.telemetry.response)) {
+                        this.settleWithResult();
+                    }
+                },
             },
         );
         this.timers.start();
@@ -398,6 +408,7 @@ export class StreamingSession {
     private handleSessionIdle(): void {
         this.sessionLog.debug({ turns: this.telemetry.turnCount }, 'Session idle');
         this.waitingForBackgroundTasks = false;
+        this.timers.cancelBackgroundDrainTimeout();
         this.settleWithResult();
     }
 
@@ -405,11 +416,13 @@ export class StreamingSession {
      * session.background_tasks_changed signals that background work exists.
      * Set the waiting flag and cancel the grace timer; settlement is deferred
      * to session.idle which only fires once all background tasks drain.
+     * Also starts a drain timeout as a safety net in case session.idle never arrives.
      */
     private handleBackgroundTasksChanged(): void {
         if (this.waitingForBackgroundTasks) { return; }
         this.waitingForBackgroundTasks = true;
         this.timers.cancelTurnEndGrace();
+        this.timers.startBackgroundDrainTimeout();
         this.sessionLog.debug('Background tasks active — deferring settle to session.idle');
         this.notifyBackgroundTasksChanged(true);
     }

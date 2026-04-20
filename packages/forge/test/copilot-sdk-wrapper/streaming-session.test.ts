@@ -655,3 +655,50 @@ describe('StreamingSession — onBackgroundTasksChanged callback', () => {
         await promise;
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background drain timeout (safety net when session.idle never arrives)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StreamingSession — background drain timeout', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('force-settles when session.idle never arrives after background_tasks_changed', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 600_000 }));
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'done editing' } });
+        emit({ type: 'assistant.turn_end' });
+        emit({ type: 'session.background_tasks_changed', data: {} });
+
+        // Still stuck in streaming after turn_end grace period
+        vi.advanceTimersByTime(10_000);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // After default 120s drain timeout, should force-settle
+        vi.advanceTimersByTime(110_001);
+        const result = await promise;
+        expect(result.response).toBe('done editing');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('session.idle arriving before drain timeout cancels the drain timer', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 600_000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'result' } });
+        emit({ type: 'session.background_tasks_changed', data: {} });
+
+        // session.idle arrives after 5s — well before the 120s drain timeout
+        vi.advanceTimersByTime(5000);
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.response).toBe('result');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+});
