@@ -168,8 +168,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 const imageTempDir = payload.imageTempDir;
                 try {
                     await this.store.updateProcess(payload.processId!, { status: 'completed' });
-                } catch {
-                    // Non-fatal: process may already be cleaned up
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
                 }
                 if (imageTempDir) { cleanupTempDir(imageTempDir); }
             }
@@ -197,7 +197,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
                 // Drain pending messages after follow-up completion
                 if (opts.onDrainPendingMessages) {
-                    try { await opts.onDrainPendingMessages(followUpPayload.processId!, task.id); } catch { /* non-fatal */ }
+                    try {
+                        await opts.onDrainPendingMessages(followUpPayload.processId!, task.id);
+                    } catch (err) {
+                        logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${followUpPayload.processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
+                    }
                 }
                 return { success: true, durationMs: duration };
             } catch (error) {
@@ -293,8 +297,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 } else {
                     process.conversationTurns = initialTurns;
                 }
-            } catch {
-                // Non-fatal: old process may be gone
+            } catch (err) {
+                logger.warn(LogCategory.AI, `[QueueExecutor] Failed to load historical turns for cold resume from ${resumedFrom}: ${err instanceof Error ? err.message : String(err)}`);
                 process.conversationTurns = initialTurns;
             }
         } else {
@@ -303,8 +307,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
         try {
             await this.store.addProcess(process);
-        } catch {
-            // Non-fatal: store may be a stub
+        } catch (err) {
+            logger.warn(LogCategory.AI, `[QueueExecutor] Failed to register process ${processId} in store: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         task.processId = processId;
@@ -368,7 +372,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
                 // Drain pending messages after task completion
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
-                    try { await opts.onDrainPendingMessages(processId, task.id); } catch { /* non-fatal */ }
+                    try {
+                        await opts.onDrainPendingMessages(processId, task.id);
+                    } catch (err) {
+                        logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
+                    }
                 }
 
                 // Eagerly detect .plan.md in conversation turns and set planFilePath
@@ -379,7 +387,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             await this.store.updateProcess(processId, {
                                 metadata: { ...currentProc.metadata, planFilePath: detected } as any,
                             });
-                        } catch { /* best-effort persist */ }
+                        } catch (err) {
+                            logger.debug(LogCategory.AI, `[QueueExecutor] Failed to persist planFilePath for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                        }
                     }
                 }
 
@@ -389,11 +399,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (this.onBackgroundReview) {
                     const wsId = (task.payload as any)?.workspaceId as string | undefined;
                     if (wsId) {
-                        try { this.onBackgroundReview(processId, wsId, combinedTurns); } catch { /* non-fatal */ }
+                        try {
+                            this.onBackgroundReview(processId, wsId, combinedTurns);
+                        } catch (err) {
+                            logger.debug(LogCategory.AI, `[QueueExecutor] Failed to queue background review for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                        }
                     }
                 }
-            } catch {
-                // Non-fatal
+            } catch (err) {
+                logger.error(LogCategory.AI, `[QueueExecutor] Failed to persist conversation turn for ${processId} — turn may be lost: ${err instanceof Error ? err.message : String(err)}`);
             }
 
             return { success: true, result, durationMs: Date.now() - startTime };
@@ -417,8 +431,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     });
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
-            } catch {
-                // Non-fatal
+            } catch (err) {
+                logger.warn(LogCategory.AI, `[QueueExecutor] Failed to update failed process status for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             }
 
             return {

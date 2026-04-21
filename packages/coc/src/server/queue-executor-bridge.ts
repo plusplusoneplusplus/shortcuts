@@ -3,7 +3,7 @@ import { isChatPayload, isBackgroundReviewPayload, isMemoryAggregatePayload, Tas
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { processToQueuedTask } from './shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, getLogger, LogCategory, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
@@ -212,7 +212,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         } else {
             this.cancelledTasks.add(taskId);
         }
-        try { const proc = await this.store.getProcess(processId); if (proc?.sdkSessionId) { await this.aiService.abortSession(proc.sdkSessionId); } } catch { /* Non-fatal */ }
+        try {
+            const proc = await this.store.getProcess(processId);
+            if (proc?.sdkSessionId) { await this.aiService.abortSession(proc.sdkSessionId); }
+        } catch (err) {
+            getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
@@ -222,7 +227,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             const proc = await this.store.getProcess(processId);
             if (!proc?.sdkSessionId) return false;
             return await this.aiService.steerSession(proc.sdkSessionId, message);
-        } catch { return false; }
+        } catch (err) {
+            getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+            return false;
+        }
     }
 
     answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): boolean {

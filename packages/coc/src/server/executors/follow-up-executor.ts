@@ -129,7 +129,8 @@ export class FollowUpExecutor extends BaseExecutor {
             });
             await store.load();
             return store;
-        } catch {
+        } catch (err) {
+            getLogger().debug(LogCategory.AI, `[FollowUp] resolveMemoryStoreForFlush failed for workspace ${wsId}: ${err instanceof Error ? err.message : String(err)}`);
             return undefined;
         }
     }
@@ -229,7 +230,9 @@ export class FollowUpExecutor extends BaseExecutor {
                 await this.store.updateProcess(process.id, {
                     metadata: { ...(process.metadata ?? {}), noteContentStatus } as any,
                 });
-            } catch { /* best-effort */ }
+            } catch (err) {
+                logger.debug(LogCategory.AI, `[FollowUp] Failed to update note metadata for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
 
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);
@@ -256,7 +259,9 @@ export class FollowUpExecutor extends BaseExecutor {
                             timeoutMs: 30_000,
                         });
                     }
-                } catch { /* non-fatal — don't block the follow-up */ }
+                } catch (err) {
+                    logger.warn(LogCategory.AI, `[FollowUp] Pre-compression memory flush failed for ${processId} — context may be lost: ${err instanceof Error ? err.message : String(err)}`);
+                }
             }
         }
 
@@ -291,8 +296,8 @@ export class FollowUpExecutor extends BaseExecutor {
             if (this.clientCache) {
                 try {
                     cachedClient = await this.clientCache.acquire(processId, workingDirectory);
-                } catch {
-                    // Non-fatal: fall back to session-per-request (no cached client)
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[FollowUp] Failed to acquire cached client for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
 
@@ -313,15 +318,17 @@ export class FollowUpExecutor extends BaseExecutor {
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {
-                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {});
+                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
+                        logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
+                    });
                 },
                 onStreamingChunk: (chunk: string) => {
                     this.getOrCreateSession(processId).outputBuffer += chunk;
                     this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
                         this.store.emitProcessOutput(processId, chunk);
-                    } catch {
-                        // Non-fatal
+                    } catch (err) {
+                        logger.debug(LogCategory.AI, `[FollowUp] emitProcessOutput failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                     this.checkThrottleAndFlush(processId);
                 },
@@ -353,7 +360,8 @@ export class FollowUpExecutor extends BaseExecutor {
                 try {
                     cachedClient = await this.clientCache.acquire(processId, workingDirectory);
                     sendOptions.client = cachedClient;
-                } catch {
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[FollowUp] Failed to acquire fresh client for ${processId} on retry: ${err instanceof Error ? err.message : String(err)}`);
                     sendOptions.client = undefined;
                 }
 
@@ -448,7 +456,9 @@ export class FollowUpExecutor extends BaseExecutor {
                             ...(tooLarge ? { tooLarge: true } : {}),
                         });
                     }
-                } catch { /* best-effort */ }
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[FollowUp] Failed to capture note edit snapshot for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
             }
 
             if (result.tokenUsage) {
@@ -460,8 +470,8 @@ export class FollowUpExecutor extends BaseExecutor {
                         sessionTokenLimit: result.tokenUsage.tokenLimit,
                         sessionCurrentTokens: result.tokenUsage.currentTokens,
                     });
-                } catch {
-                    // Non-fatal
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[FollowUp] Failed to emit token usage event for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
 
@@ -472,7 +482,7 @@ export class FollowUpExecutor extends BaseExecutor {
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             const duration = Date.now() - startTime;
-            logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
+            logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
             await this.store.appendConversationTurn(
                 processId,
