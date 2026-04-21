@@ -1,3 +1,2 @@
-export function cn(...classes: (string | undefined | false | null)[]): string {
-    return classes.filter(Boolean).join(' ');
-}
+// Backward-compat shim — canonical source is now in ui/cn.ts
+export * from '../ui/cn';

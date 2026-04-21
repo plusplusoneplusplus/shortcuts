@@ -1,78 +1,78 @@
-// ── UI primitives ──────────────────────────────────────────────────────
-export { Button } from './Button';
-export type { ButtonProps } from './Button';
-export { Card } from './Card';
-export type { CardProps } from './Card';
-export { Dialog } from './Dialog';
-export type { DialogProps } from './Dialog';
-export { FloatingDialog } from './FloatingDialog';
-export type { FloatingDialogProps } from './FloatingDialog';
-export { Badge } from './Badge';
-export type { BadgeProps } from './Badge';
-export { Spinner } from './Spinner';
-export type { SpinnerProps } from './Spinner';
-export { ToastContainer, useToast } from './Toast';
-export type { ToastProps } from './Toast';
-export { SourceEditor } from './SourceEditor';
-export type { SourceEditorProps } from './SourceEditor';
-export { cn } from './cn';
-export { ImagePreviews } from './ImagePreviews';
-export type { ImagePreviewsProps } from './ImagePreviews';
-export { ImageGallery } from './ImageGallery';
-export type { ImageGalleryProps } from './ImageGallery';
-export { ImageLightbox } from './ImageLightbox';
-export type { ImageLightboxProps } from './ImageLightbox';
-export { SuggestionChips } from './SuggestionChips';
-export type { SuggestionChipsProps } from './SuggestionChips';
-export { ResponsiveSidebar } from './ResponsiveSidebar';
-export type { ResponsiveSidebarProps } from './ResponsiveSidebar';
-export { BottomSheet } from './BottomSheet';
-export type { BottomSheetProps } from './BottomSheet';
-export { FilePathLink } from './FilePathLink';
-export type { FilePathLinkProps } from './FilePathLink';
+// ── UI primitives (canonical source: ../ui/) ──────────────────────────
+// These re-exports keep `from '../shared'` working for consumers that
+// haven't migrated to `from '../ui'` yet.
+export { Button } from '../ui/Button';
+export type { ButtonProps } from '../ui/Button';
+export { Card } from '../ui/Card';
+export type { CardProps } from '../ui/Card';
+export { Dialog } from '../ui/Dialog';
+export type { DialogProps } from '../ui/Dialog';
+export { FloatingDialog } from '../ui/FloatingDialog';
+export type { FloatingDialogProps } from '../ui/FloatingDialog';
+export { Badge } from '../ui/Badge';
+export type { BadgeProps } from '../ui/Badge';
+export { Spinner } from '../ui/Spinner';
+export type { SpinnerProps } from '../ui/Spinner';
+export { ToastContainer, useToast } from '../ui/Toast';
+export type { ToastProps } from '../ui/Toast';
+export { cn } from '../ui/cn';
+export { ImagePreviews } from '../ui/ImagePreviews';
+export type { ImagePreviewsProps } from '../ui/ImagePreviews';
+export { ImageGallery } from '../ui/ImageGallery';
+export type { ImageGalleryProps } from '../ui/ImageGallery';
+export { ImageLightbox } from '../ui/ImageLightbox';
+export type { ImageLightboxProps } from '../ui/ImageLightbox';
+export { SuggestionChips } from '../ui/SuggestionChips';
+export type { SuggestionChipsProps } from '../ui/SuggestionChips';
+export { ResponsiveSidebar } from '../ui/ResponsiveSidebar';
+export type { ResponsiveSidebarProps } from '../ui/ResponsiveSidebar';
+export { BottomSheet } from '../ui/BottomSheet';
+export type { BottomSheetProps } from '../ui/BottomSheet';
+export { FilePathLink } from '../ui/FilePathLink';
+export type { FilePathLinkProps } from '../ui/FilePathLink';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
-export { TruncatedPath } from './TruncatedPath';
-export type { TruncatedPathProps } from './TruncatedPath';
-export { FilterDropdown } from './FilterDropdown';
-export type { FilterDropdownProps, FilterItem } from './FilterDropdown';
+export { TruncatedPath } from '../ui/TruncatedPath';
+export type { TruncatedPathProps } from '../ui/TruncatedPath';
+export { FilterDropdown } from '../ui/FilterDropdown';
+export type { FilterDropdownProps, FilterItem } from '../ui/FilterDropdown';
+export { SectionHeader } from '../ui/SectionHeader';
+export type { SectionHeaderProps } from '../ui/SectionHeader';
+export { ErrorBoundary } from '../ui/ErrorBoundary';
+export { SendButton, SplitSendButton } from '../ui/SplitSendButton';
+export type { SendButtonProps, SplitSendButtonProps } from '../ui/SplitSendButton';
+export { CommentPanelAdapter } from '../ui/CommentPanelAdapter';
+export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanelProps } from '../ui/CommentPanelAdapter';
+export { CopySectionBtn } from '../ui/CopySectionBtn';
+export { ContextWindowIndicator } from '../ui/ContextWindowIndicator';
+export { JsonResponseView } from '../ui/JsonResponseView';
+export { isJsonResponse } from '../ui/json-utils';
+export { SkeletonLine, SkeletonCard, SkeletonList, SkeletonListItem } from '../ui/SkeletonLoader';
+export { CapacityBar } from '../ui/CapacityBar';
+export { ModeToggleToolbar } from '../ui/ModeToggleToolbar';
+export type { ModeOption, ModeToggleToolbarProps } from '../ui/ModeToggleToolbar';
+export { AttachmentPreviews } from '../ui/AttachmentPreviews';
+export type { AttachmentPreviewsProps } from '../ui/AttachmentPreviews';
+export { AttachedContextPreviews } from '../ui/AttachedContextPreviews';
+export type { AttachedContextPreviewsProps } from '../ui/AttachedContextPreviews';
+export { PastePreview } from '../ui/PastePreview';
+export type { PastePreviewProps } from '../ui/PastePreview';
+export { CreatedFilesDropdown } from '../ui/CreatedFilesDropdown';
+export { ReferencesDropdown, ReferenceList, normalizeRefPath, deduplicateReferenceFiles } from '../ui/ReferencesDropdown';
+export type { ReferencesDropdownProps } from '../ui/ReferencesDropdown';
+export { RenameDialog } from '../ui/RenameDialog';
+export type { RenameDialogProps } from '../ui/RenameDialog';
+
+// ── Feature-level shared (canonical source: this directory) ────────────
 export { SkillDetailPanel } from './SkillDetailPanel';
 export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
 export { SkillListItem } from './SkillListItem';
 export type { SkillListItemProps } from './SkillListItem';
 export { RichTextInput } from './RichTextInput';
 export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
-export { SectionHeader } from './SectionHeader';
-export type { SectionHeaderProps } from './SectionHeader';
-export { ErrorBoundary } from './ErrorBoundary';
-export { SendButton, SplitSendButton } from './SplitSendButton';
-export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
-export { CommentPanelAdapter } from './CommentPanelAdapter';
-export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanelProps } from './CommentPanelAdapter';
 export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
-export { CopySectionBtn } from './CopySectionBtn';
-export { ContextWindowIndicator } from './ContextWindowIndicator';
-export { JsonResponseView } from './JsonResponseView';
-export { isJsonResponse } from './json-utils';
-export { SkeletonLine, SkeletonCard, SkeletonList, SkeletonListItem } from './SkeletonLoader';
-export { CapacityBar } from './CapacityBar';
-export { ModeToggleToolbar } from './ModeToggleToolbar';
-export type { ModeOption, ModeToggleToolbarProps } from './ModeToggleToolbar';
-
-// ── Attachment / paste previews ────────────────────────────────────────
-export { AttachmentPreviews } from './AttachmentPreviews';
-export type { AttachmentPreviewsProps } from './AttachmentPreviews';
-export { AttachedContextPreviews } from './AttachedContextPreviews';
-export type { AttachedContextPreviewsProps } from './AttachedContextPreviews';
-export { PastePreview } from './PastePreview';
-export type { PastePreviewProps } from './PastePreview';
-
-// ── Dropdowns ──────────────────────────────────────────────────────────
-export { CreatedFilesDropdown } from './CreatedFilesDropdown';
-export { ReferencesDropdown, ReferenceList, normalizeRefPath, deduplicateReferenceFiles } from './ReferencesDropdown';
-export type { ReferencesDropdownProps } from './ReferencesDropdown';
-
-// ── Feature-level shared dialogs / editors ─────────────────────────────
+export { SourceEditor } from './SourceEditor';
+export type { SourceEditorProps } from './SourceEditor';
 export { FollowPromptDialog } from './FollowPromptDialog';
 export type { FollowPromptDialogProps } from './FollowPromptDialog';
 export { BulkFollowPromptDialog } from './BulkFollowPromptDialog';
@@ -81,14 +81,10 @@ export { ResolveContextDialog, shouldSkipResolveDialog, resetSkipResolveDialog }
 export type { ResolveContextDialogProps } from './ResolveContextDialog';
 export { UpdateDocumentDialog } from './UpdateDocumentDialog';
 export type { UpdateDocumentDialogProps } from './UpdateDocumentDialog';
-export { RenameDialog } from './RenameDialog';
-export type { RenameDialogProps } from './RenameDialog';
 export { MarkdownReviewEditor, parseFrontmatterStatus } from './MarkdownReviewEditor';
 export type { MarkdownReviewEditorProps } from './MarkdownReviewEditor';
 export { FilePreview } from './FilePreview';
 export type { FilePreviewProps } from './FilePreview';
-
-// ── Misc shared components ─────────────────────────────────────────────
 export { NotificationBell } from './NotificationBell';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
