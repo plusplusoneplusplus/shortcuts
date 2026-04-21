@@ -2,14 +2,18 @@
  * BoundedMemoryTab — repo-scoped MEMORY.md viewer/editor.
  *
  * Shows MEMORY.md content for the current repo's workspace with
- * capacity bar and inline editor.
+ * capacity bar, pipeline status strip, and inline editor.
+ * Includes an "Aggregate Now" toolbar button that opens the AggregatePanel dialog.
  */
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { memoryApi } from './memoryApi';
+import type { MemoryStats } from './memoryApi';
 import { CapacityBar } from '../../shared/CapacityBar';
 import { ToastContext } from '../../context/ToastContext';
 import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../hooks/preferencesApi';
+import { PipelineStatusStrip } from './PipelineStatusStrip';
+import { AggregatePanel } from './AggregatePanel';
 
 interface BoundedMemoryTabProps {
     repoId: string;
@@ -34,6 +38,19 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+
+    // Pipeline overview state
+    const [overviewStats, setOverviewStats] = useState<MemoryStats | null>(null);
+    const [aggregatePanelOpen, setAggregatePanelOpen] = useState(false);
+
+    const fetchOverview = useCallback(async () => {
+        try {
+            const stats = await memoryApi.getOverview(repoId);
+            setOverviewStats(stats);
+        } catch {
+            // Non-critical — strip just stays hidden
+        }
+    }, [repoId]);
 
     const fetchContent = useCallback(async () => {
         setLoading(true);
@@ -62,6 +79,13 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     }, [repoId]);
 
     useEffect(() => { fetchContent(); }, [fetchContent]);
+    useEffect(() => { if (enabled) fetchOverview(); }, [enabled, fetchOverview]);
+
+    const handleAggregateClose = () => setAggregatePanelOpen(false);
+    const handleAggregateDone = () => {
+        fetchContent();
+        fetchOverview();
+    };
 
     const handleToggleEnabled = async () => {
         const nextEnabled = !enabled;
@@ -193,8 +217,11 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 )}
             </div>
 
+            {/* Pipeline status strip */}
+            {enabled && <PipelineStatusStrip stats={overviewStats} />}
+
             {/* Toolbar */}
-            <div className="flex items-center gap-2 mb-3 flex-wrap" data-testid="bounded-toolbar">
+            <div className="flex items-center gap-2 mb-3 flex-wrap mt-3" data-testid="bounded-toolbar">
                 <span className="text-xs text-[#848484] flex-1">
                     MEMORY.md {lastModified ? `· Updated ${new Date(lastModified).toLocaleDateString()}` : ''}
                 </span>
@@ -214,6 +241,15 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 >
                     Refresh
                 </button>
+                {enabled && !editing && (
+                    <button
+                        onClick={() => setAggregatePanelOpen(true)}
+                        className="text-xs px-2.5 py-1 rounded border border-[#0078d4]/60 text-[#0078d4] hover:bg-[#0078d4]/10 transition-colors"
+                        data-testid="bounded-aggregate-btn"
+                    >
+                        Aggregate Now ▶
+                    </button>
+                )}
                 {!editing ? (
                     <button
                         onClick={handleStartEdit}
@@ -292,6 +328,19 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                     </pre>
                 )}
             </div>
+
+            {/* Aggregate panel dialog */}
+            {aggregatePanelOpen && (
+                <AggregatePanel
+                    repoId={repoId}
+                    pendingRawCount={overviewStats?.pendingRawCount}
+                    consolidationStatus={overviewStats?.consolidationStatus}
+                    consolidationProcessId={overviewStats?.consolidationProcessId}
+                    consolidationTaskId={overviewStats?.consolidationTaskId}
+                    onClose={handleAggregateClose}
+                    onDone={handleAggregateDone}
+                />
+            )}
         </div>
     );
 }
