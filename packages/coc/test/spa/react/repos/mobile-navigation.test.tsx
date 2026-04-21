@@ -156,6 +156,13 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({
+        state: { myWorkExcludedTypes: [], preferencesLoaded: true },
+        dispatch: vi.fn(),
+    }),
+}));
+
 // Mock heavy ChatHeader dependencies to prevent timeout during dynamic import
 vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
     useContainerWidth: () => 800,

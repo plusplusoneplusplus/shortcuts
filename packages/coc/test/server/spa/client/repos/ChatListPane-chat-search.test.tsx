@@ -112,6 +112,13 @@ vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () =>
     }),
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({
+        state: { myWorkExcludedTypes: [], preferencesLoaded: true },
+        dispatch: vi.fn(),
+    }),
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ taskCardDensity: 'normal', historyGrouping: false }),
 }));

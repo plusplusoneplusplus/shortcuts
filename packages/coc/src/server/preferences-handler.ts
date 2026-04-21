@@ -88,6 +88,8 @@ export interface GlobalPreferences {
         statusFilter?: string;
         workspace?: string;
         typeFilter?: string;
+        /** Persisted My Work Activity exclusion set (e.g. ['run-workflow', 'ask']). */
+        myWorkExcludedTypes?: string[];
     };
 
     /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
@@ -202,6 +204,10 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         if (typeof raw.statusFilter === 'string') validated.statusFilter = raw.statusFilter;
         if (typeof raw.workspace === 'string') validated.workspace = raw.workspace;
         if (typeof raw.typeFilter === 'string') validated.typeFilter = raw.typeFilter;
+        if (Array.isArray(raw.myWorkExcludedTypes)) {
+            const arr = (raw.myWorkExcludedTypes as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 0);
+            validated.myWorkExcludedTypes = arr;
+        }
         if (Object.keys(validated).length > 0) {
             result.activityFilters = validated;
         }

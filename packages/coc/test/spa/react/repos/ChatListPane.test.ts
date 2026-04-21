@@ -891,16 +891,17 @@ describe('ChatListPane: filter dropdown rework', () => {
     });
 
     describe('excludedTypes state', () => {
-        it('uses excludedTypes state instead of filterType', () => {
-            expect(source).toContain('excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set())');
+        it('reads excludedTypes from AppContext myWorkExcludedTypes', () => {
+            expect(source).toContain('useApp()');
+            expect(source).toContain('appState.myWorkExcludedTypes');
         });
 
-        it('resets excludedTypes to empty set on workspaceId change', () => {
+        it('does not reset excludedTypes on workspaceId change', () => {
             const workspaceEffect = source.substring(
                 source.indexOf("}, [workspaceId])") - 200,
                 source.indexOf("}, [workspaceId])") + 1,
             );
-            expect(workspaceEffect).toContain('setExcludedTypes(new Set())');
+            expect(workspaceEffect).not.toContain('setExcludedTypes');
         });
     });
 

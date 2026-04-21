@@ -23,6 +23,7 @@ import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
@@ -233,7 +234,13 @@ export function ChatListPane({
         if (!isQueueProcessId(taskId) && toQueueProcessId(taskId) === selectedTaskId) return true;
         return false;
     }, [selectedTaskId]);
-    const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
+
+    const { state: appState, dispatch: appDispatch } = useApp();
+    const excludedTypes = useMemo(() => new Set(appState.myWorkExcludedTypes), [appState.myWorkExcludedTypes]);
+    const setExcludedTypes = useCallback((next: Set<string>) => {
+        appDispatch({ type: 'SET_MY_WORK_EXCLUDED_TYPES', value: [...next] });
+    }, [appDispatch]);
+
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -257,7 +264,6 @@ export function ChatListPane({
     const isDense = taskCardDensity === 'dense';
 
     useEffect(() => {
-        setExcludedTypes(new Set());
         setSearchQueryRaw('');
         onSearchQueryChange?.('');
         setSearchVisible(false);

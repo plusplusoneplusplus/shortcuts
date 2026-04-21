@@ -38,6 +38,8 @@ export interface AppContextState {
     workspace: string;
     statusFilter: string;
     typeFilter: string;
+    /** Persisted My Work Activity type exclusion set. */
+    myWorkExcludedTypes: string[];
     searchQuery: string;
     /** null = not searching; [] = no results found */
     searchResults: any[] | null;
@@ -102,6 +104,7 @@ const initialState: AppContextState = {
     workspace: '__all',
     statusFilter: '__all',
     typeFilter: '__all',
+    myWorkExcludedTypes: [],
     searchQuery: '',
     searchResults: null,
     searchLoading: false,
@@ -221,11 +224,12 @@ export type AppAction =
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
-    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { statusFilter?: string; workspace?: string; typeFilter?: string } } }
+    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { statusFilter?: string; workspace?: string; typeFilter?: string; myWorkExcludedTypes?: string[] } } }
     | { type: 'DISMISS_WELCOME' }
     | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
     | { type: 'DISMISS_TIP'; payload: { tipId: string } }
-    | { type: 'COMPLETE_TOUR' };
+    | { type: 'COMPLETE_TOUR' }
+    | { type: 'SET_MY_WORK_EXCLUDED_TYPES'; value: string[] };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -270,6 +274,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, statusFilter: action.value };
         case 'SET_TYPE_FILTER':
             return { ...state, typeFilter: action.value };
+        case 'SET_MY_WORK_EXCLUDED_TYPES':
+            return { ...state, myWorkExcludedTypes: action.value };
         case 'SET_SEARCH_QUERY': {
             const next: AppContextState = { ...state, searchQuery: action.value };
             // Clear search results when query is emptied
@@ -500,6 +506,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 statusFilter: activityFilters?.statusFilter ?? state.statusFilter,
                 workspace: activityFilters?.workspace ?? state.workspace,
                 typeFilter: activityFilters?.typeFilter ?? state.typeFilter,
+                myWorkExcludedTypes: activityFilters?.myWorkExcludedTypes ?? state.myWorkExcludedTypes,
                 preferencesLoaded: true,
             };
         }
@@ -577,6 +584,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         return () => { if (filterSaveRef.current) clearTimeout(filterSaveRef.current); };
     }, [state.statusFilter, state.workspace, state.typeFilter, state.preferencesLoaded]);
+
+    // Debounced save of myWorkExcludedTypes to server preferences
+    const myWorkFilterSaveRef = useRef<ReturnType<typeof setTimeout>>();
+    const prevMyWorkRef = useRef(state.myWorkExcludedTypes);
+
+    useEffect(() => {
+        if (!state.preferencesLoaded) return;
+
+        const prev = prevMyWorkRef.current;
+        const cur = state.myWorkExcludedTypes;
+        if (prev.length === cur.length && prev.every((v, i) => v === cur[i])) return;
+        prevMyWorkRef.current = cur;
+
+        if (myWorkFilterSaveRef.current) clearTimeout(myWorkFilterSaveRef.current);
+        myWorkFilterSaveRef.current = setTimeout(() => {
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activityFilters: { myWorkExcludedTypes: cur } }),
+            }).catch(() => {});
+        }, 500);
+
+        return () => { if (myWorkFilterSaveRef.current) clearTimeout(myWorkFilterSaveRef.current); };
+    }, [state.myWorkExcludedTypes, state.preferencesLoaded]);
 
     // Cross-tab sync for sidebar collapsed state
     useEffect(() => {

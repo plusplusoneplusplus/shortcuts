@@ -166,6 +166,12 @@ describe('readPreferences / writePreferences', () => {
         expect(result.global?.activityFilters).toEqual({ typeFilter: 'run-workflow' });
     });
 
+    it('round-trips activityFilters with myWorkExcludedTypes', () => {
+        writePreferences(tmpDir, { global: { activityFilters: { statusFilter: 'running', myWorkExcludedTypes: ['ask', 'plan'] } } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.activityFilters).toEqual({ statusFilter: 'running', myWorkExcludedTypes: ['ask', 'plan'] });
+    });
+
     it('creates data directory if needed', () => {
         const nested = path.join(tmpDir, 'a', 'b');
         writePreferences(nested, { global: { theme: 'auto' } });
@@ -830,6 +836,34 @@ describe('validateGlobalPreferences', () => {
         expect(result.activityFilters).toEqual({ typeFilter: 'run-script' });
     });
 
+    // -- activityFilters.myWorkExcludedTypes --
+
+    it('accepts myWorkExcludedTypes as string[]', () => {
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: ['run-workflow', 'ask'] } });
+        expect(result.activityFilters).toEqual({ myWorkExcludedTypes: ['run-workflow', 'ask'] });
+    });
+
+    it('accepts empty myWorkExcludedTypes array', () => {
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: [] } });
+        expect(result.activityFilters).toEqual({ myWorkExcludedTypes: [] });
+    });
+
+    it('filters non-string items from myWorkExcludedTypes', () => {
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: ['chat', 42, null, '', 'plan'] } });
+        expect(result.activityFilters!.myWorkExcludedTypes).toEqual(['chat', 'plan']);
+    });
+
+    it('ignores myWorkExcludedTypes when not an array', () => {
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: 'bad', statusFilter: 'running' } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'running' });
+        expect(result.activityFilters!.myWorkExcludedTypes).toBeUndefined();
+    });
+
+    it('preserves myWorkExcludedTypes alongside other activityFilters fields', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'running', myWorkExcludedTypes: ['ask'] } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'running', myWorkExcludedTypes: ['ask'] });
+    });
+
     it('accepts uiLayoutMode classic', () => {
         expect(validateGlobalPreferences({ uiLayoutMode: 'classic' })).toEqual({ uiLayoutMode: 'classic' });
     });
@@ -1197,6 +1231,34 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
+    });
+
+    // -- myWorkExcludedTypes persistence via API --
+
+    it('PATCH persists myWorkExcludedTypes', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['run-workflow', 'ask'] } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters!.myWorkExcludedTypes).toEqual(['run-workflow', 'ask']);
+    });
+
+    it('PATCH deep-merges myWorkExcludedTypes with existing activityFilters', async () => {
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'running' } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['plan'] } });
+        const body = JSON.parse(res.body);
+        expect(body.activityFilters!.statusFilter).toBe('running');
+        expect(body.activityFilters!.myWorkExcludedTypes).toEqual(['plan']);
+    });
+
+    it('PATCH with empty myWorkExcludedTypes clears the array', async () => {
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['chat'] } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: [] } });
+        expect(JSON.parse(res.body).activityFilters!.myWorkExcludedTypes).toEqual([]);
+    });
+
+    it('GET returns persisted myWorkExcludedTypes', async () => {
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['autopilot'] } });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).activityFilters!.myWorkExcludedTypes).toEqual(['autopilot']);
     });
 });
 
