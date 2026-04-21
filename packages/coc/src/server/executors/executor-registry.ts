@@ -21,6 +21,7 @@ import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 import { CopilotClientCache } from './copilot-client-cache';
 import { BackgroundReviewExecutor } from '../memory/background-review-executor';
+import { MemoryAggregateExecutor } from '../memory/memory-aggregate-executor';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -39,6 +40,8 @@ export interface ExecutorRegistryOptions {
     getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
     /** Shared CopilotClient cache (optional — when provided, executors reuse clients). */
     clientCache?: CopilotClientCache;
+    /** Callback when capture-mode memory.add completes (triggers aggregate enqueue). */
+    onMemoryCaptured?: (workspaceId: string, target: string) => void;
 }
 
 /**
@@ -51,6 +54,7 @@ export class ExecutorRegistry {
     readonly runner: ProcessLifecycleRunner;
     readonly clientCache: CopilotClientCache;
     readonly backgroundReviewExecutor: BackgroundReviewExecutor;
+    readonly memoryAggregateExecutor: MemoryAggregateExecutor | undefined;
 
     private readonly store: ProcessStore;
     private readonly approvePermissions: boolean;
@@ -92,13 +96,14 @@ export class ExecutorRegistry {
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
+            onMemoryCaptured: options.onMemoryCaptured,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded }, options.dataDir, this.clientCache);
+        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded, onMemoryCaptured: options.onMemoryCaptured }, options.dataDir, this.clientCache);
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir, this.clientCache);
         this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir, this.clientCache);
         this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir, this.clientCache);
@@ -110,13 +115,19 @@ export class ExecutorRegistry {
             options.aiService,
             options.getMemoryStore ?? (() => undefined),
         );
+        this.memoryAggregateExecutor = options.dataDir
+            ? new MemoryAggregateExecutor(options.aiService, options.dataDir)
+            : undefined;
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache, options.onBackgroundReview);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {
         if (isBackgroundReviewPayload(task.payload)) return this.backgroundReviewExecutor.execute(task);
-        if (isMemoryAggregatePayload(task.payload)) return { status: 'completed', message: 'memory-aggregate handled externally' };
+        if (isMemoryAggregatePayload(task.payload)) {
+            if (this.memoryAggregateExecutor) return this.memoryAggregateExecutor.execute(task);
+            return { status: 'completed', message: 'memory-aggregate: no dataDir configured' };
+        }
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {

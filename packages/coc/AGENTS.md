@@ -180,6 +180,8 @@ src/
 │   │   ├── repo-memory-handler.ts       # Per-repo bounded MEMORY.md REST endpoints (GET/PUT /api/repos/:repoId/memory/*)
 │   │   ├── background-review.ts         # Background memory review (periodic AI pass to add/replace/remove entries)
 │   │   ├── background-review-executor.ts # Executor for background review tasks
+│   │   ├── memory-aggregate.ts          # Prompts, config, and helpers for queued raw-to-bounded aggregation
+│   │   ├── memory-aggregate-executor.ts # Queued executor: claims raw records, invokes AI reconciliation, rewrites MEMORY.md
 │   │   └── pre-compression-flush.ts     # Flush memory before compression to avoid data loss
 │   └── spa/              # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/

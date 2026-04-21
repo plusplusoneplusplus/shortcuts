@@ -227,9 +227,11 @@ export interface RunScriptPayload {
 
 export interface MemoryAggregatePayload {
     readonly kind: 'memory-aggregate';
-    repoId: string;
-    sources: ('notes' | 'observations')[];
+    workspaceId: string;
+    target: 'memory' | 'system';
     model?: string;
+    /** Why this task was enqueued (e.g. 'capture-trigger', 'manual'). */
+    trigger?: string;
 }
 
 export interface BackgroundReviewPayload {

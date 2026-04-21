@@ -88,6 +88,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
+            onMemoryCaptured: (wsId: string, target: string) => this.enqueueMemoryAggregate(wsId, target as 'memory' | 'system', 'capture-trigger'),
             getWsServer: options.getWsServer,
             clientCache: options.clientCache,
         });
@@ -112,6 +113,35 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             payload: payload as any,
             config: {},
             displayName: `Memory review (${processId})`,
+        });
+    }
+
+    /**
+     * Enqueue a memory-aggregate task with deduplication.
+     * At most one queued or running aggregate task per (workspaceId, target).
+     */
+    enqueueMemoryAggregate(workspaceId: string, target: 'memory' | 'system', trigger?: string): void {
+        if (!this.queueManager) return;
+        const existing = this.queueManager.getAll()
+            .find(t =>
+                t.type === TaskDefs.memoryAggregate.kind
+                && (t.payload as any)?.workspaceId === workspaceId
+                && (t.payload as any)?.target === target
+                && (t.status === 'queued' || t.status === 'running'),
+            );
+        if (existing) return;
+        this.queueManager.enqueue({
+            type: TaskDefs.memoryAggregate.kind,
+            repoId: workspaceId,
+            priority: 'low',
+            payload: {
+                kind: 'memory-aggregate',
+                workspaceId,
+                target,
+                trigger: trigger ?? 'capture-trigger',
+            } as any,
+            config: {},
+            displayName: `Memory aggregate (${target})`,
         });
     }
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
