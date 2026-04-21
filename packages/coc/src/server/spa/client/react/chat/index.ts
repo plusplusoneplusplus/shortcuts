@@ -9,14 +9,14 @@ export type { RenderToolCall, ToolCallGroupViewProps } from './ToolCallGroupView
 export { ToolResultPopover } from './ToolResultPopover';
 export { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
-export { JsonResponseView } from './JsonResponseView';
+export { JsonResponseView } from '../shared/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
 export { getConversationTurns } from './chatConversationUtils';
 
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
 export type { DetectedCommit } from './commitDetection';
-export { isJsonResponse } from './json-utils';
+export { isJsonResponse } from '../shared/json-utils';
 export { mergeConsecutiveContentItems } from './timeline-utils';
 export {
     CATEGORY_MAP, CATEGORY_ICONS,

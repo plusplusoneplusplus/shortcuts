@@ -55,7 +55,7 @@ vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopove
     ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
     ContextWindowIndicator: ({ tokenLimit }: any) =>
         tokenLimit ? <span data-testid="context-window">ctx</span> : null,
 }));

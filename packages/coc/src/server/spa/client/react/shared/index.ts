@@ -50,3 +50,6 @@ export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanel
 export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
 export { CopySectionBtn } from './CopySectionBtn';
+export { ContextWindowIndicator } from './ContextWindowIndicator';
+export { JsonResponseView } from './JsonResponseView';
+export { isJsonResponse } from './json-utils';

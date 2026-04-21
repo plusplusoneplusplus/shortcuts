@@ -97,7 +97,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
 vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
     ContextWindowIndicator: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

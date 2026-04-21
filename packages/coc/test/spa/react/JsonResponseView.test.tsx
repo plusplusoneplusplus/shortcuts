@@ -27,7 +27,7 @@ vi.mock('@uiw/react-json-view/light', () => ({
     lightTheme: { backgroundColor: '#ffffff' },
 }));
 
-import { JsonResponseView } from '../../../src/server/spa/client/react/chat/JsonResponseView';
+import { JsonResponseView } from '../../../src/server/spa/client/react/shared/JsonResponseView';
 
 describe('JsonResponseView', () => {
     beforeEach(() => {

@@ -174,7 +174,7 @@ vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopove
     ConversationMetadataPopover: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
     ContextWindowIndicator: () => null,
 }));
 

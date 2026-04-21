@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { cn } from '../shared/cn';
+import { cn } from './cn';
 
 interface ContextWindowIndicatorProps {
     /** Total context window size in tokens */

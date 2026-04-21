@@ -19,7 +19,7 @@ vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
 }));
 
 // Mock JsonResponseView to avoid importing the full @uiw/react-json-view library in tests
-vi.mock('../../../src/server/spa/client/react/chat/JsonResponseView', () => ({
+vi.mock('../../../src/server/spa/client/react/shared/JsonResponseView', () => ({
     JsonResponseView: ({ content }: { content: string }) => (
         <div data-testid="json-response-view" className="json-response-view">{content}</div>
     ),

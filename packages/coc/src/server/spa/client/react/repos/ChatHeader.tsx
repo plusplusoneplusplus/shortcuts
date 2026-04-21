@@ -4,7 +4,7 @@ import { Button } from '../shared';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../shared/ReferencesDropdown';
 import { BottomSheet } from '../shared/BottomSheet';
 import { ConversationMetadataPopover } from '../chat/ConversationMetadataPopover';
-import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
+import { ContextWindowIndicator } from '../shared/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { chatMarkdownToHtml } from '../chat/ConversationTurnBubble';
 import { snapshotConversation } from '../utils/snapshot-copy-utils';
