@@ -128,16 +128,14 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         >
                             ⧉ Duplicate
                         </Button>
-                        {schedule.source !== 'repo' && (
-                            <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => onDelete(schedule.id)}
-                                aria-label="Delete schedule"
-                            >
-                                🗑 Delete
-                            </Button>
-                        )}
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => onDelete(schedule.id)}
+                            aria-label="Delete schedule"
+                        >
+                            🗑 Delete
+                        </Button>
                     </div>
 
                     {/* ── Commit reminder for repo schedule edits ──────────── */}

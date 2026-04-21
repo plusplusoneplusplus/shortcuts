@@ -289,11 +289,11 @@ export class ScheduleManager extends EventEmitter {
     }
 
     /**
-     * Remove a schedule.
-     * Repo-sourced schedules cannot be removed via the API.
+     * Remove a user schedule.
+     * For repo schedules, use removeRepoSchedule() instead.
      */
     removeSchedule(repoId: string, scheduleId: string): boolean {
-        // Block removal of repo schedules
+        // Block removal of repo schedules — use removeRepoSchedule() instead
         if (this.repoSchedules.get(repoId)?.has(scheduleId)) return false;
 
         const map = this.schedules.get(repoId);
@@ -309,6 +309,59 @@ export class ScheduleManager extends EventEmitter {
         } else {
             this.persist(repoId);
         }
+
+        this.emit('change', {
+            type: 'schedule-removed',
+            repoId,
+            scheduleId,
+        } as ScheduleChangeEvent);
+
+        return true;
+    }
+
+    /**
+     * Remove a repo schedule by deleting its backing YAML file from
+     * .github/schedules/ and unregistering it from the in-memory map.
+     *
+     * @returns true if the file was deleted successfully.
+     * @throws if the workspace path is not registered, the schedule is not a
+     *   repo schedule, or the backing file does not exist.
+     */
+    removeRepoSchedule(repoId: string, scheduleId: string): boolean {
+        const rootPath = this.workspacePaths.get(repoId);
+        if (!rootPath) {
+            throw new Error('Workspace path not available for this repo');
+        }
+
+        const repoMap = this.repoSchedules.get(repoId);
+        if (!repoMap?.has(scheduleId)) {
+            throw new Error('Repo schedule not found');
+        }
+
+        const stem = scheduleId.replace(/^repo:/, '');
+        const scheduleDir = getRepoScheduleDir(rootPath);
+        let deleted = false;
+
+        for (const ext of ['.yaml', '.yml']) {
+            const filePath = path.join(scheduleDir, `${stem}${ext}`);
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    deleted = true;
+                }
+            } catch (err) {
+                throw new Error(`Failed to delete schedule file: ${getErrorMessage(err)}`);
+            }
+        }
+
+        if (!deleted) {
+            throw new Error(`Schedule file not found: ${stem}.yaml`);
+        }
+
+        // Unregister from in-memory map and cancel timer
+        this.cancelTimer(scheduleId);
+        this.runHistory.delete(scheduleId);
+        this.reloadRepoSchedules(repoId);
 
         this.emit('change', {
             type: 'schedule-removed',

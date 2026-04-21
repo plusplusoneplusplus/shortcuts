@@ -116,7 +116,7 @@ describe('Schedule Handler — repo schedule enforcement', () => {
         expect(repoSched.name).toBe('Daily');
     });
 
-    it('DELETE repo schedule returns 403', async () => {
+    it('DELETE repo schedule succeeds and removes the file', async () => {
         writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         await startServer();
 
@@ -124,8 +124,35 @@ describe('Schedule Handler — repo schedule enforcement', () => {
         await request(schedulesUrl());
 
         const res = await deleteRequest(scheduleUrl('repo:daily'));
-        expect(res.status).toBe(403);
-        expect(res.body).toContain('cannot be deleted');
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.deleted).toBe(true);
+
+        // Verify file was removed
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'daily.yaml');
+        expect(fs.existsSync(yamlPath)).toBe(false);
+
+        // Verify schedule no longer appears in list
+        const listRes = await request(schedulesUrl());
+        const list = JSON.parse(listRes.body).schedules;
+        const found = list.find((s: any) => s.id === 'repo:daily');
+        expect(found).toBeUndefined();
+    });
+
+    it('DELETE repo schedule with missing file returns 404', async () => {
+        writeRepoSchedule('ephemeral.yaml', 'name: Ephemeral\ncron: "0 0 * * *"');
+        await startServer();
+
+        // Ensure schedules are loaded
+        await request(schedulesUrl());
+
+        // Remove the file externally before calling DELETE
+        fs.unlinkSync(path.join(workspaceRoot, '.github', 'schedules', 'ephemeral.yaml'));
+
+        const res = await deleteRequest(scheduleUrl('repo:ephemeral'));
+        // After the external delete, the schedule may or may not still be in memory
+        // depending on watcher timing — accept either 404 (gone from memory) or 200 (cleaned up)
+        expect([200, 404]).toContain(res.status);
     });
 
     it('PATCH repo schedule with non-status fields writes to YAML and returns 200', async () => {

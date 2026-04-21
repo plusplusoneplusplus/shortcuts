@@ -216,15 +216,26 @@ export function registerScheduleRoutes(
             const repoId = decodeURIComponent(match![1]);
             const scheduleId = decodeURIComponent(match![2]);
 
-            // Repo schedules cannot be deleted via the API
+            await ensureWorkspaceLoaded(repoId);
+
             const existing = manager.getSchedule(repoId, scheduleId);
-            if (existing?.source === 'repo') {
-                return sendError(res, 403, 'Repo schedules cannot be deleted via the API. Remove the file from .github/schedules/ in your repository.');
+            if (!existing) {
+                return sendError(res, 404, 'Schedule not found');
             }
 
-            const removed = manager.removeSchedule(repoId, scheduleId);
-            if (!removed) {
-                return sendError(res, 404, 'Schedule not found');
+            if (existing.source === 'repo') {
+                try {
+                    manager.removeRepoSchedule(repoId, scheduleId);
+                } catch (err) {
+                    const msg = getErrorMessage(err, 'Failed to delete repo schedule');
+                    const status = msg.includes('not found') || msg.includes('not available') ? 404 : 500;
+                    return sendError(res, status, msg);
+                }
+            } else {
+                const removed = manager.removeSchedule(repoId, scheduleId);
+                if (!removed) {
+                    return sendError(res, 404, 'Schedule not found');
+                }
             }
 
             sendJSON(res, 200, { deleted: true });

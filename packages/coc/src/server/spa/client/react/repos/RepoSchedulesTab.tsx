@@ -138,7 +138,12 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     };
 
     const handleDelete = async (scheduleId: string) => {
-        if (!confirm('Delete this schedule?')) return;
+        const schedule = schedules.find(s => s.id === scheduleId);
+        const slug = scheduleId.replace(/^repo:/, '');
+        const message = schedule?.source === 'repo'
+            ? `This will permanently delete .github/schedules/${slug}.yaml. This cannot be undone. Continue?`
+            : 'Delete this schedule?';
+        if (!confirm(message)) return;
         await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`, {
             method: 'DELETE',
         });
