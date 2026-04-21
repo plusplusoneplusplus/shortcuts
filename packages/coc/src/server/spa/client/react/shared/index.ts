@@ -1,3 +1,4 @@
+// ── UI primitives ──────────────────────────────────────────────────────
 export { Button } from './Button';
 export type { ButtonProps } from './Button';
 export { Card } from './Card';
@@ -53,3 +54,41 @@ export { CopySectionBtn } from './CopySectionBtn';
 export { ContextWindowIndicator } from './ContextWindowIndicator';
 export { JsonResponseView } from './JsonResponseView';
 export { isJsonResponse } from './json-utils';
+export { SkeletonLine, SkeletonCard, SkeletonList, SkeletonListItem } from './SkeletonLoader';
+export { CapacityBar } from './CapacityBar';
+export { ModeToggleToolbar } from './ModeToggleToolbar';
+export type { ModeOption, ModeToggleToolbarProps } from './ModeToggleToolbar';
+
+// ── Attachment / paste previews ────────────────────────────────────────
+export { AttachmentPreviews } from './AttachmentPreviews';
+export type { AttachmentPreviewsProps } from './AttachmentPreviews';
+export { AttachedContextPreviews } from './AttachedContextPreviews';
+export type { AttachedContextPreviewsProps } from './AttachedContextPreviews';
+export { PastePreview } from './PastePreview';
+export type { PastePreviewProps } from './PastePreview';
+
+// ── Dropdowns ──────────────────────────────────────────────────────────
+export { CreatedFilesDropdown } from './CreatedFilesDropdown';
+export { ReferencesDropdown, ReferenceList, normalizeRefPath, deduplicateReferenceFiles } from './ReferencesDropdown';
+export type { ReferencesDropdownProps } from './ReferencesDropdown';
+
+// ── Feature-level shared dialogs / editors ─────────────────────────────
+export { FollowPromptDialog } from './FollowPromptDialog';
+export type { FollowPromptDialogProps } from './FollowPromptDialog';
+export { BulkFollowPromptDialog } from './BulkFollowPromptDialog';
+export type { BulkFollowPromptDialogProps } from './BulkFollowPromptDialog';
+export { ResolveContextDialog, shouldSkipResolveDialog, resetSkipResolveDialog } from './ResolveContextDialog';
+export type { ResolveContextDialogProps } from './ResolveContextDialog';
+export { UpdateDocumentDialog } from './UpdateDocumentDialog';
+export type { UpdateDocumentDialogProps } from './UpdateDocumentDialog';
+export { RenameDialog } from './RenameDialog';
+export type { RenameDialogProps } from './RenameDialog';
+export { MarkdownReviewEditor, parseFrontmatterStatus } from './MarkdownReviewEditor';
+export type { MarkdownReviewEditorProps } from './MarkdownReviewEditor';
+export { FilePreview } from './FilePreview';
+export type { FilePreviewProps } from './FilePreview';
+
+// ── Misc shared components ─────────────────────────────────────────────
+export { NotificationBell } from './NotificationBell';
+export { DASHBOARD_AI_COMMANDS } from './ai-commands';
+export type { DashboardAICommand } from './ai-commands';

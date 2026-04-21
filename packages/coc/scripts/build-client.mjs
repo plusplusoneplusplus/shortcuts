@@ -42,6 +42,14 @@ async function buildTailwindBundle(inputPath, outputPath) {
     console.log(`\n  ${outputPath}  ${sizeKb}kb\n`);
 }
 
+// Stable path aliases so future file moves don't break consumer imports.
+const SPA_ROOT = 'src/server/spa/client/react';
+const spaAliases = {
+    '@spa/features': `${SPA_ROOT}/features`,
+    '@spa/ui': `${SPA_ROOT}/ui`,
+    '@spa/shared': `${SPA_ROOT}/shared`,
+};
+
 // Main dashboard SPA
 await esbuild.build({
     entryPoints: ['src/server/spa/client/index.tsx'],
@@ -54,6 +62,7 @@ await esbuild.build({
     minify: false,
     sourcemap: false,
     logLevel: 'info',
+    alias: spaAliases,
     loader: {
         '.ttf': 'dataurl',
         '.css': 'css',

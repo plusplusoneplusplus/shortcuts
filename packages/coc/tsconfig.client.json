@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@spa/features/*": ["src/server/spa/client/react/features/*"],
+      "@spa/features": ["src/server/spa/client/react/features/index.ts"],
+      "@spa/ui/*": ["src/server/spa/client/react/ui/*"],
+      "@spa/ui": ["src/server/spa/client/react/ui/index.ts"],
+      "@spa/shared/*": ["src/server/spa/client/react/shared/*"],
+      "@spa/shared": ["src/server/spa/client/react/shared/index.ts"]
+    }
+  },
+  "include": ["src/server/spa/client/**/*"],
+  "exclude": ["node_modules", "src/server/spa/client/dist"]
+}
