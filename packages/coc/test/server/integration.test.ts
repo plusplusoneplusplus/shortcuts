@@ -14,6 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
+import { safeRm, safeRmSync } from '../helpers/safe-rm';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
@@ -124,8 +125,8 @@ describe('Server Integration', () => {
         // Force-close all connections before closing the servers
         await server.close();
         await stubServer.close();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-        fs.rmSync(stubTmpDir, { recursive: true, force: true });
+        safeRmSync(tmpDir);
+        safeRmSync(stubTmpDir);
     }, 10_000);
 
     // ------------------------------------------------------------------
@@ -747,7 +748,7 @@ describe('Server Integration', () => {
                 expect(processData.process.id).toBe('persist-1');
             } finally {
                 await persistServer.close();
-                fs.rmSync(persistDir, { recursive: true, force: true });
+                safeRmSync(persistDir);
             }
         });
 
@@ -784,7 +785,7 @@ describe('Server Integration', () => {
                 expect(ids).toContain('restart-2');
             } finally {
                 await server2.close();
-                fs.rmSync(restartDir, { recursive: true, force: true });
+                safeRmSync(restartDir);
             }
         });
 
@@ -811,7 +812,7 @@ describe('Server Integration', () => {
                 expect(data.some((w: any) => w.id === 'ws-file-1')).toBe(true);
             } finally {
                 await wsServer.close();
-                fs.rmSync(wsDir, { recursive: true, force: true });
+                safeRmSync(wsDir);
             }
         });
     });
@@ -840,7 +841,7 @@ describe('Server Integration', () => {
             await new Promise(r => setTimeout(r, 800));
 
             // Clean up
-            fs.rmSync(wsRoot, { recursive: true, force: true });
+            safeRmSync(wsRoot);
         });
 
         it('should stop task watcher when workspace is removed', async () => {
@@ -867,7 +868,7 @@ describe('Server Integration', () => {
             await new Promise(r => setTimeout(r, 600));
 
             // Clean up
-            fs.rmSync(wsRoot, { recursive: true, force: true });
+            safeRmSync(wsRoot);
         });
 
         it('should handle workspace without tasks directory gracefully', async () => {
@@ -883,7 +884,7 @@ describe('Server Integration', () => {
             // Should not crash — just silently skip
             await new Promise(r => setTimeout(r, 200));
 
-            fs.rmSync(wsRoot, { recursive: true, force: true });
+            safeRmSync(wsRoot);
         });
     });
 });

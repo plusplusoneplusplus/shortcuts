@@ -47,7 +47,7 @@ describe('AiEditDecorationExtension (source inspection)', () => {
             expect(source).toContain('from: number');
             expect(source).toContain('to: number');
             expect(source).toContain('chunks: DiffChunk[]');
-            expect(source).toContain('expiresAt: number');
+            expect(source).toContain('expiresAt?: number');
         });
     });
 

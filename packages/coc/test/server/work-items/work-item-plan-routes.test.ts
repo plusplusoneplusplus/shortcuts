@@ -8,6 +8,7 @@ import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { registerWorkItemPlanRoutes } from '../../../src/server/routes/work-item-plan-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { safeRm } from '../../helpers/safe-rm';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -89,7 +90,7 @@ describe('Work Item Plan Routes', () => {
 
     afterEach(async () => {
         await stopServer();
-        await fs.rm(tmpDir, { recursive: true, force: true });
+        await safeRm(tmpDir);
     });
 
     describe('GET /plan', () => {

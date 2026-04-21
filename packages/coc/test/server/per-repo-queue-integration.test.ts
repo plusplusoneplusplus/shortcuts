@@ -20,6 +20,7 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // ============================================================================
 // Helpers
@@ -160,7 +161,7 @@ describe('Per-Repo Queue Integration', () => {
 
     afterAll(async () => {
         await server.close();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        safeRmSync(tmpDir);
     }, 10_000);
 
     beforeEach(async () => {
@@ -1139,7 +1140,7 @@ describe('Per-Repo Queue Integration', () => {
                 // Drain should complete (or timeout, both are acceptable outcomes)
                 expect(['completed', 'timeout', undefined]).toContain(result?.drainOutcome);
             } finally {
-                fs.rmSync(drainTmpDir, { recursive: true, force: true });
+                safeRmSync(drainTmpDir);
             }
         });
     });

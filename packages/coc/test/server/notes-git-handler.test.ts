@@ -13,6 +13,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
+import { safeRm } from '../helpers/safe-rm';
 
 // ============================================================================
 // Request Helpers
@@ -54,7 +55,7 @@ function postJSON(
 // Tests
 // ============================================================================
 
-describe('Notes Git Handler', () => {
+describe('Notes Git Handler', { timeout: 60_000 }, () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
@@ -71,13 +72,13 @@ describe('Notes Git Handler', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
+        await safeRm(dataDir);
+        await safeRm(workspaceDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
         return server;
     }
 

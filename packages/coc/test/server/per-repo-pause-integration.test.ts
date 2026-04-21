@@ -18,6 +18,7 @@ import * as path from 'path';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createExecutionServer as _createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // Tracked wrapper: pushes every server into activeServers for afterEach cleanup
 let _activeServers: ExecutionServer[] = [];
@@ -105,7 +106,7 @@ describe('Per-Repo Pause Integration', () => {
             try { await srv.close(); } catch { /* already closed */ }
         }
         activeServers.length = 0;
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+        try { safeRmSync(tmpDir); } catch { /* best effort */ }
     });
 
     // ------------------------------------------------------------------
@@ -170,7 +171,7 @@ describe('Per-Repo Pause Integration', () => {
 
             await server2.close();
             store2.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('restores tasks across restart with multiple tasks per repo', async () => {
@@ -216,7 +217,7 @@ describe('Per-Repo Pause Integration', () => {
 
             await server2.close();
             store2.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 
@@ -259,7 +260,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos.find((r: any) => r.repoId === activeRepoId)?.isPaused).toBe(false);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('all repos tracked as paused when both are paused', async () => {
@@ -295,7 +296,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos.find((r: any) => r.repoId === repo2Id)?.isPaused).toBe(true);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('resume removes repo from paused list', async () => {
@@ -328,7 +329,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(JSON.parse(repos2Res.body).repos.find((r: any) => r.repoId === repoId)?.isPaused).toBe(false);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 
@@ -361,7 +362,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(pauseBody.stats.isPaused).toBe(true);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('POST /api/queue/resume with repoId resumes specific repo', async () => {
@@ -390,7 +391,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(resumeBody.stats.isPaused).toBe(false);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('GET /api/queue/repos returns repos with pause states', async () => {
@@ -435,7 +436,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repo1.isPaused).toBe(false);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('GET /api/queue/repos returns empty array when no tasks', async () => {
@@ -449,7 +450,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(reposBody.repos).toEqual([]);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 
@@ -507,7 +508,7 @@ describe('Per-Repo Pause Integration', () => {
             }
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('handles toggling pause states for multiple repos', async () => {
@@ -539,7 +540,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos.find((r: any) => r.repoId === repoAId)?.isPaused).toBe(false);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 
@@ -558,7 +559,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(pauseRes.status).toBe(404);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('handles task without workingDirectory (defaults to global workspace)', async () => {
@@ -583,7 +584,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(globalRepo).toBeDefined();
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('global pause overrides per-repo pause states', async () => {
@@ -615,7 +616,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos.find((r: any) => r.repoId === repo1Id)?.isPaused).toBe(true);
 
             await server.close();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 });

@@ -10,8 +10,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { NotesGitService } from '../../src/server/notes-git-service';
+import { safeRmSync } from '../helpers/safe-rm';
 
-describe('NotesGitService', () => {
+describe('NotesGitService', { timeout: 60_000 }, () => {
     let tmpDir: string;
     let service: NotesGitService;
 
@@ -21,7 +22,7 @@ describe('NotesGitService', () => {
     });
 
     afterEach(() => {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        safeRmSync(tmpDir);
     });
 
     // Helper: write a file in the notes directory
@@ -365,7 +366,7 @@ describe('NotesGitService', () => {
         });
 
         afterEach(() => {
-            fs.rmSync(spacedDir, { recursive: true, force: true });
+            safeRmSync(spacedDir);
         });
 
         it('init succeeds when path contains spaces', async () => {

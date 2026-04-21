@@ -16,6 +16,7 @@ import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // ============================================================================
 // Helpers
@@ -117,7 +118,7 @@ describe('Per-Repo WebSocket Events', () => {
 
     afterAll(async () => {
         await server.close();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        safeRmSync(tmpDir);
     }, 10_000);
 
     it('should emit queue-updated with correct repoId when a task is enqueued for repo A', async () => {

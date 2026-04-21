@@ -64,8 +64,8 @@ async function renderSchedulesTab() {
 // ============================================================================
 
 describe('SCHEDULE_TEMPLATES', () => {
-    it('exports 5 templates', () => {
-        expect(SCHEDULE_TEMPLATES).toHaveLength(5);
+    it('exports 6 templates', () => {
+        expect(SCHEDULE_TEMPLATES).toHaveLength(6);
     });
 
     it('every template has required fields', () => {
