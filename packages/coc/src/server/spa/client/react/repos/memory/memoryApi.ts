@@ -17,18 +17,20 @@ export interface FeedItem {
 }
 
 export interface MemoryStats {
-    observationCount: number;
-    noteCount: number;
+    charCount: number;
+    charLimit: number;
+    lastModified: string | null;
+    pendingRawCount: number;
+    claimedRawCount: number;
     consolidatedAt: string | null;
     consolidationStatus?: 'idle' | 'queued' | 'running';
     consolidationTaskId?: string;
     consolidationProcessId?: string;
+    lastAggregatedAt?: string | null;
+    lastAggregateError?: string | null;
 }
 
-export interface MemoryOverviewResponse extends MemoryStats {
-    items: FeedItem[];
-    totalCount: number;
-}
+export interface MemoryOverviewResponse extends MemoryStats {}
 
 export interface DiffLine {
     type: 'add' | 'remove' | 'unchanged';
@@ -55,50 +57,19 @@ export const memoryApi = {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/overview`);
     },
 
-    getConsolidated(repoId: string): Promise<{ content: string }> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/consolidated`);
-    },
-
-    addNote(repoId: string, content: string, tags: string[]): Promise<FeedItem> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/notes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, tags }),
-        });
-    },
-
-    deleteFeedItem(repoId: string, id: string, type: string): Promise<void> {
-        return fetchApi(
-            `/repos/${encodeURIComponent(repoId)}/memory/feed/${encodeURIComponent(id)}?type=${encodeURIComponent(type)}`,
-            { method: 'DELETE' },
-        );
-    },
-
-    /** Enqueue a memory-aggregate task. Returns { taskId, processId } or throws on 409. */
-    async aggregate(repoId: string, sources: string[], model: string): Promise<{ taskId: string; processId: string; status?: string }> {
+    /** Enqueue a memory-aggregate task. Returns { taskId, status } or 409 with already-queued/already-running. */
+    async aggregate(repoId: string, model?: string, target?: string): Promise<{ taskId: string; processId: string | null; status: string }> {
         const res = await fetch(`${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/aggregate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sources, model }),
+            body: JSON.stringify({ model: model || undefined, target: target || undefined }),
         });
         const data = await res.json();
         if (res.status === 409) {
-            return { taskId: data.taskId, processId: data.processId, status: 'already-running' };
+            return { taskId: data.taskId, processId: data.processId, status: data.status };
         }
         if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
         return data;
-    },
-
-    acceptAggregate(repoId: string): Promise<void> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/aggregate/accept`, {
-            method: 'POST',
-        });
-    },
-
-    revertAggregate(repoId: string): Promise<void> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/aggregate/revert`, {
-            method: 'POST',
-        });
     },
 
     /** Read bounded MEMORY.md for a workspace. */

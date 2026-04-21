@@ -10,11 +10,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { DEFAULT_CHAR_LIMIT, scanMemoryContent } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { DEFAULT_CHAR_LIMIT, scanMemoryContent, RawMemoryRecordStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { getRepoDataPath } from '../paths';
+import { TaskDefs } from '../task-types';
 
 // ============================================================================
 // Types
@@ -43,6 +44,8 @@ export interface DiffLine {
 export interface RepoMemoryRouteOptions {
     /** Process store used to resolve workspace rootPath from workspaceId. */
     store: ProcessStore;
+    /** Task queue manager for aggregate-task status and manual trigger. */
+    queueManager?: TaskQueueManager;
 }
 
 // ============================================================================
@@ -113,10 +116,71 @@ export function registerRepoMemoryRoutes(
     dataDir: string,
     options: RepoMemoryRouteOptions,
 ): void {
-    const { store } = options;
+    const { store, queueManager } = options;
 
-    // -- GET /api/repos/:repoId/memory/overview (simplified) ------------------
-    // Returns basic repo memory info without old observation store dependency.
+    /**
+     * Find the most recent memory-aggregate task for a workspace from the queue.
+     * Returns undefined if no queueManager or no matching task.
+     */
+    function findAggregateTask(workspaceId: string, target: string): {
+        status: 'idle' | 'queued' | 'running';
+        taskId?: string;
+        processId?: string;
+        lastAggregatedAt?: string;
+        lastAggregateError?: string;
+    } {
+        if (!queueManager) return { status: 'idle' };
+
+        const tasks = queueManager.getAll()
+            .filter(t =>
+                t.type === TaskDefs.memoryAggregate.kind
+                && (t.payload as any)?.workspaceId === workspaceId
+                && (t.payload as any)?.target === target,
+            )
+            .sort((a, b) => b.createdAt - a.createdAt);
+
+        // Check for active (queued/running) task
+        const active = tasks.find(t => t.status === 'queued' || t.status === 'running');
+        if (active) {
+            return {
+                status: active.status === 'running' ? 'running' : 'queued',
+                taskId: active.id,
+                processId: active.processId,
+            };
+        }
+
+        // Check for most recent completed/failed task
+        const completed = tasks.find(t => t.status === 'completed');
+        const failed = tasks.find(t => t.status === 'failed');
+
+        return {
+            status: 'idle',
+            lastAggregatedAt: completed?.completedAt ? new Date(completed.completedAt).toISOString() : undefined,
+            lastAggregateError: failed?.error,
+        };
+    }
+
+    /**
+     * Get raw-record counts from RawMemoryRecordStore, handling missing DB gracefully.
+     */
+    async function getRawRecordCounts(workspaceId: string): Promise<{ pendingRawCount: number; claimedRawCount: number }> {
+        const rawDbPath = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'raw-memory.db'));
+        if (!fs.existsSync(rawDbPath)) {
+            return { pendingRawCount: 0, claimedRawCount: 0 };
+        }
+        let rawStore: RawMemoryRecordStore | undefined;
+        try {
+            rawStore = new RawMemoryRecordStore({ dbPath: rawDbPath });
+            const stats = await rawStore.getStats();
+            return { pendingRawCount: stats.pending, claimedRawCount: stats.claimed };
+        } catch {
+            return { pendingRawCount: 0, claimedRawCount: 0 };
+        } finally {
+            try { rawStore?.close(); } catch { /* already closed */ }
+        }
+    }
+
+    // -- GET /api/repos/:repoId/memory/overview (with raw-record + aggregate status) --
 
     routes.push({
         method: 'GET',
@@ -143,10 +207,23 @@ export function registerRepoMemoryRoutes(
                     // File doesn't exist yet
                 }
 
+                // Raw-record counts
+                const rawCounts = await getRawRecordCounts(workspaceId);
+
+                // Aggregate task status
+                const aggregateInfo = findAggregateTask(workspaceId, 'memory');
+
                 sendJson(res, {
                     charCount,
                     charLimit: DEFAULT_CHAR_LIMIT,
                     lastModified,
+                    pendingRawCount: rawCounts.pendingRawCount,
+                    claimedRawCount: rawCounts.claimedRawCount,
+                    consolidationStatus: aggregateInfo.status,
+                    consolidationTaskId: aggregateInfo.taskId,
+                    consolidationProcessId: aggregateInfo.processId,
+                    lastAggregatedAt: aggregateInfo.lastAggregatedAt ?? null,
+                    lastAggregateError: aggregateInfo.lastAggregateError ?? null,
                 });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -245,6 +322,74 @@ export function registerRepoMemoryRoutes(
                     charCount: content.length,
                     charLimit: DEFAULT_CHAR_LIMIT,
                     lastModified,
+                });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- POST /api/repos/:repoId/memory/aggregate (manual trigger) ------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/memory\/aggregate$/,
+        handler: async (req, res, match) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+
+                if (!queueManager) {
+                    send500(res, 'Queue manager not available');
+                    return;
+                }
+
+                const repoPath = await getRepoRootPath(store, workspaceId);
+                if (!repoPath) {
+                    send404(res, `Repo not found: ${workspaceId}`);
+                    return;
+                }
+
+                const body = await readJsonBody<{ model?: string; target?: string }>(req);
+                const target = (body.target === 'system' ? 'system' : 'memory') as 'memory' | 'system';
+
+                // Dedupe check: is there already a queued or running task?
+                const existing = queueManager.getAll()
+                    .find(t =>
+                        t.type === TaskDefs.memoryAggregate.kind
+                        && (t.payload as any)?.workspaceId === workspaceId
+                        && (t.payload as any)?.target === target
+                        && (t.status === 'queued' || t.status === 'running'),
+                    );
+
+                if (existing) {
+                    sendJson(res, {
+                        taskId: existing.id,
+                        processId: existing.processId ?? null,
+                        status: existing.status === 'running' ? 'already-running' : 'already-queued',
+                    }, 409);
+                    return;
+                }
+
+                // Enqueue new task
+                const taskId = queueManager.enqueue({
+                    type: TaskDefs.memoryAggregate.kind,
+                    repoId: workspaceId,
+                    priority: 'low',
+                    payload: {
+                        kind: 'memory-aggregate' as const,
+                        workspaceId,
+                        target,
+                        trigger: 'manual',
+                        ...(body.model ? { model: body.model } : {}),
+                    },
+                    config: {},
+                    displayName: `Memory aggregate (${target})`,
+                });
+
+                sendJson(res, {
+                    taskId,
+                    processId: null,
+                    status: 'queued',
                 });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));

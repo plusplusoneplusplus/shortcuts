@@ -1,11 +1,13 @@
 /**
- * AggregatePanel — queue-based memory aggregation with review/accept/revert.
+ * AggregatePanel — queue-based memory aggregation trigger.
  *
- * Phases: idle → submitting → queued → streaming → review → done
+ * Phases: idle → submitting → queued → streaming → done
  *
  * The panel enqueues a memory-aggregate task via POST, then streams output
  * from the standard process SSE endpoint. Supports cross-tab awareness:
  * if a consolidation is already running, the panel picks it up automatically.
+ *
+ * The executor applies reconciliation directly — no accept/revert review step.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,6 +18,8 @@ import { useModels } from '../../hooks/useModels';
 
 interface AggregatePanelProps {
     repoId: string;
+    /** Pending raw-record count (from overview stats). */
+    pendingRawCount?: number;
     /** Server-reported consolidation status (from stats). */
     consolidationStatus?: 'idle' | 'queued' | 'running';
     /** Active processId from server stats (for cross-tab awareness). */
@@ -26,23 +30,11 @@ interface AggregatePanelProps {
     onDone: () => void;
 }
 
-type AggregatePhase = 'idle' | 'submitting' | 'queued' | 'streaming' | 'review' | 'done';
-
-interface DiffLine {
-    type: 'add' | 'remove' | 'unchanged';
-    text: string;
-}
-
-function parseDiff(raw: string): DiffLine[] {
-    return raw.split('\n').map(line => {
-        if (line.startsWith('+')) return { type: 'add' as const, text: line.slice(1) };
-        if (line.startsWith('-')) return { type: 'remove' as const, text: line.slice(1) };
-        return { type: 'unchanged' as const, text: line.startsWith(' ') ? line.slice(1) : line };
-    });
-}
+type AggregatePhase = 'idle' | 'submitting' | 'queued' | 'streaming' | 'done';
 
 export function AggregatePanel({
     repoId,
+    pendingRawCount,
     consolidationStatus,
     consolidationProcessId,
     consolidationTaskId,
@@ -54,14 +46,9 @@ export function AggregatePanel({
     const modelIds = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
 
     const [phase, setPhase] = useState<AggregatePhase>('idle');
-    const [includeNotes, setIncludeNotes] = useState(true);
-    const [includeAi, setIncludeAi] = useState(true);
     const [model, setModel] = useState('');
     const [streamOutput, setStreamOutput] = useState('');
-    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [accepting, setAccepting] = useState(false);
-    const [reverting, setReverting] = useState(false);
     const [processId, setProcessId] = useState<string | null>(null);
     const [taskId, setTaskId] = useState<string | null>(null);
     const esRef = useRef<EventSource | null>(null);
@@ -113,17 +100,16 @@ export function AggregatePanel({
         es.addEventListener('complete', () => {
             es.close();
             esRef.current = null;
-            // Fetch the process result to get diff + consolidated
-            fetchProcessResult(pid);
+            setPhase('done');
+            onDone();
         });
 
         es.onerror = () => {
             es.close();
             esRef.current = null;
-            // Process may have completed before we connected — check result
             fetchProcessResult(pid);
         };
-    }, []);
+    }, [onDone]);
 
     useEffect(() => {
         if (phase === 'streaming' && processId) {
@@ -138,27 +124,28 @@ export function AggregatePanel({
             try {
                 const stats = await memoryApi.getOverview(repoId);
                 if (stats.consolidationStatus === 'running') {
+                    if (stats.consolidationProcessId) {
+                        setProcessId(stats.consolidationProcessId);
+                    }
                     setPhase('streaming');
                 } else if (!stats.consolidationStatus || stats.consolidationStatus === 'idle') {
-                    // Task completed or was cancelled while queued
-                    setPhase('idle');
+                    setPhase('done');
+                    onDone();
                 }
             } catch { /* ignore poll errors */ }
         }, 3000);
         pollRef.current = poll;
         return () => { clearInterval(poll); pollRef.current = null; };
-    }, [phase, repoId]);
+    }, [phase, repoId, onDone]);
 
     const fetchProcessResult = async (pid: string) => {
         try {
             const res = await fetch(`${getApiBase()}/processes/${encodeURIComponent(pid)}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const proc = await res.json();
-            if (proc.status === 'completed' && proc.result) {
-                const resultData = typeof proc.result === 'string' ? JSON.parse(proc.result) : proc.result;
-                if (resultData.diff) setDiffLines(parseDiff(resultData.diff));
-                if (resultData.consolidated) setStreamOutput(resultData.consolidated);
-                setPhase('review');
+            if (proc.status === 'completed') {
+                setPhase('done');
+                onDone();
             } else if (proc.status === 'failed') {
                 setError(proc.error ?? 'Aggregation failed');
                 setPhase('idle');
@@ -173,26 +160,20 @@ export function AggregatePanel({
     };
 
     const handleRun = async () => {
-        const sources: string[] = [];
-        if (includeNotes) sources.push('user');
-        if (includeAi) sources.push('ai');
-        if (sources.length === 0) sources.push('user', 'ai');
-
         setPhase('submitting');
         setStreamOutput('');
         setError(null);
 
         try {
-            const result = await memoryApi.aggregate(repoId, sources, model);
-            if (result.status === 'already-running') {
-                // Another tab/client already started — attach to it
+            const result = await memoryApi.aggregate(repoId, model || undefined);
+            if (result.status === 'already-running' || result.status === 'already-queued') {
                 setProcessId(result.processId);
                 setTaskId(result.taskId);
-                setPhase('streaming');
+                setPhase(result.status === 'already-running' ? 'streaming' : 'queued');
                 return;
             }
-            setProcessId(result.processId);
             setTaskId(result.taskId);
+            setProcessId(result.processId);
             setPhase('queued');
         } catch (e: any) {
             setError(e?.message ?? 'Failed to enqueue');
@@ -210,31 +191,6 @@ export function AggregatePanel({
         setPhase('idle');
     };
 
-    const handleAccept = async () => {
-        setAccepting(true);
-        try {
-            await memoryApi.acceptAggregate(repoId);
-            setPhase('done');
-            onDone();
-        } catch (e: any) {
-            setError(e?.message ?? 'Failed to accept');
-        } finally {
-            setAccepting(false);
-        }
-    };
-
-    const handleRevert = async () => {
-        setReverting(true);
-        try {
-            await memoryApi.revertAggregate(repoId);
-            onClose();
-        } catch (e: any) {
-            setError(e?.message ?? 'Failed to revert');
-        } finally {
-            setReverting(false);
-        }
-    };
-
     const isRunning = phase === 'queued' || phase === 'streaming';
 
     const footerContent = (() => {
@@ -249,10 +205,11 @@ export function AggregatePanel({
                     </button>
                     <button
                         onClick={handleRun}
-                        className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
+                        disabled={pendingRawCount === 0}
+                        className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="aggregate-run-btn"
                     >
-                        Run ▶
+                        Aggregate Now ▶
                     </button>
                 </>
             );
@@ -278,26 +235,14 @@ export function AggregatePanel({
                 </button>
             );
         }
-        if (phase === 'review') {
+        if (phase === 'done') {
             return (
-                <>
-                    <button
-                        onClick={handleRevert}
-                        disabled={reverting}
-                        className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors disabled:opacity-50"
-                        data-testid="aggregate-revert-btn"
-                    >
-                        {reverting ? 'Reverting…' : 'Revert'}
-                    </button>
-                    <button
-                        onClick={handleAccept}
-                        disabled={accepting}
-                        className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors disabled:opacity-50"
-                        data-testid="aggregate-accept-btn"
-                    >
-                        {accepting ? 'Accepting…' : 'Accept ✓'}
-                    </button>
-                </>
+                <button
+                    onClick={onClose}
+                    className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
+                >
+                    Close
+                </button>
             );
         }
         return null;
@@ -318,24 +263,9 @@ export function AggregatePanel({
                 {phase === 'idle' && (
                     <>
                         <div className="flex items-center gap-4 mb-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includeNotes}
-                                    onChange={e => setIncludeNotes(e.target.checked)}
-                                    data-testid="aggregate-include-notes"
-                                />
-                                Your notes
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includeAi}
-                                    onChange={e => setIncludeAi(e.target.checked)}
-                                    data-testid="aggregate-include-ai"
-                                />
-                                AI observations
-                            </label>
+                            <span className="text-[#848484]">
+                                {pendingRawCount != null ? `${pendingRawCount} pending record${pendingRawCount !== 1 ? 's' : ''}` : 'Loading…'}
+                            </span>
                             <div className="flex items-center gap-1.5 ml-auto">
                                 <span className="text-[#848484]">Model:</span>
                                 <select
@@ -374,33 +304,10 @@ export function AggregatePanel({
                     </pre>
                 )}
 
-                {phase === 'review' && (
-                    <>
-                        <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Result</div>
-                        <div
-                            className="text-[11px] font-mono bg-[#f3f3f3] dark:bg-[#252526] rounded p-2 max-h-72 overflow-y-auto"
-                            data-testid="aggregate-diff"
-                        >
-                            {diffLines.length > 0 ? diffLines.map((line, i) => (
-                                <div
-                                    key={i}
-                                    className={
-                                        line.type === 'add'
-                                            ? 'text-green-600 dark:text-green-400'
-                                            : line.type === 'remove'
-                                                ? 'text-red-500 line-through opacity-70'
-                                                : 'text-[#1e1e1e] dark:text-[#cccccc]'
-                                    }
-                                >
-                                    {line.type === 'add' ? '+ ' : line.type === 'remove' ? '- ' : '  '}
-                                    {line.text}
-                                </div>
-                            )) : (
-                                <pre className="whitespace-pre-wrap text-[#1e1e1e] dark:text-[#cccccc]">{streamOutput}</pre>
-                            )}
-                        </div>
-                        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
-                    </>
+                {phase === 'done' && (
+                    <div className="text-xs text-green-600 dark:text-green-400 py-2 text-center" data-testid="aggregate-done">
+                        ✓ Aggregation complete. Bounded memory has been updated.
+                    </div>
                 )}
             </div>
         </Dialog>
