@@ -154,6 +154,18 @@ describe('readPreferences / writePreferences', () => {
         expect(result.global?.dismissedTips).toEqual(['tip-a', 'tip-b']);
     });
 
+    it('round-trips activityFilters', () => {
+        writePreferences(tmpDir, { global: { activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+    });
+
+    it('round-trips partial activityFilters', () => {
+        writePreferences(tmpDir, { global: { activityFilters: { typeFilter: 'run-workflow' } } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.activityFilters).toEqual({ typeFilter: 'run-workflow' });
+    });
+
     it('creates data directory if needed', () => {
         const nested = path.join(tmpDir, 'a', 'b');
         writePreferences(nested, { global: { theme: 'auto' } });
@@ -779,6 +791,44 @@ describe('validateGlobalPreferences', () => {
         const result = validateGlobalPreferences({ dismissedTips: [42, null] });
         expect(result.dismissedTips).toBeUndefined();
     });
+
+    // -- activityFilters field --
+
+    it('accepts valid activityFilters', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+    });
+
+    it('accepts partial activityFilters', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'completed' } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'completed' });
+    });
+
+    it('rejects non-object activityFilters', () => {
+        expect(validateGlobalPreferences({ activityFilters: 'bad' })).toEqual({});
+        expect(validateGlobalPreferences({ activityFilters: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ activityFilters: null })).toEqual({});
+    });
+
+    it('rejects array activityFilters', () => {
+        expect(validateGlobalPreferences({ activityFilters: ['a'] })).toEqual({});
+    });
+
+    it('strips non-string fields inside activityFilters', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 42, workspace: 'ws-1' } });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
+    });
+
+    it('omits activityFilters when all sub-fields are invalid', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 123 } });
+        expect(result.activityFilters).toBeUndefined();
+    });
+
+    it('accepts activityFilters alongside other global fields', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', activityFilters: { typeFilter: 'run-script' } });
+        expect(result.theme).toBe('dark');
+        expect(result.activityFilters).toEqual({ typeFilter: 'run-script' });
+    });
 });
 
 // ============================================================================
@@ -1080,6 +1130,51 @@ describe('Preferences REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.onboardingProgress).toEqual({ hasUsedChat: true });
         expect(body.onboardingProgress.evil).toBeUndefined();
+    });
+
+    // -- activityFilters persistence via API --
+
+    it('PATCH persists activityFilters', async () => {
+        const filters = { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' };
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters).toEqual(filters);
+    });
+
+    it('GET returns persisted activityFilters', async () => {
+        const filters = { statusFilter: 'completed', typeFilter: 'run-script' };
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).activityFilters).toEqual(filters);
+    });
+
+    it('PATCH deep-merges activityFilters fields', async () => {
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'running', workspace: 'ws-1' } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { typeFilter: 'chat' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+    });
+
+    it('PATCH activityFilters does not affect other global fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'failed' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.theme).toBe('dark');
+        expect(body.activityFilters).toEqual({ statusFilter: 'failed' });
+    });
+
+    it('activityFilters survives server restart', async () => {
+        const filters = { statusFilter: 'queued', typeFilter: 'run-workflow' };
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).activityFilters).toEqual(filters);
     });
 });
 

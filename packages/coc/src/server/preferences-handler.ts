@@ -82,6 +82,13 @@ export interface GlobalPreferences {
 
     /** IDs of contextual tips the user has permanently dismissed. */
     dismissedTips?: string[];
+
+    /** Persisted activity page filter selections (status, workspace, type). */
+    activityFilters?: {
+        statusFilter?: string;
+        workspace?: string;
+        typeFilter?: string;
+    };
 }
 
 /** Per-repository UI preferences. */
@@ -183,6 +190,17 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         );
         if (tips.length > 0) {
             result.dismissedTips = tips;
+        }
+    }
+
+    if (typeof obj.activityFilters === 'object' && obj.activityFilters !== null && !Array.isArray(obj.activityFilters)) {
+        const raw = obj.activityFilters as Record<string, unknown>;
+        const validated: NonNullable<GlobalPreferences['activityFilters']> = {};
+        if (typeof raw.statusFilter === 'string') validated.statusFilter = raw.statusFilter;
+        if (typeof raw.workspace === 'string') validated.workspace = raw.workspace;
+        if (typeof raw.typeFilter === 'string') validated.typeFilter = raw.typeFilter;
+        if (Object.keys(validated).length > 0) {
+            result.activityFilters = validated;
         }
     }
 
@@ -485,6 +503,13 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             const existing = readPreferences(dataDir);
             const patch = validateGlobalPreferences(body);
             const merged: GlobalPreferences = { ...(existing.global ?? {}), ...patch };
+
+            // Deep-merge activityFilters so patching { activityFilters: { statusFilter: 'x' } }
+            // preserves existing workspace/typeFilter values.
+            if (patch.activityFilters && existing.global?.activityFilters) {
+                merged.activityFilters = { ...existing.global.activityFilters, ...patch.activityFilters };
+            }
+
             writePreferences(dataDir, { ...existing, global: merged });
             sendJSON(res, 200, merged);
         },

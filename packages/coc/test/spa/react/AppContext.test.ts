@@ -11,6 +11,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',
+        typeFilter: '__all',
         searchQuery: '',
         expandedGroups: {},
         activeTab: 'repos',
@@ -168,6 +169,16 @@ describe('AppContext reducer', () => {
         it('SET_STATUS_FILTER updates statusFilter', () => {
             const result = appReducer(makeState(), { type: 'SET_STATUS_FILTER', value: 'running' });
             expect(result.statusFilter).toBe('running');
+        });
+
+        it('SET_TYPE_FILTER updates typeFilter', () => {
+            const result = appReducer(makeState(), { type: 'SET_TYPE_FILTER', value: 'chat' });
+            expect(result.typeFilter).toBe('chat');
+        });
+
+        it('SET_TYPE_FILTER defaults to __all', () => {
+            const result = appReducer(makeState({ typeFilter: 'chat' }), { type: 'SET_TYPE_FILTER', value: '__all' });
+            expect(result.typeFilter).toBe('__all');
         });
 
         it('SET_SEARCH_QUERY updates searchQuery', () => {
@@ -1045,6 +1056,47 @@ describe('AppContext reducer', () => {
             const state = makeState({ activeAdminSubTab: 'data' });
             const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'settings' });
             expect(result.activeAdminSubTab).toBe('settings');
+        });
+    });
+
+    describe('SET_WELCOME_PREFERENCES with activityFilters', () => {
+        it('restores saved activity filters', () => {
+            const state = makeState({ preferencesLoaded: false } as any);
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' },
+                },
+            });
+            expect(result.statusFilter).toBe('running');
+            expect(result.workspace).toBe('ws-1');
+            expect(result.typeFilter).toBe('chat');
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('keeps defaults when activityFilters is undefined', () => {
+            const state = makeState({ preferencesLoaded: false } as any);
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {},
+            });
+            expect(result.statusFilter).toBe('__all');
+            expect(result.workspace).toBe('__all');
+            expect(result.typeFilter).toBe('__all');
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('restores partial activityFilters without overwriting unset fields', () => {
+            const state = makeState({ statusFilter: 'failed', workspace: 'ws-2', typeFilter: 'run-script', preferencesLoaded: false } as any);
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    activityFilters: { typeFilter: 'chat' },
+                },
+            });
+            expect(result.statusFilter).toBe('failed');
+            expect(result.workspace).toBe('ws-2');
+            expect(result.typeFilter).toBe('chat');
         });
     });
 });

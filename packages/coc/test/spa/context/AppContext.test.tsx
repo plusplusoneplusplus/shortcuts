@@ -15,6 +15,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',
+        typeFilter: '__all',
         searchQuery: '',
         searchResults: null,
         searchLoading: false,

@@ -17,6 +17,7 @@ export function ProcessFilters() {
     const { results, total, loading } = useProcessSearch(searchInput, {
         workspace: state.workspace,
         statusFilter: state.statusFilter,
+        typeFilter: state.typeFilter !== '__all' ? state.typeFilter : undefined,
     });
 
     // Sync search hook results into global state
@@ -56,6 +57,10 @@ export function ProcessFilters() {
 
     const onStatusChange = useCallback((value: string) => {
         dispatch({ type: 'SET_STATUS_FILTER', value });
+    }, [dispatch]);
+
+    const onTypeChange = useCallback((value: string) => {
+        dispatch({ type: 'SET_TYPE_FILTER', value });
     }, [dispatch]);
 
     const onWorkspaceChange = useCallback(async (workspaceId: string) => {
@@ -112,6 +117,17 @@ export function ProcessFilters() {
                 <option value="completed">✅ Completed</option>
                 <option value="failed">❌ Failed</option>
                 <option value="cancelled">🚫 Cancelled</option>
+            </select>
+            <select
+                id="type-filter"
+                value={state.typeFilter}
+                onChange={e => onTypeChange(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+            >
+                <option value="__all">All Types</option>
+                <option value="chat">💬 Chat</option>
+                <option value="run-script">📜 Script</option>
+                <option value="run-workflow">⚙️ Workflow</option>
             </select>
             {state.workspaces.length > 0 && (
                 <select

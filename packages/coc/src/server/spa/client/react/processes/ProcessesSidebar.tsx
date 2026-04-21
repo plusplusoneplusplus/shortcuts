@@ -102,17 +102,21 @@ export function ProcessesSidebar() {
     }, [renameTarget, dispatch]);
 
     // Queue task filtering
+    const typeFilterOpts = useMemo(
+        () => state.typeFilter !== '__all' ? { includeTypes: [state.typeFilter] } : undefined,
+        [state.typeFilter]
+    );
     const filteredRunning = useMemo(
-        () => running.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
-        [running, state.searchQuery, state.statusFilter, state.workspace]
+        () => running.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts)),
+        [running, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts]
     );
     const filteredQueued = useMemo(
-        () => queued.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
-        [queued, state.searchQuery, state.statusFilter, state.workspace]
+        () => queued.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts)),
+        [queued, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts]
     );
     const filteredHistory = useMemo(
-        () => history.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
-        [history, state.searchQuery, state.statusFilter, state.workspace]
+        () => history.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts)),
+        [history, state.searchQuery, state.statusFilter, state.workspace, typeFilterOpts]
     );
 
     // Legacy process filtering
@@ -123,6 +127,7 @@ export function ProcessesSidebar() {
                 if (p.parentProcessId) return false;
                 if (state.workspace !== '__all' && p.workspaceId !== state.workspace) return false;
                 if (state.statusFilter !== '__all' && p.status !== state.statusFilter) return false;
+                if (state.typeFilter !== '__all' && p.type !== state.typeFilter) return false;
                 if (state.searchQuery) {
                     const q = state.searchQuery.toLowerCase();
                     const title = (p.title || p.promptPreview || p.id || '').toLowerCase();
@@ -137,7 +142,7 @@ export function ProcessesSidebar() {
                 if (sa !== sb) return sa - sb;
                 return new Date(b.lastEventAt || b.startTime || 0).getTime() - new Date(a.lastEventAt || a.startTime || 0).getTime();
             });
-    }, [state.processes, state.workspace, state.statusFilter, state.searchQuery]);
+    }, [state.processes, state.workspace, state.statusFilter, state.typeFilter, state.searchQuery]);
 
     // Unified live timer
     const hasActive = useMemo(

@@ -3,7 +3,7 @@
  * Replaces the global mutable appState singleton from state.ts.
  */
 
-import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
+import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
@@ -37,6 +37,7 @@ export interface AppContextState {
     selectedId: string | null;
     workspace: string;
     statusFilter: string;
+    typeFilter: string;
     searchQuery: string;
     /** null = not searching; [] = no results found */
     searchResults: any[] | null;
@@ -100,6 +101,7 @@ const initialState: AppContextState = {
     selectedId: null,
     workspace: '__all',
     statusFilter: '__all',
+    typeFilter: '__all',
     searchQuery: '',
     searchResults: null,
     searchLoading: false,
@@ -168,6 +170,7 @@ export type AppAction =
     | { type: 'SELECT_PROCESS'; id: string | null }
     | { type: 'SET_WORKSPACE_FILTER'; value: string }
     | { type: 'SET_STATUS_FILTER'; value: string }
+    | { type: 'SET_TYPE_FILTER'; value: string }
     | { type: 'SET_SEARCH_QUERY'; value: string }
     | { type: 'SET_SEARCH_RESULTS'; results: any[] | null }
     | { type: 'SET_SEARCH_LOADING'; loading: boolean }
@@ -218,7 +221,7 @@ export type AppAction =
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
-    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[] } }
+    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { statusFilter?: string; workspace?: string; typeFilter?: string } } }
     | { type: 'DISMISS_WELCOME' }
     | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
     | { type: 'DISMISS_TIP'; payload: { tipId: string } }
@@ -265,6 +268,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, workspace: action.value };
         case 'SET_STATUS_FILTER':
             return { ...state, statusFilter: action.value };
+        case 'SET_TYPE_FILTER':
+            return { ...state, typeFilter: action.value };
         case 'SET_SEARCH_QUERY': {
             const next: AppContextState = { ...state, searchQuery: action.value };
             // Clear search results when query is emptied
@@ -484,7 +489,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'SET_SETTINGS_SECTION':
             return state.settingsSection === action.section ? state : { ...state, settingsSection: action.section };
         case 'SET_WELCOME_PREFERENCES': {
-            const { hasSeenWelcome, onboardingProgress, dismissedTips } = action.payload;
+            const { hasSeenWelcome, onboardingProgress, dismissedTips, activityFilters } = action.payload;
             return {
                 ...state,
                 hasSeenWelcome: hasSeenWelcome ?? state.hasSeenWelcome,
@@ -492,6 +497,9 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                     ? { ...state.onboardingProgress, ...onboardingProgress }
                     : state.onboardingProgress,
                 dismissedTips: dismissedTips ?? state.dismissedTips,
+                statusFilter: activityFilters?.statusFilter ?? state.statusFilter,
+                workspace: activityFilters?.workspace ?? state.workspace,
+                typeFilter: activityFilters?.typeFilter ?? state.typeFilter,
                 preferencesLoaded: true,
             };
         }
@@ -542,6 +550,33 @@ const AppContext = createContext<{ state: AppContextState; dispatch: Dispatch<Ap
 
 export function AppProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Debounced save of activity filters to server preferences
+    const filterSaveRef = useRef<ReturnType<typeof setTimeout>>();
+    const prevFiltersRef = useRef({ statusFilter: state.statusFilter, workspace: state.workspace, typeFilter: state.typeFilter });
+
+    useEffect(() => {
+        // Skip saving until preferences have been loaded from the server
+        if (!state.preferencesLoaded) return;
+
+        const prev = prevFiltersRef.current;
+        const cur = { statusFilter: state.statusFilter, workspace: state.workspace, typeFilter: state.typeFilter };
+
+        // Only save when a filter actually changed
+        if (prev.statusFilter === cur.statusFilter && prev.workspace === cur.workspace && prev.typeFilter === cur.typeFilter) return;
+        prevFiltersRef.current = cur;
+
+        if (filterSaveRef.current) clearTimeout(filterSaveRef.current);
+        filterSaveRef.current = setTimeout(() => {
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activityFilters: cur }),
+            }).catch(() => {});
+        }, 500);
+
+        return () => { if (filterSaveRef.current) clearTimeout(filterSaveRef.current); };
+    }, [state.statusFilter, state.workspace, state.typeFilter, state.preferencesLoaded]);
 
     // Cross-tab sync for sidebar collapsed state
     useEffect(() => {

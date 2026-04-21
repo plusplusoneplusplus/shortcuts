@@ -267,6 +267,7 @@ function AppInner() {
                             hasSeenWelcome: prefRes.hasSeenWelcome,
                             onboardingProgress: prefRes.onboardingProgress,
                             dismissedTips: prefRes.dismissedTips,
+                            activityFilters: prefRes.activityFilters,
                         },
                     });
                     if (typeof prefRes.reposSidebarCollapsed === 'boolean') {
