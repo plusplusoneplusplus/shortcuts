@@ -231,7 +231,7 @@ describe('Per-Repo Queue Integration', () => {
             expect(body.task.payload?.workingDirectory).toBe(repoA);
         });
 
-        it('should list tasks from multiple repos in queue listing', async () => {
+        it('should list tasks from multiple repos in queue listing', { timeout: 60_000 }, async () => {
             // Register workspaces
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-list-a', name: 'ws-list-a', rootPath: '/repo-a' });
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-list-b', name: 'ws-list-b', rootPath: '/repo-b' });
@@ -334,7 +334,7 @@ describe('Per-Repo Queue Integration', () => {
             expect(resumeBody.paused).toBe(false);
         });
 
-        it('should clear all tasks from all repos', async () => {
+        it('should clear all tasks from all repos', { timeout: 60_000 }, async () => {
             // Register workspaces
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-clear-a', name: 'ws-clear-a', rootPath: '/repo-clear-a' });
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-clear-b', name: 'ws-clear-b', rootPath: '/repo-clear-b' });

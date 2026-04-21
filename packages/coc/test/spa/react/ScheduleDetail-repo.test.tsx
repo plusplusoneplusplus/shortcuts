@@ -91,9 +91,9 @@ describe('ScheduleDetail — repo schedule read-only', () => {
         expect(screen.getByTestId('duplicate-btn')).toBeTruthy();
     });
 
-    it('hides Delete button for repo schedule', () => {
+    it('shows Delete button for repo schedule', () => {
         renderDetail(REPO_SCHEDULE);
-        expect(screen.queryByLabelText('Delete schedule')).toBeNull();
+        expect(screen.getByLabelText('Delete schedule')).toBeTruthy();
     });
 
     it('shows Run Now and Pause buttons for repo schedule', () => {

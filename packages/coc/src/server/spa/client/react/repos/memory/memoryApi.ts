@@ -72,6 +72,11 @@ export const memoryApi = {
         return data;
     },
 
+    /** Read the consolidated (bounded) MEMORY.md content for a workspace. */
+    getConsolidated(repoId: string): Promise<{ content: string | null }> {
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/bounded`);
+    },
+
     /** Read bounded MEMORY.md for a workspace. */
     getBounded(repoId: string): Promise<BoundedMemoryResponse> {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/bounded`);

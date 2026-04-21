@@ -11,6 +11,7 @@ import * as childProcess from 'child_process';
 import { createRouter } from '../../src/server/shared/router';
 import { registerRepoRoutes } from '../../src/server/repos/repo-routes';
 import type { Route } from '../../src/server/types';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // Partially mock child_process: intercept only OS reveal commands (explorer.exe,
 // open -R, xdg-open) used by the reveal route, forwarding all other spawn calls
@@ -97,7 +98,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await stopServer();
-    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    safeRmSync(tmpDir);
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────

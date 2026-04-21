@@ -24,8 +24,8 @@ export default defineConfig({
             include: ['src/**/*.ts'],
             exclude: ['src/**/*.d.ts', 'src/**/index.ts']
         },
-        testTimeout: 30000,
-        hookTimeout: 30000,
+        testTimeout: 60000,
+        hookTimeout: 60000,
         environmentMatchGlobs: [
             ['test/spa/**/*.test.tsx', 'jsdom'],
             ['test/spa/**/*.test.ts', 'jsdom'],

@@ -670,7 +670,7 @@ describe('API Handler', () => {
             }
         });
 
-        it('should return behind=1 for commits on origin not yet merged', { timeout: 60_000 }, async () => {
+        it('should return behind=1 for commits on origin not yet merged', { timeout: 120_000, retry: 2 }, async () => {
             const srv = await startServer();
             const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
             const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));

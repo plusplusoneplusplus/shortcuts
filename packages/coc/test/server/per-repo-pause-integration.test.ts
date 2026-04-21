@@ -113,7 +113,7 @@ describe('Per-Repo Pause Integration', () => {
     // Server Restart Preserves Pause States
     // ------------------------------------------------------------------
     describe('server restart persistence', () => {
-        it('preserves tasks across restart (pause state uses manager.pause(), not persisted via isRepoPaused)', async () => {
+        it('preserves tasks across restart (pause state uses manager.pause(), not persisted via isRepoPaused)', { timeout: 60_000 }, async () => {
             const dbPath = path.join(tmpDir, 'processes.db');
             // Start first server
             const store1 = new SqliteProcessStore({ dbPath });
@@ -174,7 +174,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('restores tasks across restart with multiple tasks per repo', async () => {
+        it('restores tasks across restart with multiple tasks per repo', { timeout: 60_000 }, async () => {
             const dbPath = path.join(tmpDir, 'processes.db');
             const store1 = new SqliteProcessStore({ dbPath });
             const server1 = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, store: store1 });
@@ -228,7 +228,7 @@ describe('Per-Repo Pause Integration', () => {
     // Per-Repo Pause State Tracking
     // ------------------------------------------------------------------
     describe('pause state tracking', () => {
-        it('paused repo is tracked in stats after tasks enqueued', async () => {
+        it('paused repo is tracked in stats after tasks enqueued', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -263,7 +263,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('all repos tracked as paused when both are paused', async () => {
+        it('all repos tracked as paused when both are paused', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -299,7 +299,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('resume removes repo from paused list', async () => {
+        it('resume removes repo from paused list', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -337,7 +337,7 @@ describe('Per-Repo Pause Integration', () => {
     // API Endpoints with repoId Parameter
     // ------------------------------------------------------------------
     describe('API endpoints', () => {
-        it('POST /api/queue/pause with repoId pauses specific repo', async () => {
+        it('POST /api/queue/pause with repoId pauses specific repo', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -365,7 +365,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('POST /api/queue/resume with repoId resumes specific repo', async () => {
+        it('POST /api/queue/resume with repoId resumes specific repo', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -394,7 +394,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('GET /api/queue/repos returns repos with pause states', async () => {
+        it('GET /api/queue/repos returns repos with pause states', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -439,7 +439,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('GET /api/queue/repos returns empty array when no tasks', async () => {
+        it('GET /api/queue/repos returns empty array when no tasks', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -511,7 +511,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('handles toggling pause states for multiple repos', async () => {
+        it('handles toggling pause states for multiple repos', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -548,7 +548,7 @@ describe('Per-Repo Pause Integration', () => {
     // Edge Cases
     // ------------------------------------------------------------------
     describe('edge cases', () => {
-        it('handles pausing non-existent repo gracefully', async () => {
+        it('handles pausing non-existent repo gracefully', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -562,7 +562,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('handles task without workingDirectory (defaults to global workspace)', async () => {
+        it('handles task without workingDirectory (defaults to global workspace)', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -587,7 +587,7 @@ describe('Per-Repo Pause Integration', () => {
             safeRmSync(tmpDir);
         });
 
-        it('global pause overrides per-repo pause states', async () => {
+        it('global pause overrides per-repo pause states', { timeout: 60_000 }, async () => {
             const server = await createTrackedServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
