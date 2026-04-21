@@ -3,6 +3,7 @@ import { notesApi, type NoteTreeNode } from '../notesApi';
 
 export interface UseNotesTreeResult {
     tree: NoteTreeNode[] | null;
+    notesRoot: string | null;
     loading: boolean;
     error: string | null;
     refresh: () => void;
@@ -14,6 +15,7 @@ export interface UseNotesTreeResult {
 
 export function useNotesTree(workspaceId: string): UseNotesTreeResult {
     const [tree, setTree] = useState<NoteTreeNode[] | null>(null);
+    const [notesRoot, setNotesRoot] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +24,8 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         setError(null);
         try {
             const data = await notesApi.getTree(workspaceId);
-            setTree(data);
+            setTree(data.tree);
+            setNotesRoot(data.notesRoot);
         } catch (err: any) {
             setError(err.message ?? 'Failed to load notes tree');
         } finally {
@@ -55,5 +58,5 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         await fetchTree();
     }, [workspaceId, fetchTree]);
 
-    return { tree, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode, reorderNodes };
+    return { tree, notesRoot, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode, reorderNodes };
 }

@@ -188,7 +188,7 @@ export function registerNotesRoutes(
             await ensureNotesRoot(notesRoot);
 
             const tree = await buildTree(notesRoot, '');
-            sendJSON(res, 200, tree);
+            sendJSON(res, 200, { tree, notesRoot });
         },
     });
 

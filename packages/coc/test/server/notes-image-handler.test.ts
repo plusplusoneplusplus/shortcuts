@@ -400,7 +400,7 @@ describe('Notes Image Handler', () => {
             // Get tree — .attachments should not be present
             const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(treeRes.status).toBe(200);
-            const tree = JSON.parse(treeRes.body);
+            const tree = JSON.parse(treeRes.body).tree;
 
             // Only the note should appear, not .attachments
             const names = tree.map((n: { name: string }) => n.name);

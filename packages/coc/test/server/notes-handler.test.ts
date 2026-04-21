@@ -173,7 +173,8 @@ describe('Notes Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body).toEqual([]);
+            expect(body.tree).toEqual([]);
+            expect(body.notesRoot).toBeTruthy();
         });
 
         it('should return correct hierarchy for nested notebooks/sections/pages', async () => {
@@ -189,32 +190,33 @@ describe('Notes Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
+            const tree = body.tree;
 
             // Top-level should have 2 notebooks (dirs) + 1 page
-            expect(body).toHaveLength(3);
+            expect(tree).toHaveLength(3);
 
             // Directories first, alphabetical
-            expect(body[0].name).toBe('personal');
-            expect(body[0].type).toBe('notebook');
-            expect(body[0].children).toHaveLength(1);
-            expect(body[0].children[0].name).toBe('journal.md');
-            expect(body[0].children[0].type).toBe('page');
+            expect(tree[0].name).toBe('personal');
+            expect(tree[0].type).toBe('notebook');
+            expect(tree[0].children).toHaveLength(1);
+            expect(tree[0].children[0].name).toBe('journal.md');
+            expect(tree[0].children[0].type).toBe('page');
 
-            expect(body[1].name).toBe('work');
-            expect(body[1].type).toBe('notebook');
-            expect(body[1].children).toHaveLength(2);
+            expect(tree[1].name).toBe('work');
+            expect(tree[1].type).toBe('notebook');
+            expect(tree[1].children).toHaveLength(2);
             // Nested dir 'projects' is a section
-            expect(body[1].children[0].name).toBe('projects');
-            expect(body[1].children[0].type).toBe('section');
-            expect(body[1].children[0].children).toHaveLength(1);
-            expect(body[1].children[0].children[0].name).toBe('project1.md');
+            expect(tree[1].children[0].name).toBe('projects');
+            expect(tree[1].children[0].type).toBe('section');
+            expect(tree[1].children[0].children).toHaveLength(1);
+            expect(tree[1].children[0].children[0].name).toBe('project1.md');
 
-            expect(body[1].children[1].name).toBe('daily.md');
-            expect(body[1].children[1].type).toBe('page');
+            expect(tree[1].children[1].name).toBe('daily.md');
+            expect(tree[1].children[1].type).toBe('page');
 
             // File last
-            expect(body[2].name).toBe('quick-note.md');
-            expect(body[2].type).toBe('page');
+            expect(tree[2].name).toBe('quick-note.md');
+            expect(tree[2].type).toBe('page');
         });
 
         it('should sort directories before files, alphabetically within each', async () => {
@@ -230,12 +232,13 @@ describe('Notes Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
+            const tree = body.tree;
 
             // Dirs first: aaaa, beta — then files: alpha, zebra
-            expect(body[0].name).toBe('aaaa');
-            expect(body[1].name).toBe('beta');
-            expect(body[2].name).toBe('alpha.md');
-            expect(body[3].name).toBe('zebra.md');
+            expect(tree[0].name).toBe('aaaa');
+            expect(tree[1].name).toBe('beta');
+            expect(tree[2].name).toBe('alpha.md');
+            expect(tree[3].name).toBe('zebra.md');
         });
     });
 
@@ -356,7 +359,7 @@ describe('Notes Handler', () => {
 
             // Verify it shows in tree as notebook
             const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(treeRes.body);
+            const tree = JSON.parse(treeRes.body).tree;
             expect(tree[0].name).toBe('my-notebook');
             expect(tree[0].type).toBe('notebook');
         });
@@ -410,7 +413,7 @@ describe('Notes Handler', () => {
 
             // Page must appear in the tree (was previously invisible)
             const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(treeRes.body);
+            const tree = JSON.parse(treeRes.body).tree;
             expect(tree[0].name).toBe('my-notebook');
             expect(tree[0].type).toBe('notebook');
             expect(tree[0].children[0].name).toBe('my-page.md');
@@ -515,7 +518,7 @@ describe('Notes Handler', () => {
 
             // Tree should show new-dir
             const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(treeRes.body);
+            const tree = JSON.parse(treeRes.body).tree;
             expect(tree.some((n: any) => n.name === 'new-dir')).toBe(true);
             expect(tree.some((n: any) => n.name === 'old-dir')).toBe(false);
         });
@@ -649,7 +652,7 @@ describe('Notes Handler', () => {
 
             // Directory should be gone from tree
             const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(treeRes.body);
+            const tree = JSON.parse(treeRes.body).tree;
             expect(tree.some((n: any) => n.name === 'my-notebook')).toBe(false);
         });
 

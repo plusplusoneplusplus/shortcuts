@@ -155,7 +155,7 @@ describe('Notes Order — Integration', () => {
             await registerWorkspace(srv);
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(res.body);
+            const tree = JSON.parse(res.body).tree;
 
             // Default: dirs first (alpha, zebra), then files (note.md)
             expect(tree[0].name).toBe('alpha');
@@ -175,7 +175,7 @@ describe('Notes Order — Integration', () => {
             await registerWorkspace(srv);
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(res.body);
+            const tree = JSON.parse(res.body).tree;
 
             expect(tree[0].name).toBe('gamma');
             expect(tree[1].name).toBe('beta');
@@ -196,7 +196,7 @@ describe('Notes Order — Integration', () => {
             await registerWorkspace(srv);
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(res.body);
+            const tree = JSON.parse(res.body).tree;
 
             // gamma and alpha come first (explicitly ordered)
             expect(tree[0].name).toBe('gamma');
@@ -220,7 +220,7 @@ describe('Notes Order — Integration', () => {
             await registerWorkspace(srv);
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
-            const tree = JSON.parse(res.body);
+            const tree = JSON.parse(res.body).tree;
             const nb = tree.find((n: any) => n.name === 'notebook');
             expect(nb).toBeDefined();
 
@@ -271,7 +271,7 @@ describe('Notes Order — Integration', () => {
             await registerWorkspace(srv);
 
             // Default: a-nb before z-nb
-            const before = JSON.parse((await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`)).body);
+            const before = JSON.parse((await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`)).body).tree;
             expect(before[0].name).toBe('a-nb');
 
             // Reorder to put z-nb first
@@ -280,7 +280,7 @@ describe('Notes Order — Integration', () => {
                 order: ['z-nb', 'a-nb'],
             });
 
-            const after = JSON.parse((await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`)).body);
+            const after = JSON.parse((await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`)).body).tree;
             expect(after[0].name).toBe('z-nb');
             expect(after[1].name).toBe('a-nb');
         });

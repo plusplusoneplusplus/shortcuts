@@ -20,15 +20,16 @@ describe('notesApi', () => {
 
     describe('getTree', () => {
         it('calls GET /workspaces/:id/notes/tree', async () => {
-            const tree = [{ name: 'root', path: '/', type: 'notebook', children: [] }];
-            mockOk(tree);
+            const treeNodes = [{ name: 'root', path: '/', type: 'notebook', children: [] }];
+            const response = { tree: treeNodes, notesRoot: '/home/user/.coc/repos/ws-1/notes' };
+            mockOk(response);
             const result = await notesApi.getTree('ws-1');
-            expect(result).toEqual(tree);
+            expect(result).toEqual(response);
             expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws-1/notes/tree', {});
         });
 
         it('encodes workspaceId', async () => {
-            mockOk([]);
+            mockOk({ tree: [], notesRoot: '/path/to/notes' });
             await notesApi.getTree('ws/special chars');
             expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws%2Fspecial%20chars/notes/tree', {});
         });

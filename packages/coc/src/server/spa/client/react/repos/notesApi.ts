@@ -28,6 +28,11 @@ export interface NoteSearchResponse {
     truncated: boolean;
 }
 
+export interface NoteTreeResponse {
+    tree: NoteTreeNode[];
+    notesRoot: string;
+}
+
 // ── Comment types (mirrors notes-comments-types.ts) ────────────────────────
 
 // Canonical definition lives in notes/textAnchor.ts; re-export for compatibility.
@@ -56,7 +61,7 @@ export interface NoteSidecar {
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const notesApi = {
-    getTree(wsId: string): Promise<NoteTreeNode[]> {
+    getTree(wsId: string): Promise<NoteTreeResponse> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/tree`);
     },
 

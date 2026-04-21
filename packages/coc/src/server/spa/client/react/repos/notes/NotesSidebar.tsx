@@ -33,7 +33,7 @@ export interface NotesSidebarProps {
 }
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted }: NotesSidebarProps) {
-    const { tree, loading, error, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
+    const { tree, notesRoot, loading, error, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
@@ -209,6 +209,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
         if (isFolder) {
             return [
+                { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+                { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
+                { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
                 { label: 'Create Section', onClick: () => openDialog('create-section', node) },
                 { separator: true, label: '', onClick: () => {} },
@@ -217,6 +220,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             ];
         }
         return [
+            { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+            { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
+            { separator: true, label: '', onClick: () => {} },
             { label: 'Rename', onClick: () => openDialog('rename', node) },
             { label: 'Delete', onClick: () => openDialog('delete', node) },
         ];
