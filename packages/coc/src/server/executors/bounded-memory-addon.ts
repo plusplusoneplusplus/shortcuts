@@ -19,7 +19,9 @@ import {
     BoundedMemoryStore,
     MemoryPromptBuilder,
     createMemoryTool,
+    RawMemoryRecordStore,
 } from '@plusplusoneplusplus/forge';
+import type { MemoryToolCaptureContext } from '@plusplusoneplusplus/forge';
 import { readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
 
@@ -34,6 +36,8 @@ export interface BoundedMemoryAddon {
     tools: Tool<any>[];
     /** Prompt suffix instructing the AI about the memory tool. */
     suffix: string;
+    /** Clean up any resources (e.g. raw store database connections). Safe to call multiple times. */
+    dispose: () => void;
 }
 
 // ============================================================================
@@ -49,6 +53,7 @@ const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
     systemMessageSuffix: undefined,
     tools: [],
     suffix: '',
+    dispose: () => {},
 });
 
 // ============================================================================
@@ -60,10 +65,15 @@ const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
  *
  * Returns the empty addon when disabled, unconfigured, or on error.
  * Instantiates BoundedMemoryStore per-request (cheap — single file read).
+ *
+ * When `captureContext` is provided the tool operates in capture mode:
+ * `add` appends raw records to RawMemoryRecordStore instead of mutating
+ * MEMORY.md. Prompt injection still reads only bounded MEMORY.md.
  */
 export async function buildBoundedMemoryAddon(
     dataDir: string | undefined,
     workspaceId: string | undefined,
+    captureContext?: MemoryToolCaptureContext,
 ): Promise<BoundedMemoryAddon> {
     if (!dataDir || !workspaceId) return EMPTY_ADDON;
 
@@ -87,18 +97,49 @@ export async function buildBoundedMemoryAddon(
         });
         await systemStore.load();
 
+        // Prompt injection always reads bounded MEMORY.md (unchanged)
         const builder = new MemoryPromptBuilder({ store, systemStore });
         const systemMessageSuffix = builder.getSystemPromptBlock() ?? undefined;
 
+        // Determine mode and build the tool
+        const useCapture = !!captureContext;
+
+        let captureConfig: Parameters<typeof createMemoryTool>[2];
+        const rawStoreInstances: RawMemoryRecordStore[] = [];
+        if (useCapture) {
+            const repoRawDbPath = getRepoDataPath(dataDir, workspaceId, 'memory/raw-memory.db');
+            const systemRawDbPath = path.join(dataDir, 'memory', 'system', 'raw-memory.db');
+            const repoRaw = new RawMemoryRecordStore({ dbPath: repoRawDbPath });
+            const systemRaw = new RawMemoryRecordStore({ dbPath: systemRawDbPath });
+            rawStoreInstances.push(repoRaw, systemRaw);
+
+            captureConfig = {
+                rawStores: {
+                    memory: repoRaw,
+                    system: systemRaw,
+                },
+                context: {
+                    ...captureContext,
+                    workspaceId,
+                },
+            };
+        }
+
         const { tool } = createMemoryTool(
             { memory: store, system: systemStore },
-            { source: 'coc-chat' },
+            { source: 'coc-chat', mode: useCapture ? 'capture' : 'bounded' },
+            captureConfig,
         );
 
         return {
             systemMessageSuffix,
             tools: [tool],
             suffix: MEMORY_TOOL_SUFFIX,
+            dispose: () => {
+                for (const rs of rawStoreInstances) {
+                    try { rs.close(); } catch { /* already closed */ }
+                }
+            },
         };
     } catch {
         return EMPTY_ADDON;

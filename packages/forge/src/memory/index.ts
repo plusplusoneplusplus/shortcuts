@@ -21,7 +21,15 @@ export { scanMemoryContent, SECURITY_PATTERNS_DESCRIPTION } from './memory-secur
 export { MemoryPromptBuilder, MEMORY_GUIDANCE } from './memory-prompt-builder';
 export type { MemoryPromptBuilderOptions } from './memory-prompt-builder';
 export { createMemoryTool, MEMORY_SCHEMA } from './memory-tool';
-export type { MemoryToolOptions, MemoryToolArgs, MemoryToolStores } from './memory-tool';
+export type {
+    MemoryToolOptions,
+    MemoryToolArgs,
+    MemoryToolStores,
+    MemoryToolMode,
+    MemoryToolRawStores,
+    MemoryToolCaptureContext,
+    MemoryToolCaptureResult,
+} from './memory-tool';
 
 // Tool call cache
 export type {
