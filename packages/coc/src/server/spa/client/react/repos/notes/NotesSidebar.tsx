@@ -209,8 +209,6 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
         if (isFolder) {
             return [
-                { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
-                { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
                 { label: 'Create Section', onClick: () => openDialog('create-section', node) },
                 { separator: true, label: '', onClick: () => {} },
@@ -219,8 +217,6 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             ];
         }
         return [
-            { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
-            { separator: true, label: '', onClick: () => {} },
             { label: 'Rename', onClick: () => openDialog('rename', node) },
             { label: 'Delete', onClick: () => openDialog('delete', node) },
         ];
