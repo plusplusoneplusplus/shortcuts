@@ -81,9 +81,10 @@ export function AdminPanel() {
     const [clientPoolEnabled, setClientPoolEnabled] = useState(false);
     const [clientPoolSize, setClientPoolSize] = useState('3');
 
-    // Preferences (theme, reposSidebarCollapsed) — for Appearance card
+    // Preferences (theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
+    const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
 
     // Per-card saving state
     const [aiExecSaving, setAiExecSaving] = useState(false);
@@ -94,7 +95,7 @@ export function AdminPanel() {
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: true, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, clientPool: false, clientPoolSize: 3 });
 
     // Export
@@ -201,9 +202,11 @@ export function AdminPanel() {
             const data = await res.json();
             const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
             const r = data.reposSidebarCollapsed ?? false;
+            const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
             setTheme(t);
             setReposSidebarCollapsed(r);
-            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r }));
+            setUiLayoutMode(u);
+            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r, uiLayoutMode: u }));
         } catch { /* ignore */ }
     }, []);
 
@@ -231,6 +234,7 @@ export function AdminPanel() {
 
     const appearanceDirty = theme !== appearanceSnapshot.theme ||
         reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
+        uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
         taskCardDensity !== appearanceSnapshot.taskCardDensity ||
         historyGrouping !== appearanceSnapshot.historyGrouping;
 
@@ -335,13 +339,13 @@ export function AdminPanel() {
     const handleSaveAppearance = useCallback(async () => {
         setAppearanceSaving(true);
         try {
-            // Save preferences (theme, reposSidebarCollapsed)
-            const prefsChanged = theme !== appearanceSnapshot.theme || reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed;
+            // Save preferences (theme, reposSidebarCollapsed, uiLayoutMode)
+            const prefsChanged = theme !== appearanceSnapshot.theme || reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed || uiLayoutMode !== appearanceSnapshot.uiLayoutMode;
             if (prefsChanged) {
                 const prefsRes = await fetch(getApiBase() + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ theme, reposSidebarCollapsed }),
+                    body: JSON.stringify({ theme, reposSidebarCollapsed, uiLayoutMode }),
                 });
                 if (!prefsRes.ok) {
                     const body = await prefsRes.json().catch(() => ({}));
@@ -363,17 +367,18 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setAppearanceSnapshot({ theme, reposSidebarCollapsed, taskCardDensity, historyGrouping });
+            setAppearanceSnapshot({ theme, reposSidebarCollapsed, uiLayoutMode, taskCardDensity, historyGrouping });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setAppearanceSaving(false);
         }
-    }, [theme, reposSidebarCollapsed, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
+    }, [theme, reposSidebarCollapsed, uiLayoutMode, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
 
     const handleCancelAppearance = useCallback(() => {
         setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
         setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
+        setUiLayoutMode(appearanceSnapshot.uiLayoutMode as 'classic' | 'dev-workflow');
         setTaskCardDensity(appearanceSnapshot.taskCardDensity);
         setHistoryGrouping(appearanceSnapshot.historyGrouping);
     }, [appearanceSnapshot]);
@@ -919,6 +924,18 @@ export function AdminPanel() {
                                             <option value="auto">auto</option>
                                             <option value="light">light</option>
                                             <option value="dark">dark</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
+                                        <label className={labelClass}>UI Mode</label>
+                                        <select
+                                            className={inputClass}
+                                            value={uiLayoutMode}
+                                            onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
+                                            data-testid="pref-ui-layout-mode"
+                                        >
+                                            <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
+                                            <option value="classic">Classic (Activity)</option>
                                         </select>
                                     </div>
                                     <div className="flex items-center justify-between">
