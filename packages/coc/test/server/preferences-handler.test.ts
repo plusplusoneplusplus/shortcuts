@@ -829,6 +829,28 @@ describe('validateGlobalPreferences', () => {
         expect(result.theme).toBe('dark');
         expect(result.activityFilters).toEqual({ typeFilter: 'run-script' });
     });
+
+    it('accepts uiLayoutMode classic', () => {
+        expect(validateGlobalPreferences({ uiLayoutMode: 'classic' })).toEqual({ uiLayoutMode: 'classic' });
+    });
+
+    it('accepts uiLayoutMode dev-workflow', () => {
+        expect(validateGlobalPreferences({ uiLayoutMode: 'dev-workflow' })).toEqual({ uiLayoutMode: 'dev-workflow' });
+    });
+
+    it('drops invalid uiLayoutMode values', () => {
+        expect(validateGlobalPreferences({ uiLayoutMode: 'unknown' })).toEqual({});
+        expect(validateGlobalPreferences({ uiLayoutMode: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ uiLayoutMode: null })).toEqual({});
+        expect(validateGlobalPreferences({ uiLayoutMode: true })).toEqual({});
+        expect(validateGlobalPreferences({ uiLayoutMode: '' })).toEqual({});
+    });
+
+    it('accepts uiLayoutMode alongside other global fields', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', uiLayoutMode: 'dev-workflow' });
+        expect(result.theme).toBe('dark');
+        expect(result.uiLayoutMode).toBe('dev-workflow');
+    });
 });
 
 // ============================================================================

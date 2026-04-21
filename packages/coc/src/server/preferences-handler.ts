@@ -89,6 +89,9 @@ export interface GlobalPreferences {
         workspace?: string;
         typeFilter?: string;
     };
+
+    /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
+    uiLayoutMode?: 'classic' | 'dev-workflow';
 }
 
 /** Per-repository UI preferences. */
@@ -202,6 +205,10 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         if (Object.keys(validated).length > 0) {
             result.activityFilters = validated;
         }
+    }
+
+    if (obj.uiLayoutMode === 'classic' || obj.uiLayoutMode === 'dev-workflow') {
+        result.uiLayoutMode = obj.uiLayoutMode;
     }
 
     return result;

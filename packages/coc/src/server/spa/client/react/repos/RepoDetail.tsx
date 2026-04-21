@@ -522,7 +522,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     </div>
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} uiLayoutMode={uiLayoutMode} onUiLayoutModeChange={setUiLayoutMode} />}
+                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {uiLayoutMode === 'classic' && (
                             <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">

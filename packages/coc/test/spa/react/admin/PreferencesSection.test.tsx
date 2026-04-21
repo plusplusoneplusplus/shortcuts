@@ -155,4 +155,65 @@ describe('PreferencesSection', () => {
             expect(onError).toHaveBeenCalledWith('Write failed');
         });
     });
+
+    it('renders UI Mode dropdown with correct default', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
+        });
+
+        await act(async () => { renderSection(); });
+
+        await waitFor(() => {
+            const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
+            expect(select.value).toBe('classic');
+        });
+    });
+
+    it('renders UI Mode dropdown with server value', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ uiLayoutMode: 'dev-workflow' }),
+        });
+
+        await act(async () => { renderSection(); });
+
+        await waitFor(() => {
+            const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
+            expect(select.value).toBe('dev-workflow');
+        });
+    });
+
+    it('calls PATCH when UI Mode select changes', async () => {
+        mockFetch.mockImplementation((url: string, options?: any) => {
+            if (options?.method === 'PATCH') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ uiLayoutMode: 'dev-workflow' }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ uiLayoutMode: 'classic' }) });
+        });
+
+        await act(async () => { renderSection(); });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('pref-ui-layout-mode')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('pref-ui-layout-mode'), { target: { value: 'dev-workflow' } });
+        });
+
+        await waitFor(() => {
+            const patchCalls = mockFetch.mock.calls.filter(
+                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
+            );
+            expect(patchCalls.length).toBeGreaterThan(0);
+            const body = JSON.parse(patchCalls[0][1].body);
+            expect(body.uiLayoutMode).toBe('dev-workflow');
+        });
+
+        expect(onSuccess).toHaveBeenCalledWith('Preference saved');
+    });
 });
