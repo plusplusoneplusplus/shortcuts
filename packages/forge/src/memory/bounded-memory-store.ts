@@ -164,6 +164,68 @@ export class BoundedMemoryStore extends BaseFileStore {
         return this.computeUsage(this.entries);
     }
 
+    /** Return the configured character limit. */
+    getCharLimit(): number {
+        return this.charLimit;
+    }
+
+    /**
+     * Trusted atomic rewrite: replace all entries with a reconciled list.
+     *
+     * Used by the reconciliation core after AI-proposed entries have been
+     * validated. Each entry is re-scanned for security threats. The total
+     * serialized size must not exceed the char limit.
+     *
+     * Entries are trimmed, deduplicated, and empty strings are filtered out.
+     */
+    async setEntries(newEntries: string[]): Promise<MemoryMutationResult> {
+        return this.enqueueWrite(async () => {
+            await this.acquireLock();
+            try {
+                // Trim, filter empty, deduplicate
+                const cleaned: string[] = [];
+                const seen = new Set<string>();
+                for (const entry of newEntries) {
+                    const trimmed = entry.trim();
+                    if (!trimmed) continue;
+                    if (seen.has(trimmed)) continue;
+                    seen.add(trimmed);
+                    cleaned.push(trimmed);
+                }
+
+                // Security scan each entry
+                for (const entry of cleaned) {
+                    const scan = scanMemoryContent(entry);
+                    if (scan.blocked) {
+                        return this.failResult(
+                            `Entry blocked by security scanner: ${scan.reason} — entry: "${entry.substring(0, 80)}"`,
+                        );
+                    }
+                }
+
+                // Enforce char limit
+                if (cleaned.length > 0) {
+                    const serialized = this.serialize(cleaned);
+                    if (serialized.length > this.charLimit) {
+                        return this.failResult(
+                            `Reconciled entries (${serialized.length} chars) exceed the limit (${this.charLimit} chars).`,
+                        );
+                    }
+                    await this.atomicWrite(this.filePath, serialized);
+                } else {
+                    await this.atomicWrite(this.filePath, '');
+                }
+
+                this.entries = cleaned;
+                return this.successResult(
+                    `Memory rewritten with ${cleaned.length} entries.`,
+                );
+            } finally {
+                await this.releaseLock();
+            }
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------

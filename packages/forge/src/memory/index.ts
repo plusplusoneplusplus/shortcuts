@@ -72,3 +72,18 @@ export type {
     RawMemoryRecordStats,
     RawMemoryRecordStatus,
 } from './raw-memory-record-types';
+
+// Raw-to-bounded reconciler
+export {
+    prepareReconciliationContext,
+    validateProposedEntries,
+    buildApplyPlan,
+    applyReconciliation,
+} from './raw-memory-reconciler';
+export type {
+    ReconciliationInput,
+    ReconciliationContext,
+    ReconciliationValidationResult,
+    ReconciliationApplyPlan,
+    RejectedEntry,
+} from './raw-memory-reconciler-types';
