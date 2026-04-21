@@ -64,8 +64,8 @@ async function renderSchedulesTab() {
 // ============================================================================
 
 describe('SCHEDULE_TEMPLATES', () => {
-    it('exports 6 templates', () => {
-        expect(SCHEDULE_TEMPLATES).toHaveLength(6);
+    it('exports 3 templates', () => {
+        expect(SCHEDULE_TEMPLATES).toHaveLength(3);
     });
 
     it('every template has required fields', () => {
@@ -110,11 +110,12 @@ describe('SCHEDULE_TEMPLATES', () => {
 
     it('contains expected template ids', () => {
         const ids = SCHEDULE_TEMPLATES.map(t => t.id);
-        expect(ids).toContain('auto-commit');
         expect(ids).toContain('run-workflow');
-        expect(ids).toContain('pull-sync');
-        expect(ids).toContain('clean-outputs');
         expect(ids).toContain('run-script');
+        expect(ids).toContain('notes-auto-commit');
+        expect(ids).not.toContain('auto-commit');
+        expect(ids).not.toContain('pull-sync');
+        expect(ids).not.toContain('clean-outputs');
     });
 });
 
@@ -152,16 +153,14 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        const chip = screen.getByTestId('template-auto-commit');
+        const chip = screen.getByTestId('template-run-script');
         fireEvent.click(chip);
 
-        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'auto-commit')!;
+        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-script')!;
 
-        // Check name and target inputs are pre-filled
+        // Check name input is pre-filled
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        const targetInput = screen.getByPlaceholderText(/Prompt/) as HTMLTextAreaElement;
         expect(nameInput.value).toBe(tpl.name);
-        expect(targetInput.value).toBe(tpl.target);
     });
 
     it('run-workflow template starts with empty target for dropdown selection', async () => {
@@ -180,22 +179,21 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        fireEvent.click(screen.getByTestId('template-run-script'));
 
         const paramsSection = screen.getByTestId('template-params');
         expect(paramsSection).toBeTruthy();
 
-        // Auto-commit has directory and message params
-        expect(screen.getByTestId('param-directory')).toBeTruthy();
-        expect(screen.getByTestId('param-message')).toBeTruthy();
+        // run-script has workingDirectory param
+        expect(screen.getByTestId('param-workingDirectory')).toBeTruthy();
     });
 
     it('clicking a template shows the hint text', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'auto-commit')!;
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-script')!;
+        fireEvent.click(screen.getByTestId('template-run-script'));
 
         const hint = screen.getByTestId('template-hint');
         expect(hint.textContent).toBe(tpl.hint);
@@ -206,11 +204,11 @@ describe('CreateScheduleForm template UI', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         // Select
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        fireEvent.click(screen.getByTestId('template-run-script'));
         expect(screen.getByTestId('template-hint')).toBeTruthy();
 
         // Deselect
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        fireEvent.click(screen.getByTestId('template-run-script'));
 
         // Hint and params should be gone
         expect(screen.queryByTestId('template-hint')).toBeNull();
@@ -225,28 +223,28 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Select auto-commit
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        // Select run-script
+        fireEvent.click(screen.getByTestId('template-run-script'));
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        expect(nameInput.value).toBe('Auto-commit');
+        expect(nameInput.value).toBe('Script Runner');
 
-        // Switch to pull-sync (another non-workflow template)
-        fireEvent.click(screen.getByTestId('template-pull-sync'));
-        expect(nameInput.value).toBe('Pull & Sync');
+        // Switch to notes-auto-commit
+        fireEvent.click(screen.getByTestId('template-notes-auto-commit'));
+        expect(nameInput.value).toBe('Notes Auto-Commit');
 
         // Hint should update
-        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'pull-sync')!;
+        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'notes-auto-commit')!;
         expect(screen.getByTestId('template-hint').textContent).toBe(tpl.hint);
     });
 
     it('param inputs are editable', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        fireEvent.click(screen.getByTestId('template-run-script'));
 
-        const dirInput = screen.getByTestId('param-directory') as HTMLInputElement;
-        fireEvent.change(dirInput, { target: { value: './lib' } });
-        expect(dirInput.value).toBe('./lib');
+        const wdInput = screen.getByTestId('param-workingDirectory') as HTMLInputElement;
+        fireEvent.change(wdInput, { target: { value: './lib' } });
+        expect(wdInput.value).toBe('./lib');
     });
 
     it('Create button has type="submit" so it triggers form submission', async () => {
@@ -265,7 +263,11 @@ describe('CreateScheduleForm template UI', () => {
 
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByTestId('template-auto-commit'));
+        fireEvent.click(screen.getByTestId('template-run-script'));
+
+        // run-script has empty target — fill the script command input
+        const targetInput = screen.getByTestId('target-input') as HTMLInputElement;
+        fireEvent.change(targetInput, { target: { value: 'echo hello' } });
 
         // Submit by clicking the Create button (type="submit")
         const createBtn = screen.getByRole('button', { name: 'Create' });
@@ -285,11 +287,10 @@ describe('CreateScheduleForm template UI', () => {
         expect(postCall).toBeTruthy();
         const body = JSON.parse(postCall![1].body);
         expect(body.params).toEqual({
-            directory: './src',
-            message: 'chore: auto-save',
+            workingDirectory: '.',
         });
-        expect(body.name).toBe('Auto-commit');
-        expect(body.target).toBe('.vscode/schedules/auto-commit.md');
+        expect(body.name).toBe('Script Runner');
+        expect(body.target).toBe('echo hello');
     });
 
     it('cron mode template sets mode to cron', async () => {
@@ -308,8 +309,8 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // pull-sync is an interval mode template
-        fireEvent.click(screen.getByTestId('template-pull-sync'));
+        // notes-auto-commit is an interval mode template
+        fireEvent.click(screen.getByTestId('template-notes-auto-commit'));
 
         const intervalBtn = screen.getByText('Interval');
         expect(intervalBtn.className).toContain('bg-[#0078d4]');
