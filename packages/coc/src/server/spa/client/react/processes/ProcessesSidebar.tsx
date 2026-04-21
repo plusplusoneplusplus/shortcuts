@@ -419,7 +419,7 @@ export function ProcessesSidebar() {
                             onClick={() => { setEnqueueMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG' }); }}
                             data-testid="enqueue-run-script"
                         >
-                            🛠️ Run Script
+                            🛠️ Prompt & Script
                         </button>
                     </div>
                 )}

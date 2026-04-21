@@ -33,7 +33,7 @@ import { HistoryGroupHeader } from './HistoryGroupHeader';
 export const TASK_TYPE_LABELS: Record<string, string> = {
     'chat': 'Chat',
     'run-workflow': 'Run Workflow',
-    'run-script': 'Run Script',
+    'run-script': 'Prompt & Script',
 };
 
 /** Mode-based labels for chat tasks. */

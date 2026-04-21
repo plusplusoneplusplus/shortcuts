@@ -74,7 +74,7 @@ export function RunScriptDialog() {
         return {
             id: TaskDefs.runScript.kind,
             icon: '🛠️',
-            label: 'Run Script',
+            label: 'Prompt & Script',
             preview: pillPreview,
             onRestore: handleRestore,
             onClose: handleClose,
@@ -169,7 +169,7 @@ export function RunScriptDialog() {
                     className={`text-xs pb-1 px-2 ${activeTab === 'form' ? 'border-b-2 border-[#0078d4] font-medium' : 'text-[#848484]'}`}
                     onClick={() => setActiveTab('form')}
                 >
-                    Script
+                    Prompt / Script
                 </button>
                 <button
                     className={`text-xs pb-1 px-2 ${activeTab === 'templates' ? 'border-b-2 border-[#0078d4] font-medium' : 'text-[#848484]'}`}
@@ -323,7 +323,7 @@ export function RunScriptDialog() {
                 open={true}
                 onClose={close}
                 onMinimize={handleMinimize}
-                title="🛠️ Run Script"
+                title="🛠️ Prompt & Script"
                 footer={footer}
                 resizable
                 minWidth={520}
@@ -336,7 +336,7 @@ export function RunScriptDialog() {
     }
 
     return (
-        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="🛠️ Run Script" footer={footer} hidden={minimized}>
+        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="🛠️ Prompt & Script" footer={footer} hidden={minimized}>
             {dialogContent}
         </Dialog>
     );

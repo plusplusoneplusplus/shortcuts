@@ -1,6 +1,6 @@
 /**
  * TemplatesTab — two-panel layout with collapsible Workflows, Templates,
- * AI Chat Templates, and Run Script Templates sections.
+ * AI Chat Templates, and Prompt & Script Templates sections.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -1094,7 +1094,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     const selectedSkillTemplateId = state.selectedSkillTemplateId;
     const [skillTemplatesExpanded, setSkillTemplatesExpanded] = useState(true);
 
-    // ── Run Script Template state ──
+    // ── Prompt & Script Template state ──
     const { templates: scriptTemplates, deleteTemplate: deleteScriptTemplate, updateTemplate: updateScriptTemplate, loaded: scriptTemplatesLoaded } = useScriptTemplates(workspaceId);
 
     const [editingScriptTemplateId, setEditingScriptTemplateId] = useState<string | null>(null);
@@ -1231,7 +1231,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     };
 
     const handleDeleteScriptTemplate = (id: string) => {
-        if (!confirm('Delete this run script template?')) return;
+        if (!confirm('Delete this prompt & script template?')) return;
         deleteScriptTemplate(id);
         if (selectedScriptTemplateId === id) {
             dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
@@ -1398,9 +1398,9 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                         )}
                     </CollapsibleSection>
 
-                    {/* Run Script Templates section */}
+                    {/* Prompt & Script Templates section */}
                     <CollapsibleSection
-                        label="Run Script Templates"
+                        label="Prompt & Script Templates"
                         count={scriptTemplates.length}
                         expanded={scriptTemplatesExpanded}
                         onToggle={() => setScriptTemplatesExpanded(v => !v)}
@@ -1414,9 +1414,9 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                             <div className="flex items-center justify-center text-center px-4 py-4" data-testid="script-templates-empty">
                                 <div>
                                     <div className="text-2xl mb-2">📜</div>
-                                    <div className="text-sm text-[#6e6e6e] dark:text-[#888]">No run script templates</div>
+                                    <div className="text-sm text-[#6e6e6e] dark:text-[#888]">No prompt & script templates</div>
                                     <div className="text-xs text-[#999] dark:text-[#666] mt-1">
-                                        Save templates from the Run Script dialog
+                                        Save templates from the Prompt & Script dialog
                                     </div>
                                 </div>
                             </div>

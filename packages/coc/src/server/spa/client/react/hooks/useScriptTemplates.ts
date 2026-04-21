@@ -1,5 +1,5 @@
 /**
- * useScriptTemplates — reads and persists script templates for the Run Script dialog.
+ * useScriptTemplates — reads and persists script templates for the Prompt & Script dialog.
  * When wsId is provided, uses per-repo preferences at /api/workspaces/:id/preferences.
  * When wsId is empty/undefined, falls back to global /api/preferences.
  */

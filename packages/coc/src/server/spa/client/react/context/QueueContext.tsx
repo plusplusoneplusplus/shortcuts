@@ -53,9 +53,9 @@ export interface QueueContextState {
         /** Callback invoked on submit instead of the queue API. Receives prompt text, skills, and selected model. */
         onSubmit: (context: string, skills: string[], model: string) => void;
     } | null;
-    /** Whether the Run Script dialog is shown. */
+    /** Whether the Prompt & Script dialog is shown. */
     showScriptDialog: boolean;
-    /** Pre-selected workspace for the Run Script dialog (null = use default first workspace). */
+    /** Pre-selected workspace for the Prompt & Script dialog (null = use default first workspace). */
     scriptDialogWorkspaceId: string | null;
     showHistory: boolean;
     isFollowUpStreaming: boolean;

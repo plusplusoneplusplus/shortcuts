@@ -113,7 +113,7 @@ describe('RunScriptTemplatesSection', () => {
         await waitFor(() => {
             expect(screen.getByTestId('script-templates-section')).toBeTruthy();
         });
-        expect(screen.getByTestId('script-templates-section').textContent).toContain('Run Script Templates');
+        expect(screen.getByTestId('script-templates-section').textContent).toContain('Prompt & Script Templates');
     });
 
     it('shows empty state when no templates', async () => {
@@ -121,7 +121,7 @@ describe('RunScriptTemplatesSection', () => {
         await waitFor(() => {
             expect(screen.getByTestId('script-templates-empty')).toBeTruthy();
         });
-        expect(screen.getByTestId('script-templates-empty').textContent).toContain('No run script templates');
+        expect(screen.getByTestId('script-templates-empty').textContent).toContain('No prompt & script templates');
     });
 
     it('renders template items with name and scriptPath', async () => {

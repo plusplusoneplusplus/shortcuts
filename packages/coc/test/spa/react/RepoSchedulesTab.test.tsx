@@ -226,7 +226,7 @@ describe('CreateScheduleForm template UI', () => {
         // Select run-script
         fireEvent.click(screen.getByTestId('template-run-script'));
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        expect(nameInput.value).toBe('Script Runner');
+        expect(nameInput.value).toBe('Prompt & Script Runner');
 
         // Switch to notes-auto-commit
         fireEvent.click(screen.getByTestId('template-notes-auto-commit'));
@@ -289,7 +289,7 @@ describe('CreateScheduleForm template UI', () => {
         expect(body.params).toEqual({
             workingDirectory: '.',
         });
-        expect(body.name).toBe('Script Runner');
+        expect(body.name).toBe('Prompt & Script Runner');
         expect(body.target).toBe('echo hello');
     });
 

@@ -282,13 +282,13 @@ describe('RepoDetail Run Script button in header', () => {
         expect(block).toContain('variant="primary"');
     });
 
-    it('has title "Run a script in this repo"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('title="Run a script in this repo"');
+    it('has title "Run a prompt or script in this repo"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Run a prompt or script in this repo"');
     });
 
-    it('MobileTabBar actions include Run Script option', () => {
-        // Run Script is now in MobileTabBar actions, not a separate overflow menu
-        expect(REPO_DETAIL_SOURCE).toContain('Run Script');
+    it('MobileTabBar actions include Prompt & Script option', () => {
+        // Prompt & Script is now in MobileTabBar actions, not a separate overflow menu
+        expect(REPO_DETAIL_SOURCE).toContain('Prompt & Script');
     });
 });
 

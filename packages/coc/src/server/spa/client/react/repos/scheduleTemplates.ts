@@ -39,9 +39,9 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
     },
     {
         id: TaskDefs.runScript.kind,
-        label: 'Run Script',
+        label: 'Prompt & Script',
         emoji: '🖥️',
-        name: 'Script Runner',
+        name: 'Prompt & Script Runner',
         target: '',
         targetType: 'script',
         cronExpr: '0 * * * *',
@@ -51,7 +51,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         params: [
             { key: 'workingDirectory', placeholder: '.' },
         ],
-        hint: 'Enter a shell command or path to a script to execute on the schedule.',
+        hint: 'Enter a prompt text or shell command to execute on the schedule.',
     },
     {
         id: 'notes-auto-commit',

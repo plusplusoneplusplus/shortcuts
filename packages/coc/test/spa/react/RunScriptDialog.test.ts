@@ -63,9 +63,9 @@ describe('RunScriptDialog minimize-to-tray', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('useMinimizedDialog(minimizedEntry)');
     });
 
-    it('uses script icon and Run Script label for the pill', () => {
+    it('uses script icon and Prompt & Script label for the pill', () => {
         expect(RUN_SCRIPT_SOURCE).toContain("icon: '🛠️'");
-        expect(RUN_SCRIPT_SOURCE).toContain("label: 'Run Script'");
+        expect(RUN_SCRIPT_SOURCE).toContain("label: 'Prompt & Script'");
     });
 
     it('wires onMinimize to both dialog variants', () => {

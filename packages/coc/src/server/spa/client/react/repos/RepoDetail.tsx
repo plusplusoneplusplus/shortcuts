@@ -453,10 +453,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 variant="primary"
                                 size="sm"
                                 onClick={() => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })}
-                                title="Run a script in this repo"
+                                title="Run a prompt or script in this repo"
                                 data-testid="repo-run-script-btn"
                             >
-                                🛠️ Run Script
+                                🛠️ Prompt & Script
                             </Button>
                             <Button
                                 variant="primary"
@@ -492,7 +492,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     actions={[
                         { label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) },
                         { label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) },
-                        { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        { label: 'Prompt & Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
                         { label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() },
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
                             ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]

@@ -126,7 +126,7 @@ export function ProcessFilters() {
             >
                 <option value="__all">All Types</option>
                 <option value="chat">💬 Chat</option>
-                <option value="run-script">📜 Script</option>
+                <option value="run-script">📜 Prompt & Script</option>
                 <option value="run-workflow">⚙️ Workflow</option>
             </select>
             {state.workspaces.length > 0 && (
