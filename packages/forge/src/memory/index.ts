@@ -52,3 +52,15 @@ export type { ToolCallCacheLookupResult, StalenessStrategy } from './tool-call-c
 export { withToolCallCache } from './with-tool-call-cache';
 export type { WithToolCallCacheOptions } from './with-tool-call-cache';
 export { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './tool-call-cache-presets';
+
+// Raw memory record store
+export { RawMemoryRecordStore } from './raw-memory-record-store';
+export type { RawMemoryRecordStoreOptions } from './raw-memory-record-store';
+export type {
+    RawMemoryRecord,
+    RawMemoryRecordInput,
+    RawMemoryBatch,
+    RawMemoryRecordFilter,
+    RawMemoryRecordStats,
+    RawMemoryRecordStatus,
+} from './raw-memory-record-types';

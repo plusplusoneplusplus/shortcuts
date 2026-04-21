@@ -220,6 +220,7 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 | `scanMemoryContent()` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
 | `MemoryPromptBuilder` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` at construction, renders immutable `═══`-separated block with usage header + `MEMORY_GUIDANCE` for system prompt injection |
 | `createWriteMemoryTool()` | Factory returning an AI-callable `write_memory` tool + `getWrittenFacts()` accessor |
+| `RawMemoryRecordStore` | SQLite-backed append-only store for raw memory candidates; supports claim/release/complete batch lifecycle for aggregation. Per-scope DB at `~/.coc/repos/<workspaceId>/memory/raw-records.db` (repo) or `~/.coc/memory/system/raw-records.db` (system) |
 
 **Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
 
