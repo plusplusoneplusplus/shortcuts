@@ -24,7 +24,7 @@ describe('WorkItemDetail — auto-refresh via context', () => {
 
     describe('context subscription', () => {
         it('imports useWorkItems from WorkItemContext', () => {
-            expect(src).toMatch(/import\s*\{[^}]*useWorkItems[^}]*\}\s*from\s*['"]\.\.\/context\/WorkItemContext['"]/);
+            expect(src).toMatch(/import\s*\{[^}]*useWorkItems[^}]*\}\s*from\s*['"]\.\.\/\.\.\/context\/WorkItemContext['"]/);
         });
 
         it('calls useWorkItems() to access context state', () => {

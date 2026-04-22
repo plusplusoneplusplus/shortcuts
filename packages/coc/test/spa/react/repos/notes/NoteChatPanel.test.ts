@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const PANEL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'notes', 'NoteChatPanel.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'editor', 'NoteChatPanel.tsx'
 );
 
 describe('NoteChatPanel', () => {
@@ -30,7 +30,7 @@ describe('NoteChatPanel', () => {
 
     describe('uses single-chat hook', () => {
         it('imports useNotesChat (not useNoteChatBinding)', () => {
-            expect(source).toContain("from '../../hooks/useNotesChat'");
+            expect(source).toContain("from '../hooks/useNotesChat'");
             expect(source).not.toContain('useNoteChatBinding');
         });
 

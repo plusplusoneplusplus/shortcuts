@@ -21,7 +21,7 @@ const ROUTER_SOURCE = fs.readFileSync(
 );
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 
@@ -76,7 +76,7 @@ describe('RepoDetail terminal tab', () => {
 
 describe('RepoDetail terminal visibility gating', () => {
     it('imports useTerminalEnabled hook', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useTerminalEnabled } from '../hooks/useTerminalEnabled'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled'");
     });
 
     it('calls useTerminalEnabled() inside the component', () => {
@@ -109,7 +109,7 @@ describe('RepoDetail terminal redirect', () => {
 
 describe('RepoDetail TerminalView rendering', () => {
     it('imports TerminalView component', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { TerminalView } from '../features/terminal/TerminalView'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { TerminalView } from '../terminal/TerminalView'");
     });
 
     it('renders TerminalView with display:none pattern', () => {

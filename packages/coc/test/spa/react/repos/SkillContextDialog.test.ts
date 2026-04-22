@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'SkillContextDialog.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'SkillContextDialog.tsx'
 );
 
 let source: string;
@@ -146,11 +146,11 @@ describe('SkillContextDialog', () => {
 
     describe('follows SummarizeChatDialog pattern', () => {
         it('imports Dialog from shared', () => {
-            expect(source).toContain("import { Dialog } from '../shared/Dialog'");
+            expect(source).toContain("import { Dialog } from '../../shared/Dialog'");
         });
 
         it('imports Button from shared', () => {
-            expect(source).toContain("import { Button } from '../shared'");
+            expect(source).toContain("import { Button } from '../../shared'");
         });
 
         it('imports useState, useEffect, useCallback from react', () => {

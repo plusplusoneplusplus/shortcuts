@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const HOOK_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useTerminalEnabled.ts'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'feature-flags', 'useTerminalEnabled.ts'
 );
 
 describe('useTerminalEnabled', () => {
@@ -24,7 +24,7 @@ describe('useTerminalEnabled', () => {
     });
 
     it('imports useDisplaySettings (dynamic config)', () => {
-        expect(source).toContain("import { useDisplaySettings } from './useDisplaySettings'");
+        expect(source).toContain("import { useDisplaySettings } from '../preferences/useDisplaySettings'");
     });
 
     it('reads terminalEnabled from useDisplaySettings()', () => {

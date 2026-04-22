@@ -10,19 +10,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const PANEL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitChatPanel.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitChatPanel.tsx'
 );
 
 const CHAT_HEADER_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatHeader.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatHeader.tsx'
 );
 
 const FOLLOW_UP_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FollowUpInputArea.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'FollowUpInputArea.tsx'
 );
 
 const ACTIVITY_CHAT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatDetail.tsx'
 );
 
 describe('CommitChatPanel', () => {
@@ -68,7 +68,7 @@ describe('CommitChatPanel', () => {
         });
 
         it('imports ChatDetail', () => {
-            expect(source).toContain("import { ChatDetail } from './ChatDetail'");
+            expect(source).toContain("import { ChatDetail } from '../../chat/ChatDetail'");
         });
 
         it('passes taskId to ChatDetail', () => {

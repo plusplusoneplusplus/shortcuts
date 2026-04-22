@@ -9,8 +9,8 @@ import {
     clearCommitsCache,
     _clearCommitsCache,
     _getCommitsCacheSize,
-} from '../../../../src/server/spa/client/react/repos/useCommitsCache';
-import type { CachedCommits } from '../../../../src/server/spa/client/react/repos/useCommitsCache';
+} from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
+import type { CachedCommits } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
 
 const SAMPLE_COMMIT = { hash: 'abc123', message: 'feat: add cache', author: 'dev', date: '2026-01-01' } as any;
 
@@ -90,13 +90,13 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
     });
 
     it('RepoGitTab.tsx imports useCommitsCache', () => {
-        expect(source).toContain("from './useCommitsCache'");
+        expect(source).toContain("from './hooks/useCommitsCache'");
     });
 
     it('fetchCommits checks cache when refresh=false and skipOffset=0', () => {

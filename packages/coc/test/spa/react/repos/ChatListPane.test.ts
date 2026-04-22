@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatListPane.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatListPane.tsx'
 );
 
 describe('ChatListPane pinned chats', () => {
@@ -943,7 +943,7 @@ describe('ChatListPane: filter dropdown rework', () => {
 
         it('imports FilterDropdown from shared', () => {
             expect(source).toContain('FilterDropdown');
-            expect(source).toContain("from '../shared'");
+            expect(source).toContain("from '../../shared'");
         });
 
         it('passes availableFilters as items to FilterDropdown', () => {
@@ -1005,7 +1005,7 @@ describe('ChatListPane: filter dropdown rework', () => {
 
 // ── taskMatchesFilter unit tests (exclusion logic) ────────────────────
 
-import { taskMatchesFilter } from '../../../../src/server/spa/client/react/repos/ChatListPane';
+import { taskMatchesFilter } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 describe('taskMatchesFilter: exclusion logic', () => {
     const chatAsk = { type: 'chat', payload: { mode: 'ask' } };
@@ -1079,7 +1079,7 @@ describe('ChatListPane mobile long-press context menu', () => {
 
     describe('useLongPress import', () => {
         it('imports useLongPress hook', () => {
-            expect(source).toContain("from '../hooks/useLongPress'");
+            expect(source).toContain("from '../../hooks/ui/useLongPress'");
         });
     });
 
@@ -1222,7 +1222,7 @@ describe('ChatListPane: New Chat button uses onNewChat', () => {
 
 // ── isChatTask: tab routing logic ─────────────────────────────────────────────
 
-import { isChatTask } from '../../../../src/server/spa/client/react/repos/ChatListPane';
+import { isChatTask } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 describe('isChatTask: tab routing', () => {
     it('returns true for a chat task with ask mode', () => {
@@ -1258,7 +1258,7 @@ describe('isChatTask: tab routing', () => {
 // ── NewChatArea: simplified chat-only UI ──────────────────────────────────────
 
 const NEW_CHAT_AREA_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'NewChatArea.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'NewChatArea.tsx'
 );
 
 describe('NewChatArea: chat-only UI', () => {
@@ -1305,7 +1305,7 @@ describe('NewChatArea: chat-only UI', () => {
 import {
     getSessionCategory,
     SESSION_CATEGORY_LABELS,
-} from '../../../../src/server/spa/client/react/repos/ChatListPane';
+} from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 describe('getSessionCategory', () => {
     it('returns undefined for tasks without sessionCategory', () => {
@@ -1447,7 +1447,7 @@ describe('session category badge rendering', () => {
 
 // ── Chat search ───────────────────────────────────────────────────────────────
 
-import { taskMatchesSearch } from '../../../../src/server/spa/client/react/repos/ChatListPane';
+import { taskMatchesSearch } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 describe('ChatListPane: chat search', () => {
     let source: string;

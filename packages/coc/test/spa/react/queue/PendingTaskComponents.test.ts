@@ -163,13 +163,13 @@ describe('ChatDetail imports extracted components', () => {
     let conversationAreaSource: string;
     let chatHeaderSource: string;
     const ACTIVITY_CHAT_DETAIL_PATH = path.join(
-        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatDetail.tsx'
     );
     const CONVERSATION_AREA_PATH = path.join(
-        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ConversationArea.tsx'
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ConversationArea.tsx'
     );
     const CHAT_HEADER_PATH = path.join(
-        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatHeader.tsx'
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatHeader.tsx'
     );
 
     beforeAll(() => {
@@ -179,11 +179,11 @@ describe('ChatDetail imports extracted components', () => {
     });
 
     it('imports PendingTaskInfoPanel from queue module', () => {
-        expect(conversationAreaSource).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
+        expect(conversationAreaSource).toContain("import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel'");
     });
 
     it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
-        expect(chatHeaderSource).toContain("from '../shared/ReferencesDropdown'");
+        expect(chatHeaderSource).toContain("from '../../shared/ReferencesDropdown'");
         expect(chatHeaderSource).toContain('ReferencesDropdown');
     });
 

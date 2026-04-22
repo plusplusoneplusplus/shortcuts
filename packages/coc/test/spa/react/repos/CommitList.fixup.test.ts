@@ -11,15 +11,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMMIT_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitList.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx'
 );
 
 const TOOLTIP_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitTooltip.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitTooltip.tsx'
 );
 
 const FIXUP_UTILS_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'fixup-utils.ts'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'fixup-utils.ts'
 );
 
 const INDEX_PATH = path.join(
@@ -61,7 +61,7 @@ describe('CommitList fixup visual grouping', () => {
 
         it('is re-exported from repos index', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("from './fixup-utils'");
+            expect(indexSource).toContain("from '../features/git/fixup-utils'");
             expect(indexSource).toContain('buildFixupGroups');
             expect(indexSource).toContain('parseFixupSubject');
         });
@@ -69,7 +69,7 @@ describe('CommitList fixup visual grouping', () => {
 
     describe('CommitList integration', () => {
         it('imports buildFixupGroups from fixup-utils', () => {
-            expect(commitListSource).toContain("from './fixup-utils'");
+            expect(commitListSource).toContain("from '../fixup-utils'");
             expect(commitListSource).toContain('buildFixupGroups');
         });
 

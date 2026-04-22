@@ -10,17 +10,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 
 describe('RepoDetail mobile: imports', () => {
     it('imports useBreakpoint hook', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { useBreakpoint } from '../../hooks/ui/useBreakpoint'");
     });
 
     it('imports MobileTabBar for mobile actions', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../layout/MobileTabBar'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../../layout/MobileTabBar'");
     });
 
     it('destructures isMobile from useBreakpoint', () => {
@@ -222,7 +222,7 @@ describe('RepoDetail mobile: tappable repo name (back navigation)', () => {
 
 describe('RepoDetail mobile: MobileTabBar integration', () => {
     it('imports MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../layout/MobileTabBar'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../../layout/MobileTabBar'");
     });
 
     it('renders MobileTabBar only on mobile', () => {

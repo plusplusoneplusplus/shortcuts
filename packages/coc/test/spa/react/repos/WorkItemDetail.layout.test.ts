@@ -287,7 +287,7 @@ describe('WorkItemsTab — commit review navigation', () => {
     });
 
     it('imports CommitDetail component', () => {
-        expect(tabSrc).toMatch(/import\s*\{[^}]*CommitDetail[^}]*\}\s*from\s*['"]\.\/(CommitDetail|\.\/CommitDetail)['"]/);
+        expect(tabSrc).toMatch(/import\s*\{[^}]*CommitDetail[^}]*\}\s*from\s*['"]\.\.\/git\/commits\/CommitDetail['"]/);
     });
 
     it('renders CommitDetail when selectedCommitHash is set', () => {

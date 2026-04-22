@@ -57,7 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
     useSlashCommands: () => ({
         menuVisible: false,
         menuFilter: '',
@@ -71,7 +71,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => 
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => ({
         modelMenuVisible: false,
         modelFilter: '',
@@ -87,18 +87,18 @@ vi.mock('../../../../src/server/spa/client/react/repos/useModelCommand', () => (
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
     ModelCommandMenu: () => null,
 }));
 
-import { FollowUpInputArea } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
-import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
+import { FollowUpInputArea } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
+import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
-import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewChatArea';
+import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -307,7 +307,7 @@ describe('Compact input bar — source validation', () => {
         const fs = await import('fs');
         const path = await import('path');
         const src = fs.readFileSync(
-            path.resolve(__dirname, '../../../../src/server/spa/client/react/repos/FollowUpInputArea.tsx'),
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea.tsx'),
             'utf-8',
         );
         // Should not have old stacked layout
@@ -320,7 +320,7 @@ describe('Compact input bar — source validation', () => {
         const fs = await import('fs');
         const path = await import('path');
         const src = fs.readFileSync(
-            path.resolve(__dirname, '../../../../src/server/spa/client/react/repos/NewChatArea.tsx'),
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/NewChatArea.tsx'),
             'utf-8',
         );
         expect(src).not.toContain('flex flex-col sm:flex-row');
@@ -331,11 +331,11 @@ describe('Compact input bar — source validation', () => {
         const fs = await import('fs');
         const path = await import('path');
         const followUp = fs.readFileSync(
-            path.resolve(__dirname, '../../../../src/server/spa/client/react/repos/FollowUpInputArea.tsx'),
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea.tsx'),
             'utf-8',
         );
         const newChat = fs.readFileSync(
-            path.resolve(__dirname, '../../../../src/server/spa/client/react/repos/NewChatArea.tsx'),
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/NewChatArea.tsx'),
             'utf-8',
         );
         expect(followUp).not.toContain('w-full sm:w-auto');

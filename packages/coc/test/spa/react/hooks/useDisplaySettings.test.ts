@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const USE_DISPLAY_SETTINGS_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useDisplaySettings.ts'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'preferences', 'useDisplaySettings.ts'
 );
 
 describe('useDisplaySettings', () => {
@@ -70,7 +70,7 @@ describe('useDisplaySettings — __DASHBOARD_CONFIG__ seeding', () => {
     it('imports isTerminalEnabled and isNotesEnabled from config', () => {
         expect(source).toContain('isTerminalEnabled');
         expect(source).toContain('isNotesEnabled');
-        expect(source).toMatch(/from\s+['"]\.\.\/utils\/config['"]/);
+        expect(source).toMatch(/from\s+['"]\.\.\/\.\.\/utils\/config['"]/);
     });
 
     it('defines getInitialSettings that spreads DEFAULT_SETTINGS with config values', () => {

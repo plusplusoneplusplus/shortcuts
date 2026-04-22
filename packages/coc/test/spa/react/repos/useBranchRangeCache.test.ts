@@ -9,8 +9,8 @@ import {
     clearBranchRangeCache,
     _clearBranchRangeCache,
     _getBranchRangeCacheSize,
-} from '../../../../src/server/spa/client/react/repos/useBranchRangeCache';
-import type { CachedBranchRange } from '../../../../src/server/spa/client/react/repos/useBranchRangeCache';
+} from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
+import type { CachedBranchRange } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
 
 const SAMPLE_CACHE: CachedBranchRange = {
     data: {
@@ -101,17 +101,17 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
-        expect(source).toContain("from './useBranchRangeCache'");
+        expect(source).toContain("from './hooks/useBranchRangeCache'");
     });
 
     it('fetchBranchRange checks cache before fetching', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
         expect(source).toContain('getBranchRangeCache(workspaceId)');
@@ -121,7 +121,7 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
         expect(source).toContain('setBranchRangeCache(workspaceId,');
@@ -131,7 +131,7 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
         expect(source).toContain('clearBranchRangeCache(workspaceId)');
@@ -141,7 +141,7 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
         // Extract the WebSocket handler block
@@ -158,7 +158,7 @@ describe('RepoGitTab integration', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
         // refreshAll should still call fetchBranchRange(true)
