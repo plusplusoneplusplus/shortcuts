@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import type { NoteTreeNode } from '../repos/notesApi';
+import type { NoteTreeNode } from '../notesApi';
 
 export const NOTE_DRAG_MIME = 'application/x-note-drag';
 

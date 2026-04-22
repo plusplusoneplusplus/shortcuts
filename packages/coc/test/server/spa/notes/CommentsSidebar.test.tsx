@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, screen, cleanup } from '@testing-library/react';
-import { CommentsSidebar } from '../../../../src/server/spa/client/react/repos/notes/CommentsSidebar';
-import type { UseCommentsReturn, CommentFilter } from '../../../../src/server/spa/client/react/repos/notes/useComments';
-import type { CommentThread } from '../../../../src/server/spa/client/react/repos/notesApi';
+import { CommentsSidebar } from '../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar';
+import type { UseCommentsReturn, CommentFilter } from '../../../../src/server/spa/client/react/features/notes/editor/useComments';
+import type { CommentThread } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Mock useBreakpoint ─────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
 import type { RepoData } from '../../repos/repoGrouping';
-import { RepoMemorySection } from '../../repos/memory/RepoMemorySection';
+import { RepoMemorySection } from '../memory/RepoMemorySection';
 import { useRepos } from '../../context/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';

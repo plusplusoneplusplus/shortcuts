@@ -8,7 +8,7 @@ import {
     htmlToMarkdown,
     rewriteImageSrcToApi,
     rewriteImageSrcToRelative,
-} from '../../src/server/spa/client/react/repos/notes/noteMarkdown';
+} from '../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 describe('Image URL rewriting', () => {
     // ========================================================================

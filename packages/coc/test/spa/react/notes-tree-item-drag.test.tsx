@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { NotesTreeItem } from '../../../src/server/spa/client/react/repos/notes/NotesTreeItem';
-import type { NoteTreeNode } from '../../../src/server/spa/client/react/repos/notesApi';
+import { NotesTreeItem } from '../../../src/server/spa/client/react/features/notes/editor/NotesTreeItem';
+import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),

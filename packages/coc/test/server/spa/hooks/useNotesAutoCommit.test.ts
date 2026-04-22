@@ -9,7 +9,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getAutoCommitStatus: vi.fn(),
         enableAutoCommit: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/cron', () => ({
     describeCron: vi.fn((expr: string) => `desc(${expr})`),
 }));
 
-import { notesApi } from '../../../../src/server/spa/client/react/repos/notesApi';
+import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 import { useNotesAutoCommit } from '../../../../src/server/spa/client/react/hooks/useNotesAutoCommit';
 
 const mockGetAutoCommitStatus = notesApi.getAutoCommitStatus as ReturnType<typeof vi.fn>;

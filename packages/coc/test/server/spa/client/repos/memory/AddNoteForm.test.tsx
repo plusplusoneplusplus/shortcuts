@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-import { AddNoteForm } from '../../../../../../src/server/spa/client/react/repos/memory/AddNoteForm';
+import { AddNoteForm } from '../../../../../../src/server/spa/client/react/features/memory/AddNoteForm';
 
 // ---------------------------------------------------------------------------
 // Helpers

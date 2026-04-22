@@ -27,7 +27,7 @@ const mockIo = {
 };
 
 vi.mock(
-    '../../../../src/server/spa/client/react/repos/notes/noteMarkdown',
+    '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown',
     () => ({
         markdownToHtml: (md: string) => `<p>${md}</p>`,
         htmlToMarkdown: (html: string) => html.replace(/<\/?[^>]+>/g, ''),
@@ -36,7 +36,7 @@ vi.mock(
     }),
 );
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: vi.fn(() => Promise.resolve({ content: '', path: '' })),
         saveContent: vi.fn(() => Promise.resolve({ path: '', updated: true })),
@@ -121,7 +121,7 @@ const mockEditor = {
     }),
 };
 
-vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore', () => ({
     RichEditorCore: (props: { onChange?: (editor: unknown) => void; onEditorReady?: (editor: unknown) => void }) => {
         useEffect(() => {
             props.onEditorReady?.(mockEditor);
@@ -130,7 +130,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', ()
     },
 }));
 
-import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
+import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

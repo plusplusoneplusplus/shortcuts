@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 const mockGetContent = vi.fn();
 const mockSaveContent = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: (...args: unknown[]) => mockGetContent(...args),
         saveContent: (...args: unknown[]) => mockSaveContent(...args),
@@ -33,7 +33,7 @@ const mockIo = {
 };
 
 vi.mock(
-    '../../../../src/server/spa/client/react/repos/notes/noteMarkdown',
+    '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown',
     () => ({
         markdownToHtml: (md: string) => `<p>${md}</p>`,
         htmlToMarkdown: (html: string) => html.replace(/<\/?[^>]+>/g, ''),
@@ -77,7 +77,7 @@ const mockEditor = {
 // Mock RichEditorCore — replaces the real Tiptap shell.
 // Captures the onChange callback and calls onEditorReady with mockEditor.
 // Tracks mount/unmount count for regression tests.
-vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore', () => ({
     RichEditorCore: (props: { onChange?: (editor: unknown) => void; onEditorReady?: (editor: unknown) => void }) => {
         if (props.onChange) capturedOnChange = props.onChange;
         useEffect(() => {
@@ -88,7 +88,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', ()
     },
 }));
 
-import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
+import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

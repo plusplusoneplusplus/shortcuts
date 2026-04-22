@@ -38,8 +38,8 @@ import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { isAbsolutePath } from '../utils/path-resolution';
-import { RichEditorCore } from '../repos/notes/RichEditorCore';
-import { markdownToHtml, htmlToMarkdown } from '../repos/notes/noteMarkdown';
+import { RichEditorCore } from '../features/notes/editor/RichEditorCore';
+import { markdownToHtml, htmlToMarkdown } from '../features/notes/editor/noteMarkdown';
 import type { Editor } from '@tiptap/core';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);

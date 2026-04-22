@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor, act, screen } from '@testing-library/react';
-import type { NoteTreeNode } from '../../../src/server/spa/client/react/repos/notesApi';
+import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
 
-vi.mock('../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getTree: (...args: any[]) => mockGetTree(...args),
         createNode: (...args: any[]) => mockCreateNode(...args),
@@ -27,7 +27,7 @@ vi.mock('../../../src/server/spa/client/react/repos/notesApi', () => ({
 }));
 
 // Import component after mocks
-import { NotesSidebar } from '../../../src/server/spa/client/react/repos/notes/NotesSidebar';
+import { NotesSidebar } from '../../../src/server/spa/client/react/features/notes/editor/NotesSidebar';
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 

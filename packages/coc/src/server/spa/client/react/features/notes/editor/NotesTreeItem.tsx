@@ -1,6 +1,6 @@
 import type { NoteTreeNode } from '../notesApi';
-import { cn } from '../../shared/cn';
-import type { NoteDragItem, DropPosition } from '../../hooks/useNotesDragDrop';
+import { cn } from '../../../shared/cn';
+import type { NoteDragItem, DropPosition } from '../hooks/useNotesDragDrop';
 
 export interface NotesTreeItemProps {
     node: NoteTreeNode;

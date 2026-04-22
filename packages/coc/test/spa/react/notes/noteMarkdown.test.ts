@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from '../../../../src/server/spa/client/react/repos/notes/noteMarkdown';
+import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 /** Normalize whitespace for comparison: trim + collapse internal whitespace runs. */
 function norm(s: string): string {

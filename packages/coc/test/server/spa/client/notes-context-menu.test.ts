@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { NoteTreeNode } from '../../../../src/server/spa/client/react/repos/notesApi';
+import type { NoteTreeNode } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
 // Test the buildContextMenuItems logic from NotesSidebar in isolation.
 // The function is a closure inside the component, so we replicate it here.

@@ -4,7 +4,7 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { BlockCommentExtension, blockCommentPluginKey } from
-    '../../../../src/server/spa/client/react/repos/notes/extensions/blockComment';
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/blockComment';
 
 function createTestEditor(options?: {
     onCommentActivated?: (id: string | null) => void;

@@ -8,7 +8,7 @@ const mockSaveContent = vi.fn();
 const mockGetComments = vi.fn(() => Promise.resolve({ noteId: '', threads: {} }));
 const mockUpdateThread = vi.fn(() => Promise.resolve());
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: (...args: unknown[]) => mockGetContent(...args),
         saveContent: (...args: unknown[]) => mockSaveContent(...args),
@@ -32,7 +32,7 @@ const mockIo = {
 };
 
 vi.mock(
-    '../../../../src/server/spa/client/react/repos/notes/noteMarkdown',
+    '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown',
     () => ({
         markdownToHtml: (md: string) => `<p>${md}</p>`,
         htmlToMarkdown: (html: string) => html.replace(/<\/?[^>]+>/g, ''),
@@ -68,9 +68,9 @@ vi.mock('@tiptap/extension-task-item', () => ({ default: { configure: () => ({})
 vi.mock('@tiptap/extension-link', () => ({ default: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }));
 
-import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
-import type { NoteEditorCommentBackend } from '../../../../src/server/spa/client/react/repos/notes/NoteEditorCommentBackend';
-import { noopCommentBackend, defaultCommentBackend } from '../../../../src/server/spa/client/react/repos/notes/NoteEditorCommentBackend';
+import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
+import type { NoteEditorCommentBackend } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorCommentBackend';
+import { noopCommentBackend, defaultCommentBackend } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorCommentBackend';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

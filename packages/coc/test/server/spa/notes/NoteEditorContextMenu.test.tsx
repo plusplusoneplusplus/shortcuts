@@ -7,7 +7,7 @@ import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-libra
 const mockGetContent = vi.fn();
 const mockSaveContent = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: (...args: unknown[]) => mockGetContent(...args),
         saveContent: (...args: unknown[]) => mockSaveContent(...args),
@@ -18,7 +18,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
 }));
 
 vi.mock(
-    '../../../../src/server/spa/client/react/repos/notes/noteMarkdown',
+    '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown',
     () => ({
         markdownToHtml: (md: string) => `<p>${md}</p>`,
         htmlToMarkdown: (html: string) => html.replace(/<\/?[^>]+>/g, ''),
@@ -104,14 +104,14 @@ vi.mock('@tiptap/extension-table-row', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-cell', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-header', () => ({ default: {} }));
 vi.mock('@tiptap/extension-highlight', () => ({ default: { configure: () => ({}) } }));
-vi.mock('../../../../src/server/spa/client/react/repos/notes/extensions/resizableImage', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock('@sereneinserenade/tiptap-comment-extension', () => ({
     CommentExtension: { configure: () => ({}) },
 }));
 
-import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
+import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

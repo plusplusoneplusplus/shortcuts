@@ -4,8 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { PipelineStatusStrip } from '../../../../../../src/server/spa/client/react/repos/memory/PipelineStatusStrip';
-import type { MemoryStats } from '../../../../../../src/server/spa/client/react/repos/memory/memoryApi';
+import { PipelineStatusStrip } from '../../../../../../src/server/spa/client/react/features/memory/PipelineStatusStrip';
+import type { MemoryStats } from '../../../../../../src/server/spa/client/react/features/memory/memoryApi';
 
 // ---------------------------------------------------------------------------
 // Helpers

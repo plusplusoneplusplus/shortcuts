@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
     htmlToMarkdown,
     htmlToMarkdownWithComments,
-} from '../../../../src/server/spa/client/react/repos/notes/noteMarkdown';
-import type { ExportCommentThread } from '../../../../src/server/spa/client/react/repos/notes/noteMarkdown';
+} from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
+import type { ExportCommentThread } from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 describe('htmlToMarkdownWithComments', () => {
     it('returns same output as htmlToMarkdown when no threads', () => {

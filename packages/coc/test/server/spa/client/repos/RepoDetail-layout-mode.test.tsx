@@ -135,7 +135,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/pull-requests/PullRequ
 vi.mock('../../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({ NotesView: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', () => ({ NotesView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({ AddRepoDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({ GenerateTaskDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({

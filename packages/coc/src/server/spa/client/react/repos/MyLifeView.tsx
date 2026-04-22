@@ -7,9 +7,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import { NotesView } from './NotesView';
+import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from './RepoChatTab';
-import { NotesGitTab } from './NotesGitTab';
+import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';

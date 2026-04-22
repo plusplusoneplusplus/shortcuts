@@ -5,7 +5,7 @@
  * Contains no business logic; conditional rendering only.
  */
 
-import { CommentsSidebar, type CommentsSidebarProps } from '../repos/notes/CommentsSidebar';
+import { CommentsSidebar, type CommentsSidebarProps } from '../features/notes/editor/CommentsSidebar';
 import { CommentSidebar, type CommentSidebarProps } from '../tasks/comments/CommentSidebar';
 
 export interface NotesCommentPanelProps extends CommentsSidebarProps {

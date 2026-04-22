@@ -8,7 +8,7 @@ import * as path from 'path';
 
 const SRC_PATH = path.resolve(
     __dirname,
-    '../../../../../src/server/spa/client/react/repos/notes/AIEditNavigator.tsx',
+    '../../../../../src/server/spa/client/react/features/notes/editor/AIEditNavigator.tsx',
 );
 
 describe('AIEditNavigator (source inspection)', () => {

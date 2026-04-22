@@ -2,7 +2,7 @@
  * notesApi — typed wrappers over the repo-scoped notes REST endpoints.
  */
 
-import { fetchApi } from '../hooks/useApi';
+import { fetchApi } from '../../hooks/useApi';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

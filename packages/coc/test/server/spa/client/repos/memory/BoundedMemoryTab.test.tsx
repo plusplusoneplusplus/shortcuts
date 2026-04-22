@@ -14,7 +14,7 @@ vi.mock('@plusplusoneplusplus/forge', () => ({}));
 const mockGetBounded = vi.fn();
 const mockGetOverview = vi.fn();
 
-vi.mock('../../../../../../src/server/spa/client/react/repos/memory/memoryApi', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi', () => ({
     memoryApi: {
         getBounded: (...a: any[]) => mockGetBounded(...a),
         getOverview: (...a: any[]) => mockGetOverview(...a),
@@ -53,7 +53,7 @@ vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000',
 }));
 
-import { BoundedMemoryTab } from '../../../../../../src/server/spa/client/react/repos/memory/BoundedMemoryTab';
+import { BoundedMemoryTab } from '../../../../../../src/server/spa/client/react/features/memory/BoundedMemoryTab';
 
 // ---------------------------------------------------------------------------
 // Default API responses

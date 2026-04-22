@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { NotesTreeItem } from '../../../src/server/spa/client/react/repos/notes/NotesTreeItem';
-import type { NoteTreeNode } from '../../../src/server/spa/client/react/repos/notesApi';
+import { NotesTreeItem } from '../../../src/server/spa/client/react/features/notes/editor/NotesTreeItem';
+import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 // Mock useBreakpoint (ContextMenu / Dialog may use it transitively)
 vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({

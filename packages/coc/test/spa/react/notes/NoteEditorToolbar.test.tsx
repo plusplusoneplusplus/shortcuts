@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/repos/notes/NoteEditorToolbar';
+import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
 

@@ -7,8 +7,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { notesApi } from '../repos/notesApi';
-import { describeCron } from '../utils/cron';
+import { notesApi } from '../notesApi';
+import { describeCron } from '../../../utils/cron';
 
 export interface UseNotesAutoCommitReturn {
     autoCommitEnabled: boolean;

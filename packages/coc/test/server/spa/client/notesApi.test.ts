@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { notesApi } from '../../../../src/server/spa/client/react/repos/notesApi';
+import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
 // Mock getApiBase used by fetchApi
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({

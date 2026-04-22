@@ -20,7 +20,7 @@ const mockEditor = {
     state: { selection: { empty: true } },
 };
 
-vi.mock('../../../src/server/spa/client/react/repos/notes/RichEditorCore', () => ({
+vi.mock('../../../src/server/spa/client/react/features/notes/editor/RichEditorCore', () => ({
     RichEditorCore: ({ onEditorReady, onChange }: { onEditorReady?: (ed: any) => void; onChange?: (ed: any) => void }) => {
         capturedOnEditorReady = onEditorReady ?? null;
         capturedOnChange = onChange ?? null;
@@ -39,7 +39,7 @@ const mockHtmlToMarkdown = vi.fn((html: string) => {
     return match ? match[1] + '\n' : '';
 });
 
-vi.mock('../../../src/server/spa/client/react/repos/notes/noteMarkdown', () => ({
+vi.mock('../../../src/server/spa/client/react/features/notes/editor/noteMarkdown', () => ({
     markdownToHtml: (...args: any[]) => mockMarkdownToHtml(...args),
     htmlToMarkdown: (...args: any[]) => mockHtmlToMarkdown(...args),
 }));

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { AggregatePanel } from '../../../../../src/server/spa/client/react/repos/memory/AggregatePanel';
+import { AggregatePanel } from '../../../../../src/server/spa/client/react/features/memory/AggregatePanel';
 
 // Mock useModels hook
 const mockModels = [

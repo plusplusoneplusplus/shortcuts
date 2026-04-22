@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import type { CommentThread, NoteSidecar, Comment } from '../../../../src/server/spa/client/react/repos/notesApi';
+import type { CommentThread, NoteSidecar, Comment } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Mock notesApi ──────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ const mockAddComment = vi.fn<any[], Promise<{ comment: Comment }>>();
 const mockEditComment = vi.fn<any[], Promise<{ comment: Comment }>>();
 const mockDeleteComment = vi.fn<any[], Promise<void>>();
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getComments: (...args: any[]) => mockGetComments(...args),
         createThread: (...args: any[]) => mockCreateThread(...args),
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
     },
 }));
 
-import { useComments, type CommentFilter } from '../../../../src/server/spa/client/react/repos/notes/useComments';
+import { useComments, type CommentFilter } from '../../../../src/server/spa/client/react/features/notes/editor/useComments';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 

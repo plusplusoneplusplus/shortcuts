@@ -13,8 +13,8 @@ import {
     AiEditDecorationExtension,
     aiEditPluginKey,
     type AiEditRegion,
-} from '../../../../../../src/server/spa/client/react/repos/notes/extensions/AiEditDecorationExtension';
-import type { DiffChunk } from '../../../../../../src/server/spa/client/react/repos/notes/noteEditDiff';
+} from '../../../../../../src/server/spa/client/react/features/notes/editor/extensions/AiEditDecorationExtension';
+import type { DiffChunk } from '../../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
 
 function makeEditor(content = '<p>hello world</p>') {
     return new Editor({

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, screen, cleanup, act } from '@testing-library/react';
-import { NotesView } from '../../../../src/server/spa/client/react/repos/NotesView';
-import type { UseCommentsReturn, CommentFilter } from '../../../../src/server/spa/client/react/repos/notes/useComments';
+import { NotesView } from '../../../../src/server/spa/client/react/features/notes/NotesView';
+import type { UseCommentsReturn, CommentFilter } from '../../../../src/server/spa/client/react/features/notes/editor/useComments';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
 
 // Mock NoteEditor to avoid pulling in the entire Tiptap dependency tree
 let capturedOnEditorReady: ((ed: any) => void) | undefined;
-vi.mock('../../../../src/server/spa/client/react/repos/notes/NoteEditor', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
     NoteEditor: (props: any) => {
         capturedOnEditorReady = props.onEditorReady;
         return (
@@ -52,7 +52,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/NoteEditor', () => 
 }));
 
 // Mock NotesSidebar
-vi.mock('../../../../src/server/spa/client/react/repos/notes/NotesSidebar', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NotesSidebar', () => ({
     NotesSidebar: () => <div data-testid="notes-sidebar" />,
 }));
 
@@ -74,7 +74,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () =
 
 // Mock CommentsSidebar — capture the comments prop for testing wrapped handlers
 let capturedComments: UseCommentsReturn | undefined;
-vi.mock('../../../../src/server/spa/client/react/repos/notes/CommentsSidebar', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar', () => ({
     CommentsSidebar: (props: any) => {
         capturedComments = props.comments;
         return (
@@ -112,14 +112,14 @@ function makeMockComments(overrides: Partial<UseCommentsReturn> = {}): UseCommen
 }
 
 let mockCommentsReturn: UseCommentsReturn;
-vi.mock('../../../../src/server/spa/client/react/repos/notes/useComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/useComments', () => ({
     useComments: () => mockCommentsReturn,
 }));
 
 // Mock commentAnchoring
 const mockFindAnchorInDoc = vi.fn(() => ({ from: 1, to: 5 }));
 const mockApplyCommentMark = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/repos/notes/commentAnchoring', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
     createTextAnchorFromSelection: vi.fn(() => ({ quotedText: 'test', prefix: '', suffix: '' })),
     findAnchorInDoc: (...args: any[]) => mockFindAnchorInDoc(...args),
     applyCommentMark: (...args: any[]) => mockApplyCommentMark(...args),

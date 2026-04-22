@@ -9,7 +9,7 @@ import { getApiBase } from '../../utils/config';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { useApp } from '../../context/AppContext';
-import { useNotesAutoCommit } from '../../hooks/useNotesAutoCommit';
+import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';
 import { CreateScheduleForm } from './CreateScheduleForm';

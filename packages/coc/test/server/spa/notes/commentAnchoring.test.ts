@@ -9,7 +9,7 @@ import {
     findAnchorInDoc,
     applyCommentMark,
     buildAnchorFromMark,
-} from '../../../../src/server/spa/client/react/repos/notes/commentAnchoring';
+} from '../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 
 function createEditor(content = '<p>Hello world</p>') {

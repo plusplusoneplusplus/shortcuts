@@ -1,17 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
-import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
-import { NotesSidebar } from './notes/NotesSidebar';
-import { NoteEditor } from './notes/NoteEditor';
-import type { NoteViewMode } from './notes/NoteEditor';
-import { CommentsSidebar } from './notes/CommentsSidebar';
-import { NoteChatPanel } from './notes/NoteChatPanel';
-import { useComments } from './notes/useComments';
-import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './notes/commentAnchoring';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useResizablePanel } from '../hooks/useResizablePanel';
-import { useApp } from '../context/AppContext';
-import { buildNoteHash } from '../layout/Router';
+import { ResponsiveSidebar } from '../../shared/ResponsiveSidebar';
+import { NotesSidebar } from './editor/NotesSidebar';
+import { NoteEditor } from './editor/NoteEditor';
+import type { NoteViewMode } from './editor/NoteEditor';
+import { CommentsSidebar } from './editor/CommentsSidebar';
+import { NoteChatPanel } from './editor/NoteChatPanel';
+import { useComments } from './editor/useComments';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { useApp } from '../../context/AppContext';
+import { buildNoteHash } from '../../layout/Router';
 
 export interface NotesViewProps {
     workspaceId: string;

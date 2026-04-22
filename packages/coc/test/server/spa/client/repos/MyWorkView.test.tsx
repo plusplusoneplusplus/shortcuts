@@ -29,7 +29,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
 }));
 
 // Stub NotesView — render a marker div that captures props
-vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: (props: any) => (
         <div
             data-testid="notes-view"
@@ -48,7 +48,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
 }));
 
 // Stub NotesGitTab — just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/NotesGitTab', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesGitTab', () => ({
     NotesGitTab: (props: any) => (
         <div data-testid="notes-git-tab" data-workspace-id={props.workspaceId} />
     ),

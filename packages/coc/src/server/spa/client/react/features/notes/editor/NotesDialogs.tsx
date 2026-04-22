@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Dialog } from '../../shared/Dialog';
-import { Button } from '../../shared/Button';
+import { Dialog } from '../../../shared/Dialog';
+import { Button } from '../../../shared/Button';
 import type { NoteDialog } from './useNotesContextMenu';
 
 const INVALID_NAME_CHARS = /[/\\:*?<>|"]/g;

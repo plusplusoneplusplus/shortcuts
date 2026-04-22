@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from './useApi';
-import type { NoteContentStatusInfo } from '../repos/notes/NoteContextBanner';
+import { fetchApi } from '../../../hooks/useApi';
+import type { NoteContentStatusInfo } from '../editor/NoteContextBanner';
 
 export interface UseNotesChatOptions {
     workspaceId: string;

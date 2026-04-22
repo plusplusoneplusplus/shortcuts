@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { RepoMemorySection } from '../../../../../src/server/spa/client/react/repos/memory/RepoMemorySection';
+import { RepoMemorySection } from '../../../../../src/server/spa/client/react/features/memory/RepoMemorySection';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 

@@ -6,7 +6,7 @@ const mockGetContent = vi.fn();
 const mockSaveContent = vi.fn();
 const mockUploadImage = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: (...args: unknown[]) => mockGetContent(...args),
         saveContent: (...args: unknown[]) => mockSaveContent(...args),
@@ -17,8 +17,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
 import {
     defaultNoteEditorIO,
     rewriteHtmlImageSrc,
-} from '../../../../src/server/spa/client/react/repos/notes/NoteEditorIO';
-import type { NoteEditorIO } from '../../../../src/server/spa/client/react/repos/notes/NoteEditorIO';
+} from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorIO';
+import type { NoteEditorIO } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorIO';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

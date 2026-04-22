@@ -76,7 +76,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', ()
     ),
 }));
 
-import { NotesGitTab } from '../../../../../src/server/spa/client/react/repos/NotesGitTab';
+import { NotesGitTab } from '../../../../../src/server/spa/client/react/features/notes/NotesGitTab';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

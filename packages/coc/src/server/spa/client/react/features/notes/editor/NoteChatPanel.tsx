@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
-import { useNotesChat } from '../../hooks/useNotesChat';
-import { ChatDetail } from '../ChatDetail';
-import { ChatPreferencesProvider } from '../../context/ChatPreferencesContext';
-import { RichTextInput } from '../../shared/RichTextInput';
-import type { RichTextInputHandle } from '../../shared/RichTextInput';
+import { useNotesChat } from '../hooks/useNotesChat';
+import { ChatDetail } from '../../../repos/ChatDetail';
+import { ChatPreferencesProvider } from '../../../context/ChatPreferencesContext';
+import { RichTextInput } from '../../../shared/RichTextInput';
+import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 import { NoteContextBanner } from './NoteContextBanner';
 
 export interface NoteChatPanelProps {

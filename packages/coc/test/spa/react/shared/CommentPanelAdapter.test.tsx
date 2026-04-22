@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { CommentPanelAdapter } from '../../../../src/server/spa/client/react/shared/CommentPanelAdapter';
 import type { NotesCommentPanelProps, TaskCommentPanelProps } from '../../../../src/server/spa/client/react/shared/CommentPanelAdapter';
-import type { UseCommentsReturn } from '../../../../src/server/spa/client/react/repos/notes/useComments';
+import type { UseCommentsReturn } from '../../../../src/server/spa/client/react/features/notes/editor/useComments';
 import type { AnyComment } from '../../../../src/server/spa/client/shared-comment-types';
 
 function makeStubComments(overrides: Partial<UseCommentsReturn> = {}): UseCommentsReturn {

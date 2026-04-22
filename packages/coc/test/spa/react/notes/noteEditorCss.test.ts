@@ -4,7 +4,7 @@ import { resolve } from 'path';
 
 const cssPath = resolve(
     __dirname,
-    '../../../../src/server/spa/client/react/repos/notes/noteEditor.css',
+    '../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css',
 );
 const css = readFileSync(cssPath, 'utf-8');
 

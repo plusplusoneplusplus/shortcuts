@@ -1,14 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { NoteTreeNode } from '../notesApi';
-import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import { ContextMenu } from '../../tasks/comments/ContextMenu';
-import { Button } from '../../shared/Button';
-import { Spinner } from '../../shared/Spinner';
+import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
+import { ContextMenu } from '../../../tasks/comments/ContextMenu';
+import { Button } from '../../../shared/Button';
+import { Spinner } from '../../../shared/Spinner';
 import { NotesTree } from './NotesTree';
 import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
-import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../../hooks/useNotesDragDrop';
+import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };

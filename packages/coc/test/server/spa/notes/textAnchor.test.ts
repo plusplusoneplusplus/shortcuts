@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createTextAnchor, resolveAnchor, resolveAnchors } from
-    '../../../../src/server/spa/client/react/repos/notes/textAnchor';
+    '../../../../src/server/spa/client/react/features/notes/editor/textAnchor';
 
 describe('createTextAnchor', () => {
     const text = 'The quick brown fox jumps over the lazy dog';

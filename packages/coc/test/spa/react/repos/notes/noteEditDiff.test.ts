@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { wordDiff } from '../../../../../src/server/spa/client/react/repos/notes/noteEditDiff';
-import type { DiffChunk } from '../../../../../src/server/spa/client/react/repos/notes/noteEditDiff';
+import { wordDiff } from '../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
+import type { DiffChunk } from '../../../../../src/server/spa/client/react/features/notes/editor/noteEditDiff';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

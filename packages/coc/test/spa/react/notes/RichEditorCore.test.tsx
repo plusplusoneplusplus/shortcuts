@@ -42,14 +42,14 @@ vi.mock('@tiptap/extension-table-row', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-cell', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-header', () => ({ default: {} }));
 vi.mock('@tiptap/extension-highlight', () => ({ default: { configure: () => ({}) } }));
-vi.mock('../../../../src/server/spa/client/react/repos/notes/extensions/resizableImage', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock('@sereneinserenade/tiptap-comment-extension', () => ({
     CommentExtension: { configure: () => ({}) },
 }));
 
-import { RichEditorCore } from '../../../../src/server/spa/client/react/repos/notes/RichEditorCore';
+import { RichEditorCore } from '../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

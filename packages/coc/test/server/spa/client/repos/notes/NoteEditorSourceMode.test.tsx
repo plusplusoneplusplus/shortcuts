@@ -9,7 +9,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 let mockGetContentResult: { content: string; path: string } = { content: '# Hello\n', path: 'test.md' };
 let mockSaveContentResult: { path: string; updated: boolean } = { path: 'test.md', updated: true };
 
-vi.mock('../../../../../../src/server/spa/client/react/repos/notesApi', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
         getContent: vi.fn(async () => mockGetContentResult),
         saveContent: vi.fn(async () => mockSaveContentResult),
@@ -51,22 +51,22 @@ vi.mock('@tiptap/extension-table-row', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-cell', () => ({ default: {} }));
 vi.mock('@tiptap/extension-table-header', () => ({ default: {} }));
 vi.mock('@tiptap/extension-highlight', () => ({ default: { configure: () => ({}) } }));
-vi.mock('../../../../../../src/server/spa/client/react/repos/notes/extensions/resizableImage', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
 vi.mock('@sereneinserenade/tiptap-comment-extension', () => ({
     CommentExtension: { configure: () => ({}) },
 }));
-vi.mock('../../../../../../src/server/spa/client/react/repos/notes/noteEditor.css', () => ({}));
-vi.mock('../../../../../../src/server/spa/client/react/repos/notes/commentAnchoring', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css', () => ({}));
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
     findAnchorInDoc: vi.fn(() => null),
     applyCommentMark: vi.fn(),
     buildAnchorFromMark: vi.fn(() => null),
 }));
 
-import { NoteEditor } from '../../../../../../src/server/spa/client/react/repos/notes/NoteEditor';
-import type { NoteViewMode } from '../../../../../../src/server/spa/client/react/repos/notes/NoteEditor';
-import { notesApi } from '../../../../../../src/server/spa/client/react/repos/notesApi';
+import { NoteEditor } from '../../../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
+import type { NoteViewMode } from '../../../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
+import { notesApi } from '../../../../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

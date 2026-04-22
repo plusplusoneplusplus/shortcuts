@@ -15,3 +15,5 @@ export * from './workflow';
 export * from './templates';
 export * from './repo-settings';
 export * from './skills';
+export * from './notes';
+export * from './memory';

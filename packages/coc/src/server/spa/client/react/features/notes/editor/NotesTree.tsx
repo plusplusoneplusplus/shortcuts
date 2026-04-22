@@ -1,6 +1,6 @@
 import type { NoteTreeNode } from '../notesApi';
 import { NotesTreeItem } from './NotesTreeItem';
-import type { NoteDragItem, DropPosition } from '../../hooks/useNotesDragDrop';
+import type { NoteDragItem, DropPosition } from '../hooks/useNotesDragDrop';
 
 export interface NotesDragDropHandlers {
     createDragStartHandler: (item: NoteDragItem) => (e: React.DragEvent) => void;

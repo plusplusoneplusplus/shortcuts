@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { ConsolidatedPanel } from '../../../../../src/server/spa/client/react/repos/memory/ConsolidatedPanel';
+import { ConsolidatedPanel } from '../../../../../src/server/spa/client/react/features/memory/ConsolidatedPanel';
 
 const mockFetch = vi.fn();
 

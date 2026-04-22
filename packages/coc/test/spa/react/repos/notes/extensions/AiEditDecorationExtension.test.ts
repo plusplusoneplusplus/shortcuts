@@ -17,7 +17,7 @@ const EXT_PATH = path.join(
 
 const SRC_PATH = path.resolve(
     __dirname,
-    '../../../../../../src/server/spa/client/react/repos/notes/extensions/AiEditDecorationExtension.ts',
+    '../../../../../../src/server/spa/client/react/features/notes/editor/extensions/AiEditDecorationExtension.ts',
 );
 
 describe('AiEditDecorationExtension (source inspection)', () => {

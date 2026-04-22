@@ -1,4 +1,4 @@
-import { useDisplaySettings } from './useDisplaySettings';
+import { useDisplaySettings } from '../../../hooks/useDisplaySettings';
 
 export function useNotesEnabled(): boolean {
     return useDisplaySettings().notesEnabled;
