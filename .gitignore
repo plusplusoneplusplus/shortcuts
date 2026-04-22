@@ -136,3 +136,7 @@ packages/coc/src/server/build-info.ts
 # Playwright
 playwright-report/
 test-results/
+
+# Build debugging artifacts
+build-errors.txt
+esbuild-check.css
