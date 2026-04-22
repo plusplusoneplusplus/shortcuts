@@ -188,12 +188,15 @@ src/
 │       ├── helpers.ts        # Template helpers
 │       ├── types.ts          # Dashboard option types
 │       └── client/           # React SPA client
+│           ├── entry.tsx         # SPA entry point (mounts App/PopOut shells)
+│           ├── comments/         # Comment type definitions and utilities (comment-constants, diff-comment-*, task-comments-types, shared-comment-types)
+│           ├── diff/             # Diff rendering primitives (diff-utils, markdown-renderer)
 │           └── react/
 │               ├── App.tsx              # Root React component
 │               ├── admin/               # Admin panel & preferences UI
 │               ├── chat/                # Chat conversation utilities
 │               ├── components/          # Shared UI components (e.g., ContextWindowIndicator)
-│               ├── context/             # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
+│               ├── contexts/            # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
 │               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
@@ -205,6 +208,7 @@ src/
 │               │   ├── useModelCommand.ts        # Hook managing model picker state and modelOverride
 │               │   └── explorer/        # File explorer with Monaco Editor
 │               ├── shared/              # Shared components (MarkdownReviewEditor, Dialog, Button, SourceEditor, etc.)
+│               │   └── file-path/       # File path hover preview (delegated tooltip for .file-path-link spans)
 │               ├── tasks/               # Task management UI (TaskTree, TaskPreview, TaskActions)
 │               │   └── comments/        # Inline comment system (CommentCard, CommentSidebar, SelectionToolbar)
 │               ├── types/               # TypeScript type definitions

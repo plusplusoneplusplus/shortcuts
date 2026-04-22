@@ -19,11 +19,11 @@ import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
-import { useQueue } from '../../../context/QueueContext';
-import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../context/GitReviewPopOutContext';
+import { useQueue } from '../../../contexts/QueueContext';
+import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
-import type { DiffComment } from '../../../../diff-comment-types';
-import type { AnyComment } from '../../../../shared-comment-types';
+import type { DiffComment } from '../../../../comments/diff-comment-types';
+import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { GitCommitItem } from './CommitList';
 
 export interface CommitDetailProps {

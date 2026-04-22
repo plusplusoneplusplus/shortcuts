@@ -18,18 +18,18 @@ import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
-import { useQueue } from '../../../context/QueueContext';
+import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav } from '../hooks/useCrossFileNav';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
-import { buildDiffContext } from '../../../../diff-context-utils';
+import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
 import { CommitChatPanel } from '../commits/CommitChatPanel';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { useFileDiff } from '../hooks/useFileDiff';
 import type { DiffSource } from './diffSource';
-import type { DiffCommentSelection, DiffComment } from '../../../../diff-comment-types';
-import type { AnyComment } from '../../../../shared-comment-types';
-import type { TaskCommentCategory } from '../../../../task-comments-types';
+import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
+import type { AnyComment } from '../../../../comments/shared-comment-types';
+import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
 
 export interface FileDiffPanelProps {
     workspaceId: string;

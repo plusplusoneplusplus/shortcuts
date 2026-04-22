@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { DiffCommentsManager } from '../../../../src/server/diff-comments-handler';
-import type { DiffCommentContext } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffCommentContext } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Fixture

@@ -2,7 +2,7 @@
  * CommentReply — a single reply row inside a CommentCard.
  */
 
-import type { AnyCommentReply } from '../../../shared-comment-types';
+import type { AnyCommentReply } from '../../../comments/shared-comment-types';
 import { formatRelativeTime } from '../../utils/format';
 
 interface CommentReplyProps {

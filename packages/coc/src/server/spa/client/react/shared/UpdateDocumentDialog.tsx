@@ -6,8 +6,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button } from './index';
 import { usePreferences } from '../hooks/preferences/usePreferences';
-import { useApp } from '../context/AppContext';
-import { useGlobalToast } from '../context/ToastContext';
+import { useApp } from '../contexts/AppContext';
+import { useGlobalToast } from '../contexts/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 

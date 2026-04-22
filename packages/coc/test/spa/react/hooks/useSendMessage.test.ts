@@ -20,7 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftSto
 const mockUnarchiveChat = vi.fn();
 let mockArchivedChatIds = new Set<string>();
 
-vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: mockArchivedChatIds,

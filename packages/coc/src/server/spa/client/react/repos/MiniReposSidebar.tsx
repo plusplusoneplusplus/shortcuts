@@ -4,8 +4,8 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { cn } from '../shared';
 import { groupReposByRemote } from './repoGrouping';
 import { AddRepoDialog } from './AddRepoDialog';

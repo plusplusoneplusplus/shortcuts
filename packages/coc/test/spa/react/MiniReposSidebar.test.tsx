@@ -5,15 +5,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { MiniReposSidebar, disambiguateLabels } from '../../../src/server/spa/client/react/repos/MiniReposSidebar';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGrouping';
 
 // Mock ReposContext so ReposView renders without making real API calls
-vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));

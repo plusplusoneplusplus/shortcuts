@@ -18,12 +18,12 @@ import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { useTaskComments } from '../../tasks/hooks/useTaskComments';
-import type { RenderCommentInfo } from '../../../markdown-renderer';
+import type { RenderCommentInfo } from '../../../diff/markdown-renderer';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../../tasks/comments/InlineCommentPopup';
 import { CommentSidebar } from '../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../tasks/comments/CommentPopover';
-import type { TaskComment, CommentSelection, TaskCommentCategory } from '../../../task-comments-types';
+import type { TaskComment, CommentSelection, TaskCommentCategory } from '../../../comments/task-comments-types';
 import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,

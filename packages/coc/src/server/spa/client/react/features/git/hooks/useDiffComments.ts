@@ -8,12 +8,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getApiBase, getWsPath } from '../../../utils/config';
-import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../diff-comment-types';
+import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../../../utils/relocateDiffAnchor';
 import { computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
-import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../context/GitReviewPopOutContext';
-import type { GitReviewPopOutMessage } from '../../../context/GitReviewPopOutContext';
+import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../contexts/GitReviewPopOutContext';
+import type { GitReviewPopOutMessage } from '../../../contexts/GitReviewPopOutContext';
 
 // ============================================================================
 // Request/Response Types

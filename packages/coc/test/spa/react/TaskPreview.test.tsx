@@ -8,10 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { TaskProvider } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { TaskPreview } from '../../../src/server/spa/client/react/tasks/TaskPreview';
 
 /* ── Mock useTaskComments ── */

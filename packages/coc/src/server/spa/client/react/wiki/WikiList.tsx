@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { useWiki } from './hooks/useWiki';
 import { Card, Badge, Button, Spinner } from '../shared';
 import { AddWikiDialog } from './AddWikiDialog';

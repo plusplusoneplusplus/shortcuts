@@ -10,7 +10,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { UnifiedDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
-import type { DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Fixtures

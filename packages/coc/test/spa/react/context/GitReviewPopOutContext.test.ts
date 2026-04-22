@@ -10,7 +10,7 @@ import {
     gitReviewBranchPopOutKey,
     GIT_REVIEW_POPOUT_CHANNEL,
     GIT_REVIEW_POPOUT_LS_KEY,
-} from '../../../../src/server/spa/client/react/context/GitReviewPopOutContext';
+} from '../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext';
 
 const CONTEXT_DIR = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context'

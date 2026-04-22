@@ -6,8 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ProcessFilters } from '../../../src/server/spa/client/react/processes/ProcessFilters';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
@@ -30,7 +30,7 @@ vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWi
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),

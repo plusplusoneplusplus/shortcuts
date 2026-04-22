@@ -9,7 +9,7 @@ import type { FileCtxMenu, FileCtxInfo } from './useFileDialogHandlers';
 import type { FileActionsResult } from './useFileActions';
 import { isTaskDocument, isTaskDocumentGroup } from './useTaskTree';
 import type { RepoData } from '../../repos/repoGrouping';
-import type { QueueAction } from '../../context/QueueContext';
+import type { QueueAction } from '../../contexts/QueueContext';
 import type { Dispatch } from 'react';
 
 interface Options {

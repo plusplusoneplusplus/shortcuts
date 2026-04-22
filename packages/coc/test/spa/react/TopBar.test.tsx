@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { AppProvider, appReducer } from '../../../src/server/spa/client/react/context/AppContext';
-import { NotificationProvider } from '../../../src/server/spa/client/react/context/NotificationContext';
+import { AppProvider, appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
 import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
 
-vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -15,7 +15,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     QueueProvider: ({ children }: any) => children,
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));

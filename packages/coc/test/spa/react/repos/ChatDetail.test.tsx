@@ -14,11 +14,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React, { useEffect, type ReactNode, createRef } from 'react';
-import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
-import { NotificationProvider } from '../../../../src/server/spa/client/react/context/NotificationContext';
-import { TaskProvider } from '../../../../src/server/spa/client/react/context/TaskContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
+import { NotificationProvider } from '../../../../src/server/spa/client/react/contexts/NotificationContext';
+import { TaskProvider } from '../../../../src/server/spa/client/react/contexts/TaskContext';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
@@ -57,7 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySet
 }));
 
 // Chat preferences
-vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),
@@ -73,7 +73,7 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
 }));
 
 // Pop-out context
-vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/PopOutContext', () => ({
     usePopOut: () => ({
         poppedOutTasks: new Set<string>(),
         markPoppedOut: vi.fn(),
@@ -83,7 +83,7 @@ vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => (
 }));
 
 // Floating chats context
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({
         floatingChats: new Map(),
         floatChat: vi.fn(),

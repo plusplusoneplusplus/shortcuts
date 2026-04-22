@@ -16,7 +16,7 @@ import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from '../di
 import type { FileChange } from '../diff/FileTree';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
-import { computeDiffCommentKey } from '../../../../diff-comment-utils';
+import { computeDiffCommentKey } from '../../../../comments/diff-comment-utils';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from '../fixup-utils';
 import type { FixupGroupMap } from '../fixup-utils';

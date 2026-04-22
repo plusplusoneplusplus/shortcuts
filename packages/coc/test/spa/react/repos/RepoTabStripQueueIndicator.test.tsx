@@ -20,11 +20,11 @@ import {
 let mockQueueState: any = { repoQueueMap: {} };
 const mockQueueDispatch = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: mockQueueState, dispatch: mockQueueDispatch }),
 }));
 

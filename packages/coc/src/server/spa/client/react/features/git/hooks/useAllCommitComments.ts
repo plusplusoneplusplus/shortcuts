@@ -13,11 +13,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWsPath } from '../../../utils/config';
 import { fetchApi } from '../../../hooks/useApi';
-import type { DiffComment } from '../../../../diff-comment-types';
+import type { DiffComment } from '../../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import type { UpdateDiffCommentRequest } from './useDiffComments';
-import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../context/GitReviewPopOutContext';
-import type { GitReviewPopOutMessage } from '../../../context/GitReviewPopOutContext';
+import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../contexts/GitReviewPopOutContext';
+import type { GitReviewPopOutMessage } from '../../../contexts/GitReviewPopOutContext';
 
 // ============================================================================
 // Return type

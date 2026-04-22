@@ -12,7 +12,7 @@ import {
     loadUnseenWorkItemIds,
     UNSEEN_STORAGE_PREFIX,
     type WorkItemSummary,
-} from '../../../../src/server/spa/client/react/context/WorkItemContext';
+} from '../../../../src/server/spa/client/react/contexts/WorkItemContext';
 
 // Minimal test component that renders context state and exposes dispatch
 let testDispatch: any;

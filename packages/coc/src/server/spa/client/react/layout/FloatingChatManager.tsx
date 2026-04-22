@@ -10,10 +10,10 @@ import { useCallback, useMemo, useState } from 'react';
 import { FloatingDialog } from '../shared/FloatingDialog';
 import { Spinner } from '../shared';
 import { FloatingChatContent } from '../features/chat/FloatingChatContent';
-import { useFloatingChats, type FloatingChatEntry } from '../context/FloatingChatsContext';
-import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
-import { useApp } from '../context/AppContext';
-import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
+import { useFloatingChats, type FloatingChatEntry } from '../contexts/FloatingChatsContext';
+import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
+import { useApp } from '../contexts/AppContext';
+import { ChatPreferencesProvider } from '../contexts/ChatPreferencesContext';
 
 // ── Per-chat item ─────────────────────────────────────────────────────────────
 

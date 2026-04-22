@@ -40,11 +40,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
 }));
 

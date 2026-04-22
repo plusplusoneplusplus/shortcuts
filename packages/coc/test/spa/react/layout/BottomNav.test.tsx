@@ -22,7 +22,7 @@ let mockActiveTab = 'repos';
 let mockSelectedRepoId: string | null = null;
 let mockActiveRepoSubTab = 'info';
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: mockActiveTab,

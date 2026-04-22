@@ -19,9 +19,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/context/QueueContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { createMockFetch } from './test-utils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettin
     invalidateDisplaySettings: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),

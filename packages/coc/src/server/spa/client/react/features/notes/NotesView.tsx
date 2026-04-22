@@ -10,7 +10,7 @@ import { useComments } from './editor/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 
 export interface NotesViewProps {

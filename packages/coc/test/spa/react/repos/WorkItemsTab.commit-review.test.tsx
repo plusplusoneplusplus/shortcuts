@@ -27,7 +27,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', ()
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/WorkItemContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({
     useWorkItems: () => ({ dispatch: mockDispatch }),
     WorkItemProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -99,7 +99,7 @@ vi.mock('../../../../src/server/spa/client/react/features/work-items/CreateWorkI
 }));
 
 // Mock computeDiffCommentKey (async)
-vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
+vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => ({
     computeDiffCommentKey: vi.fn().mockResolvedValue('mock-key'),
 }));
 

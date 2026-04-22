@@ -3,8 +3,8 @@
  */
 
 import { useCallback, useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { useRepos } from '../context/ReposContext';
+import { useApp } from '../contexts/AppContext';
+import { useRepos } from '../contexts/ReposContext';
 import { useTheme } from './ThemeProvider';
 import { buildNoteHash } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';

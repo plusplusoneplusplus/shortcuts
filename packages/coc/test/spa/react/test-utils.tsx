@@ -9,11 +9,11 @@ import { render, type RenderOptions } from '@testing-library/react';
 import { type ReactElement, type ReactNode } from 'react';
 import { vi } from 'vitest';
 
-import { AppProvider, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, type QueueContextState, type QueueAction, type QueueStats } from '../../../src/server/spa/client/react/context/QueueContext';
-import { TaskProvider, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
-import { ToastProvider, type ToastContextValue } from '../../../src/server/spa/client/react/context/ToastContext';
-import { NotificationProvider } from '../../../src/server/spa/client/react/context/NotificationContext';
+import { AppProvider, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, type QueueContextState, type QueueAction, type QueueStats } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { TaskProvider, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/contexts/TaskContext';
+import { ToastProvider, type ToastContextValue } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 
 // ── Default state factories ────────────────────────────────────────────
 

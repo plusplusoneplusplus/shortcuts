@@ -9,7 +9,7 @@ import { AgentSkillsPanel } from '../../../../src/server/spa/client/react/featur
 import type { Skill } from '../../../../src/server/spa/client/react/features/skills/AgentSkillsPanel';
 
 // Mock ToastContext used internally
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ showToast: vi.fn() }),
 }));
 

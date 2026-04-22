@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDiffComments } from '../../../../src/server/spa/client/react/features/git/hooks/useDiffComments';
-import type { DiffCommentContext, DiffCommentSelection, DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffCommentContext, DiffCommentSelection, DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Test Data

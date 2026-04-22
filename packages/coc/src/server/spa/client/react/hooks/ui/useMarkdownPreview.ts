@@ -7,7 +7,7 @@
  */
 
 import { useEffect } from 'react';
-import { renderMarkdownToHtml, renderSourceModeToHtml, type RenderOptions } from '../../../markdown-renderer';
+import { renderMarkdownToHtml, renderSourceModeToHtml, type RenderOptions } from '../../../diff/markdown-renderer';
 import { useMermaid } from './useMermaid';
 import { useCodeBlockActions } from './useCodeBlockActions';
 

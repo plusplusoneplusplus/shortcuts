@@ -9,9 +9,9 @@ import { Button, cn } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
-import { useWorkItems } from '../../context/WorkItemContext';
+import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
-import type { DiffComment } from '../../../diff-comment-types';
+import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {

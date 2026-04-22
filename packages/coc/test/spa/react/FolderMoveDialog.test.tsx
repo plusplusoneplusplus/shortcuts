@@ -9,9 +9,9 @@ import type { ReactNode } from 'react';
 import { FolderMoveDialog, buildDestinations } from '../../../src/server/spa/client/react/tasks/FolderMoveDialog';
 import type { DestinationOption } from '../../../src/server/spa/client/react/tasks/FolderMoveDialog';
 import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 
 // ── Helpers ────────────────────────────────────────────────────────────

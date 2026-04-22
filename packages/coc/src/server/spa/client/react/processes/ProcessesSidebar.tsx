@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
 import { RenameDialog } from '../shared/RenameDialog';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';

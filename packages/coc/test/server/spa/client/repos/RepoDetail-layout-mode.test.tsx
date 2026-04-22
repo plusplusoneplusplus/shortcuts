@@ -20,7 +20,7 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
 
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeRepoSubTab: mockActiveRepoSubTab,
@@ -41,7 +41,7 @@ vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => (
 }));
 
 const mockQueueDispatch = vi.fn();
-vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: {
             repoQueueMap: {},
@@ -51,7 +51,7 @@ vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () =>
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/WorkItemContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({
     useWorkItems: () => ({
         state: { workItemsByRepo: {}, unseenByRepo: {} },
         dispatch: vi.fn(),

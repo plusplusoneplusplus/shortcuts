@@ -12,7 +12,7 @@ import {
     patchDiffComment,
     deleteDiffCommentById,
 } from '../../../../src/server/spa/client/react/utils/diffCommentApi';
-import type { DiffCommentContext } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffCommentContext } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Shared test data

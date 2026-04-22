@@ -18,7 +18,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             wikis: [],

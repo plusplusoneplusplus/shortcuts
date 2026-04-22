@@ -8,13 +8,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { ChatDetail } from '../../../src/server/spa/client/react/features/chat/ChatDetail';
 
 // Mock useChatPrefs to avoid ChatPreferencesProvider requirement
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),

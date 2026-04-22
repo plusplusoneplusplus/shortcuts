@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { UpdateDocumentDialog } from '../../../src/server/spa/client/react/shared/UpdateDocumentDialog';
 
 const mockFetch = vi.fn();

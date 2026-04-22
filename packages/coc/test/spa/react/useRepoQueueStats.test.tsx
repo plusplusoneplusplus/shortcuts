@@ -6,8 +6,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { render } from '@testing-library/react';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { useRepoQueueStats } from '../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats';
 
 function Wrap({ children }: { children: ReactNode }) {

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { Badge, Button, Spinner, ResponsiveSidebar } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';

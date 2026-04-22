@@ -10,7 +10,7 @@ import {
     useNotifications,
     notificationReducer,
     type NotificationEntry,
-} from '../../../src/server/spa/client/react/context/NotificationContext';
+} from '../../../src/server/spa/client/react/contexts/NotificationContext';
 
 function wrapper({ children }: { children: ReactNode }) {
     return <NotificationProvider>{children}</NotificationProvider>;

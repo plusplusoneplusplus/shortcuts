@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';

@@ -19,7 +19,7 @@ import { buildFileTree, normalizeStatus } from '../../../../src/server/spa/clien
 
 // --- Module mocks ---
 
-vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
+vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => ({
     computeDiffCommentKey: async (_repo: string, _old: string, _new: string, filePath: string) =>
         `key-${filePath}`,
 }));

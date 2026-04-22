@@ -7,9 +7,9 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
     SHOW_WELCOME_TUTORIAL: false,
 }));
 
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { ReposGrid } from '../../../../src/server/spa/client/react/repos/ReposGrid';
 
 function Wrap({ children }: { children: ReactNode }) {

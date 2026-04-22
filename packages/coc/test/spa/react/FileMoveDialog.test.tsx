@@ -9,9 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { FileMoveDialog } from '../../../src/server/spa/client/react/tasks/FileMoveDialog';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 

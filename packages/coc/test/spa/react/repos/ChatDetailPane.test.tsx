@@ -17,11 +17,11 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/NewChatArea', () 
         React.createElement('div', { 'data-testid': 'new-chat-area' }, `ws=${props.workspaceId}`),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/PopOutContext', () => ({
     usePopOut: () => ({ poppedOutTasks: new Set(), markRestored: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({ floatingChats: new Set(), unfloatChat: vi.fn() }),
 }));
 

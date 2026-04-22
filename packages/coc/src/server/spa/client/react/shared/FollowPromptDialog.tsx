@@ -8,8 +8,8 @@ import { FloatingDialog, Button, Spinner } from './index';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
-import { useApp } from '../context/AppContext';
-import { useGlobalToast } from '../context/ToastContext';
+import { useApp } from '../contexts/AppContext';
+import { useGlobalToast } from '../contexts/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 

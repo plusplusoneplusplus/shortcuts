@@ -6,9 +6,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, cn, Dialog, Spinner } from '../../shared';
-import { useApp } from '../../context/AppContext';
-import { useQueue } from '../../context/QueueContext';
-import { useGlobalToast } from '../../context/ToastContext';
+import { useApp } from '../../contexts/AppContext';
+import { useQueue } from '../../contexts/QueueContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { formatRelativeTime } from '../../utils/format';

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { useProcessSearch } from './hooks/useProcessSearch';
 

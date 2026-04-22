@@ -16,11 +16,11 @@ import { RepoTabStrip, computeVisibleRepoIds } from '../../../../src/server/spa/
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: mockDispatch }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
 }));
 

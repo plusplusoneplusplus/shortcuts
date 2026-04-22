@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { type ReactNode } from 'react';
-import { FloatingChatsProvider, useFloatingChats, type FloatingChatEntry } from '../../../src/server/spa/client/react/context/FloatingChatsContext';
+import { FloatingChatsProvider, useFloatingChats, type FloatingChatEntry } from '../../../src/server/spa/client/react/contexts/FloatingChatsContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

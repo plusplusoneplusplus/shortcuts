@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { useQueue } from '../../context/QueueContext';
+import { useQueue } from '../../contexts/QueueContext';
 import { TaskDefs } from '../../../../../task-types';
 
 export interface RepoQueueStats {

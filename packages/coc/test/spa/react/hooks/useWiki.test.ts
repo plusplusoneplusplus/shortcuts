@@ -11,7 +11,7 @@ import { useWiki } from '../../../../src/server/spa/client/react/wiki/hooks/useW
 const dispatchMock = vi.fn();
 const stateMock = { wikis: [] as any[] };
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: stateMock, dispatch: dispatchMock }),
 }));
 

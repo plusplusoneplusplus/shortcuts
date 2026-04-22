@@ -13,7 +13,7 @@ import { App } from './react/App';
 import { PopOutChatShell } from './react/layout/PopOutChatShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
-import './react/file-path-preview';
+import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
 
 const container = document.getElementById('app-root');

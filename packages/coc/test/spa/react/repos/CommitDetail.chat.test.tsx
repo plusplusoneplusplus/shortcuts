@@ -59,7 +59,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 

@@ -7,7 +7,7 @@
  */
 
 import { getApiBase } from './config';
-import type { DiffComment, DiffCommentContext } from '../../diff-comment-types';
+import type { DiffComment, DiffCommentContext } from '../../comments/diff-comment-types';
 import type { UpdateDiffCommentRequest } from '../features/git/hooks/useDiffComments';
 
 // ============================================================================

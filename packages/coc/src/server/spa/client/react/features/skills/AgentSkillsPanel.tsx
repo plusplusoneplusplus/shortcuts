@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button, SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
-import { useGlobalToast } from '../../context/ToastContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
 import { getApiBase } from '../../utils/config';
 import type { RepoData } from '../../repos/repoGrouping';
 

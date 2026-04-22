@@ -21,7 +21,7 @@ describe('ToastProvider wiring in App.tsx', () => {
     });
 
     it('imports ToastProvider from context/ToastContext', () => {
-        expect(appSource).toContain("import { ToastProvider } from './context/ToastContext'");
+        expect(appSource).toContain("import { ToastProvider } from './contexts/ToastContext'");
     });
 
     it('renders <ToastProvider> in the component tree', () => {
@@ -46,7 +46,7 @@ describe('UpdateDocumentDialog uses useGlobalToast', () => {
     });
 
     it('imports useGlobalToast from ToastContext', () => {
-        expect(source).toContain("import { useGlobalToast } from '../context/ToastContext'");
+        expect(source).toContain("import { useGlobalToast } from '../contexts/ToastContext'");
     });
 
     it('calls useGlobalToast() to get addToast', () => {

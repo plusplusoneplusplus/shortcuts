@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { ConceptTour } from '../../../../src/server/spa/client/react/welcome/ConceptTour';
 import { TOUR_SLIDES } from '../../../../src/server/spa/client/react/welcome/conceptTourSlides';
 

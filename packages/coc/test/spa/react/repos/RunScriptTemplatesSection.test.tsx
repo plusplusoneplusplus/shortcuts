@@ -7,9 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 vi.stubGlobal('fetch', mockFetch);
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [] }),
 }));
 

@@ -10,7 +10,7 @@ import {
     ALL_COMMENT_CATEGORIES,
     COMMENT_CATEGORY_REGEX,
     resolveCommentCategory,
-} from '../../../../src/server/spa/client/comment-constants';
+} from '../../../../src/server/spa/client/comments/comment-constants';
 
 describe('ALL_COMMENT_CATEGORIES', () => {
     it('contains exactly 6 entries', () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../../context/AppContext';
-import { useGlobalToast } from '../../context/ToastContext';
+import { useApp } from '../../contexts/AppContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
 import { Button } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
 import { WikiDetail } from '../../wiki/WikiDetail';

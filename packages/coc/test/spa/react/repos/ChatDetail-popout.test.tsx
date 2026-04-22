@@ -41,7 +41,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContaine
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/PopOutContext', () => ({
     usePopOut: () => ({
         poppedOutTasks: mockPoppedOutTasks,
         markPoppedOut: mockMarkPoppedOut,
@@ -50,7 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => (
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({
         floatingChats: mockFloatingChats,
         floatChat: mockFloatChat,
@@ -59,7 +59,7 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     ToastContext: React.createContext({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
     ToastProvider: ({ children }: any) => children,
 }));

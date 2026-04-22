@@ -681,7 +681,7 @@ describe('RepoGitTab', () => {
 
     describe('deep-link support', () => {
         it('imports useApp from AppContext', () => {
-            expect(source).toContain("import { useApp } from '../../context/AppContext'");
+            expect(source).toContain("import { useApp } from '../../contexts/AppContext'");
         });
 
         it('reads selectedGitCommitHash from context state', () => {
@@ -1121,7 +1121,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports useQueue from QueueContext', () => {
-            expect(source).toContain("import { useQueue } from '../../context/QueueContext'");
+            expect(source).toContain("import { useQueue } from '../../contexts/QueueContext'");
         });
 
         it('destructures queueDispatch from useQueue', () => {

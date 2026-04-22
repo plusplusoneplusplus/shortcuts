@@ -6,7 +6,7 @@
 import { useRef } from 'react';
 import { Card, Badge, Button } from '../shared';
 import { MarkdownView } from '../shared/MarkdownView';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { formatDuration, copyToClipboard } from '../utils/format';
 

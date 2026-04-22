@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { renderMarkdownToHtml, reconstructTableMarkdown } from '../../../../src/server/spa/client/markdown-renderer';
+import { renderMarkdownToHtml, reconstructTableMarkdown } from '../../../../src/server/spa/client/diff/markdown-renderer';
 import type { ParsedTable } from '@plusplusoneplusplus/forge/editor/parsing';
 
 // ---------------------------------------------------------------------------

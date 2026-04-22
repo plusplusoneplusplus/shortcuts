@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeLineDiff, computeLCS, MAX_DIFF_LINES, type DiffLine } from '../../../../src/server/spa/client/diff-utils';
+import { computeLineDiff, computeLCS, MAX_DIFF_LINES, type DiffLine } from '../../../../src/server/spa/client/diff/diff-utils';
 
 describe('computeLCS', () => {
     it('returns all-zero table for empty inputs', () => {

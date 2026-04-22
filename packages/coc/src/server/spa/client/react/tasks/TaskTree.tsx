@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useTaskPanel } from '../context/TaskContext';
+import { useTaskPanel } from '../contexts/TaskContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useQueueChat } from '../queue/hooks/useQueueChat';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from './hooks/useTaskTree';

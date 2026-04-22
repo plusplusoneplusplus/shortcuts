@@ -4,9 +4,9 @@
 
 import { useState, useEffect } from 'react';
 import { Button, Badge, Dialog, Spinner, cn } from '../../shared';
-import { useGlobalToast } from '../../context/ToastContext';
-import { useQueue } from '../../context/QueueContext';
-import { useApp } from '../../context/AppContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
+import { useQueue } from '../../contexts/QueueContext';
+import { useApp } from '../../contexts/AppContext';
 import { fetchWorkflowContent, saveWorkflowContent, deleteWorkflow, runWorkflow } from './workflow-api';
 import { WorkflowRunHistory } from './WorkflowRunHistory';
 import { WorkflowDAGPreview } from './WorkflowDAGPreview';

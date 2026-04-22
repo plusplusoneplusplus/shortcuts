@@ -143,7 +143,7 @@ describe('tailwind.css — mobile-fab utility class (source)', () => {
 // ---------------------------------------------------------------------------
 
 // Mock contexts that ChatHeader depends on
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({
         isFloating: () => false,
         floatingChats: new Set(),
@@ -152,11 +152,11 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: { myWorkExcludedTypes: [], preferencesLoaded: true },
         dispatch: vi.fn(),
@@ -240,7 +240,7 @@ describe('ChatListPane — mobile FAB rendering', () => {
 
     async function renderWithProviders(props: Record<string, any>) {
         const { ChatListPane } = await import('../../../../src/server/spa/client/react/features/chat/ChatListPane');
-        const { ChatPreferencesProvider } = await import('../../../../src/server/spa/client/react/context/ChatPreferencesContext');
+        const { ChatPreferencesProvider } = await import('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext');
         return render(
             <ChatPreferencesProvider workspaceId="test-ws">
                 <ChatListPane {...makeListPaneProps(props)} />

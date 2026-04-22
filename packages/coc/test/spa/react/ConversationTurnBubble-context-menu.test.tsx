@@ -18,7 +18,7 @@ vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 
-vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
 

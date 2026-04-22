@@ -9,11 +9,11 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { AppProvider } from '../context/AppContext';
-import { QueueProvider } from '../context/QueueContext';
+import { AppProvider } from '../contexts/AppContext';
+import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
-import { ToastProvider } from '../context/ToastContext';
-import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
+import { ToastProvider } from '../contexts/ToastContext';
+import { ChatPreferencesProvider } from '../contexts/ChatPreferencesContext';
 import { ToastContainer, useToast } from '../shared';
 import { ChatDetail } from '../features/chat/ChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';

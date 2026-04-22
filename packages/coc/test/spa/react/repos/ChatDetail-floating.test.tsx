@@ -42,7 +42,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContaine
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/PopOutContext', () => ({
     usePopOut: () => ({
         poppedOutTasks: mockPoppedOutTasks,
         markPoppedOut: mockMarkPoppedOut,
@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => (
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({
         floatingChats: mockFloatingChats,
         floatChat: mockFloatChat,
@@ -60,7 +60,7 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     ToastContext: React.createContext({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
     ToastProvider: ({ children }: any) => children,
 }));
@@ -131,10 +131,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/FloatingDialog', () => (
             children,
         ),
 }));
-vi.mock('../../../../src/server/spa/client/react/context/MinimizedDialogsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/MinimizedDialogsContext', () => ({
     useMinimizedDialog: vi.fn(),
 }));
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             workspaces: [
@@ -146,7 +146,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     }),
     AppProvider: ({ children }: any) => children,
 }));
-vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPreferencesProvider: ({ children, workspaceId }: any) =>
         React.createElement('div', {
             'data-testid': 'chat-prefs-provider',

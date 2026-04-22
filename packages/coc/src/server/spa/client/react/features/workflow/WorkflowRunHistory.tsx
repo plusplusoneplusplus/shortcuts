@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
-import { useQueue } from '../../context/QueueContext';
+import { useQueue } from '../../contexts/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/format';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { TaskDefs } from '../../../../../task-types';

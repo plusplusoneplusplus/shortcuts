@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
-import { AppProvider, useApp, appReducer, type AppContextState, type AppAction, type OnboardingProgress } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp, appReducer, type AppContextState, type AppAction, type OnboardingProgress } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 // ── Reducer unit tests ────────────────────────────────────────────────────────
 

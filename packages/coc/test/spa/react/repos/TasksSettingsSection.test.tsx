@@ -313,10 +313,10 @@ describe('RepoSettingsTab tasks nav item', () => {
         }));
 
         // Mock ToastContext and ReposContext needed by RepoSettingsTab
-        vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+        vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
             useGlobalToast: () => ({ addToast: vi.fn() }),
         }));
-        vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+        vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
             useRepos: () => ({ repos: [] }),
         }));
 
@@ -324,7 +324,7 @@ describe('RepoSettingsTab tasks nav item', () => {
             '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
         );
         const { AppProvider } = await import(
-            '../../../../src/server/spa/client/react/context/AppContext'
+            '../../../../src/server/spa/client/react/contexts/AppContext'
         );
 
         const repo = {

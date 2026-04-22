@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAllCommitComments } from '../../../../src/server/spa/client/react/features/git/hooks/useAllCommitComments';
-import type { DiffComment, DiffCommentContext } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffComment, DiffCommentContext } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Shared test data

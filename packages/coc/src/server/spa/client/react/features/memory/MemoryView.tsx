@@ -5,7 +5,7 @@
  */
 
 import { useCallback } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../shared/cn';
 import type { MemorySubTab } from '../../types/dashboard';
 import { FeatureTip } from '../../welcome/FeatureTip';

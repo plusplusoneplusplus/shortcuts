@@ -9,9 +9,9 @@ import { cn, Button, Spinner } from '../../shared';
 import { clampToViewport } from './InlineCommentPopup';
 import { AICommandMenu } from './AICommandMenu';
 import { MarkdownView } from '../../shared/MarkdownView';
-import { renderMarkdownToHtml } from '../../../markdown-renderer';
-import type { AnyComment, AnyCommentCategory } from '../../../shared-comment-types';
-import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../shared-comment-types';
+import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
+import type { AnyComment, AnyCommentCategory } from '../../../comments/shared-comment-types';
+import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../comments/shared-comment-types';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 

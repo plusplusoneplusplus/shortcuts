@@ -1,4 +1,4 @@
-import type { DiffCommentContext } from '../../../../diff-comment-types';
+import type { DiffCommentContext } from '../../../../comments/diff-comment-types';
 import { fetchApi } from '../../../hooks/useApi';
 
 /**

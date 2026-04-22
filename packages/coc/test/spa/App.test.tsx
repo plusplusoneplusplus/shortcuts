@@ -36,13 +36,13 @@ vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
 const mockAppDispatch = vi.fn();
 let mockAppState: Record<string, any> = {};
 
-vi.mock('../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/AppContext', () => ({
     AppProvider: ({ children }: any) => children,
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
 }));
 
 const mockQueueDispatch = vi.fn();
-vi.mock('../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/QueueContext', () => ({
     QueueProvider: ({ children }: any) => children,
     useQueue: () => ({
         state: { queued: [], running: [], history: [], showScriptDialog: false },
@@ -51,7 +51,7 @@ vi.mock('../../src/server/spa/client/react/context/QueueContext', () => ({
 }));
 
 const mockAddNotification = vi.fn();
-vi.mock('../../src/server/spa/client/react/context/NotificationContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/NotificationContext', () => ({
     NotificationProvider: ({ children }: any) => children,
     useNotifications: () => ({
         notifications: [],
@@ -62,26 +62,26 @@ vi.mock('../../src/server/spa/client/react/context/NotificationContext', () => (
     }),
 }));
 
-vi.mock('../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/ReposContext', () => ({
     ReposProvider: ({ children }: any) => children,
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
 }));
 
-vi.mock('../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/ToastContext', () => ({
     ToastProvider: ({ children }: any) => children,
 }));
 
-vi.mock('../../src/server/spa/client/react/context/MinimizedDialogsContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/MinimizedDialogsContext', () => ({
     MinimizedDialogsProvider: ({ children }: any) => children,
     useMinimizedDialog: vi.fn(),
     MinimizedDialogsTray: () => null,
 }));
 
-vi.mock('../../src/server/spa/client/react/context/PopOutContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/PopOutContext', () => ({
     PopOutProvider: ({ children }: any) => children,
 }));
 
-vi.mock('../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     FloatingChatsProvider: ({ children }: any) => children,
 }));
 

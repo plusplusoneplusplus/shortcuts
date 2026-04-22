@@ -5,8 +5,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { useGlobalToast } from '../../context/ToastContext';
-import { useApp } from '../../context/AppContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
+import { useApp } from '../../contexts/AppContext';
 import { getApiBase } from '../../utils/config';
 import { McpServersPanel } from '../skills/McpServersPanel';
 import type { McpServerEntry } from '../skills/McpServersPanel';

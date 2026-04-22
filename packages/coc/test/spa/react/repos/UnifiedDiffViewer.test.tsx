@@ -9,7 +9,7 @@ import {
     buildLineCommentMap,
     getLineHighlightClass,
 } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
-import type { DiffComment, DiffCommentSelection } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffComment, DiffCommentSelection } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // Minimal two-line single-file diff
 const SIMPLE_DIFF = `diff --git a/foo.ts b/foo.ts

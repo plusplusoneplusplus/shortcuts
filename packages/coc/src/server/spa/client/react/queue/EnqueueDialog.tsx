@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
+import { useQueue } from '../contexts/QueueContext';
+import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
@@ -15,12 +15,12 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { filterGitMetadataFolders } from '../tasks/hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
-import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
 import { SlashCommandMenu } from '../features/chat/SlashCommandMenu';
 import { useSkillTemplates } from '../features/templates/hooks/useSkillTemplates';
 import { TemplatesTab } from './TemplatesTab';
-import { useFloatingChats } from '../context/FloatingChatsContext';
+import { useFloatingChats } from '../contexts/FloatingChatsContext';
 import { SkillPicker } from './SkillPicker';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';

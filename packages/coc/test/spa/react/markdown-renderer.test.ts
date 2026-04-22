@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { renderSourceModeToHtml } from '../../../src/server/spa/client/markdown-renderer';
+import { renderSourceModeToHtml } from '../../../src/server/spa/client/diff/markdown-renderer';
 
 describe('renderSourceModeToHtml', () => {
     // ----------------------------------------------------------------

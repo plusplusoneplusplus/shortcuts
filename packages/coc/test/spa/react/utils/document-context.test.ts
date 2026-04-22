@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractDocumentContext } from '../../../../src/server/spa/client/react/utils/document-context';
-import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
+import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
 
 function makeComment(overrides: Partial<TaskComment> & { startLine: number; endLine: number }): TaskComment {
     const { startLine, endLine, ...rest } = overrides;

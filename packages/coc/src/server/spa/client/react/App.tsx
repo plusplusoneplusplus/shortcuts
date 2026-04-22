@@ -4,17 +4,17 @@
  */
 
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
-import { QueueProvider, useQueue } from './context/QueueContext';
-import { WorkItemProvider, useWorkItems } from './context/WorkItemContext';
-import { ReposProvider } from './context/ReposContext';
-import { NotificationProvider, useNotifications } from './context/NotificationContext';
-import { ToastProvider } from './context/ToastContext';
-import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
-import { PopOutProvider } from './context/PopOutContext';
-import { MarkdownPopOutProvider } from './context/MarkdownPopOutContext';
-import { GitReviewPopOutProvider } from './context/GitReviewPopOutContext';
-import { FloatingChatsProvider } from './context/FloatingChatsContext';
+import { AppProvider, useApp } from './contexts/AppContext';
+import { QueueProvider, useQueue } from './contexts/QueueContext';
+import { WorkItemProvider, useWorkItems } from './contexts/WorkItemContext';
+import { ReposProvider } from './contexts/ReposContext';
+import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './contexts/MinimizedDialogsContext';
+import { PopOutProvider } from './contexts/PopOutContext';
+import { MarkdownPopOutProvider } from './contexts/MarkdownPopOutContext';
+import { GitReviewPopOutProvider } from './contexts/GitReviewPopOutContext';
+import { FloatingChatsProvider } from './contexts/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
 import { BottomNav } from './layout/BottomNav';

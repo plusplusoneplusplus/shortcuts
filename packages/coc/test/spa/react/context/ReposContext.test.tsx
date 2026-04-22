@@ -24,9 +24,9 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenCh
 }));
 
 import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
-import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/context/ReposContext';
-import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/contexts/ReposContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 
 afterEach(() => {
     vi.clearAllMocks();

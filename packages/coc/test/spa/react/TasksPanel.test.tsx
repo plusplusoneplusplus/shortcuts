@@ -5,11 +5,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { TaskProvider, useTaskPanel } from '../../../src/server/spa/client/react/context/TaskContext';
-import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { TaskProvider, useTaskPanel } from '../../../src/server/spa/client/react/contexts/TaskContext';
+import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import { buildFileTooltip } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';

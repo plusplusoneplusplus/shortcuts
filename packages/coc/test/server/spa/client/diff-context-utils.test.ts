@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildDiffContext } from '../../../../src/server/spa/client/diff-context-utils';
-import type { DiffCommentSelection } from '../../../../src/server/spa/client/diff-comment-types';
+import { buildDiffContext } from '../../../../src/server/spa/client/comments/diff-context-utils';
+import type { DiffCommentSelection } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 describe('buildDiffContext', () => {
     const baseSelection: DiffCommentSelection = {

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useLayoutEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import type { DashboardTab } from '../types/dashboard';
 import { SHOW_WIKI_TAB } from './TopBar';

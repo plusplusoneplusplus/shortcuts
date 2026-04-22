@@ -7,7 +7,7 @@ import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { ToolResultPopover } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolResultPopover';
 
-vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
 

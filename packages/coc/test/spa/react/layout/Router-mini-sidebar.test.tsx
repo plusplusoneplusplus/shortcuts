@@ -17,7 +17,7 @@ const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 let mockActiveTab: DashboardTab = 'repos';
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: mockActiveTab,
@@ -29,11 +29,11 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: mockQueueDispatch }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));

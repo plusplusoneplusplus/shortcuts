@@ -8,7 +8,7 @@ import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';

@@ -4,16 +4,16 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { TaskProvider, useTaskPanel } from '../context/TaskContext';
+import { TaskProvider, useTaskPanel } from '../contexts/TaskContext';
 import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, type TaskFolder, STATUS_PILLS } from './hooks/useTaskTree';
 import { fetchApi } from '../hooks/useApi';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useFileActions } from './hooks/useFileActions';
 import { useArchiveUndo } from './hooks/useArchiveUndo';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
-import { useGlobalToast } from '../context/ToastContext';
+import { useQueue } from '../contexts/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useGlobalToast } from '../contexts/ToastContext';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
 import { Spinner } from '../shared';

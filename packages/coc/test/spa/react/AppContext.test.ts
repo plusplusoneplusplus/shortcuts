@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/context/AppContext';
+import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {

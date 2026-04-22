@@ -82,7 +82,7 @@ describe('file-path-preview delegation', () => {
         mockWorkspaceAndPreview(fetchMock);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const link = document.querySelector('.file-path-link') as HTMLElement;
         await hoverAndWait(link);
@@ -110,7 +110,7 @@ describe('file-path-preview delegation', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const rows = document.querySelectorAll('.file-preview-line');
@@ -135,7 +135,7 @@ describe('file-path-preview delegation', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const lineNumbers = document.querySelectorAll('.file-preview-line-number');
@@ -167,7 +167,7 @@ describe('file-path-preview delegation', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const content = document.querySelector('.file-preview-line-content') as HTMLElement;
@@ -190,7 +190,7 @@ describe('file-path-preview delegation', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const rows = document.querySelectorAll('.file-preview-line');
@@ -217,7 +217,7 @@ describe('file-path-preview delegation', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -236,7 +236,7 @@ describe('file-path-preview delegation', () => {
         mockWorkspaceAndPreview(fetchMock);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const link = document.querySelector('.file-path-link') as HTMLElement;
         await hoverAndWait(link);
@@ -263,7 +263,7 @@ describe('file-path-preview delegation', () => {
             json: async () => ({ workspaces: [] }),
         }) as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
@@ -291,7 +291,7 @@ describe('file-path-preview delegation', () => {
             json: async () => ({ workspaces: [] }),
         }) as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
@@ -329,7 +329,7 @@ describe('file-path-preview delegation', () => {
         const addSpy = vi.spyOn(document.body, 'addEventListener');
 
         try {
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
             const mouseoverCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseover');
             const mouseoutCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseout');
@@ -368,7 +368,7 @@ describe('file-path-preview delegation', () => {
         const addSpy = vi.spyOn(document.body, 'addEventListener');
 
         try {
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
             const mouseoverCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseover');
             const mouseoutCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseout');
@@ -406,7 +406,7 @@ describe('file-path-preview delegation', () => {
         }));
 
         try {
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
             const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
             const link = document.querySelector('.file-path-link') as HTMLElement;
@@ -449,7 +449,7 @@ describe('file-path-preview delegation', () => {
                 return makeRect(0, 0, 0, 0);
             });
 
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -535,7 +535,7 @@ describe('directory hover preview', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         const link = document.querySelector('.file-path-link') as HTMLElement;
         await hoverAndWaitForDirectory(link);
 
@@ -572,7 +572,7 @@ describe('directory hover preview', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -595,7 +595,7 @@ describe('directory hover preview', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -620,7 +620,7 @@ describe('directory hover preview', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -660,7 +660,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -691,7 +691,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -731,7 +731,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -766,7 +766,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -802,7 +802,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -829,7 +829,7 @@ describe('tooltip scroll behavior', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -889,7 +889,7 @@ describe('tooltip dynamic max-height clamping', () => {
                 return makeRect(0, 0, 0, 0);
             });
 
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -928,7 +928,7 @@ describe('tooltip dynamic max-height clamping', () => {
                 return makeRect(0, 0, 0, 0);
             });
 
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -968,7 +968,7 @@ describe('tooltip dynamic max-height clamping', () => {
                 return makeRect(0, 0, 0, 0);
             });
 
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -1033,7 +1033,7 @@ describe('goto-file button for tasks-panel files', () => {
         mockWorkspaceAndTaskFilePreview(fetchMock, taskPath);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
 
         const btn = document.querySelector('.file-preview-goto-btn');
@@ -1069,7 +1069,7 @@ describe('goto-file button for tasks-panel files', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
 
         expect(document.querySelector('.file-preview-goto-btn')).toBeNull();
@@ -1085,7 +1085,7 @@ describe('goto-file button for tasks-panel files', () => {
         mockWorkspaceAndTaskFilePreview(fetchMock, taskPath);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
 
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
@@ -1180,7 +1180,7 @@ describe('tooltip non-overlapping vertical safe zone (Fix 1)', () => {
         });
 
         try {
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -1222,7 +1222,7 @@ describe('tooltip non-overlapping vertical safe zone (Fix 1)', () => {
         });
 
         try {
-            await import('../../../src/server/spa/client/react/file-path-preview');
+            await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
             await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
             const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -1265,7 +1265,7 @@ describe('pointer-events grace period on tooltip show (Fix 2)', () => {
         mockWorkspaceAndPreview(fetchMock);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const link = document.querySelector('.file-path-link') as HTMLElement;
         link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -1289,7 +1289,7 @@ describe('pointer-events grace period on tooltip show (Fix 2)', () => {
         mockWorkspaceAndPreview(fetchMock);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const link = document.querySelector('.file-path-link') as HTMLElement;
         link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -1329,7 +1329,7 @@ describe('click-through fallback on tooltip click (Fix 3)', () => {
         mockWorkspaceAndPreview(fetchMock);
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
         await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
 
         const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
@@ -1387,7 +1387,7 @@ describe('click-through fallback on tooltip click (Fix 3)', () => {
         });
         vi.stubGlobal('fetch', fetchMock as any);
 
-        await import('../../../src/server/spa/client/react/file-path-preview');
+        await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
 
         const link = document.querySelector('.file-path-link') as HTMLElement;
         link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));

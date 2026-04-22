@@ -8,10 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { FolderActionDialog } from '../../../src/server/spa/client/react/tasks/FolderActionDialog';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/contexts/MinimizedDialogsContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
 

@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { FilePreview } from '../../../src/server/spa/client/react/shared/FilePreview';
 
 // ── Mocks ──────────────────────────────────────────────────────────────

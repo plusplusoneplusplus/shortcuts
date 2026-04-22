@@ -92,7 +92,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useLongPress', () =
     useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn() }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     useChatPrefs: () => ({
         pinnedChatIds: null,
         archivedChatIds: null,
@@ -105,14 +105,14 @@ vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesConte
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: { isTaskSubmitting: false },
         dispatch: vi.fn(),
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: { myWorkExcludedTypes: [], preferencesLoaded: true },
         dispatch: vi.fn(),

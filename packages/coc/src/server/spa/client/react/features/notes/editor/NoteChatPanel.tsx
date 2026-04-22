@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNotesChat } from '../hooks/useNotesChat';
 import { ChatDetail } from '../../chat/ChatDetail';
-import { ChatPreferencesProvider } from '../../../context/ChatPreferencesContext';
+import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
 import { RichTextInput } from '../../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 import { NoteContextBanner } from './NoteContextBanner';

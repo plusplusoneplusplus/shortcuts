@@ -5,9 +5,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { WorkflowDetail } from '../../../../src/server/spa/client/react/features/workflow/WorkflowDetail';
 import type { WorkflowInfo } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 import * as pipelineApi from '../../../../src/server/spa/client/react/features/workflow/workflow-api';

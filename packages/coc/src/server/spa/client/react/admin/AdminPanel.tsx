@@ -11,7 +11,7 @@ import { SettingsCard } from './SettingsCard';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
 import { DbBrowserSection } from './DbBrowserSection';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import type { AdminSubTab } from '../types/dashboard';

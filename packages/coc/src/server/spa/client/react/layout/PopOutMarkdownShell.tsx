@@ -6,13 +6,13 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { AppProvider } from '../context/AppContext';
-import { QueueProvider } from '../context/QueueContext';
+import { AppProvider } from '../contexts/AppContext';
+import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
-import { ToastProvider } from '../context/ToastContext';
+import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../shared';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
-import { useMdPopOutChannel, type MdPopOutMessage } from '../context/MarkdownPopOutContext';
+import { useMdPopOutChannel, type MdPopOutMessage } from '../contexts/MarkdownPopOutContext';
 import { getHostname } from '../utils/config';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────

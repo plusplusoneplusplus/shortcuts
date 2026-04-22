@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
 import { Spinner } from '../../../shared';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
-import type { DiffComment } from '../../../../diff-comment-types';
+import type { DiffComment } from '../../../../comments/diff-comment-types';
 
 export interface BranchRangeAllCommentsProps {
     workspaceId: string;

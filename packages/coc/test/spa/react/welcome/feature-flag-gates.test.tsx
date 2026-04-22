@@ -7,7 +7,7 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
     SHOW_WELCOME_TUTORIAL: false,
 }));
 
-import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { WelcomeModal } from '../../../../src/server/spa/client/react/welcome/WelcomeModal';
 import { FeatureTip } from '../../../../src/server/spa/client/react/welcome/FeatureTip';
 import { ConceptTour } from '../../../../src/server/spa/client/react/welcome/ConceptTour';

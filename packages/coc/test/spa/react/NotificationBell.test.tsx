@@ -5,18 +5,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { NotificationBell } from '../../../src/server/spa/client/react/shared/NotificationBell';
-import type { NotificationContextValue } from '../../../src/server/spa/client/react/context/NotificationContext';
+import type { NotificationContextValue } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 
 // ── Mocks ───────────────────────────────────────────────────────
 
 const mockDispatch = vi.fn();
 const mockFloatChat = vi.fn();
 
-vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { activeTab: 'repos' }, dispatch: mockDispatch }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({ floatChat: mockFloatChat }),
 }));
 
@@ -29,7 +29,7 @@ const mockCtx: NotificationContextValue = {
     clearAll: vi.fn(),
 };
 
-vi.mock('../../../src/server/spa/client/react/context/NotificationContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/NotificationContext', () => ({
     useNotifications: () => mockCtx,
 }));
 

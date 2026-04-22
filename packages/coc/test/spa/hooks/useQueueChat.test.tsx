@@ -5,8 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { useQueueChat } from '../../../src/server/spa/client/react/queue/hooks/useQueueChat';
 
 // ── Wrapper ──────────────────────────────────────────────────────────────────

@@ -8,8 +8,8 @@ import { usePreferences, type SkillMode } from '../../hooks/preferences/usePrefe
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
-import { useGlobalToast } from '../../context/ToastContext';
-import { useRepos } from '../../context/ReposContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
+import { useRepos } from '../../contexts/ReposContext';
 import { getApiBase } from '../../utils/config';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
 import { fetchApi } from '../../hooks/useApi';

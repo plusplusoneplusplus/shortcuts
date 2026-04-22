@@ -21,7 +21,7 @@ import {
     type IntraLinePart,
 } from './UnifiedDiffViewer';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
-import type { DiffComment, DiffCommentSelection } from '../../../../diff-comment-types';
+import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
 /** Walk up the DOM tree to find the nearest ancestor that scrolls vertically. */
 function getScrollableAncestor(el: HTMLElement): HTMLElement {

@@ -5,7 +5,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { cn } from '../../shared';
 import { CommentCard } from './CommentCard';
-import type { AnyComment } from '../../../shared-comment-types';
+import type { AnyComment } from '../../../comments/shared-comment-types';
 
 type StatusFilter = 'all' | 'open' | 'resolved';
 type CategoryFilter = string;

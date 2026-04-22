@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/context/QueueContext';
+import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
 
 // ── Source file readers ────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
 describe('Fix 2: clear selectedTaskId on repo switch', () => {
     describe('MiniReposSidebar', () => {
         it('imports useQueue', () => {
-            expect(MINI_SIDEBAR_SOURCE).toContain("import { useQueue } from '../context/QueueContext'");
+            expect(MINI_SIDEBAR_SOURCE).toContain("import { useQueue } from '../contexts/QueueContext'");
         });
 
         it('dispatches SELECT_QUEUE_TASK with null in selectRepo', () => {
@@ -125,7 +125,7 @@ describe('Fix 2: clear selectedTaskId on repo switch', () => {
 
     describe('ReposGrid', () => {
         it('imports useQueue', () => {
-            expect(REPOS_GRID_SOURCE).toContain("import { useQueue } from '../context/QueueContext'");
+            expect(REPOS_GRID_SOURCE).toContain("import { useQueue } from '../contexts/QueueContext'");
         });
 
         it('dispatches SELECT_QUEUE_TASK with null in selectRepo', () => {

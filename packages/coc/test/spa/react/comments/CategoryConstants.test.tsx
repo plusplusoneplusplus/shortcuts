@@ -7,8 +7,8 @@ import {
     CATEGORY_INFO,
     ALL_CATEGORIES,
     getCommentCategory,
-} from '../../../../src/server/spa/client/task-comments-types';
-import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
+} from '../../../../src/server/spa/client/comments/task-comments-types';
+import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
     return {

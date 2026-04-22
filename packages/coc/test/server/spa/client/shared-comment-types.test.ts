@@ -6,15 +6,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
-import type { DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
+import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
+import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 import {
     isTaskComment,
     isDiffComment,
     getAnyCommentCategory,
     getAnyCommentCategoryInfo,
-} from '../../../../src/server/spa/client/shared-comment-types';
-import type { AnyComment, AnyCommentReply, AnyCommentCategory } from '../../../../src/server/spa/client/shared-comment-types';
+} from '../../../../src/server/spa/client/comments/shared-comment-types';
+import type { AnyComment, AnyCommentReply, AnyCommentCategory } from '../../../../src/server/spa/client/comments/shared-comment-types';
 
 // ============================================================================
 // Test fixtures

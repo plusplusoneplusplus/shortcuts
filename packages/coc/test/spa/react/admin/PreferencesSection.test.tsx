@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { PreferencesSection } from '../../../../src/server/spa/client/react/admin/PreferencesSection';
 
 const mockFetch = vi.fn();

@@ -3,9 +3,9 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNotifications, type NotificationEntry } from '../context/NotificationContext';
-import { useApp } from '../context/AppContext';
-import { useFloatingChats } from '../context/FloatingChatsContext';
+import { useNotifications, type NotificationEntry } from '../contexts/NotificationContext';
+import { useApp } from '../contexts/AppContext';
+import { useFloatingChats } from '../contexts/FloatingChatsContext';
 import { cn } from './cn';
 
 const TYPE_ICONS: Record<NotificationEntry['type'], string> = {

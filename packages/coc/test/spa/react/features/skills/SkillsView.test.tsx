@@ -20,11 +20,11 @@ const makeAppState = (activeSkillsSubTab = 'installed') => ({
     dispatch: mockDispatch,
 });
 
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: vi.fn(() => makeAppState()),
 }));
 
-import { useApp } from '../../../../../src/server/spa/client/react/context/AppContext';
+import { useApp } from '../../../../../src/server/spa/client/react/contexts/AppContext';
 
 afterEach(() => {
     vi.clearAllMocks();

@@ -7,9 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp, appReducer, type AppContextState } from '../../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider, useApp, appReducer, type AppContextState } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { WikiComponentTree } from '../../../../src/server/spa/client/react/wiki/WikiComponentTree';
 import { WikiList, shortenPath } from '../../../../src/server/spa/client/react/wiki/WikiList';
 import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddWikiDialog';

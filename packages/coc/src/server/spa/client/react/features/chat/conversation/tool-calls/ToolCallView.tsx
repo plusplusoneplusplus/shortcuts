@@ -6,10 +6,10 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn, FilePathLink, shortenFilePath } from '../../../../shared';
 import { isImageFile, getImageMimeType } from '../../../../shared/file-path-utils';
-import { computeLineDiff, type DiffLine } from '../../../../../diff-utils';
+import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
-import { renderMarkdownToHtml } from '../../../../../markdown-renderer';
+import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
 import { copyToClipboard } from '../../../../utils/format';
 
 interface ToolCallData {

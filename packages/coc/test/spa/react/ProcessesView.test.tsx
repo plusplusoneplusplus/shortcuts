@@ -22,21 +22,21 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: mockQueueState,
         dispatch: mockQueueDispatch,
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: { selectedRepoId: null },
         dispatch: vi.fn(),
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPreferencesProvider: ({ children }: { children: any }) => children,
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({

@@ -12,7 +12,7 @@ vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
 }));
 
 // Mock markdown renderer
-vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
 

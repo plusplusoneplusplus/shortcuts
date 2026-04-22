@@ -29,7 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileComme
     useFileCommentCounts: (...args: any[]) => mockUseFileCommentCounts(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
+vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => ({
     computeDiffCommentKey: async (_repo: string, _old: string, _new: string, filePath: string) =>
         `key-${filePath}`,
 }));

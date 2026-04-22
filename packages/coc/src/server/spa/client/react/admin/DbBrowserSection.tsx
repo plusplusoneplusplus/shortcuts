@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, Dialog, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { buildDbBrowserHash } from '../layout/Router';
 
 interface TableInfo {

@@ -20,8 +20,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, renderHook } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
 import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
@@ -35,7 +35,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettin
     invalidateDisplaySettings: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),

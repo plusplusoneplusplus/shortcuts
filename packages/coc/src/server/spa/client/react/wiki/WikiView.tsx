@@ -2,7 +2,7 @@
  * WikiView — top-level route component for #wiki and #wiki/:id.
  */
 
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { WikiList } from './WikiList';
 import { WikiDetail } from './WikiDetail';
 

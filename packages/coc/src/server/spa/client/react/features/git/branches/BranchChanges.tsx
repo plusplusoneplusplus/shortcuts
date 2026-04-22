@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
 import { Spinner } from '../../../shared';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
-import { computeDiffCommentKey } from '../../../../diff-comment-utils';
+import { computeDiffCommentKey } from '../../../../comments/diff-comment-utils';
 import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from '../diff/FileTree';
 import type { FileChange } from '../diff/FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';

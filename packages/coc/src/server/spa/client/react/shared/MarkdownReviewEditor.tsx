@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/ui/useMarkdownPreview';
-import type { RenderCommentInfo } from '../../markdown-renderer';
+import type { RenderCommentInfo } from '../../diff/markdown-renderer';
 import { useTaskComments } from '../tasks/hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
@@ -22,7 +22,7 @@ import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { ResponsiveSidebar } from './ResponsiveSidebar';
-import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
+import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../comments/task-comments-types';
 import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
@@ -30,12 +30,12 @@ import {
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
-import { useGlobalToast } from '../context/ToastContext';
+import { useGlobalToast } from '../contexts/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getLanguageFromFileName } from '../features/git/hooks/useSyntaxHighlight';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { isAbsolutePath } from '../utils/path-resolution';
 import { RichEditorCore } from '../features/notes/editor/RichEditorCore';

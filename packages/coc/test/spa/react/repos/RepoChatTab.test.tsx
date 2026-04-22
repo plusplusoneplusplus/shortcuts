@@ -20,8 +20,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React, { useEffect } from 'react';
 import { renderWithProviders } from '../test-utils';
-import { useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
-import { useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 
 // ── Mock child components ──────────────────────────────────────────────
@@ -90,7 +90,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetailPane', 
     },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPreferencesProvider: ({ children, workspaceId }: any) => {
         return React.createElement('div', {
             'data-testid': 'chat-prefs-provider',
@@ -144,7 +144,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenCh
 }));
 
 const mockMarkReadByProcessId = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/context/NotificationContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/NotificationContext', () => ({
     NotificationProvider: ({ children }: any) => children,
     useNotifications: () => ({
         notifications: [],
@@ -154,7 +154,7 @@ vi.mock('../../../../src/server/spa/client/react/context/NotificationContext', (
 }));
 
 const mockRefreshUnseenCounts = vi.fn().mockResolvedValue(undefined);
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({
         repos: [],
         loading: false,
@@ -1264,7 +1264,7 @@ describe('RepoChatTab: selection-clearing fallback', () => {
 
         // Select a processId-shaped task that is NOT in any list
         await act(async () => {
-            const { useQueue: uq } = await import('../../../../src/server/spa/client/react/context/QueueContext');
+            const { useQueue: uq } = await import('../../../../src/server/spa/client/react/contexts/QueueContext');
             // Simulate selecting a processId not in the lists via hash navigation
             location.hash = '#repos/ws-1/activity/queue_abc';
         });

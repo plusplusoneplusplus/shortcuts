@@ -95,7 +95,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useLongPress', () =
     useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn() }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     useChatPrefs: () => ({
         pinnedChatIds: null,
         archivedChatIds: null,
@@ -108,7 +108,7 @@ vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesConte
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: { isTaskSubmitting: false },
         dispatch: vi.fn(),
@@ -138,7 +138,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/commits/History
 // AppContext mock — per-test override via mockAppState
 let mockAppState = { myWorkExcludedTypes: [] as string[], preferencesLoaded: true };
 const mockAppDispatch = vi.fn();
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', async (importOriginal) => {
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', async (importOriginal) => {
     const actual = await importOriginal() as Record<string, unknown>;
     return {
         ...actual,
@@ -232,7 +232,7 @@ describe('ChatListPane – filter persistence', () => {
 // Tests — AppContext reducer for myWorkExcludedTypes
 // ---------------------------------------------------------------------------
 
-import { appReducer } from '../../../../../src/server/spa/client/react/context/AppContext';
+import { appReducer } from '../../../../../src/server/spa/client/react/contexts/AppContext';
 
 describe('appReducer – myWorkExcludedTypes', () => {
     const baseState = {

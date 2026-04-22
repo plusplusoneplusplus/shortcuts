@@ -7,10 +7,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/context/TaskContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { TaskActions } from '../../../src/server/spa/client/react/tasks/TaskActions';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({

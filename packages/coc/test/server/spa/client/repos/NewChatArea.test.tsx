@@ -13,14 +13,14 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 
-vi.mock('../../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: { selectedTaskIdByRepo: {} },
         dispatch: mockQueueDispatch,
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             workspaces: [{ id: 'ws-1', rootPath: '/repos/myrepo' }],

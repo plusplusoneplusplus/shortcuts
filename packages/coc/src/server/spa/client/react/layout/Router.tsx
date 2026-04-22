@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useLayoutEffect, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
+import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';

@@ -15,7 +15,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
     useFloatingChats: () => ({
         isFloating: () => false,
         floatingChats: new Map(),

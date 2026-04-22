@@ -13,7 +13,7 @@
  */
 
 import type { DiffLine } from '../features/git/diff/UnifiedDiffViewer';
-import type { DiffComment } from '../../diff-comment-types';
+import type { DiffComment } from '../../comments/diff-comment-types';
 
 /** djb2 hash — mirrors pipeline-core's hashText implementation. */
 function hashText(text: string): string {

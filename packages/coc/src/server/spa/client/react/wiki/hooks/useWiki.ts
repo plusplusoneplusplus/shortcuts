@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { fetchApi } from '../../hooks/useApi';
 
 export function useWiki() {

@@ -9,7 +9,7 @@ import type { FolderCtxMenu } from './useFolderDialogHandlers';
 import type { FolderActionsResult } from './useFolderActions';
 import { countMarkdownFilesInFolder, collectMarkdownFiles } from './useTaskTree';
 import type { RepoData } from '../../repos/repoGrouping';
-import type { QueueAction } from '../../context/QueueContext';
+import type { QueueAction } from '../../contexts/QueueContext';
 import type { Dispatch } from 'react';
 
 interface Options {

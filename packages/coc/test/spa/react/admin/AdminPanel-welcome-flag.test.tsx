@@ -6,7 +6,7 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
     SHOW_WELCOME_TUTORIAL: false,
 }));
 
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../../src/server/spa/client/react/admin/AdminPanel';
 
 const mockFetch = vi.fn();

@@ -5,9 +5,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { WorkflowDetail } from '../../../src/server/spa/client/react/features/workflow/WorkflowDetail';
 import { AddWorkflowDialog } from '../../../src/server/spa/client/react/features/workflow/AddWorkflowDialog';
 import { TemplatesTab } from '../../../src/server/spa/client/react/features/templates/TemplatesTab';
@@ -469,7 +469,7 @@ describe('WorkflowDetail', () => {
     });
 
     it('active-task badge shows on Run History tab when tasks are running', async () => {
-        const { useQueue } = await import('../../../src/server/spa/client/react/context/QueueContext');
+        const { useQueue } = await import('../../../src/server/spa/client/react/contexts/QueueContext');
         const activeTask = {
             id: 'task-1',
             type: 'run-workflow',

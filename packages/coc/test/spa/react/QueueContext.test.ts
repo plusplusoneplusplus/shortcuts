@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { queueReducer, type QueueContextState, type QueueAction } from '../../../src/server/spa/client/react/context/QueueContext';
+import { queueReducer, type QueueContextState, type QueueAction } from '../../../src/server/spa/client/react/contexts/QueueContext';
 
 function makeState(overrides: Partial<QueueContextState> = {}): QueueContextState {
     return {

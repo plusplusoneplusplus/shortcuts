@@ -6,10 +6,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { applyInlineMarkdown } from '../../../../src/server/spa/client/markdown-renderer';
+import { applyInlineMarkdown } from '../../../../src/server/spa/client/diff/markdown-renderer';
 
 // We test via renderMarkdownToHtml since applyInlineMarkdown is called internally
-import { renderMarkdownToHtml } from '../../../../src/server/spa/client/markdown-renderer';
+import { renderMarkdownToHtml } from '../../../../src/server/spa/client/diff/markdown-renderer';
 
 describe('File path detection in inline markdown', () => {
     // ----------------------------------------------------------------

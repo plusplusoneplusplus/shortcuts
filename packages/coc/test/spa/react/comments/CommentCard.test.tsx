@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CommentCard } from '../../../../src/server/spa/client/react/tasks/comments/CommentCard';
-import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
+import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
     return {

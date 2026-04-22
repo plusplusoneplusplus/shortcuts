@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 
 export interface WelcomeModalProps {

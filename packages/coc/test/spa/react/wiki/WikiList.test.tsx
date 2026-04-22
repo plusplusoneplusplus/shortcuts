@@ -14,7 +14,7 @@ const mockDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/wiki/hooks/useWiki', () => ({
     useWiki: vi.fn(() => ({ wikis: [], reload: vi.fn() })),
 }));
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: vi.fn(() => ({
         state: { wikis: [], wikiTabState: {} },
         dispatch: mockDispatch,

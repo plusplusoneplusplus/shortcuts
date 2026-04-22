@@ -49,16 +49,16 @@ vi.mock('../../../src/server/spa/client/react/utils/document-context', () => ({
 
 /* ── Mock useGlobalToast ── */
 const mockAddToast = vi.fn();
-vi.mock('../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
 }));
 
 /* ── Mock useApp ── */
-vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: vi.fn() }),
 }));
 

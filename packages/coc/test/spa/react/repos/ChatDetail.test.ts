@@ -456,7 +456,7 @@ describe('ChatDetail', () => {
 
     describe('conversation caching', () => {
         it('imports useApp from AppContext', () => {
-            expect(source).toContain("import { useApp } from '../../context/AppContext'");
+            expect(source).toContain("import { useApp } from '../../contexts/AppContext'");
         });
 
         it('declares CACHE_TTL_MS constant', () => {

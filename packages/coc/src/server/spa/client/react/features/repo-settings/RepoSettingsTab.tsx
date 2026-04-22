@@ -5,8 +5,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { useGlobalToast } from '../../context/ToastContext';
-import { useApp } from '../../context/AppContext';
+import { useGlobalToast } from '../../contexts/ToastContext';
+import { useApp } from '../../contexts/AppContext';
 import { getApiBase } from '../../utils/config';
 import { formatRelativeTime } from '../../utils/format';
 import { McpServersPanel } from '../skills/McpServersPanel';
@@ -18,7 +18,7 @@ import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
 import type { RepoData } from '../../repos/repoGrouping';
 import { RepoMemorySection } from '../memory/RepoMemorySection';
-import { useRepos } from '../../context/ReposContext';
+import { useRepos } from '../../contexts/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 

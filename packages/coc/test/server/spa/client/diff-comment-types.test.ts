@@ -12,11 +12,11 @@ import type {
     DiffComment,
     DiffCommentsData,
     DiffCommentStatus,
-} from '../../../../src/server/spa/client/diff-comment-types';
+} from '../../../../src/server/spa/client/comments/diff-comment-types';
 import {
     getDiffCommentCategory,
     ALL_DIFF_CATEGORIES,
-} from '../../../../src/server/spa/client/diff-comment-types';
+} from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // DiffCommentSelection

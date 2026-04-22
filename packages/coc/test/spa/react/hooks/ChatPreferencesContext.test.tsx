@@ -14,7 +14,7 @@ import React from 'react';
 import {
     ChatPreferencesProvider,
     useChatPrefs,
-} from '../../../../src/server/spa/client/react/context/ChatPreferencesContext';
+} from '../../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
 
 // ── Mock pinArchiveApi ──────────────────────────────────────────────────────
 

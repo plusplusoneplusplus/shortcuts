@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { getApiBase } from '../../../utils/config';
 import { clearDraft } from './useDraftStore';
-import { useChatPrefs } from '../../../context/ChatPreferencesContext';
+import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';

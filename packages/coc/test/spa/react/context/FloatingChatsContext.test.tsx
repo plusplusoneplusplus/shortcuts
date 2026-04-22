@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { FloatingChatsProvider, useFloatingChats, type FloatingChatEntry } from '../../../../src/server/spa/client/react/context/FloatingChatsContext';
+import { FloatingChatsProvider, useFloatingChats, type FloatingChatEntry } from '../../../../src/server/spa/client/react/contexts/FloatingChatsContext';
 import type { ReactNode } from 'react';
 
 function wrapper({ children }: { children: ReactNode }) {

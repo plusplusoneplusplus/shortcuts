@@ -52,7 +52,7 @@ const spaAliases = {
 
 // Main dashboard SPA
 await esbuild.build({
-    entryPoints: ['src/server/spa/client/index.tsx'],
+    entryPoints: ['src/server/spa/client/entry.tsx'],
     outfile: 'src/server/spa/client/dist/bundle.js',
     bundle: true,
     format: 'iife',

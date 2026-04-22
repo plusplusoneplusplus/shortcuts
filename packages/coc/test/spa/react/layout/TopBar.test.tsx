@@ -11,7 +11,7 @@ import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 
 const mockDispatch = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: 'repos',
@@ -23,7 +23,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -39,7 +39,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     NotificationBell: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     QueueProvider: ({ children }: any) => children,
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));

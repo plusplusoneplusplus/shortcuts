@@ -6,7 +6,7 @@
  * AI request payload (selectedText / startLine / endLine live on the comment).
  */
 
-import type { TaskComment } from '../../task-comments-types';
+import type { TaskComment } from '../../comments/task-comments-types';
 
 export interface DocumentContext {
     surroundingLines: string;

@@ -13,7 +13,7 @@ import {
     buildLineCommentMap,
     getLineHighlightClass,
 } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
-import type { DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
 // Helpers

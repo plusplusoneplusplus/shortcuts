@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Marked } from 'marked';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../contexts/AppContext';
 import { getApiBase } from '../../utils/config';
 import { prStatusBadge, formatTimestamp } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';

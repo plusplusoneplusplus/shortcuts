@@ -12,7 +12,7 @@ import type {
     TaskComment,
     TaskCommentsData,
     TaskCommentStatus,
-} from '../../../../src/server/spa/client/task-comments-types';
+} from '../../../../src/server/spa/client/comments/task-comments-types';
 
 // ============================================================================
 // CommentSelection

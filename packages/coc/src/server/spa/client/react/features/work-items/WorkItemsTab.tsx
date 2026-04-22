@@ -15,11 +15,11 @@ import { CommitDetail } from '../git/commits/CommitDetail';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { createCommitDiffSource } from '../git/diff/diffSource';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
-import { useWorkItems } from '../../context/WorkItemContext';
+import { useWorkItems } from '../../contexts/WorkItemContext';
 import { fetchApi } from '../../hooks/useApi';
 import { buildFileTree, compactFolders, FileTreeView } from '../git/diff/FileTree';
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
-import { computeDiffCommentKey } from '../../../diff-comment-utils';
+import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
 
 export interface WorkItemsTabProps {
     workspaceId: string;

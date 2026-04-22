@@ -13,9 +13,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 
@@ -51,7 +51,7 @@ vi.mock('../../../src/server/spa/client/react/queue/hooks/useQueueTouchDragDrop'
         createTouchStartHandler: vi.fn(),
     }),
 }));
-vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         pinnedChatIds: new Set(),

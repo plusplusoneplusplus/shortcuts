@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { relocateDiffAnchor } from '../../../../src/server/spa/client/react/utils/relocateDiffAnchor';
-import type { DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
+import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 import type { DiffLine } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 // ============================================================================

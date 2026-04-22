@@ -5,8 +5,8 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Button } from '../../shared';
-import type { TaskCommentCategory } from '../../../task-comments-types';
-import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../task-comments-types';
+import type { TaskCommentCategory } from '../../../comments/task-comments-types';
+import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../comments/task-comments-types';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 import { useDraggable } from '../../hooks/ui/useDraggable';

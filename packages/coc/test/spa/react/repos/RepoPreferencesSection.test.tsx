@@ -4,7 +4,7 @@ import React from 'react';
 
 // Mock context hooks
 const mockAddToast = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
     ToastContext: { Provider: ({ children }: any) => children },
     ToastProvider: ({ children }: any) => children,
@@ -16,7 +16,7 @@ const mockRepos = [
     { workspace: { id: 'repo-c', name: 'Repo C', rootPath: '/c' } },
 ];
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: mockRepos, loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
 }));
 

@@ -13,8 +13,8 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useQueueTaskGeneration } from '../queue/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useImagePaste } from '../features/chat/hooks/useImagePaste';
-import { useGlobalToast } from '../context/ToastContext';
-import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { useGlobalToast } from '../contexts/ToastContext';
+import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 

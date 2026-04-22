@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { PromptsPanel } from '../../../../src/server/spa/client/react/admin/PromptsPanel';
 
 const mockFetch = vi.fn();

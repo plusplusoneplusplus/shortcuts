@@ -33,7 +33,7 @@ import {
     useChatPrefs,
     chatPrefsReducer,
     type ChatPrefsState,
-} from '../../../src/server/spa/client/react/context/ChatPreferencesContext';
+} from '../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
 
 const mockPinProcess = vi.mocked(pinProcess);
 const mockUnpinProcess = vi.mocked(unpinProcess);

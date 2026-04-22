@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { renderMarkdownToHtml, type RenderCommentInfo } from '../../../../src/server/spa/client/markdown-renderer';
+import { renderMarkdownToHtml, type RenderCommentInfo } from '../../../../src/server/spa/client/diff/markdown-renderer';
 
 describe('renderMarkdownToHtml — comment highlights', () => {
     // ----------------------------------------------------------------

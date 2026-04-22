@@ -62,7 +62,7 @@ const mockArchiveChat = vi.fn();
 const mockUnarchiveChat = vi.fn();
 const mockArchiveChats = vi.fn();
 const mockUnarchiveChats = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         pinnedChatIds: mockPinnedChatIds,

@@ -10,7 +10,7 @@ import {
     MarkdownPopOutProvider,
     useMarkdownPopOut,
     MD_POPOUT_CHANNEL,
-} from '../../../../src/server/spa/client/react/context/MarkdownPopOutContext';
+} from '../../../../src/server/spa/client/react/contexts/MarkdownPopOutContext';
 
 // Helper to capture context value
 function ContextCapture({ onValue }: { onValue: (v: ReturnType<typeof useMarkdownPopOut>) => void }) {

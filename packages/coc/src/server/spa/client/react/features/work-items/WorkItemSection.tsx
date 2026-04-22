@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Card, cn } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
-import { useWorkItems, type WorkItemSummary } from '../../context/WorkItemContext';
+import { useWorkItems, type WorkItemSummary } from '../../contexts/WorkItemContext';
 import { useWorkItemSearch } from './hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../../utils/format';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';

@@ -30,7 +30,7 @@ describe('SPA responsive smoke', () => {
     });
 
     it('SPA entry point exists', () => {
-        const entryPoints = ['index.tsx', 'index.ts', 'App.tsx', 'main.tsx'];
+        const entryPoints = ['entry.tsx', 'index.tsx', 'index.ts', 'App.tsx', 'main.tsx'];
         const found = entryPoints.some(ep => fs.existsSync(path.join(SPA_ROOT, ep)));
         expect(found).toBe(true);
     });

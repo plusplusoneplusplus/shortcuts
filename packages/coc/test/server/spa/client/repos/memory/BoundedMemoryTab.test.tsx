@@ -28,7 +28,7 @@ vi.mock('../../../../../../src/server/spa/client/react/hooks/preferences/prefere
     patchWorkspacePreferences: vi.fn(async () => ({})),
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     ToastContext: { Consumer: ({ children }: any) => children(null), Provider: ({ children }: any) => children },
 }));
 

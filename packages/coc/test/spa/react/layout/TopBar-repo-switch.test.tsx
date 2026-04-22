@@ -19,7 +19,7 @@ const mockDispatch = vi.fn();
 let mockRepoTabState: Record<string, RepoSubTab> = {};
 let mockSettingsSection: SettingsSection = 'info';
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: 'repos',
@@ -42,7 +42,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStr
     },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
 }));
 

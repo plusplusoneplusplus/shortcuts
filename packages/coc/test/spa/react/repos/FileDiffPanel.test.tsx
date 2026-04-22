@@ -33,7 +33,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: mockQueueDispatch }),
 }));
 
@@ -142,7 +142,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResolveContextDialog', (
 
 // Mock diff-context-utils
 const mockBuildDiffContext = vi.fn().mockReturnValue('context-string');
-vi.mock('../../../../src/server/spa/client/diff-context-utils', () => ({
+vi.mock('../../../../src/server/spa/client/comments/diff-context-utils', () => ({
     buildDiffContext: (...args: any[]) => mockBuildDiffContext(...args),
 }));
 

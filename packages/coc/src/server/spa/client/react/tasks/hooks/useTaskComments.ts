@@ -10,7 +10,7 @@ import type {
     TaskCommentCategory,
     CommentAnchor,
     CommentSelection,
-} from '../../../task-comments-types';
+} from '../../../comments/task-comments-types';
 
 // ============================================================================
 // Request/Response Types

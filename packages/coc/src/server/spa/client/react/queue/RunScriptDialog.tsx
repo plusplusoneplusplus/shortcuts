@@ -6,14 +6,14 @@
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
+import { useQueue } from '../contexts/QueueContext';
+import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
 import { useModels } from '../hooks/useModels';
 import { useScriptTemplates, type ScriptTemplate } from '../features/templates/hooks/useScriptTemplates';
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { TaskDefs } from '../../../../task-types';
 
 export function RunScriptDialog() {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
+import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/contexts/TaskContext';
 
 function makeState(overrides: Partial<TaskContextState> = {}): TaskContextState {
     return {

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { TOUR_SLIDES } from './conceptTourSlides';
 import { ConceptTourSlide } from './ConceptTourSlide';

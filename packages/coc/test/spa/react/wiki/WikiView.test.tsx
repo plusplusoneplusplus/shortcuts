@@ -15,11 +15,11 @@ vi.mock('../../../../src/server/spa/client/react/wiki/WikiList', () => ({
 vi.mock('../../../../src/server/spa/client/react/wiki/WikiDetail', () => ({
     WikiDetail: ({ wikiId }: { wikiId: string }) => <div data-testid="wiki-detail" data-wiki-id={wikiId}>WikiDetail</div>,
 }));
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: vi.fn(() => ({ state: { selectedWikiId: null }, dispatch: vi.fn() })),
 }));
 
-import { useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 
 describe('WikiView — routing', () => {
     it('renders WikiList when no wiki is selected', () => {

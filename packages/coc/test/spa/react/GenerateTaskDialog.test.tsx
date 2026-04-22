@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/contexts/MinimizedDialogsContext';
 import { GenerateTaskDialog, EFFORT_PRESETS } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/queue/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../../../src/server/spa/client/react/hooks/preferences/usePreferences';

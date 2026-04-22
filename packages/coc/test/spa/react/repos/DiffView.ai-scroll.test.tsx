@@ -61,7 +61,7 @@ vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal)
     };
 });
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 

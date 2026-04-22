@@ -9,7 +9,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighlight';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
-import type { DiffCommentSelection, DiffComment } from '../../../../diff-comment-types';
+import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;

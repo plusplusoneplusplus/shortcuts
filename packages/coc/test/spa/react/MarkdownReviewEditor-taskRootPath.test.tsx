@@ -49,12 +49,12 @@ vi.mock('../../../src/server/spa/client/react/utils/document-context', () => ({
     extractDocumentContext: vi.fn(() => ({ surroundingLines: '', nearestHeading: null, allHeadings: [] })),
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }),
 }));
 
 /* ── Mock useApp with workspaceRootPath ── */
-vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             workspaces: [{ id: 'ws1', rootPath: 'D:/projects/shortcuts' }],
@@ -65,7 +65,7 @@ vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
 
 /* ── Mock useQueue to capture dispatches ── */
 const mockQueueDispatch = vi.fn();
-vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
 }));
 

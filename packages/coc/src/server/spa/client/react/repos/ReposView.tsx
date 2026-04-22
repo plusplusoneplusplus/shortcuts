@@ -6,8 +6,8 @@
  */
 
 import { useCallback } from 'react';
-import { useApp } from '../context/AppContext';
-import { useRepos } from '../context/ReposContext';
+import { useApp } from '../contexts/AppContext';
+import { useRepos } from '../contexts/ReposContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';

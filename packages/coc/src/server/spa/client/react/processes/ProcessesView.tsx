@@ -9,13 +9,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
+import { useQueue } from '../contexts/QueueContext';
+import { useApp } from '../contexts/AppContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { toQueueProcessId } from '../utils/queue-process-id';
 import { ChatListPane } from '../features/chat/ChatListPane';
 import { ChatDetailPane } from '../features/chat/ChatDetailPane';
-import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
+import { ChatPreferencesProvider, ChatPrefsSync } from '../contexts/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
 import { TaskDefs } from '../../../../task-types';
 

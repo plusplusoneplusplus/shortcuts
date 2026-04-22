@@ -26,7 +26,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useDraft
     clearDraft: vi.fn(),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),
         unarchiveChat: vi.fn(),

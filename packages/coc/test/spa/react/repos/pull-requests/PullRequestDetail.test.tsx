@@ -10,7 +10,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 const mockDispatch = vi.fn();
-vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: mockDispatch }),
 }));
 

@@ -10,10 +10,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AppProvider } from '../context/AppContext';
-import { QueueProvider } from '../context/QueueContext';
+import { AppProvider } from '../contexts/AppContext';
+import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
-import { ToastProvider } from '../context/ToastContext';
+import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../shared';
 import { CommitDetail } from '../features/git/commits/CommitDetail';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
@@ -23,13 +23,13 @@ import { fetchApi } from '../hooks/useApi';
 import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
 import { parseDiffFileList } from '../features/git/diff/UnifiedDiffViewer';
 import { useFileCommentCounts } from '../features/git/hooks/useFileCommentCounts';
-import { computeDiffCommentKey } from '../../diff-comment-utils';
+import { computeDiffCommentKey } from '../../comments/diff-comment-utils';
 import {
     useGitReviewPopOutChannel,
     type GitReviewPopOutMessage,
     gitReviewPopOutKey,
     gitReviewBranchPopOutKey,
-} from '../context/GitReviewPopOutContext';
+} from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';

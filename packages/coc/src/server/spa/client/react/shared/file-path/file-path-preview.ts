@@ -5,7 +5,7 @@
  * hover handlers. This module restores tooltip previews via global delegation.
  */
 
-import { getApiBase } from './utils/config';
+import { getApiBase } from '../../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 interface WorkspaceInfo {

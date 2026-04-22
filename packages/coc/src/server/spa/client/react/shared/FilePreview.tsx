@@ -9,9 +9,9 @@
 
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../contexts/AppContext';
 import { getApiBase } from '../utils/config';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
 import { Spinner } from './Spinner';
 import { cn } from './cn';

@@ -7,10 +7,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
+import { TaskProvider } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { TaskTreeItem, type TaskTreeItemProps } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';

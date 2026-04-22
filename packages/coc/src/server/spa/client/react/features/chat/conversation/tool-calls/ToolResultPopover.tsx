@@ -10,8 +10,8 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { renderMarkdownToHtml } from '../../../../../markdown-renderer';
-import { computeLineDiff, type DiffLine } from '../../../../../diff-utils';
+import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
+import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../../shared/BottomSheet';
 

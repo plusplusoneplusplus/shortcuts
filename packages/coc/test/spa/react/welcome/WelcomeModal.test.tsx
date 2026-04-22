@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { WelcomeModal } from '../../../../src/server/spa/client/react/welcome/WelcomeModal';
 
 /**

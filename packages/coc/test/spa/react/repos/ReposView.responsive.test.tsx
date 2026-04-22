@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
-import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
 
@@ -31,14 +31,14 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: mockAppState,
         dispatch: mockAppDispatch,
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
         state: { selectedTaskId: null, selectedTaskIdByRepo: {}, repoQueueMap: {} },
         dispatch: mockQueueDispatch,
@@ -101,7 +101,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () =
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/NotificationContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/NotificationContext', () => ({
     useNotifications: () => ({
         notifications: [],
         unreadCount: 0,
@@ -157,7 +157,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoCopilo
     RepoCopilotTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({
         repos: mockRepos,
         loading: false,

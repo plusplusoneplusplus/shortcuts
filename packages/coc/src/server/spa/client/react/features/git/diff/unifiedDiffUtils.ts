@@ -1,4 +1,4 @@
-import { computeLCS } from '../../../../diff-utils';
+import { computeLCS } from '../../../../diff/diff-utils';
 
 /**
  * Generates a minimal unified diff string compatible with UnifiedDiffViewer.

@@ -8,7 +8,7 @@ import React from 'react';
 import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
-vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
 

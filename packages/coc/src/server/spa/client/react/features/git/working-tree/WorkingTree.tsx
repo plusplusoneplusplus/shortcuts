@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
 import { Spinner } from '../../../shared';
 import { copyToClipboard } from '../../../utils/format';
-import type { DiffComment } from '../../../../diff-comment-types';
+import type { DiffComment } from '../../../../comments/diff-comment-types';
 import { FlatFileList, FileTreeView, buildFileTree, compactFolders, STATUS_COLORS, STATUS_LABELS, normalizeStatus } from '../diff/FileTree';
 import type { FileChange, FileNode } from '../diff/FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';

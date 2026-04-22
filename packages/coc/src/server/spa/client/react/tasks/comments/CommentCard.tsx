@@ -9,10 +9,10 @@ import { useState } from 'react';
 import { cn, Button } from '../../shared';
 import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../shared/MarkdownView';
-import { renderMarkdownToHtml } from '../../../markdown-renderer';
+import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
-import type { AnyComment } from '../../../shared-comment-types';
-import { isDiffComment } from '../../../shared-comment-types';
+import type { AnyComment } from '../../../comments/shared-comment-types';
+import { isDiffComment } from '../../../comments/shared-comment-types';
 import { formatRelativeTime } from '../../utils/format';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';

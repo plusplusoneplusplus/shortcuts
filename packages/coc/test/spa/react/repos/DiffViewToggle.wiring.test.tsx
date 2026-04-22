@@ -71,7 +71,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap',
     DiffMiniMap: () => <div data-testid="diff-minimap" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 

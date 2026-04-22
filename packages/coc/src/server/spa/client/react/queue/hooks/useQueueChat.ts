@@ -6,8 +6,8 @@
  */
 
 import { useMemo } from 'react';
-import { useQueue } from '../../context/QueueContext';
-import { useApp } from '../../context/AppContext';
+import { useQueue } from '../../contexts/QueueContext';
+import { useApp } from '../../contexts/AppContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 /** Normalise a file path: backslash → slash, strip trailing slash. */

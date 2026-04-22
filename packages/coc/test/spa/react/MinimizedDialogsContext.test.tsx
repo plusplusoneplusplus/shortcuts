@@ -11,7 +11,7 @@ import {
     MinimizedDialogsTray,
     useMinimizedDialog,
     type MinimizedDialogEntry,
-} from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
+} from '../../../src/server/spa/client/react/contexts/MinimizedDialogsContext';
 
 afterEach(cleanup);
 

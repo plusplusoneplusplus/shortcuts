@@ -3,10 +3,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../../context/AppContext';
-import type { AppContextState } from '../../context/AppContext';
-import { useQueue } from '../../context/QueueContext';
-import { useWorkItems, loadUnseenWorkItemIds } from '../../context/WorkItemContext';
+import { useApp } from '../../contexts/AppContext';
+import type { AppContextState } from '../../contexts/AppContext';
+import { useQueue } from '../../contexts/QueueContext';
+import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { Button, cn } from '../../shared';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';

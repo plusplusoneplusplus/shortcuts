@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { renderMarkdownToHtml } from '../../../../src/server/spa/client/markdown-renderer';
+import { renderMarkdownToHtml } from '../../../../src/server/spa/client/diff/markdown-renderer';
 
 // ---------------------------------------------------------------------------
 // Helpers: parse HTML to check structure (string-based, no DOM needed)

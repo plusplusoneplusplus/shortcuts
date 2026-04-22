@@ -11,7 +11,7 @@ import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { cn } from '../../shared/cn';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainerWidth';
-import { useFloatingChats } from '../../context/FloatingChatsContext';
+import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
 

@@ -48,7 +48,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/document-context', () => 
     extractDocumentContext: vi.fn(() => ({ surroundingLines: '', nearestHeading: null, allHeadings: [] })),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }),
 }));
 
@@ -62,12 +62,12 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
     AppProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     QueueProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     useQueue: () => ({ state: { queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));

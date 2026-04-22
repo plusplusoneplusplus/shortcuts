@@ -22,7 +22,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // ToastContext mock
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: vi.fn() }),
 }));
 
@@ -31,7 +31,7 @@ async function renderTab(workspaceId = 'ws-1') {
         '../../../../src/server/spa/client/react/features/repo-detail/RepoCopilotTab'
     );
     const { AppProvider } = await import(
-        '../../../../src/server/spa/client/react/context/AppContext'
+        '../../../../src/server/spa/client/react/contexts/AppContext'
     );
     return render(<AppProvider><RepoCopilotTab workspaceId={workspaceId} /></AppProvider>);
 }

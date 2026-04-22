@@ -6,10 +6,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/context/TaskContext';
-import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/contexts/TaskContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { TaskTree, getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/ui/useBreakpoint';

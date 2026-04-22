@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { type ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { DbBrowserSection } from '../../../src/server/spa/client/react/admin/DbBrowserSection';
 
 // jsdom doesn't implement scrollIntoView
