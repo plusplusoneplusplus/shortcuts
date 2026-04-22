@@ -28,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
 
 async function renderTab(workspaceId = 'ws-1') {
     const { RepoCopilotTab } = await import(
-        '../../../../src/server/spa/client/react/repos/RepoCopilotTab'
+        '../../../../src/server/spa/client/react/features/repo-detail/RepoCopilotTab'
     );
     const { AppProvider } = await import(
         '../../../../src/server/spa/client/react/context/AppContext'

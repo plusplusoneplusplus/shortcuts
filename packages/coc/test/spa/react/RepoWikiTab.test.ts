@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 describe('RepoWikiTab', () => {
-    const componentPath = path.resolve(__dirname, '../../../src/server/spa/client/react/repos/RepoWikiTab.tsx');
+    const componentPath = path.resolve(__dirname, '../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab.tsx');
     let content: string;
 
     beforeAll(() => {
@@ -186,7 +186,7 @@ describe('RepoWikiTab', () => {
     });
 
     describe('integration with RepoDetail', () => {
-        const detailPath = path.resolve(__dirname, '../../../src/server/spa/client/react/repos/RepoDetail.tsx');
+        const detailPath = path.resolve(__dirname, '../../../src/server/spa/client/react/features/repo-detail/RepoDetail.tsx');
         let detailContent: string;
 
         beforeAll(() => {

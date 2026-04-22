@@ -17,7 +17,7 @@ import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 import { WikiAdmin } from '../../../../src/server/spa/client/react/wiki/WikiAdmin';
 import { WikiDetail } from '../../../../src/server/spa/client/react/wiki/WikiDetail';
 import { WikiGraph } from '../../../../src/server/spa/client/react/wiki/WikiGraph';
-import { RepoWikiTab } from '../../../../src/server/spa/client/react/repos/RepoWikiTab';
+import { RepoWikiTab } from '../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab';
 
 const noopToast = { addToast: () => {}, removeToast: () => {}, toasts: [] };
 

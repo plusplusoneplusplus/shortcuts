@@ -13,7 +13,7 @@ import {
     VALID_REPO_SUB_TABS,
     REPO_TAB_SHORTCUTS,
 } from '../../../src/server/spa/client/react/layout/Router';
-import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
+import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
 const ROUTER_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout', 'Router.tsx'),

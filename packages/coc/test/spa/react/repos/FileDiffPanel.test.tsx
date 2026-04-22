@@ -98,7 +98,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/DiffMiniMap', () => ({
 }));
 
 // Mock CommitChatPanel
-vi.mock('../../../../src/server/spa/client/react/repos/CommitChatPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
     CommitChatPanel: ({ workspaceId, commitHash, commitMessage, onClose }: any) => (
         <div data-testid="commit-chat-panel" data-ws={workspaceId} data-hash={commitHash} data-msg={commitMessage}>
             <button data-testid="close-chat" onClick={onClose}>Close</button>

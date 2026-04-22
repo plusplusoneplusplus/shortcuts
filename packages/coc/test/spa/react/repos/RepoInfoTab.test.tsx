@@ -26,7 +26,7 @@ const baseRepo = {
 
 async function renderTab(repo = baseRepo) {
     const { RepoInfoTab } = await import(
-        '../../../../src/server/spa/client/react/repos/RepoInfoTab'
+        '../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab'
     );
     return render(<RepoInfoTab repo={repo as any} />);
 }

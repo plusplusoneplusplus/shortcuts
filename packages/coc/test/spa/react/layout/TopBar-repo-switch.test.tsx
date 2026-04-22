@@ -35,7 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoTabStrip', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip', () => ({
     RepoTabStrip: ({ onSelect }: { onSelect: (id: string) => void }) => {
         capturedOnSelect = onSelect;
         return <button data-testid="mock-repo-btn" onClick={() => onSelect('new-repo')} />;

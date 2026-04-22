@@ -62,7 +62,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     HunkNavButtons: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/CommitChatPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
     CommitChatPanel: () => null,
 }));
 

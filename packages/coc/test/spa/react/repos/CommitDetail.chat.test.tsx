@@ -80,7 +80,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/CommentSidebar',
 }));
 
 let mockChatPanelProps: Record<string, unknown> | null = null;
-vi.mock('../../../../src/server/spa/client/react/repos/CommitChatPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
     CommitChatPanel: (props: any) => {
         mockChatPanelProps = props;
         return (

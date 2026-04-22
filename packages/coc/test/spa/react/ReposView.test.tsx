@@ -20,12 +20,12 @@ import {
 import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGrouping';
 import { RepoCard } from '../../../src/server/spa/client/react/repos/RepoCard';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
-import { RepoInfoTab } from '../../../src/server/spa/client/react/repos/RepoInfoTab';
+import { RepoInfoTab } from '../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab';
 import { TemplatesTab } from '../../../src/server/spa/client/react/features/templates/TemplatesTab';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRepoDialog';
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
-import { RepoDetail } from '../../../src/server/spa/client/react/repos/RepoDetail';
+import { RepoDetail } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
 // Mock ReposContext so ReposView renders without making real API calls
 vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({

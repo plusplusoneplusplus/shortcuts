@@ -3,7 +3,7 @@ import type {
     CommentThread,
     PullRequest,
     Reviewer,
-} from '../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+} from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 import {
     MOCK_PR_LIST,
     MOCK_PR_OPEN,

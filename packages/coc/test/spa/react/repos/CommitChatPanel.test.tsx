@@ -43,7 +43,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', () => ({
     ),
 }));
 
-import { CommitChatPanel } from '../../../../src/server/spa/client/react/repos/CommitChatPanel';
+import { CommitChatPanel } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel';
 
 describe('CommitChatPanel', () => {
     beforeEach(() => {

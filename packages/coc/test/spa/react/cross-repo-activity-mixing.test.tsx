@@ -96,7 +96,7 @@ function SeededRepoDetail({ workspaces, selectedRepoId, activeSubTab }: {
         }
     }, [dispatch, workspaces, selectedRepoId, activeSubTab]);
     // Lazy import to avoid pulling in all tab dependencies at module level
-    const RepoDetail = require('../../../src/server/spa/client/react/repos/RepoDetail').RepoDetail;
+    const RepoDetail = require('../../../src/server/spa/client/react/features/repo-detail/RepoDetail').RepoDetail;
     return <RepoDetail />;
 }
 

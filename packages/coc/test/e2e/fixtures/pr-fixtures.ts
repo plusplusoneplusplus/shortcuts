@@ -3,7 +3,7 @@ import type {
     Reviewer,
     PrComment,
     CommentThread,
-} from '../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+} from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 // ---------------------------------------------------------------------------
 // Factory functions
