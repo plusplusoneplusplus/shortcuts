@@ -18,7 +18,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 // ============================================================================
 
 const COMPONENT_PATH = path.resolve(
-    __dirname, '../../../src/server/spa/client/react/repos/WorkingTreeAllComments.tsx'
+    __dirname, '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllComments.tsx'
 );
 
 // ============================================================================
@@ -44,7 +44,7 @@ vi.mock('../../../src/server/spa/client/react/tasks/comments/CommentSidebar', ()
         ),
 }));
 
-import { WorkingTreeAllComments } from '../../../src/server/spa/client/react/repos/WorkingTreeAllComments';
+import { WorkingTreeAllComments } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllComments';
 
 // ============================================================================
 // Helpers

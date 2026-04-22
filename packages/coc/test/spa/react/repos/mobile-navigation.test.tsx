@@ -12,8 +12,8 @@ import * as path from 'path';
 import { mockViewport } from '../../helpers/viewport-mock';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const CHAT_HEADER_SRC = path.join(REACT_SRC, 'repos', 'ChatHeader.tsx');
-const ACTIVITY_LIST_PANE_SRC = path.join(REACT_SRC, 'repos', 'ChatListPane.tsx');
+const CHAT_HEADER_SRC = path.join(REACT_SRC, 'features', 'chat', 'ChatHeader.tsx');
+const ACTIVITY_LIST_PANE_SRC = path.join(REACT_SRC, 'features', 'chat', 'ChatListPane.tsx');
 const PROCESSES_VIEW_SRC = path.join(REACT_SRC, 'processes', 'ProcessesView.tsx');
 const TAILWIND_CSS_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'tailwind.css');
 
@@ -164,7 +164,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
 }));
 
 // Mock heavy ChatHeader dependencies to prevent timeout during dynamic import
-vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => 800,
 }));
 
@@ -177,7 +177,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
 
@@ -195,7 +195,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusLabel: (s: string) => s,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 
@@ -203,7 +203,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu', () => ({
     ChatHeaderOverflowMenu: () => null,
 }));
 
@@ -239,7 +239,7 @@ describe('ChatListPane — mobile FAB rendering', () => {
     }
 
     async function renderWithProviders(props: Record<string, any>) {
-        const { ChatListPane } = await import('../../../../src/server/spa/client/react/repos/ChatListPane');
+        const { ChatListPane } = await import('../../../../src/server/spa/client/react/features/chat/ChatListPane');
         const { ChatPreferencesProvider } = await import('../../../../src/server/spa/client/react/context/ChatPreferencesContext');
         return render(
             <ChatPreferencesProvider workspaceId="test-ws">

@@ -21,7 +21,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 // ============================================================================
 
 const COMPONENT_PATH = path.resolve(
-    __dirname, '../../../../src/server/spa/client/react/repos/BranchRangeAllComments.tsx'
+    __dirname, '../../../../src/server/spa/client/react/features/git/branches/BranchRangeAllComments.tsx'
 );
 
 // ============================================================================
@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     Spinner: () => React.createElement('span', { 'data-testid': 'spinner' }, '…'),
 }));
 
-import { BranchRangeAllComments } from '../../../../src/server/spa/client/react/repos/BranchRangeAllComments';
+import { BranchRangeAllComments } from '../../../../src/server/spa/client/react/features/git/branches/BranchRangeAllComments';
 
 // ============================================================================
 // Helpers

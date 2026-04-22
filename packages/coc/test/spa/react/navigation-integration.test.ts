@@ -14,12 +14,12 @@ import * as path from 'path';
 const SRC_ROOT = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 
 const PIPELINE_RUN_HISTORY_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'WorkflowRunHistory.tsx'),
+    path.join(SRC_ROOT, 'features', 'workflow', 'WorkflowRunHistory.tsx'),
     'utf-8',
 );
 
 const REPO_DETAIL_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'RepoDetail.tsx'),
+    path.join(SRC_ROOT, 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 
@@ -29,19 +29,19 @@ const PROCESS_DETAIL_SRC = fs.readFileSync(
 );
 
 const USE_PIPELINE_PROGRESS_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'hooks', 'useWorkflowProgress.ts'),
+    path.join(SRC_ROOT, 'features', 'workflow', 'hooks', 'useWorkflowProgress.ts'),
     'utf-8',
 );
 
 const ACTIVITY_LIST_PANE_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'ChatListPane.tsx'),
+    path.join(SRC_ROOT, 'features', 'chat', 'ChatListPane.tsx'),
     'utf-8',
 );
 
 // ─── ChatListPane: mini progress indicator ─────
 describe('ChatListPane: mini progress indicator', () => {
     it('imports useWorkflowProgress', () => {
-        expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../features/workflow/hooks/useWorkflowProgress'");
+        expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress'");
     });
 
     it('QueueTaskItem calls useWorkflowProgress for running pipeline tasks', () => {
@@ -124,7 +124,7 @@ describe('WorkflowRunHistory: workflow navigation', () => {
 // ─── RepoDetail: workflow sub-tab rendering ─────────────────────
 describe('RepoDetail: workflow sub-tab rendering', () => {
     it('imports WorkflowDetailView', () => {
-        expect(REPO_DETAIL_SRC).toContain("import { WorkflowDetailView } from '../processes/dag'");
+        expect(REPO_DETAIL_SRC).toContain("import { WorkflowDetailView } from '../../processes/dag'");
     });
 
     it('renders WorkflowDetailView when activeSubTab is workflow', () => {

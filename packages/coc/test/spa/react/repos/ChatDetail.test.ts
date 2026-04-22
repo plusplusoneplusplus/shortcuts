@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_CHAT_DETAIL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatDetail.tsx'
 );
 
 const PENDING_PAYLOAD_PATH = path.join(
@@ -24,13 +24,13 @@ const PENDING_INFO_PATH = path.join(
 );
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'hooks', 'useSendMessage.ts'), 'utf-8');
-const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'hooks', 'useChatSSE.ts'), 'utf-8');
-const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'FollowUpInputArea.tsx'), 'utf-8');
-const CHAT_HEADER_SRC = fs.readFileSync(path.join(REACT_SRC, 'repos', 'ChatHeader.tsx'), 'utf-8');
-const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'ConversationArea.tsx'), 'utf-8');
+const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'hooks', 'useSendMessage.ts'), 'utf-8');
+const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'hooks', 'useChatSSE.ts'), 'utf-8');
+const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'FollowUpInputArea.tsx'), 'utf-8');
+const CHAT_HEADER_SRC = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'ChatHeader.tsx'), 'utf-8');
+const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'ConversationArea.tsx'), 'utf-8');
 const MODE_CONFIG_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'modeConfig.ts'), 'utf-8');
-const QUEUED_BUBBLE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'QueuedBubble.tsx'), 'utf-8');
+const QUEUED_BUBBLE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'QueuedBubble.tsx'), 'utf-8');
 const CHAT_UTILS_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'utils', 'chatUtils.ts'), 'utf-8');
 
 describe('ChatDetail', () => {
@@ -247,11 +247,11 @@ describe('ChatDetail', () => {
 
     describe('file attachment integration', () => {
         it('imports useFileAttachments hook', () => {
-            expect(source).toContain("import { useFileAttachments } from '../hooks/useFileAttachments'");
+            expect(source).toContain("import { useFileAttachments } from './hooks/useFileAttachments'");
         });
 
         it('imports AttachmentPreviews component', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { AttachmentPreviews } from '../shared/AttachmentPreviews'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { AttachmentPreviews } from '../../shared/AttachmentPreviews'");
         });
 
         it('destructures useFileAttachments result', () => {
@@ -427,7 +427,7 @@ describe('ChatDetail', () => {
 
     describe('PendingTaskInfoPanel integration', () => {
         it('imports PendingTaskInfoPanel', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
+            expect(CONVERSATION_AREA_SOURCE).toContain("import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel'");
         });
 
         it('renders PendingTaskInfoPanel for pending tasks', () => {
@@ -456,7 +456,7 @@ describe('ChatDetail', () => {
 
     describe('conversation caching', () => {
         it('imports useApp from AppContext', () => {
-            expect(source).toContain("import { useApp } from '../context/AppContext'");
+            expect(source).toContain("import { useApp } from '../../context/AppContext'");
         });
 
         it('declares CACHE_TTL_MS constant', () => {
@@ -940,7 +940,7 @@ describe('ChatDetail', () => {
     describe('ConversationMiniMap integration', () => {
         it('imports ConversationMiniMap from chat directory', () => {
             expect(source).toContain("import { ConversationMiniMap }");
-            expect(source).toContain("'../chat/ConversationMiniMap'");
+            expect(source).toContain("'./conversation/ConversationMiniMap'");
         });
 
         it('declares turnsContainerRef', () => {
@@ -980,7 +980,7 @@ describe('ChatDetail', () => {
         });
 
         it('imports useBreakpoint hook', () => {
-            expect(source).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
+            expect(source).toContain("import { useBreakpoint } from '../../hooks/ui/useBreakpoint'");
         });
 
         it('destructures isMobile from useBreakpoint', () => {

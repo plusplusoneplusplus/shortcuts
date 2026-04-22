@@ -12,11 +12,11 @@ const mockUseDiffComments = vi.fn();
 const mockUseFileDiff = vi.fn();
 const mockQueueDispatch = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/useFileDiff', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileDiff', () => ({
     useFileDiff: (...args: any[]) => mockUseFileDiff(...args),
 }));
 
@@ -29,7 +29,7 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
@@ -39,12 +39,12 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
 
 // Mock view mode
 let mockViewMode = 'unified';
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffViewMode', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffViewMode', () => ({
     useDiffViewMode: () => [mockViewMode, (mode: string) => { mockViewMode = mode; }],
 }));
 
 // Mock UnifiedDiffViewer
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ onAddComment, onCommentClick, onAskAI, comments, 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-diff-viewer'} data-comment-count={String(comments?.length ?? 0)}>
             <button
@@ -77,14 +77,14 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
 }));
 
 // Mock SideBySideDiffViewer
-vi.mock('../../../../src/server/spa/client/react/repos/SideBySideDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer', () => ({
     SideBySideDiffViewer: ({ 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-sbs-diff-viewer'}>SideBySide</div>
     ),
 }));
 
 // Mock DiffViewToggle
-vi.mock('../../../../src/server/spa/client/react/repos/DiffViewToggle', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle', () => ({
     DiffViewToggle: ({ mode, onChange }: any) => (
         <button data-testid="diff-view-toggle" onClick={() => onChange(mode === 'unified' ? 'split' : 'unified')}>
             {mode}
@@ -93,7 +93,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/DiffViewToggle', () => ({
 }));
 
 // Mock DiffMiniMap
-vi.mock('../../../../src/server/spa/client/react/repos/DiffMiniMap', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap', () => ({
     DiffMiniMap: () => <div data-testid="diff-mini-map" />,
 }));
 
@@ -107,7 +107,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 // Mock useResizablePanel
-vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 360,
         isDragging: false,
@@ -129,13 +129,15 @@ vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal)
 });
 
 // Mock useCrossFileNav
-vi.mock('../../../../src/server/spa/client/react/repos/useCrossFileNav', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCrossFileNav', () => ({
     useCrossFileNav: () => ({ handleNext: vi.fn(), handlePrev: vi.fn() }),
 }));
 
 // Mock shared/ResolveContextDialog
 vi.mock('../../../../src/server/spa/client/react/shared/ResolveContextDialog', () => ({
     shouldSkipResolveDialog: () => false,
+    ResolveContextDialog: () => null,
+    resetSkipResolveDialog: () => {},
 }));
 
 // Mock diff-context-utils
@@ -149,8 +151,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { FileDiffPanel } from '../../../../src/server/spa/client/react/repos/FileDiffPanel';
-import type { DiffSource } from '../../../../src/server/spa/client/react/repos/diffSource';
+import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import type { DiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 // --- Helpers ---
 
