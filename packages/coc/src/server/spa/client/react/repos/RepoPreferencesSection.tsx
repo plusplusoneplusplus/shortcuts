@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences, type SkillMode } from '../hooks/usePreferences';
 import { useModels, type ModelInfo } from '../hooks/useModels';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
+import { useUiLayoutMode } from '../hooks/useUiLayoutMode';
 import { useGlobalToast } from '../context/ToastContext';
 import { useRepos } from '../context/ReposContext';
 import { getApiBase } from '../utils/config';
@@ -27,6 +28,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const prefs = usePreferences(workspaceId);
     const { models: availableModels, loading: modelsLoading } = useModels();
     const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
+    const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const { repos } = useRepos();
 
     // Available skills
@@ -186,6 +188,18 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                     >
                         <option value="tree">tree</option>
                         <option value="flat">flat</option>
+                    </select>
+                </div>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                    <label className={labelClass}>UI Mode</label>
+                    <select
+                        className={selectClass}
+                        value={uiLayoutMode}
+                        onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
+                        data-testid="pref-ui-layout-mode"
+                    >
+                        <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
+                        <option value="classic">Classic (Activity)</option>
                     </select>
                 </div>
             </div>
