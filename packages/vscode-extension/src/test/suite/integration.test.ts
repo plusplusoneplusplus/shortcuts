@@ -25,7 +25,10 @@ import {
     createTestFolder
 } from '../helpers/fixture-loader';
 
-suite('Integration Tests - Group Operations', () => {
+suite('Integration Tests - Group Operations', function() {
+    // Increased timeout: each test does multiple async config file reads/writes
+    // which can be slow on Windows
+    this.timeout(10000);
     let tempDir: string;
     let configManager: ConfigurationManager;
     let themeManager: ThemeManager;

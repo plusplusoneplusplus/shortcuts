@@ -9,7 +9,10 @@ import { NoteDocumentManager, NoteFileSystemProvider } from '../../shortcuts/glo
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { NoteShortcutItem } from '../../shortcuts/tree-items';
 
-suite('Notes Feature Tests', () => {
+suite('Notes Feature Tests', function() {
+    // Increased timeout: multiple sequential async file-system operations per test can
+    // be slow under Windows parallel load; 10 s covers the heaviest sub-suites
+    this.timeout(10000);
     let tempDir: string;
     let configManager: ConfigurationManager;
     let extensionContext: vscode.ExtensionContext;

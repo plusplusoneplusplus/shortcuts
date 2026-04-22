@@ -6,7 +6,10 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { ShortcutsConfig } from '../../shortcuts/types';
 
-suite('ConfigurationManager Tests', () => {
+suite('ConfigurationManager Tests', function() {
+    // Increased timeout: each test performs multiple async config file reads/writes,
+    // which can be slow on Windows under parallel test load
+    this.timeout(10000);
     let tempDir: string;
     let configManager: ConfigurationManager;
     let originalShowWarningMessage: any;

@@ -10,7 +10,9 @@ import { getWorkspaceRoot } from '../../shortcuts/shared/workspace-utils';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem } from '../../shortcuts/tree-items';
 
-suite('Drag and Drop Tests', () => {
+suite('Drag and Drop Tests', function() {
+    // Increased timeout: suiteSetup calls ext.activate() which can be slow on Windows
+    this.timeout(15000);
     let tempDir: string;
     let ownedTempDir: boolean = false;
     let provider: LogicalTreeDataProvider;

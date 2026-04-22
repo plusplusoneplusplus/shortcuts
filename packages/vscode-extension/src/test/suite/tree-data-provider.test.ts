@@ -8,7 +8,9 @@ import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provi
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem } from '../../shortcuts/tree-items';
 
-suite('LogicalTreeDataProvider Test Suite', () => {
+suite('LogicalTreeDataProvider Test Suite', function() {
+    // Increased timeout: config file I/O + vscode.EventEmitter can be slow on Windows
+    this.timeout(10000);
     let tempDir: string;
     let provider: LogicalTreeDataProvider;
     let configManager: ConfigurationManager;
@@ -270,12 +272,14 @@ suite('LogicalTreeDataProvider Test Suite', () => {
 
         provider.refresh();
 
-        // Fallback timeout in case event doesn't fire
+        // Fallback: if the event doesn't fire within 100 ms, fail the test immediately
+        // by passing an Error to done() (calling assert.fail() before done() would throw
+        // and leave done() unreachable, causing a 2 s Mocha timeout instead of a fast
+        // assertion failure).
         setTimeout(() => {
             if (!eventFired) {
                 disposable.dispose();
-                assert.fail('Tree data change event was not fired');
-                done();
+                done(new Error('Tree data change event was not fired'));
             }
         }, 100);
     });

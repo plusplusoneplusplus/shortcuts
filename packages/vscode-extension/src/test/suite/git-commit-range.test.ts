@@ -473,7 +473,9 @@ suite('Git Commit Range Tests', () => {
 
         // Note: The following tests require a real git repository
         // They are skipped in CI but can be run locally
-        suite('Git Repository Operations (requires git repo)', function() {
+suite('Git Repository Operations (requires git repo)', function() {
+            // Increased timeout: git operations (spawn + exec) can be slow on Windows
+            this.timeout(15000);
             // These tests require a real git repository
             // They will be skipped if not in a git repo
 

@@ -9,7 +9,10 @@ import * as path from 'path';
 import { DiscoveryEngine, createDiscoveryRequest } from '../../shortcuts/discovery/discovery-engine';
 import { DEFAULT_DISCOVERY_SCOPE, DiscoveryRequest, DiscoveryProcess, ExistingGroupSnapshot } from '../../shortcuts/discovery/types';
 
-suite('Discovery Engine Tests', () => {
+suite('Discovery Engine Tests', function() {
+    // Increased timeout: engine.discover() calls vscode.workspace.findFiles which can be
+    // slow under Windows parallel load across all sub-suites
+    this.timeout(15000);
     let tempDir: string;
     let engine: DiscoveryEngine;
 

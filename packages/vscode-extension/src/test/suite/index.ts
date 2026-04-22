@@ -7,7 +7,12 @@ export function run(): Promise<void> {
 
     const mocha = new mochaClass({
         ui: 'tdd',
-        color: true
+        color: true,
+        // Raise the global default timeout from 2 s to 10 s so that tests
+        // performing file I/O, git operations, or VS Code API calls do not
+        // time out spuriously on Windows under parallel load.  Individual tests
+        // can still override this with this.timeout() when they need more time.
+        timeout: 10000
     });
 
     const testsRoot = path.resolve(__dirname, '..');

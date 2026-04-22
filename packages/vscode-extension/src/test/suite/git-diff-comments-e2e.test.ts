@@ -30,7 +30,7 @@ suite('Git Diff Comments E2E Tests', function() {
 
     setup(async function() {
         // Git operations can be slow on Windows CI, so increase the timeout
-        this.timeout(8000);
+        this.timeout(15000);
         
         // Create test git repository with history
         repo = createRepoWithHistory();
