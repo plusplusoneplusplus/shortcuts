@@ -18,7 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent, act } from '@testing-library/react';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { renderWithProviders } from '../test-utils';
 import { useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { useApp } from '../../../../src/server/spa/client/react/context/AppContext';
@@ -244,6 +244,32 @@ function WsSimulator({ dispatchRef }: { dispatchRef: { current: ((queue: any) =>
         dispatch({ type: 'REPO_QUEUE_UPDATED' as const, repoId: 'ws-1', queue });
     };
     return null;
+}
+
+/** Helper component that dispatches SELECT_QUEUE_TASK on mount to simulate deep-link navigation */
+function DeepLinkSimulator({ taskId, repoId = 'ws-1' }: { taskId: string; repoId?: string }) {
+    const { dispatch } = useQueue();
+    useEffect(() => {
+        dispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
+    }, [dispatch, taskId, repoId]);
+    return null;
+}
+
+/** Render RepoChatTab with a pre-selected task (simulates deep-link / page refresh). */
+async function renderTabWithDeepLink(taskId: string, workspaceId = 'ws-1') {
+    let result: ReturnType<typeof renderWithProviders> | undefined;
+    await act(async () => {
+        result = renderWithProviders(
+            React.createElement(React.Fragment, null,
+                React.createElement(DeepLinkSimulator, { taskId, repoId: workspaceId }),
+                React.createElement(RepoChatTab, { workspaceId }),
+            ),
+        );
+    });
+    await waitFor(() => {
+        expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+    });
+    return result!;
 }
 
 // ── Setup / Teardown ───────────────────────────────────────────────────
@@ -689,6 +715,37 @@ describe('RepoChatTab: mobile behavior', () => {
             const lastDetailProps = mockDetailPane.mock.calls.at(-1)?.[0];
             expect(typeof lastDetailProps?.onBack).toBe('function');
         });
+    });
+
+    it('deep-link shows detail pane on mobile (regression: selectedTaskId set before mount)', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTabWithDeepLink('proc-r1');
+
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('activity-mobile-list')).toBeNull();
+    });
+
+    it('deep-link on mobile then back returns to list (regression)', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTabWithDeepLink('proc-r1');
+
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
+        });
+
+        // Click back
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('back-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-mobile-list')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('activity-detail-panel')).toBeNull();
     });
 });
 

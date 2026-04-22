@@ -260,7 +260,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         selectedTaskRef.current = found;
     }, [selectedTaskId, running, queued, history]);
 
-    // Reset mobile detail view when selection is cleared, unless the new-chat flow set it
+    // Sync mobile detail view with selectedTaskId (handles deep links, back-button, page refresh)
     useEffect(() => {
         if (!selectedTaskId) {
             if (mobileNewChatRef.current) {
@@ -268,8 +268,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 return;
             }
             setMobileShowDetail(false);
+        } else if (isMobile) {
+            setMobileShowDetail(true);
         }
-    }, [selectedTaskId]);
+    }, [selectedTaskId, isMobile]);
 
     // Track unseen activity for completed tasks
     const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenChat(workspaceId, history, selectedTaskId);
