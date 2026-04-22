@@ -224,11 +224,11 @@ function setupFetchMock(opts: {
     });
 }
 
-async function renderTab(workspaceId = 'ws-1') {
+async function renderTab(workspaceId = 'ws-1', mode?: 'chats' | 'tasks') {
     let result: ReturnType<typeof renderWithProviders> | undefined;
     await act(async () => {
         result = renderWithProviders(
-            React.createElement(RepoChatTab, { workspaceId }),
+            React.createElement(RepoChatTab, { workspaceId, mode }),
         );
     });
     await waitFor(() => {
@@ -455,6 +455,35 @@ describe('RepoChatTab: task selection', () => {
 
         // URL now uses processId derived from task.processId
         expect(location.hash).toContain('/activity/proc-r1');
+    });
+
+    it('clicking a task in mode="chats" writes /chats/ path (not legacy /activity/) to avoid redirect blink', async () => {
+        // Regression: writing /activity/ in dev-workflow mode triggers the Router's
+        // legacy redirect (location.replace to /chats/), firing a second hashchange
+        // and an extra render cycle visible as a one-frame blink.
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab('ws-1', 'chats');
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        expect(location.hash).toContain('/chats/proc-r1');
+        expect(location.hash).not.toContain('/activity/');
+    });
+
+    it('clicking a task in mode="tasks" writes /tasks/ path', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab('ws-1', 'tasks');
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        expect(location.hash).toContain('/tasks/proc-r1');
+        expect(location.hash).not.toContain('/activity/');
     });
 
     it('clicking run-workflow task routes to /workflow/ hash', async () => {

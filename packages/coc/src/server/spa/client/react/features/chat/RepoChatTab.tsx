@@ -322,7 +322,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
-        const tabSegment = mode === 'tasks' ? 'tasks' : 'activity';
+        // Use the canonical path segment matching `mode` so the Router doesn't
+        // fire a legacy /activity/ → /chats/ redirect (location.replace), which
+        // causes an extra hashchange + render cycle visible as a one-frame blink.
+        const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/' + encodeURIComponent(processId);
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId, mode]);
