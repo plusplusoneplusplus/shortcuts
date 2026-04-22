@@ -44,6 +44,11 @@ vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () =
     ),
 }));
 
+let mockUiLayoutMode = 'classic';
+vi.mock('../../../../src/server/spa/client/react/hooks/useUiLayoutMode', () => ({
+    useUiLayoutMode: () => [mockUiLayoutMode, vi.fn()],
+}));
+
 const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: string) => ({
     workspace: { id, name, rootPath: `/repos/${id}`, color, remoteUrl },
     stats: { success: 0, failed: 0, running: 0 },
@@ -54,6 +59,7 @@ const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: strin
 describe('RepoTabStrip', () => {
     beforeEach(() => {
         cleanup();
+        mockUiLayoutMode = 'classic';
         mockFetchApi.mockReset().mockResolvedValue({ gitGroupOrder: [] });
     });
 
@@ -737,5 +743,65 @@ describe('RepoTabStrip', () => {
         // Bravo should come first per the saved order
         expect(tabs[0].textContent).toContain('Bravo');
         expect(tabs[1].textContent).toContain('Alpha');
+    });
+
+    describe('context menu — layout mode visibility', () => {
+        beforeEach(() => {
+            Object.assign(navigator, {
+                clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+            });
+        });
+
+        it('classic mode: context menu shows Queue Task, Ask, and Generate Plan', () => {
+            mockUiLayoutMode = 'classic';
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-queue-task')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-ask')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-generate-plan')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-run-script')).toBeDefined();
+        });
+
+        it('dev-workflow mode: context menu hides Queue Task, Ask, and Generate Plan', () => {
+            mockUiLayoutMode = 'dev-workflow';
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.queryByTestId('repo-tab-context-queue-task')).toBeNull();
+            expect(screen.queryByTestId('repo-tab-context-ask')).toBeNull();
+            expect(screen.queryByTestId('repo-tab-context-generate-plan')).toBeNull();
+        });
+
+        it('dev-workflow mode: context menu still shows Run Script, Edit, Remove', () => {
+            mockUiLayoutMode = 'dev-workflow';
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-run-script')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-edit')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-remove')).toBeDefined();
+        });
     });
 });

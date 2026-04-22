@@ -465,15 +465,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 &gt;_ Launch CLI
                             </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                                title="Queue a new AI task (Alt+Q)"
-                                data-testid="repo-queue-task-btn"
-                            >
-                                🤖 Queue Task
-                            </Button>
+                            {uiLayoutMode === 'classic' && (
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                    title="Queue a new AI task (Alt+Q)"
+                                    data-testid="repo-queue-task-btn"
+                                >
+                                    🤖 Queue Task
+                                </Button>
+                            )}
                             <Button
                                 variant="primary"
                                 size="sm"
@@ -483,21 +485,25 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 🛠️ Prompt & Script
                             </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                title="Ask AI a question (read-only)"
-                                data-testid="repo-ask-btn"
-                            >
-                                💡 Ask
-                            </Button>
-                            <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                                📋 Generate Plan
-                                {generateDialog.open && generateDialog.minimized && (
-                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
-                                )}
-                            </Button>
+                            {uiLayoutMode === 'classic' && (
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                    title="Ask AI a question (read-only)"
+                                    data-testid="repo-ask-btn"
+                                >
+                                    💡 Ask
+                                </Button>
+                            )}
+                            {uiLayoutMode === 'classic' && (
+                                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                    📋 Generate Plan
+                                    {generateDialog.open && generateDialog.minimized && (
+                                        <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                    )}
+                                </Button>
+                            )}
 
                         </div>
                     </>
@@ -515,10 +521,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
                     actions={[
-                        { label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) },
-                        { label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) },
-                        { label: 'Prompt & Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
-                        { label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() },
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
+                        { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() }] : []),
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
                             ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
                             : []),
