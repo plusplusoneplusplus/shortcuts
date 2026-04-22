@@ -8,8 +8,8 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { ScheduleDetail } from '../../../src/server/spa/client/react/repos/ScheduleDetail';
-import type { Schedule } from '../../../src/server/spa/client/react/repos/scheduleTypes';
+import { ScheduleDetail } from '../../../src/server/spa/client/react/features/schedules/ScheduleDetail';
+import type { Schedule } from '../../../src/server/spa/client/react/features/schedules/scheduleTypes';
 
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,

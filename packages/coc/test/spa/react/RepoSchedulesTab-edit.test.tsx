@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { parseCronToInterval } from '../../../src/server/spa/client/react/repos/RepoSchedulesTab';
+import { parseCronToInterval } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
 const MOCK_SCHEDULE = {
     id: 'sched-1',

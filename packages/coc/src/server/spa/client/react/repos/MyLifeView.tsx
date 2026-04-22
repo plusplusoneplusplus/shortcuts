@@ -10,7 +10,7 @@ import { useState, useCallback } from 'react';
 import { NotesView } from './NotesView';
 import { RepoChatTab } from './RepoChatTab';
 import { NotesGitTab } from './NotesGitTab';
-import { RepoSchedulesTab } from './RepoSchedulesTab';
+import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';

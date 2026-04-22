@@ -3,20 +3,20 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { cn } from '../shared';
-import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useResizablePanel } from '../hooks/useResizablePanel';
-import { useApp } from '../context/AppContext';
-import { useNotesAutoCommit } from '../hooks/useNotesAutoCommit';
+import { cn } from '../../shared';
+import { fetchApi } from '../../hooks/useApi';
+import { getApiBase } from '../../utils/config';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { useApp } from '../../context/AppContext';
+import { useNotesAutoCommit } from '../../hooks/useNotesAutoCommit';
 import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import type { Schedule, RunRecord } from './scheduleTypes';
 
 // Re-export cron utilities that external code may reference
-export { parseCronToInterval, describeCron, CRON_EXAMPLES } from '../utils/cron';
+export { parseCronToInterval, describeCron, CRON_EXAMPLES } from '../../utils/cron';
 // Re-export for any consumers of these named exports
 export { SCHEDULE_TEMPLATES } from './scheduleTemplates';
 export { ScheduleDetail } from './ScheduleDetail';

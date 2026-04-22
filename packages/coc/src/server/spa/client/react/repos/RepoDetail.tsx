@@ -13,7 +13,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { TemplatesTab } from './TemplatesTab';
 import { RepoChatTab } from './RepoChatTab';
-import { RepoSchedulesTab } from './RepoSchedulesTab';
+import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { RepoSettingsTab } from './RepoSettingsTab';

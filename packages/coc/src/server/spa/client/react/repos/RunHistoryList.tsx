@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
-import type { RunRecord } from './scheduleTypes';
+import type { RunRecord } from '../features/schedules/scheduleTypes';
 
 export const HISTORY_PAGE_SIZE = 20;
 

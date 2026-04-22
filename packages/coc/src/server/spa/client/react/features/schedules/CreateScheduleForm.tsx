@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Button, cn } from '../shared';
-import { getApiBase } from '../utils/config';
-import { fetchWorkflows } from './workflow-api';
-import { parseCronToInterval, describeCron, intervalToCron, CRON_EXAMPLES } from '../utils/cron';
+import { Button, cn } from '../../shared';
+import { getApiBase } from '../../utils/config';
+import { fetchWorkflows } from '../../repos/workflow-api';
+import { parseCronToInterval, describeCron, intervalToCron, CRON_EXAMPLES } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
-import { TaskDefs } from '../../../../task-types';
-import type { PipelineInfo } from './repoGrouping';
+import { TaskDefs } from '../../../../../task-types';
+import type { PipelineInfo } from '../../repos/repoGrouping';
 
 export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode = 'create', scheduleId, initialValues }: {
     workspaceId: string;

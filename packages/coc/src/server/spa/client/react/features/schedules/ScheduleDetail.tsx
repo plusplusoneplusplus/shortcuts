@@ -1,7 +1,7 @@
-import { Button } from '../shared';
-import { formatRelativeTime } from '../utils/format';
+import { Button } from '../../shared';
+import { formatRelativeTime } from '../../utils/format';
 import { StatusBadge, failureLabel } from './ScheduleStatusBadge';
-import { RunHistoryList } from './RunHistoryList';
+import { RunHistoryList } from '../../repos/RunHistoryList';
 import type { Schedule, RunRecord } from './scheduleTypes';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import { useState, useCallback } from 'react';

@@ -7,3 +7,5 @@
  * This barrel will re-export public surfaces as features are migrated here
  * from repos/, views/, and hooks/.
  */
+
+export * from './schedules';
