@@ -269,7 +269,7 @@ describe('autoExecute triggers re-execution after comment resolution', () => {
     });
 
     it('WorkItemDetail.tsx resolves commits via resolve-comments endpoint', async () => {
-        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'WorkItemDetail.tsx');
+        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemDetail.tsx');
         const src = await fs.readFile(srcPath, 'utf-8');
         // handleAutoResolveChange should call the work-item resolve-comments endpoint
         expect(src).toContain('/resolve-comments');
@@ -285,7 +285,7 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
     let src: string;
 
     beforeEach(async () => {
-        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'WorkItemDetail.tsx');
+        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemDetail.tsx');
         src = await fs.readFile(srcPath, 'utf-8');
     });
 

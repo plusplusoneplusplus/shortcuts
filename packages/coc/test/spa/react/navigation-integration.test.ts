@@ -41,7 +41,7 @@ const ACTIVITY_LIST_PANE_SRC = fs.readFileSync(
 // ─── ChatListPane: mini progress indicator ─────
 describe('ChatListPane: mini progress indicator', () => {
     it('imports useWorkflowProgress', () => {
-        expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
+        expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../features/workflow/hooks/useWorkflowProgress'");
     });
 
     it('QueueTaskItem calls useWorkflowProgress for running pipeline tasks', () => {

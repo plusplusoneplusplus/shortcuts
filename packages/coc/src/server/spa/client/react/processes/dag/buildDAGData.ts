@@ -1,6 +1,6 @@
 import type { DAGChartData, DAGNodeData, DAGNodeState } from './types';
 import type { PipelinePhaseStatus } from '@plusplusoneplusplus/forge';
-import type { LivePhaseEntry, LiveProgress } from '../../hooks/useWorkflowPhase';
+import type { LivePhaseEntry, LiveProgress } from '../../features/workflow/hooks/useWorkflowPhase';
 
 const knownPhaseLabels: Record<string, string> = {
     input: 'Input',

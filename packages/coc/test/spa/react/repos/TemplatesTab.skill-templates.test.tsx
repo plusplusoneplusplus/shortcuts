@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
-import type { SkillTemplate } from '../../../../src/server/spa/client/react/hooks/useSkillTemplates';
+import type { SkillTemplate } from '../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates';
 
 // ── Global stubs ──
 
@@ -37,7 +37,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
 
 const mockDeleteTemplate = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useSkillTemplates', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates', () => ({
     useSkillTemplates: vi.fn().mockReturnValue({
         templates: [],
         deleteTemplate: vi.fn(),
@@ -76,13 +76,13 @@ function makeRepo() {
 }
 
 async function renderTemplatesTab(skillTemplateOverride: SkillTemplate[] = SKILL_TEMPLATES) {
-    const { useSkillTemplates } = await import('../../../../src/server/spa/client/react/hooks/useSkillTemplates');
+    const { useSkillTemplates } = await import('../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates');
     vi.mocked(useSkillTemplates).mockReturnValue({
         templates: skillTemplateOverride,
         deleteTemplate: mockDeleteTemplate,
         loaded: true,
     });
-    const { TemplatesTab } = await import('../../../../src/server/spa/client/react/repos/TemplatesTab');
+    const { TemplatesTab } = await import('../../../../src/server/spa/client/react/features/templates/TemplatesTab');
     const repo = makeRepo();
     render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
     await waitFor(() => expect(screen.getByTestId('skill-templates-section')).toBeDefined());

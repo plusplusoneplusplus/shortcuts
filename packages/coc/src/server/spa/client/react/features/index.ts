@@ -9,3 +9,9 @@
  */
 
 export * from './schedules';
+export * from './terminal';
+export * from './work-items';
+export * from './workflow';
+export * from './templates';
+export * from './repo-settings';
+export * from './skills';

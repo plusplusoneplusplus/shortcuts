@@ -70,7 +70,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/diffSource', () => ({
 }));
 
 // Mock sub-components that are not under test
-vi.mock('../../../../src/server/spa/client/react/repos/WorkItemSection', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemSection', () => ({
     WorkItemSection: ({ onSelectWorkItem }: any) => (
         <div data-testid="mock-work-item-section">
             <button data-testid="select-work-item" onClick={() => onSelectWorkItem('wi-1')}>
@@ -80,7 +80,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/WorkItemSection', () => (
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/WorkItemDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemDetail', () => ({
     WorkItemDetail: ({ onViewCommit }: any) => (
         <div data-testid="mock-work-item-detail">
             <button data-testid="view-commit" onClick={() => onViewCommit('abc1234567890')}>
@@ -90,11 +90,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/WorkItemDetail', () => ({
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/WorkItemExecutionSession', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemExecutionSession', () => ({
     WorkItemExecutionSession: () => <div data-testid="mock-execution-session" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/CreateWorkItemDialog', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/work-items/CreateWorkItemDialog', () => ({
     CreateWorkItemDialog: () => null,
 }));
 
@@ -103,7 +103,7 @@ vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
     computeDiffCommentKey: vi.fn().mockResolvedValue('mock-key'),
 }));
 
-import { WorkItemsTab } from '../../../../src/server/spa/client/react/repos/WorkItemsTab';
+import { WorkItemsTab } from '../../../../src/server/spa/client/react/features/work-items/WorkItemsTab';
 
 const COMMIT_FILES = [
     { status: 'modified', path: 'src/utils/helper.ts' },

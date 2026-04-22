@@ -8,11 +8,11 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { WorkflowDetail } from '../../../src/server/spa/client/react/repos/WorkflowDetail';
-import { AddWorkflowDialog } from '../../../src/server/spa/client/react/repos/AddWorkflowDialog';
-import { TemplatesTab } from '../../../src/server/spa/client/react/repos/TemplatesTab';
+import { WorkflowDetail } from '../../../src/server/spa/client/react/features/workflow/WorkflowDetail';
+import { AddWorkflowDialog } from '../../../src/server/spa/client/react/features/workflow/AddWorkflowDialog';
+import { TemplatesTab } from '../../../src/server/spa/client/react/features/templates/TemplatesTab';
 import type { RepoData, WorkflowInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
-import * as pipelineApi from '../../../src/server/spa/client/react/repos/workflow-api';
+import * as pipelineApi from '../../../src/server/spa/client/react/features/workflow/workflow-api';
 
 // Mock fetchApi used by WorkflowRunHistory (rendered inside WorkflowDetail)
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({

@@ -41,7 +41,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => 
     };
 });
 
-import { RepoPreferencesSection } from '../../../../src/server/spa/client/react/repos/RepoPreferencesSection';
+import { RepoPreferencesSection } from '../../../../src/server/spa/client/react/features/repo-settings/RepoPreferencesSection';
 
 const mockFetch = vi.fn();
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, type RefObject } from 'react';
 import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildDAGData } from './buildDAGData';
-import { useWorkflowPhase } from '../../hooks/useWorkflowPhase';
+import { useWorkflowPhase } from '../../features/workflow/hooks/useWorkflowPhase';
 import { formatDuration, statusIcon } from '../../utils/format';
 import { detectDarkMode } from '../../utils/theme';
 import type { PhaseDetail } from './WorkflowPhasePopover';

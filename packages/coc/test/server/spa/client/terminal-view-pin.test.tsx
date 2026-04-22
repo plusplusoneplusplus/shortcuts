@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 // Mock TerminalPanel (it uses xterm.js which doesn't work in jsdom)
-vi.mock('../../../../src/server/spa/client/react/repos/TerminalPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel', () => ({
     TerminalPanel: ({ sessionId }: { sessionId: string }) => (
         <div data-testid={`mock-terminal-panel-${sessionId}`}>mock terminal</div>
     ),
@@ -17,7 +17,7 @@ vi.stubGlobal('crypto', {
     randomUUID: () => `test-uuid-${++uuidCounter}`,
 });
 
-import { TerminalView } from '../../../../src/server/spa/client/react/repos/TerminalView';
+import { TerminalView } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
 
 describe('TerminalView pin/unpin', () => {
     beforeEach(() => {

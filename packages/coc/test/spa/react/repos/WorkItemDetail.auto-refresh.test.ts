@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const WORK_ITEM_DETAIL_SRC_PATH = path.join(REACT_SRC, 'repos', 'WorkItemDetail.tsx');
+const WORK_ITEM_DETAIL_SRC_PATH = path.join(REACT_SRC, 'features', 'work-items', 'WorkItemDetail.tsx');
 
 describe('WorkItemDetail — auto-refresh via context', () => {
     let src: string;

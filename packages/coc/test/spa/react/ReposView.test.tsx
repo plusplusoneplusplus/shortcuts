@@ -21,7 +21,7 @@ import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGr
 import { RepoCard } from '../../../src/server/spa/client/react/repos/RepoCard';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import { RepoInfoTab } from '../../../src/server/spa/client/react/repos/RepoInfoTab';
-import { TemplatesTab } from '../../../src/server/spa/client/react/repos/TemplatesTab';
+import { TemplatesTab } from '../../../src/server/spa/client/react/features/templates/TemplatesTab';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRepoDialog';
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';

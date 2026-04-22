@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useRecentSkills } from '../../../../src/server/spa/client/react/hooks/useRecentSkills';
+import { useRecentSkills } from '../../../../src/server/spa/client/react/features/skills/hooks/useRecentSkills';
 
 // Mock fetch globally
 const fetchMock = vi.fn();

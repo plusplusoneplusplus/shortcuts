@@ -113,7 +113,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
 }));
 
 // ── Workflow progress ──
-vi.mock('../../../../src/server/spa/client/react/hooks/useWorkflowProgress', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress', () => ({
     useWorkflowProgress: () => null,
 }));
 

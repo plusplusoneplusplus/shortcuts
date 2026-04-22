@@ -10,7 +10,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
 import { useModels } from '../hooks/useModels';
-import { useScriptTemplates, type ScriptTemplate } from '../hooks/useScriptTemplates';
+import { useScriptTemplates, type ScriptTemplate } from '../features/templates/hooks/useScriptTemplates';
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';

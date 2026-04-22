@@ -18,7 +18,7 @@ import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { useSlashCommands } from '../repos/useSlashCommands';
 import { SlashCommandMenu } from '../repos/SlashCommandMenu';
-import { useSkillTemplates } from '../hooks/useSkillTemplates';
+import { useSkillTemplates } from '../features/templates/hooks/useSkillTemplates';
 import { TemplatesTab } from './TemplatesTab';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 import { SkillPicker } from './SkillPicker';

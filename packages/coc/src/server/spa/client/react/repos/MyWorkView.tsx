@@ -11,7 +11,7 @@ import { NotesView } from './NotesView';
 import { RepoChatTab } from './RepoChatTab';
 import { NotesGitTab } from './NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
-import { RepoSettingsTab } from './RepoSettingsTab';
+import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
 import { cn } from '../shared';

@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const PLAN_SECTION_PATH = path.join(REACT_SRC, 'repos', 'WorkItemPlanSection.tsx');
+const PLAN_SECTION_PATH = path.join(REACT_SRC, 'features', 'work-items', 'WorkItemPlanSection.tsx');
 
 describe('WorkItemPlanSection — inline review', () => {
     let src: string;

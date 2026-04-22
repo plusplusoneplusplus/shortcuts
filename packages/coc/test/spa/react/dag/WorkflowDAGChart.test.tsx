@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { WorkflowDAGChart } from '../../../../src/server/spa/client/react/repos/WorkflowDAGChart';
-import type { WorkflowPreviewData } from '../../../../src/server/spa/client/react/repos/buildPreviewDAG';
+import { WorkflowDAGChart } from '../../../../src/server/spa/client/react/features/workflow/WorkflowDAGChart';
+import type { WorkflowPreviewData } from '../../../../src/server/spa/client/react/features/workflow/buildPreviewDAG';
 
 function makeWorkflowData(): WorkflowPreviewData {
     const layers = new Map<string, number>();

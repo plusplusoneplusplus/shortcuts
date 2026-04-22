@@ -10,8 +10,8 @@ import {
     INSTRUCTION_MODES,
     INSTRUCTION_MODE_LABELS,
     MAX_INSTRUCTION_BYTES,
-} from '../../../../src/server/spa/client/react/repos/CustomInstructionsPanel';
-import type { InstructionMode } from '../../../../src/server/spa/client/react/repos/CustomInstructionsPanel';
+} from '../../../../src/server/spa/client/react/features/skills/CustomInstructionsPanel';
+import type { InstructionMode } from '../../../../src/server/spa/client/react/features/skills/CustomInstructionsPanel';
 
 const emptyDraft: Record<InstructionMode, string> = { base: '', ask: '', plan: '', autopilot: '' };
 const emptyContents: Record<InstructionMode, string | null> = { base: null, ask: null, plan: null, autopilot: null };

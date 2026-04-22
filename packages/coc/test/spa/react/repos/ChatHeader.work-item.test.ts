@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const CREATE_WORK_ITEM_DIALOG_SRC_PATH = path.join(REACT_SRC, 'repos', 'CreateWorkItemDialog.tsx');
+const CREATE_WORK_ITEM_DIALOG_SRC_PATH = path.join(REACT_SRC, 'features', 'work-items', 'CreateWorkItemDialog.tsx');
 
 describe('CreateWorkItemDialog — fromChat support', () => {
     let dialogSrc: string;

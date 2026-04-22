@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPreviewDAG } from '../../../src/server/spa/client/react/repos/buildPreviewDAG';
+import { buildPreviewDAG } from '../../../src/server/spa/client/react/features/workflow/buildPreviewDAG';
 
 describe('buildPreviewDAG', () => {
     describe('returns null for invalid input', () => {

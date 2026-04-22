@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TemplatesTab } from '../../../../src/server/spa/client/react/queue/TemplatesTab';
-import type { SkillTemplate } from '../../../../src/server/spa/client/react/hooks/useSkillTemplates';
+import type { SkillTemplate } from '../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates';
 
 const ASK_TEMPLATE: SkillTemplate = { id: 'ask-1', name: 'Ask Template', model: 'gpt-4', mode: 'ask', skills: [] };
 const TASK_TEMPLATE: SkillTemplate = { id: 'task-1', name: 'Task Template', model: 'gpt-4', mode: 'task', skills: ['skill-a'] };

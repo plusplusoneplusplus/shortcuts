@@ -125,16 +125,16 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
 
 // Stub all other tab components
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/TemplatesTab', () => ({ TemplatesTab: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({ RepoGitTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/TerminalView', () => ({ TerminalView: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({ NotesView: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({ AddRepoDialog: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({ GenerateTaskDialog: () => null }));

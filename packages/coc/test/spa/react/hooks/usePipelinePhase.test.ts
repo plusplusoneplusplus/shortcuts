@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useWorkflowPhase } from '../../../../src/server/spa/client/react/hooks/useWorkflowPhase';
+import { useWorkflowPhase } from '../../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowPhase';
 
 /**
  * Minimal mock EventSource that tracks addEventListener/removeEventListener.

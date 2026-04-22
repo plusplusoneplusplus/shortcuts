@@ -109,7 +109,7 @@ describe('RepoDetail terminal redirect', () => {
 
 describe('RepoDetail TerminalView rendering', () => {
     it('imports TerminalView component', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { TerminalView } from './TerminalView'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { TerminalView } from '../features/terminal/TerminalView'");
     });
 
     it('renders TerminalView with display:none pattern', () => {

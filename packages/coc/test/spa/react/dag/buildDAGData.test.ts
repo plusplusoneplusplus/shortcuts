@@ -289,7 +289,7 @@ describe('buildDAGData', () => {
 
 import { buildDAGDataFromLive } from '../../../../src/server/spa/client/react/processes/dag/buildDAGData';
 import type { PipelinePhase } from '@plusplusoneplusplus/forge';
-import type { LivePhaseEntry, LiveProgress } from '../../../../src/server/spa/client/react/hooks/useWorkflowPhase';
+import type { LivePhaseEntry, LiveProgress } from '../../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowPhase';
 
 describe('buildDAGDataFromLive', () => {
     it('returns null for empty phases map', () => {

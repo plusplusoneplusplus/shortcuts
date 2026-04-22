@@ -70,7 +70,7 @@ const SAMPLE_DETAIL = {
 async function renderTemplatesTab(templates = SAMPLE_TEMPLATES) {
     mockFetchApi.mockResolvedValue({ templates });
     const { RepoTemplatesTab } = await import(
-        '../../../src/server/spa/client/react/repos/RepoTemplatesTab'
+        '../../../src/server/spa/client/react/features/templates/RepoTemplatesTab'
     );
     const result = render(
         <Wrap>
@@ -165,7 +165,7 @@ describe('RepoTemplatesTab — detail view', () => {
             .mockResolvedValueOnce({ templates: SAMPLE_TEMPLATES })
             .mockResolvedValueOnce(SAMPLE_DETAIL);
         const { RepoTemplatesTab } = await import(
-            '../../../src/server/spa/client/react/repos/RepoTemplatesTab'
+            '../../../src/server/spa/client/react/features/templates/RepoTemplatesTab'
         );
         render(
             <Wrap>

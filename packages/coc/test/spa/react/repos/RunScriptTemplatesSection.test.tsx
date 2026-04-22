@@ -40,7 +40,7 @@ const mockUseScriptTemplates = vi.fn().mockReturnValue({
     deleteTemplate: mockDeleteScriptTemplate,
     loaded: true,
 });
-vi.mock('../../../../src/server/spa/client/react/hooks/useScriptTemplates', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/hooks/useScriptTemplates', () => ({
     useScriptTemplates: (...args: any[]) => mockUseScriptTemplates(...args),
 }));
 
@@ -49,7 +49,7 @@ const mockUseSkillTemplates = vi.fn().mockReturnValue({
     deleteTemplate: vi.fn(),
     loaded: true,
 });
-vi.mock('../../../../src/server/spa/client/react/hooks/useSkillTemplates', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates', () => ({
     useSkillTemplates: (...args: any[]) => mockUseSkillTemplates(...args),
 }));
 
@@ -83,7 +83,7 @@ async function renderTemplatesTab(scriptTemplates: any[] = []) {
         loaded: true,
     });
     const { TemplatesTab } = await import(
-        '../../../../src/server/spa/client/react/repos/TemplatesTab'
+        '../../../../src/server/spa/client/react/features/templates/TemplatesTab'
     );
     return render(
         <Wrap>

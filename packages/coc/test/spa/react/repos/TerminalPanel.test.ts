@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'TerminalPanel.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'terminal', 'TerminalPanel.tsx'
 );
 
 describe('TerminalPanel', () => {

@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 // Mock refineWorkflow
 const mockRefinePipeline = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/repos/workflow-api', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     refineWorkflow: (...args: any[]) => mockRefinePipeline(...args),
 }));
 
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/unifiedDiffUtils', () => 
         `--- a/${fileName}\n+++ b/${fileName}\n@@ mock diff @@\n-old\n+new`,
 }));
 
-import { WorkflowAIRefinePanel } from '../../../../src/server/spa/client/react/repos/WorkflowAIRefinePanel';
+import { WorkflowAIRefinePanel } from '../../../../src/server/spa/client/react/features/workflow/WorkflowAIRefinePanel';
 
 const defaultProps = {
     workspaceId: 'ws-1',

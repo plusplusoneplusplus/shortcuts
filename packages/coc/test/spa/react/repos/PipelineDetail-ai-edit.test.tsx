@@ -8,9 +8,9 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
-import { WorkflowDetail } from '../../../../src/server/spa/client/react/repos/WorkflowDetail';
+import { WorkflowDetail } from '../../../../src/server/spa/client/react/features/workflow/WorkflowDetail';
 import type { WorkflowInfo } from '../../../../src/server/spa/client/react/repos/repoGrouping';
-import * as pipelineApi from '../../../../src/server/spa/client/react/repos/workflow-api';
+import * as pipelineApi from '../../../../src/server/spa/client/react/features/workflow/workflow-api';
 
 // Mock fetchApi used by WorkflowRunHistory
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -20,7 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 // Mock WorkflowAIRefinePanel to expose onApply/onCancel via testids
 let capturedOnApply: ((yaml: string) => void | Promise<void>) | undefined;
 let capturedOnCancel: (() => void) | undefined;
-vi.mock('../../../../src/server/spa/client/react/repos/WorkflowAIRefinePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/WorkflowAIRefinePanel', () => ({
     WorkflowAIRefinePanel: (props: any) => {
         capturedOnApply = props.onApply;
         capturedOnCancel = props.onCancel;

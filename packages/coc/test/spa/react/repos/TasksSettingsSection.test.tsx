@@ -39,7 +39,7 @@ async function renderSection(opts: { taskRootPath?: string; folderPaths?: string
     });
 
     const { TasksSettingsSection } = await import(
-        '../../../../src/server/spa/client/react/repos/TasksSettingsSection'
+        '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
     );
 
     const result = render(<TasksSettingsSection workspaceId="ws-1" />);
@@ -63,7 +63,7 @@ describe('TasksSettingsSection', () => {
         mockFetchApi.mockResolvedValue(mockSettingsGet());
 
         const { TasksSettingsSection } = await import(
-            '../../../../src/server/spa/client/react/repos/TasksSettingsSection'
+            '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
         );
         render(<TasksSettingsSection workspaceId="ws-abc" />);
 
@@ -81,7 +81,7 @@ describe('TasksSettingsSection', () => {
         mockFetchApi.mockReturnValue(new Promise(() => {}));
 
         const { TasksSettingsSection } = await import(
-            '../../../../src/server/spa/client/react/repos/TasksSettingsSection'
+            '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
         );
         render(<TasksSettingsSection workspaceId="ws-1" />);
 
@@ -258,7 +258,7 @@ describe('TasksSettingsSection', () => {
         );
 
         const { TasksSettingsSection } = await import(
-            '../../../../src/server/spa/client/react/repos/TasksSettingsSection'
+            '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
         );
 
         render(<TasksSettingsSection workspaceId="ws-1" />);
@@ -321,7 +321,7 @@ describe('RepoSettingsTab tasks nav item', () => {
         }));
 
         const { RepoSettingsTab } = await import(
-            '../../../../src/server/spa/client/react/repos/RepoSettingsTab'
+            '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
         );
         const { AppProvider } = await import(
             '../../../../src/server/spa/client/react/context/AppContext'

@@ -20,7 +20,7 @@ import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes
 import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ChatListPane';
 
 // ── Mocks for QueueTaskItem's transitive dependencies ──────────────────
-vi.mock('../../../src/server/spa/client/react/hooks/useWorkflowProgress', () => ({
+vi.mock('../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress', () => ({
     useWorkflowProgress: () => null,
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/useDraftStore', () => ({

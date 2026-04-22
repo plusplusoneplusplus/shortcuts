@@ -83,7 +83,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useWorkflowProgress', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress', () => ({
     useWorkflowProgress: () => ({ progress: null }),
 }));
 

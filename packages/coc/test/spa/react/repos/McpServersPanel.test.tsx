@@ -5,8 +5,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { McpServersPanel } from '../../../../src/server/spa/client/react/repos/McpServersPanel';
-import type { McpServerEntry } from '../../../../src/server/spa/client/react/repos/McpServersPanel';
+import { McpServersPanel } from '../../../../src/server/spa/client/react/features/skills/McpServersPanel';
+import type { McpServerEntry } from '../../../../src/server/spa/client/react/features/skills/McpServersPanel';
 
 const servers: McpServerEntry[] = [
     { name: 'github-mcp', type: 'stdio' },

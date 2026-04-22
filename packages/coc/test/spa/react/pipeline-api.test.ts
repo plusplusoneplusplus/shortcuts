@@ -15,17 +15,17 @@ vi.mock(
 );
 
 // We need to dynamically import after mock is set up
-let fetchWorkflows: typeof import('../../../src/server/spa/client/react/repos/workflow-api').fetchWorkflows;
-let fetchWorkflowContent: typeof import('../../../src/server/spa/client/react/repos/workflow-api').fetchWorkflowContent;
-let saveWorkflowContent: typeof import('../../../src/server/spa/client/react/repos/workflow-api').saveWorkflowContent;
-let createWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').createWorkflow;
-let deleteWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').deleteWorkflow;
-let generateWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').generateWorkflow;
-let refineWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').refineWorkflow;
-let runWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').runWorkflow;
+let fetchWorkflows: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').fetchWorkflows;
+let fetchWorkflowContent: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').fetchWorkflowContent;
+let saveWorkflowContent: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').saveWorkflowContent;
+let createWorkflow: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').createWorkflow;
+let deleteWorkflow: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').deleteWorkflow;
+let generateWorkflow: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').generateWorkflow;
+let refineWorkflow: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').refineWorkflow;
+let runWorkflow: typeof import('../../../src/server/spa/client/react/features/workflow/workflow-api').runWorkflow;
 
 beforeEach(async () => {
-    const mod = await import('../../../src/server/spa/client/react/repos/workflow-api');
+    const mod = await import('../../../src/server/spa/client/react/features/workflow/workflow-api');
     fetchWorkflows = mod.fetchWorkflows;
     fetchWorkflowContent = mod.fetchWorkflowContent;
     saveWorkflowContent = mod.saveWorkflowContent;

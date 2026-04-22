@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
-import type { ScriptTemplate } from '../../../../src/server/spa/client/react/hooks/useScriptTemplates';
+import type { ScriptTemplate } from '../../../../src/server/spa/client/react/features/templates/hooks/useScriptTemplates';
 
 // ── Global stubs ──
 
@@ -43,11 +43,11 @@ const mockUseScriptTemplates = vi.fn().mockReturnValue({
     deleteTemplate: mockDeleteScriptTemplate,
     loaded: true,
 });
-vi.mock('../../../../src/server/spa/client/react/hooks/useScriptTemplates', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/hooks/useScriptTemplates', () => ({
     useScriptTemplates: (...args: any[]) => mockUseScriptTemplates(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useSkillTemplates', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates', () => ({
     useSkillTemplates: vi.fn().mockReturnValue({
         templates: [],
         deleteTemplate: vi.fn(),
@@ -105,7 +105,7 @@ async function renderTemplatesTab(scriptTemplateOverride: ScriptTemplate[] = SCR
         deleteTemplate: mockDeleteScriptTemplate,
         loaded: true,
     });
-    const { TemplatesTab } = await import('../../../../src/server/spa/client/react/repos/TemplatesTab');
+    const { TemplatesTab } = await import('../../../../src/server/spa/client/react/features/templates/TemplatesTab');
     const repo = makeRepo();
     render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
     await waitFor(() => expect(screen.getByTestId('script-templates-section')).toBeDefined());

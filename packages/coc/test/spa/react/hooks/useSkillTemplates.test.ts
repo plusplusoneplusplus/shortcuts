@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useSkillTemplates } from '../../../../src/server/spa/client/react/hooks/useSkillTemplates';
+import { useSkillTemplates } from '../../../../src/server/spa/client/react/features/templates/hooks/useSkillTemplates';
 
 // Mock fetch globally
 const fetchMock = vi.fn();

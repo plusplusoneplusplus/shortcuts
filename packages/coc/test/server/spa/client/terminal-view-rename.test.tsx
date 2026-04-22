@@ -6,7 +6,7 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Mock TerminalPanel (it uses xterm.js which doesn't work in jsdom)
-vi.mock('../../../../src/server/spa/client/react/repos/TerminalPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel', () => ({
     TerminalPanel: ({ sessionId }: { sessionId: string }) => (
         <div data-testid={`mock-terminal-panel-${sessionId}`}>mock terminal</div>
     ),
@@ -18,7 +18,7 @@ vi.stubGlobal('crypto', {
     randomUUID: () => `test-uuid-${++uuidCounter}`,
 });
 
-import { TerminalView } from '../../../../src/server/spa/client/react/repos/TerminalView';
+import { TerminalView } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
 
 describe('TerminalView tab rename', () => {
     beforeEach(() => {

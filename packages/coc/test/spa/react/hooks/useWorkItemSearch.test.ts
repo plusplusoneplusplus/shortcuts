@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useWorkItemSearch } from '../../../../src/server/spa/client/react/hooks/useWorkItemSearch';
+import { useWorkItemSearch } from '../../../../src/server/spa/client/react/features/work-items/hooks/useWorkItemSearch';
 
 describe('useWorkItemSearch', () => {
     beforeEach(() => { vi.useFakeTimers(); });

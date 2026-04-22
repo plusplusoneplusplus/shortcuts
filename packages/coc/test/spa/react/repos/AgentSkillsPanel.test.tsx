@@ -5,8 +5,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AgentSkillsPanel } from '../../../../src/server/spa/client/react/repos/AgentSkillsPanel';
-import type { Skill } from '../../../../src/server/spa/client/react/repos/AgentSkillsPanel';
+import { AgentSkillsPanel } from '../../../../src/server/spa/client/react/features/skills/AgentSkillsPanel';
+import type { Skill } from '../../../../src/server/spa/client/react/features/skills/AgentSkillsPanel';
 
 // Mock ToastContext used internally
 vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({

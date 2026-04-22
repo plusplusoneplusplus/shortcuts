@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { groupSkillsByFolder } from '../../../../src/server/spa/client/react/repos/AgentSkillsPanel';
-import type { Skill } from '../../../../src/server/spa/client/react/repos/AgentSkillsPanel';
+import { groupSkillsByFolder } from '../../../../src/server/spa/client/react/features/skills/AgentSkillsPanel';
+import type { Skill } from '../../../../src/server/spa/client/react/features/skills/AgentSkillsPanel';
 
 describe('groupSkillsByFolder', () => {
     const emptyRepos = new Map<string, any>();

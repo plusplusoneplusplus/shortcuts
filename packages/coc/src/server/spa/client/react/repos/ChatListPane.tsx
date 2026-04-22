@@ -18,7 +18,7 @@ import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { RenameDialog } from '../shared/RenameDialog';
 import { fetchApi } from '../hooks/useApi';
-import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
+import { useWorkflowProgress } from '../features/workflow/hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';

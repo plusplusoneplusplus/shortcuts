@@ -16,7 +16,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn(),
 }));
-vi.mock('../../../../src/server/spa/client/react/repos/workflow-api', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenChat', () => ({

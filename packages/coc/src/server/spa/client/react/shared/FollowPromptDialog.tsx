@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button, Spinner } from './index';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
-import { useRecentSkills } from '../hooks/useRecentSkills';
+import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';

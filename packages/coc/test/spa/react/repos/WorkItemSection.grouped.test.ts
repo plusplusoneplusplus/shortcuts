@@ -11,7 +11,7 @@ import * as path from 'path';
 
 const SRC_PATH = path.join(
     __dirname,
-    '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'WorkItemSection.tsx',
+    '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemSection.tsx',
 );
 
 describe('WorkItemSection — grouped endpoint and infinite scroll', () => {

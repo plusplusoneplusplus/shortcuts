@@ -11,8 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-const WORK_ITEM_DETAIL_SRC_PATH = path.join(REACT_SRC, 'repos', 'WorkItemDetail.tsx');
-const WORK_ITEMS_TAB_SRC_PATH = path.join(REACT_SRC, 'repos', 'WorkItemsTab.tsx');
+const WORK_ITEM_DETAIL_SRC_PATH = path.join(REACT_SRC, 'features', 'work-items', 'WorkItemDetail.tsx');
+const WORK_ITEMS_TAB_SRC_PATH = path.join(REACT_SRC, 'features', 'work-items', 'WorkItemsTab.tsx');
 
 describe('WorkItemDetail — layout', () => {
     let src: string;

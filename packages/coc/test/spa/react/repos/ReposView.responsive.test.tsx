@@ -117,7 +117,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repoGrouping', () => ({
     countTasks: () => 0,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/workflow-api', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
 
@@ -137,7 +137,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoInfoTab', () => ({
     RepoInfoTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/TemplatesTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({
     TemplatesTab: () => null,
 }));
 

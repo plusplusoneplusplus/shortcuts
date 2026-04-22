@@ -4,7 +4,7 @@ import { buildDAGData } from './buildDAGData';
 import { MapItemGrid } from './MapItemGrid';
 import type { ChildProcess } from './MapItemGrid';
 import { ItemConversationPanel } from './ItemConversationPanel';
-import { useWorkflowPhase } from '../../hooks/useWorkflowPhase';
+import { useWorkflowPhase } from '../../features/workflow/hooks/useWorkflowPhase';
 import { useItemProcessEvents } from '../../hooks/useItemProcessEvents';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { fetchApi } from '../../hooks/useApi';

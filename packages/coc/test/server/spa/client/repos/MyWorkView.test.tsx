@@ -62,7 +62,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () 
 }));
 
 // Stub RepoSettingsTab— just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoSettingsTab', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({
     RepoSettingsTab: (props: any) => (
         <div data-testid="repo-settings-tab" data-workspace-id={props.workspaceId} data-repo-id={props.repo?.workspace?.id} />
     ),

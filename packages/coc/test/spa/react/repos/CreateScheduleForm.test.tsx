@@ -13,7 +13,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 // Mock fetchWorkflows — no pipelines by default.
-vi.mock('../../../../src/server/spa/client/react/repos/workflow-api', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
 

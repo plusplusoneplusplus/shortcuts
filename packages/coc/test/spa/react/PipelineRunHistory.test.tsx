@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { WorkflowRunHistory } from '../../../src/server/spa/client/react/repos/WorkflowRunHistory';
+import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
 
 // Mock fetchApi
 const mockFetchApi = vi.fn();

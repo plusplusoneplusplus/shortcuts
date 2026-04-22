@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTerminalWebSocket } from '../../../../src/server/spa/client/react/hooks/useTerminalWebSocket';
+import { useTerminalWebSocket } from '../../../../src/server/spa/client/react/features/terminal/hooks/useTerminalWebSocket';
 
 // ── Minimal WebSocket mock ────────────────────────────────────────────
 

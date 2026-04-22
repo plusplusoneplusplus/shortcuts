@@ -8,12 +8,12 @@ import { fetchApi } from '../hooks/useApi';
 import { useGlobalToast } from '../context/ToastContext';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
-import { McpServersPanel } from './McpServersPanel';
-import type { McpServerEntry } from './McpServersPanel';
-import { AgentSkillsPanel } from './AgentSkillsPanel';
-import type { Skill, SkillDetail } from './AgentSkillsPanel';
-import { CustomInstructionsPanel } from './CustomInstructionsPanel';
-import type { InstructionMode } from './CustomInstructionsPanel';
+import { McpServersPanel } from '../features/skills/McpServersPanel';
+import type { McpServerEntry } from '../features/skills/McpServersPanel';
+import { AgentSkillsPanel } from '../features/skills/AgentSkillsPanel';
+import type { Skill, SkillDetail } from '../features/skills/AgentSkillsPanel';
+import { CustomInstructionsPanel } from '../features/skills/CustomInstructionsPanel';
+import type { InstructionMode } from '../features/skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../types/dashboard';
 
 interface RepoCopilotTabProps {
