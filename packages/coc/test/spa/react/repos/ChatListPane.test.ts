@@ -1280,13 +1280,13 @@ describe('NewChatArea: chat-only UI', () => {
         expect(source).not.toContain('CreateWorkItemDialog');
     });
 
-    it('renders a mode selector with cycle button and dropdown', () => {
-        expect(source).toContain('data-testid="mode-cycle-btn"');
-        expect(source).toContain('data-testid="new-chat-mode-dropdown"');
+    it('supports Shift+Tab mode cycling and imports cycleMode', () => {
+        expect(source).toContain('cycleMode');
+        expect(source).toContain('Shift');
     });
 
-    it('defaults mode to autopilot and sends selectedMode in the task payload', () => {
-        expect(source).toContain("'autopilot'");
+    it('defaults mode to ask and sends selectedMode in the task payload', () => {
+        expect(source).toContain("'ask'");
         expect(source).toContain('mode: selectedMode');
     });
 

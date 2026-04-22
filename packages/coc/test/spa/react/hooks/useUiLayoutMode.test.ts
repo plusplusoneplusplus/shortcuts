@@ -11,13 +11,14 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
 }));
 
-import { useUiLayoutMode } from '../../../../src/server/spa/client/react/hooks/useUiLayoutMode';
+import { useUiLayoutMode, __resetForTesting } from '../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode';
 
 const mockFetch = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
+    __resetForTesting();
     global.fetch = mockFetch;
 });
 

@@ -33,6 +33,13 @@ function getSnapshot(): UiLayoutMode {
     return currentMode;
 }
 
+/** @internal Reset module-level state for testing. */
+export function __resetForTesting(): void {
+    currentMode = DEFAULT_MODE;
+    serverFetched = false;
+    listeners.clear();
+}
+
 function setSharedMode(next: UiLayoutMode): void {
     if (next === currentMode) return;
     currentMode = next;

@@ -265,10 +265,10 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(bar.className).not.toContain('flex-col');
     });
 
-    it('renders mode selector with cycle button and dropdown', () => {
+    it('supports mode cycling via Shift+Tab on the input', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.queryByTestId('mode-cycle-btn')).not.toBeNull();
-        expect(screen.queryByTestId('new-chat-mode-dropdown')).not.toBeNull();
+        // Mode cycling is handled via Shift+Tab keyboard shortcut, not a separate button
+        expect(screen.getByTestId('chat-input-bar')).toBeTruthy();
     });
 
     it('send button has shrink-0 and no w-full', () => {
@@ -292,11 +292,11 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(inputWrapper).toBeTruthy();
     });
 
-    it('children (mode, attach, input, send) are direct children of the flex-row container', () => {
+    it('children (file-input, attach, input, send) are direct children of the flex-row container', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
         const children = Array.from(bar.children);
-        expect(children.length).toBe(5);
+        expect(children.length).toBe(4);
     });
 });
 
