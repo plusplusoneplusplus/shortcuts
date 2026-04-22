@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn } from '../shared';
 import type { WhisperSummary, FileEdit } from './toolGroupUtils';
-import { groupConsecutiveToolChunks } from './toolGroupUtils';
+import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
 import { MarkdownView } from '../shared/MarkdownView';
@@ -53,6 +53,86 @@ function formatDuration(startTime?: number, endTime?: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Shared popover positioning — clamp to viewport
+// ---------------------------------------------------------------------------
+
+function clampPopoverPosition(
+    rect: DOMRect,
+    popoverWidth: number,
+    popoverHeight: number,
+): { top: number; left: number } {
+    const margin = 8;
+    let left = rect.left;
+    let top = rect.bottom + 4;
+
+    // Clamp right edge
+    if (left + popoverWidth > window.innerWidth - margin) {
+        left = Math.max(margin, window.innerWidth - popoverWidth - margin);
+    }
+    // Flip above if clipped at bottom
+    if (top + popoverHeight > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - popoverHeight - 4);
+    }
+    return { top, left };
+}
+
+// ---------------------------------------------------------------------------
+// shortenPath — shows dir/basename, truncating middle for long paths
+// ---------------------------------------------------------------------------
+
+export function shortenPath(filePath: string, maxLen = 40): string {
+    const parts = filePath.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (parts.length <= 2) return parts.join('/');
+    const last = parts[parts.length - 1];
+    const secondLast = parts[parts.length - 2];
+    const short = `${secondLast}/${last}`;
+    if (short.length <= maxLen) return short;
+    // Truncate the directory part
+    const available = maxLen - last.length - 2; // 2 for "…/"
+    if (available > 0) {
+        return secondLast.slice(0, available) + '…/' + last;
+    }
+    return last;
+}
+
+// ---------------------------------------------------------------------------
+// DiffBar — proportional green/red bar for insertions/deletions
+// ---------------------------------------------------------------------------
+
+interface DiffBarProps {
+    insertions: number;
+    deletions: number;
+    isCreate: boolean;
+}
+
+function DiffBar({ insertions, deletions, isCreate }: DiffBarProps) {
+    const total = insertions + deletions;
+    if (total === 0) return null;
+    const greenPct = isCreate ? 100 : (insertions / total) * 100;
+
+    return (
+        <span
+            className="inline-flex shrink-0 h-[8px] w-[60px] rounded-sm overflow-hidden bg-[#e8e8e8] dark:bg-[#333]"
+            data-testid="diff-bar"
+            title={`+${insertions} −${deletions}`}
+        >
+            {greenPct > 0 && (
+                <span
+                    className="h-full bg-[#22863a] dark:bg-[#85e89d]"
+                    style={{ width: `${greenPct}%` }}
+                />
+            )}
+            {greenPct < 100 && (
+                <span
+                    className="h-full bg-[#cb2431] dark:bg-[#f97583]"
+                    style={{ width: `${100 - greenPct}%` }}
+                />
+            )}
+        </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // SkillHoverPopover — shown when hovering over "N skills"
 // ---------------------------------------------------------------------------
 
@@ -64,11 +144,12 @@ interface SkillHoverPopoverProps {
 function SkillHoverPopover({ skillNames, anchorRef }: SkillHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 400, skillNames.length * 28 + 8);
 
     return (
         <div
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
-            style={{ top: rect.bottom + 4, left: rect.left }}
+            style={{ top: pos.top, left: pos.left }}
             data-testid="skill-hover-popover"
         >
             {skillNames.map(name => (
@@ -147,11 +228,12 @@ interface MemoryHoverPopoverProps {
 function MemoryHoverPopover({ actions, anchorRef }: MemoryHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 400, actions.length * 28 + 8);
 
     return (
         <div
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
-            style={{ top: rect.bottom + 4, left: rect.left }}
+            style={{ top: pos.top, left: pos.left }}
             data-testid="memory-hover-popover"
         >
             {actions.map((entry, i) => (
@@ -230,11 +312,12 @@ interface CommitHoverPopoverProps {
 function CommitHoverPopover({ commits, workspaceId, anchorRef }: CommitHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 400, commits.length * 28 + 8);
 
     return (
         <div
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
-            style={{ top: rect.bottom + 4, left: rect.left }}
+            style={{ top: pos.top, left: pos.left }}
             data-testid="commit-hover-popover"
         >
             {commits.map(commit => (
@@ -280,35 +363,59 @@ interface FileHoverPopoverProps {
 function FileHoverPopover({ files, anchorRef }: FileHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
+    const rowHeight = 28;
+    const footerHeight = files.length > 1 ? 36 : 0;
+    const estimatedHeight = files.length * rowHeight + footerHeight + 8;
+    const pos = clampPopoverPosition(rect, 460, estimatedHeight);
+    const totals = computeFileEditTotals(files);
 
     return (
         <div
-            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
-            style={{ top: rect.bottom + 4, left: rect.left }}
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[240px] max-w-[460px]"
+            style={{ top: pos.top, left: pos.left }}
             data-testid="file-hover-popover"
         >
             {files.map(file => {
-                const basename = file.path.split(/[/\\]/).pop() || file.path;
+                const display = shortenPath(file.path);
+                const ins = file.netInsertions ?? file.insertions;
+                const del = file.netDeletions ?? file.deletions;
                 return (
                     <div
                         key={file.path}
                         className="flex items-center gap-2 px-2.5 py-1 text-xs"
-                        data-testid={`file-popover-row`}
+                        data-testid="file-popover-row"
                         title={file.path}
                     >
                         <span className="shrink-0">{file.isCreate ? '📄' : '✏️'}</span>
                         <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
-                            {basename}
+                            {display}
                         </span>
-                        {file.insertions > 0 && (
-                            <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{file.insertions}</span>
+                        <DiffBar insertions={ins} deletions={del} isCreate={file.isCreate} />
+                        {ins > 0 && (
+                            <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{ins}</span>
                         )}
-                        {file.deletions > 0 && (
-                            <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{file.deletions}</span>
+                        {del > 0 && (
+                            <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{del}</span>
                         )}
                     </div>
                 );
             })}
+            {files.length > 1 && (
+                <div
+                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs border-t border-[#e0e0e0] dark:border-[#3c3c3c] font-medium"
+                    data-testid="file-popover-footer"
+                >
+                    <span className="text-[#848484] flex-1">
+                        {files.length} file{files.length !== 1 ? 's' : ''}
+                    </span>
+                    {totals.totalInsertions > 0 && (
+                        <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{totals.totalInsertions}</span>
+                    )}
+                    {totals.totalDeletions > 0 && (
+                        <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{totals.totalDeletions}</span>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -337,6 +444,9 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
         graceTimer.current = setTimeout(() => setHovered(false), 150);
     }, []);
 
+    const totals = useMemo(() => computeFileEditTotals(files), [files]);
+    const hasTotals = totals.totalInsertions > 0 || totals.totalDeletions > 0;
+
     return (
         <span
             ref={anchorRef}
@@ -346,6 +456,13 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
             data-testid={testId}
         >
             {text}
+            {hasTotals && (
+                <span className="text-[#848484] ml-0.5 no-underline" data-testid="file-total-inline">
+                    ({totals.totalInsertions > 0 && <span className="text-[#22863a] dark:text-[#85e89d]">+{totals.totalInsertions}</span>}
+                    {totals.totalInsertions > 0 && totals.totalDeletions > 0 && ' '}
+                    {totals.totalDeletions > 0 && <span className="text-[#cb2431] dark:text-[#f97583]">−{totals.totalDeletions}</span>})
+                </span>
+            )}
             {hovered && files.length > 0 && (
                 <span onMouseEnter={showPopover} onMouseLeave={hidePopover}>
                     <FileHoverPopover files={files} anchorRef={anchorRef} />

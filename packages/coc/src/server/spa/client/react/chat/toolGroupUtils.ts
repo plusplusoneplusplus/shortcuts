@@ -303,11 +303,84 @@ export function groupConsecutiveToolChunks(
 // Whisper-level (level 3) filtering
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Net diff computation — counts only actually changed lines via simple LCS
+// ---------------------------------------------------------------------------
+
+const NET_DIFF_LINE_LIMIT = 500;
+
+/**
+ * Computes the net insertions and deletions between two strings using a
+ * line-level LCS diff. Unlike counting raw `old_str`/`new_str` line counts,
+ * unchanged context lines are excluded from both counters.
+ *
+ * Falls back to raw line counts when either input exceeds `NET_DIFF_LINE_LIMIT`.
+ */
+export function computeNetDiff(
+    oldStr: string,
+    newStr: string,
+): { insertions: number; deletions: number } {
+    const oldLines = oldStr ? oldStr.split('\n') : [];
+    const newLines = newStr ? newStr.split('\n') : [];
+
+    // Fallback for very large blocks
+    if (oldLines.length > NET_DIFF_LINE_LIMIT || newLines.length > NET_DIFF_LINE_LIMIT) {
+        return { insertions: newLines.length, deletions: oldLines.length };
+    }
+
+    // Compute LCS length using Hunt-Szymanski style DP (O(n*m) space but fine for ≤500 lines)
+    const m = oldLines.length;
+    const n = newLines.length;
+    // Use a 1D rolling DP to save memory
+    const prev = new Array<number>(n + 1).fill(0);
+    const curr = new Array<number>(n + 1).fill(0);
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+            } else {
+                curr[j] = Math.max(prev[j], curr[j - 1]);
+            }
+        }
+        for (let j = 0; j <= n; j++) {
+            prev[j] = curr[j];
+            curr[j] = 0;
+        }
+    }
+    const lcsLen = prev[n];
+
+    return {
+        insertions: n - lcsLen,
+        deletions: m - lcsLen,
+    };
+}
+
+/**
+ * Returns aggregate totals across an array of FileEdit entries.
+ */
+export function computeFileEditTotals(
+    fileEdits: FileEdit[],
+): { totalInsertions: number; totalDeletions: number } {
+    let totalInsertions = 0;
+    let totalDeletions = 0;
+    for (const fe of fileEdits) {
+        totalInsertions += fe.netInsertions ?? fe.insertions;
+        totalDeletions += fe.netDeletions ?? fe.deletions;
+    }
+    return { totalInsertions, totalDeletions };
+}
+
 /** Per-file edit/create statistics collected from tool calls. */
 export interface FileEdit {
     path: string;
+    /** @deprecated Use netInsertions for accurate counts */
     insertions: number;
+    /** @deprecated Use netDeletions for accurate counts */
     deletions: number;
+    /** Net changed lines (excluding unchanged context) — insertions. */
+    netInsertions: number;
+    /** Net changed lines (excluding unchanged context) — deletions. */
+    netDeletions: number;
     isCreate: boolean;
 }
 
@@ -485,32 +558,56 @@ export function filterWhisperChunks(
     }
 
     // Count file edits/creates
-    const fileMap = new Map<string, { insertions: number; deletions: number; hasCreate: boolean; hasEdit: boolean }>();
+    const fileMap = new Map<string, {
+        insertions: number; deletions: number;
+        netInsertions: number; netDeletions: number;
+        hasCreate: boolean; hasEdit: boolean;
+    }>();
     for (const tc of allToolCalls) {
         if (tc.toolName === 'edit' && tc.args) {
             const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
             if (filePath) {
-                const entry = fileMap.get(filePath) ?? { insertions: 0, deletions: 0, hasCreate: false, hasEdit: false };
+                const entry = fileMap.get(filePath) ?? {
+                    insertions: 0, deletions: 0,
+                    netInsertions: 0, netDeletions: 0,
+                    hasCreate: false, hasEdit: false,
+                };
                 entry.hasEdit = true;
                 const oldStr = (tc.args.old_str ?? tc.args.old_string ?? '') as string;
                 const newStr = (tc.args.new_str ?? tc.args.new_string ?? '') as string;
                 if (oldStr) entry.deletions += oldStr.split('\n').length;
                 if (newStr) entry.insertions += newStr.split('\n').length;
+                const net = computeNetDiff(oldStr, newStr);
+                entry.netInsertions += net.insertions;
+                entry.netDeletions += net.deletions;
                 fileMap.set(filePath, entry);
             }
         } else if (tc.toolName === 'create' && tc.args) {
             const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
             if (filePath) {
-                const entry = fileMap.get(filePath) ?? { insertions: 0, deletions: 0, hasCreate: false, hasEdit: false };
+                const entry = fileMap.get(filePath) ?? {
+                    insertions: 0, deletions: 0,
+                    netInsertions: 0, netDeletions: 0,
+                    hasCreate: false, hasEdit: false,
+                };
                 entry.hasCreate = true;
                 const fileText = (tc.args.file_text ?? '') as string;
-                if (fileText) entry.insertions += fileText.split('\n').length;
+                const lineCount = fileText ? fileText.split('\n').length : 0;
+                entry.insertions += lineCount;
+                entry.netInsertions += lineCount;
                 fileMap.set(filePath, entry);
             }
         }
     }
     const fileEdits: FileEdit[] = [...fileMap.entries()]
-        .map(([path, e]) => ({ path, insertions: e.insertions, deletions: e.deletions, isCreate: e.hasCreate && !e.hasEdit }))
+        .map(([path, e]) => ({
+            path,
+            insertions: e.insertions,
+            deletions: e.deletions,
+            netInsertions: e.netInsertions,
+            netDeletions: e.netDeletions,
+            isCreate: e.hasCreate && !e.hasEdit,
+        }))
         .sort((a, b) => a.path.localeCompare(b.path));
 
     const summary: WhisperSummary = {

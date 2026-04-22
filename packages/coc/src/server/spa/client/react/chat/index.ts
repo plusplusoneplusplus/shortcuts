@@ -23,6 +23,7 @@ export {
     getToolGroupCategory, getCategoryLabel,
     getToolGroupStatus, isSingleLineHtml,
     groupConsecutiveToolChunks, filterWhisperChunks,
+    computeNetDiff, computeFileEditTotals,
 } from './toolGroupUtils';
 export type {
     ToolGroupCategory, GroupContentItem, GroupOrderedItem,
