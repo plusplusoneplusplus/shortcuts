@@ -72,6 +72,29 @@ describe('buildBatchResolvePrompt', () => {
         expect(result).toContain('resolve_comment');
     });
 
+    it('embeds document content when documentContent is provided', () => {
+        const comments = [makeComment({ id: 'c1', comment: 'Rewrite intro' })];
+        const docContent = '# Plan\n\n## Objective\nDo something great\n\n## Steps\n- Step 1\n- Step 2';
+        const result = buildBatchResolvePrompt(comments, '__wi-plan__/abc', '__wi-plan__/abc', undefined, docContent);
+        expect(result).toContain('### Current Document Content');
+        expect(result).toContain(docContent);
+        expect(result).not.toContain('Read it using your tools');
+    });
+
+    it('falls back to read-from-disk instruction when documentContent is not provided', () => {
+        const comments = [makeComment()];
+        const result = buildBatchResolvePrompt(comments, '/abs/file.md', 'file.md');
+        expect(result).toContain('Read it using your tools');
+        expect(result).not.toContain('### Current Document Content');
+    });
+
+    it('falls back to read-from-disk instruction when documentContent is empty string', () => {
+        const comments = [makeComment()];
+        const result = buildBatchResolvePrompt(comments, '/abs/file.md', 'file.md', undefined, '');
+        expect(result).toContain('Read it using your tools');
+        expect(result).not.toContain('### Current Document Content');
+    });
+
     it('userContext comes after instructions', () => {
         const comments = [makeComment()];
         const result = buildBatchResolvePrompt(comments, '/abs/file.md', 'file.md', 'My extra context');

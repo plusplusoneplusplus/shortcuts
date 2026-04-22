@@ -212,16 +212,13 @@ export function WorkItemPlanSection({
                     body: JSON.stringify({ type: 'plan' }),
                 },
             );
-            if (result?.taskId && onNavigateToTasksTab) {
-                onNavigateToTasksTab(result.taskId);
-            }
             onUpdated();
         } catch (err: any) {
             onError(err.message || 'Failed to resolve plan comments');
         } finally {
             setResolving(false);
         }
-    }, [planComments, workspaceId, workItemId, onNavigateToTasksTab, onUpdated, onError]);
+    }, [planComments, workspaceId, workItemId, onUpdated, onError]);
 
     // Enqueue an AI run session to resolve a single plan comment.
     // Intentionally does NOT call onNavigateToTasksTab — user stays on the work item page.

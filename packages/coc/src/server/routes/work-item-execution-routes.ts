@@ -152,7 +152,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     }
 
                     const documentContent = item.plan?.content ?? '';
-                    const prompt = buildBatchResolvePrompt(openComments, planCommentPath, planCommentPath);
+                    const prompt = buildBatchResolvePrompt(openComments, planCommentPath, planCommentPath, undefined, documentContent);
                     const commentIds = openComments.map(c => c.id);
 
                     const result = await resolveWorkItemComments(workItemId, workItemStore, enqueue, {
