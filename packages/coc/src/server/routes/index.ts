@@ -57,7 +57,7 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
+import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { execGit } from '@plusplusoneplusplus/forge';
@@ -231,8 +231,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             workItemStore,
         ).then(async () => {
             try {
-                const updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                let updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
                 if (!updatedItem) return;
+
+                // Auto-create plan version from resolved plan comments
+                if (taskStatus === 'completed') {
+                    const matchedExec = updatedItem.executionHistory?.find(e => e.taskId === task.id);
+                    if (matchedExec?.sessionCategory === 'resolve-plan-comments' && task.processId) {
+                        try {
+                            const process = await store.getProcess(task.processId).catch(() => undefined);
+                            const afterPlan = await autoVersionPlanFromResolvedComments(
+                                workItemId,
+                                process?.result,
+                                workItemStore,
+                            );
+                            if (afterPlan) updatedItem = afterPlan;
+                        } catch { /* non-fatal: plan auto-versioning is best-effort */ }
+                    }
+                }
 
                 // Collect git commits for the just-closed change
                 let commitsAttached = false;
