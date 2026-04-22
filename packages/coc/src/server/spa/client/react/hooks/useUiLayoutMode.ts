@@ -5,49 +5,69 @@
  * 'dev-workflow'  → split Chats + Work Items + Tasks tabs
  *
  * Backed by server-side GlobalPreferences (GET/PATCH /api/preferences).
+ * All hook instances share state via a module-level store so that
+ * changing the mode in one component updates all others immediately.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { UiLayoutMode } from '../types/dashboard';
 import { getApiBase } from '../utils/config';
 
 const DEFAULT_MODE: UiLayoutMode = 'classic';
 
-function persistToServer(mode: UiLayoutMode): void {
+// ── Module-level shared store ────────────────────────────────────────────────
+let currentMode: UiLayoutMode = DEFAULT_MODE;
+let serverFetched = false;
+const listeners = new Set<() => void>();
+
+function notifyAll(): void {
+    for (const fn of listeners) fn();
+}
+
+function subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
+function getSnapshot(): UiLayoutMode {
+    return currentMode;
+}
+
+function setSharedMode(next: UiLayoutMode): void {
+    if (next === currentMode) return;
+    currentMode = next;
+    notifyAll();
+    // Persist to server (fire-and-forget)
     fetch(getApiBase() + '/preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uiLayoutMode: mode }),
+        body: JSON.stringify({ uiLayoutMode: next }),
     }).catch(() => {});
 }
 
+// ── Hook ─────────────────────────────────────────────────────────────────────
 export function useUiLayoutMode(): [UiLayoutMode, (mode: UiLayoutMode) => void] {
-    const [mode, setModeState] = useState<UiLayoutMode>(DEFAULT_MODE);
+    const mode = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-    // Fetch server state on mount
+    // Fetch server state once across all instances
     useEffect(() => {
-        let cancelled = false;
+        if (serverFetched) return;
+        serverFetched = true;
         (async () => {
             try {
                 const res = await fetch(getApiBase() + '/preferences');
-                if (!res.ok || cancelled) return;
+                if (!res.ok) return;
                 const prefs = await res.json();
-                if (cancelled) return;
                 const serverMode = prefs.uiLayoutMode;
-                if (serverMode === 'classic' || serverMode === 'dev-workflow') {
-                    setModeState(serverMode);
+                if ((serverMode === 'classic' || serverMode === 'dev-workflow') && serverMode !== currentMode) {
+                    currentMode = serverMode;
+                    notifyAll();
                 }
             } catch {
                 // Server unavailable — keep default
             }
         })();
-        return () => { cancelled = true; };
     }, []);
 
-    const setMode = useCallback((next: UiLayoutMode) => {
-        setModeState(next);
-        persistToServer(next);
-    }, []);
-
-    return [mode, setMode];
+    return [mode, setSharedMode];
 }
