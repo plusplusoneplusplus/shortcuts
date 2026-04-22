@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const HOOK_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useGitInfo.ts'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks', 'useGitInfo.ts'),
     'utf-8',
 );
 
@@ -26,7 +26,7 @@ describe('useGitInfo hook source', () => {
     });
 
     it('imports fetchApi from useApi', () => {
-        expect(HOOK_SOURCE).toContain("from './useApi'");
+        expect(HOOK_SOURCE).toContain("from '../../../hooks/useApi'");
         expect(HOOK_SOURCE).toContain('fetchApi');
     });
 

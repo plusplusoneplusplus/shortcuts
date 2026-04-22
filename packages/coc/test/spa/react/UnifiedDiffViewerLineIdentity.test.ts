@@ -10,10 +10,10 @@ import * as path from 'path';
 import {
     parseHunkHeader,
     computeDiffLines,
-} from '../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'UnifiedDiffViewer.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'UnifiedDiffViewer.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -171,7 +171,7 @@ describe('DiffLine type and new exports', () => {
 
     it('index.ts exports DiffLine type', () => {
         expect(indexSource).toContain("DiffLine");
-        expect(indexSource).toContain("from './UnifiedDiffViewer'");
+        expect(indexSource).toContain("from '../features/git/diff/UnifiedDiffViewer'");
     });
 
     it('source exports computeDiffLines', () => {

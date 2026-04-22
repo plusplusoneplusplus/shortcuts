@@ -8,7 +8,7 @@ import * as path from 'path';
 import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 
@@ -120,7 +120,7 @@ describe('RepoDetail: Queue tab removed', () => {
 
 describe('RepoDetail Activity badge wiring', () => {
     it('imports useRepoQueueStats from hooks', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats'");
     });
 
     it('destructures running and queued from useRepoQueueStats', () => {
@@ -294,7 +294,7 @@ describe('RepoDetail Run Script button in header', () => {
 
 describe('RepoDetail Git tab wiring', () => {
     it('imports RepoGitTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from './RepoGitTab'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from '../git/RepoGitTab'");
     });
 
     it('includes git entry in SUB_TABS', () => {
@@ -551,7 +551,7 @@ describe('RepoDetail MobileTabBar Activity badge wiring', () => {
 
 describe('RepoDetail Git tab ahead/behind badge', () => {
     it('imports useGitInfo from hooks', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useGitInfo } from '../hooks/useGitInfo'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { useGitInfo } from '../git/hooks/useGitInfo'");
     });
 
     it('calls useGitInfo with workspace id', () => {

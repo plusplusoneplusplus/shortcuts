@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchPickerModal.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches', 'BranchPickerModal.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -28,7 +28,7 @@ describe('BranchPickerModal', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { BranchPickerModal }");
-            expect(indexSource).toContain("from './BranchPickerModal'");
+            expect(indexSource).toContain("from '../features/git/branches/BranchPickerModal'");
         });
 
         it('exports BranchPickerModal as a named export', () => {
@@ -287,7 +287,7 @@ describe('BranchPickerModal', () => {
 
     describe('API integration', () => {
         it('imports fetchApi from hooks', () => {
-            expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
         });
 
         it('uses encodeURIComponent for workspaceId', () => {

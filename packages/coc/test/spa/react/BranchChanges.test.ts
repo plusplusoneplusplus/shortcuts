@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchChanges.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches', 'BranchChanges.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -19,7 +19,7 @@ const INDEX_PATH = path.join(
 );
 
 const REPO_GIT_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'
 );
 
 describe('BranchChanges', () => {
@@ -33,7 +33,7 @@ describe('BranchChanges', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { BranchChanges }");
-            expect(indexSource).toContain("from './BranchChanges'");
+            expect(indexSource).toContain("from '../features/git/branches/BranchChanges'");
         });
 
         it('exports BranchChanges as a named export', () => {
@@ -97,7 +97,7 @@ describe('BranchChanges', () => {
 
     describe('API integration', () => {
         it('imports fetchApi from hooks/useApi', () => {
-            expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
         });
 
         it('derives rangeInfo from branchRangeData prop (lifted to parent)', () => {
@@ -182,13 +182,13 @@ describe('BranchChanges', () => {
 
         beforeAll(() => {
             const fileTreePath = path.join(
-                __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FileTree.tsx'
+                __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
             );
             fileTreeSource = fs.readFileSync(fileTreePath, 'utf-8');
         });
 
         it('imports shared status infrastructure from FileTree', () => {
-            expect(source).toContain("from './FileTree'");
+            expect(source).toContain("from '../diff/FileTree'");
             expect(source).toContain('FlatFileList');
         });
 
@@ -259,7 +259,7 @@ describe('BranchChanges', () => {
 
         it('imports Spinner from shared', () => {
             expect(source).toContain("Spinner");
-            expect(source).toContain("from '../shared'");
+            expect(source).toContain("from '../../../shared'");
         });
 
         it('shows loading spinner during file fetch', () => {
@@ -457,7 +457,7 @@ describe('BranchChanges', () => {
         });
 
         it('RepoGitTab imports BranchChanges', () => {
-            expect(gitTabSource).toContain("import { BranchChanges } from './BranchChanges'");
+            expect(gitTabSource).toContain("import { BranchChanges } from './branches/BranchChanges'");
         });
 
         it('RepoGitTab renders BranchChanges component', () => {
@@ -485,7 +485,7 @@ describe('BranchChanges', () => {
         });
 
         it('RepoGitTab imports BranchRangeInfo type from BranchChanges', () => {
-            expect(gitTabSource).toContain("import type { BranchRangeInfo } from './BranchChanges'");
+            expect(gitTabSource).toContain("import type { BranchRangeInfo } from './branches/BranchChanges'");
         });
 
         it('BranchChanges appears after GitPanelHeader in left panel', () => {

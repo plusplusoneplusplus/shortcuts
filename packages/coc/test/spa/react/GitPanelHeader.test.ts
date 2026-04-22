@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'GitPanelHeader.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'GitPanelHeader.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -18,7 +18,7 @@ const INDEX_PATH = path.join(
 );
 
 const REPO_GIT_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'
 );
 
 describe('GitPanelHeader', () => {
@@ -32,7 +32,7 @@ describe('GitPanelHeader', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { GitPanelHeader }");
-            expect(indexSource).toContain("from './GitPanelHeader'");
+            expect(indexSource).toContain("from '../features/git/GitPanelHeader'");
         });
 
         it('exports GitPanelHeader as a named export', () => {

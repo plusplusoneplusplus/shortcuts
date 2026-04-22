@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const FILE_TREE_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FileTree.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
 );
 
 describe('FileTree shared components', () => {
@@ -258,28 +258,28 @@ describe('FileTree shared components', () => {
     describe('consumers import from FileTree', () => {
         it('CommitList imports shared components from FileTree', () => {
             const commitListPath = path.join(
-                path.dirname(FILE_TREE_PATH), 'CommitList.tsx'
+                path.dirname(FILE_TREE_PATH), '..', 'commits', 'CommitList.tsx'
             );
             const commitListSource = fs.readFileSync(commitListPath, 'utf-8');
-            expect(commitListSource).toContain("from './FileTree'");
+            expect(commitListSource).toContain("from '../diff/FileTree'");
             expect(commitListSource).toContain('FlatFileList');
         });
 
         it('BranchChanges imports shared components from FileTree', () => {
             const branchChangesPath = path.join(
-                path.dirname(FILE_TREE_PATH), 'BranchChanges.tsx'
+                path.dirname(FILE_TREE_PATH), '..', 'branches', 'BranchChanges.tsx'
             );
             const branchChangesSource = fs.readFileSync(branchChangesPath, 'utf-8');
-            expect(branchChangesSource).toContain("from './FileTree'");
+            expect(branchChangesSource).toContain("from '../diff/FileTree'");
             expect(branchChangesSource).toContain('FlatFileList');
         });
 
         it('WorkingTree imports shared components from FileTree', () => {
             const workingTreePath = path.join(
-                path.dirname(FILE_TREE_PATH), 'WorkingTree.tsx'
+                path.dirname(FILE_TREE_PATH), '..', 'working-tree', 'WorkingTree.tsx'
             );
             const workingTreeSource = fs.readFileSync(workingTreePath, 'utf-8');
-            expect(workingTreeSource).toContain("from './FileTree'");
+            expect(workingTreeSource).toContain("from '../diff/FileTree'");
             expect(workingTreeSource).toContain('FlatFileList');
             expect(workingTreeSource).toContain('FileTreeView');
             expect(workingTreeSource).toContain('renderActions');
@@ -287,10 +287,10 @@ describe('FileTree shared components', () => {
 
         it('BranchAllFilesDiff imports shared status maps from FileTree', () => {
             const diffPath = path.join(
-                path.dirname(FILE_TREE_PATH), 'BranchAllFilesDiff.tsx'
+                path.dirname(FILE_TREE_PATH), '..', 'branches', 'BranchAllFilesDiff.tsx'
             );
             const diffSource = fs.readFileSync(diffPath, 'utf-8');
-            expect(diffSource).toContain("from './FileTree'");
+            expect(diffSource).toContain("from '../diff/FileTree'");
             expect(diffSource).toContain('STATUS_COLORS');
             expect(diffSource).toContain('STATUS_LABELS');
             expect(diffSource).toContain('normalizeStatus');

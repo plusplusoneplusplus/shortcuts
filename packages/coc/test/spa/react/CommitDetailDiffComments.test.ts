@@ -21,7 +21,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 // ============================================================================
 
 const COMMIT_DETAIL_PATH = path.resolve(
-    __dirname, '../../../src/server/spa/client/react/repos/CommitDetail.tsx'
+    __dirname, '../../../src/server/spa/client/react/features/git/commits/CommitDetail.tsx'
 );
 
 // ============================================================================
@@ -31,7 +31,7 @@ const COMMIT_DETAIL_PATH = path.resolve(
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
 
-vi.mock('../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
@@ -44,7 +44,7 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
@@ -52,7 +52,7 @@ vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ onAddComment, onCommentClick, comments, 'data-testid': testId }: any) =>
         React.createElement('div', { 'data-testid': testId ?? 'mock-diff-viewer', 'data-comment-count': String(comments?.length ?? 0) },
             React.createElement('button', {
@@ -76,7 +76,7 @@ vi.mock('../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
     HunkNavButtons: () => null,
 }));
 
-import { CommitDetail } from '../../../src/server/spa/client/react/repos/CommitDetail';
+import { CommitDetail } from '../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 
 // ============================================================================
 // Hook factory

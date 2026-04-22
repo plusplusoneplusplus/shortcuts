@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitTooltip.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitTooltip.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -28,7 +28,7 @@ describe('CommitTooltip', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { CommitTooltip }");
-            expect(indexSource).toContain("from './CommitTooltip'");
+            expect(indexSource).toContain("from '../features/git/commits/CommitTooltip'");
         });
 
         it('exports CommitTooltip as a named export', () => {
@@ -168,7 +168,7 @@ describe('CommitTooltip', () => {
         });
 
         it('imports Button from shared', () => {
-            expect(source).toContain("import { Button } from '../shared'");
+            expect(source).toContain("import { Button } from '../../../shared'");
         });
     });
 });

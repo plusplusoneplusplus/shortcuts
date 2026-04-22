@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -29,7 +29,7 @@ describe('RepoGitTab', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { RepoGitTab }");
-            expect(indexSource).toContain("from './RepoGitTab'");
+            expect(indexSource).toContain("from '../features/git/RepoGitTab'");
         });
 
         it('exports RepoGitTab as a named export', () => {
@@ -53,7 +53,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports fetchApi from hooks', () => {
-            expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
         });
 
         it('fetches branch-range data', () => {
@@ -541,8 +541,8 @@ describe('RepoGitTab', () => {
         });
 
         it('imports FileDiffPanel and DiffSource factories', () => {
-            expect(source).toContain("import { FileDiffPanel } from './FileDiffPanel'");
-            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from './diffSource'");
+            expect(source).toContain("import { FileDiffPanel } from './diff/FileDiffPanel'");
+            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource'");
         });
 
         it('imports GitPanelHeader', () => {
@@ -550,7 +550,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports BranchPickerModal', () => {
-            expect(source).toContain("import { BranchPickerModal } from './BranchPickerModal'");
+            expect(source).toContain("import { BranchPickerModal } from './branches/BranchPickerModal'");
         });
 
         it('renders GitPanelHeader', () => {
@@ -681,7 +681,7 @@ describe('RepoGitTab', () => {
 
     describe('deep-link support', () => {
         it('imports useApp from AppContext', () => {
-            expect(source).toContain("import { useApp } from '../context/AppContext'");
+            expect(source).toContain("import { useApp } from '../../context/AppContext'");
         });
 
         it('reads selectedGitCommitHash from context state', () => {
@@ -872,11 +872,11 @@ describe('RepoGitTab', () => {
 
     describe('skill review context menu', () => {
         it('imports ContextMenu component', () => {
-            expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu'");
+            expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu'");
         });
 
         it('imports getApiBase utility', () => {
-            expect(source).toContain("import { getApiBase } from '../utils/config'");
+            expect(source).toContain("import { getApiBase } from '../../utils/config'");
         });
 
         it('imports useMemo from react', () => {
@@ -1121,7 +1121,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports useQueue from QueueContext', () => {
-            expect(source).toContain("import { useQueue } from '../context/QueueContext'");
+            expect(source).toContain("import { useQueue } from '../../context/QueueContext'");
         });
 
         it('destructures queueDispatch from useQueue', () => {
@@ -1346,7 +1346,7 @@ describe('RepoGitTab', () => {
 
     describe('resizable split panel', () => {
         it('imports useResizablePanel hook', () => {
-            expect(source).toContain("import { useResizablePanel } from '../hooks/useResizablePanel'");
+            expect(source).toContain("import { useResizablePanel } from '../../hooks/ui/useResizablePanel'");
         });
 
         it('calls useResizablePanel with git-sidebar-width storage key', () => {

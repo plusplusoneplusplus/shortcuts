@@ -48,7 +48,7 @@ describe('MemoryView touch targets', () => {
 // SkeletonLoader shared component
 // ---------------------------------------------------------------------------
 describe('SkeletonLoader exports', () => {
-    const src = read('shared/SkeletonLoader.tsx');
+    const src = read('ui/SkeletonLoader.tsx');
 
     it('exports SkeletonLine', () => {
         expect(src).toContain('export function SkeletonLine');

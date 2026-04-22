@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchAllFilesDiff.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches', 'BranchAllFilesDiff.tsx'
 );
 
 describe('BranchAllFilesDiff', () => {
@@ -117,7 +117,7 @@ describe('BranchAllFilesDiff', () => {
 
     describe('inline diff rendering', () => {
         it('imports and uses UnifiedDiffViewer for inline diffs', () => {
-            expect(source).toContain("from './UnifiedDiffViewer'");
+            expect(source).toContain("from '../diff/UnifiedDiffViewer'");
             expect(source).toContain('UnifiedDiffViewer');
         });
 

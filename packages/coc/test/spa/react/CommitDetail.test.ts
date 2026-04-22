@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitDetail.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitDetail.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -29,7 +29,7 @@ describe('CommitDetail', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { CommitDetail }");
-            expect(indexSource).toContain("from './CommitDetail'");
+            expect(indexSource).toContain("from '../features/git/commits/CommitDetail'");
         });
 
         it('exports CommitDetail as a named export', () => {
@@ -75,7 +75,7 @@ describe('CommitDetail', () => {
         });
 
         it('imports UnifiedDiffViewer', () => {
-            expect(source).toContain("import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer'");
+            expect(source).toContain("import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer'");
         });
 
         it('renders diff content with data-testid', () => {
@@ -118,7 +118,7 @@ describe('CommitDetail', () => {
         });
 
         it('delegates error handling to useCachedDiff hook', () => {
-            expect(source).toContain("import { useCachedDiff } from './useCommitDiffCache'");
+            expect(source).toContain("import { useCachedDiff } from '../hooks/useCommitDiffCache'");
         });
     });
 

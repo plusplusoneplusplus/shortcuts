@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'UnifiedDiffViewer.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'UnifiedDiffViewer.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -36,7 +36,7 @@ describe('UnifiedDiffViewer', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { UnifiedDiffViewer }");
-            expect(indexSource).toContain("from './UnifiedDiffViewer'");
+            expect(indexSource).toContain("from '../features/git/diff/UnifiedDiffViewer'");
         });
 
         it('exports UnifiedDiffViewerProps type from index', () => {
@@ -148,7 +148,7 @@ describe('UnifiedDiffViewer', () => {
 
         it('imports getLanguageFromFileName from useSyntaxHighlight', () => {
             expect(source).toContain('getLanguageFromFileName');
-            expect(source).toContain("from './useSyntaxHighlight'");
+            expect(source).toContain("from '../hooks/useSyntaxHighlight'");
         });
 
         it('imports highlightLine from useSyntaxHighlight', () => {

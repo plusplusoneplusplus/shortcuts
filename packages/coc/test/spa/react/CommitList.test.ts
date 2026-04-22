@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitList.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx'
 );
 
 const INDEX_PATH = path.join(
@@ -18,7 +18,7 @@ const INDEX_PATH = path.join(
 );
 
 const FILE_TREE_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FileTree.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
 );
 
 describe('CommitList', () => {
@@ -34,7 +34,7 @@ describe('CommitList', () => {
         it('is exported from repos/index.ts', () => {
             const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
             expect(indexSource).toContain("export { CommitList }");
-            expect(indexSource).toContain("from './CommitList'");
+            expect(indexSource).toContain("from '../features/git/commits/CommitList'");
         });
 
         it('exports CommitList as a named export', () => {
