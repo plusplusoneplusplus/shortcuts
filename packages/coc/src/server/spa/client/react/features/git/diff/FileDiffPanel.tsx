@@ -24,7 +24,7 @@ import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { buildDiffContext } from '../../../../diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
 import { CommitChatPanel } from '../commits/CommitChatPanel';
-import { useResizablePanel } from '../../../hooks/useResizablePanel';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { useFileDiff } from '../hooks/useFileDiff';
 import type { DiffSource } from './diffSource';
 import type { DiffCommentSelection, DiffComment } from '../../../../diff-comment-types';

@@ -5,17 +5,17 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
-import { Spinner } from '../../shared';
-import { fetchApi } from '../../hooks/useApi';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { Spinner } from '../../../shared';
+import { fetchApi } from '../../../hooks/useApi';
+import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
-import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 
 export interface ExplorerPanelProps {

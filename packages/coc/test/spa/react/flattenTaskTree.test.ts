@@ -11,7 +11,7 @@ import {
     type TaskFolder,
     type TaskDocumentGroup,
     type TaskDocument,
-} from '../../../src/server/spa/client/react/hooks/useTaskTree';
+} from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

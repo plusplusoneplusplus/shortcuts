@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useDiffViewMode } from '../../../../src/server/spa/client/react/hooks/useDiffViewMode';
+import { useDiffViewMode } from '../../../../src/server/spa/client/react/features/git/hooks/useDiffViewMode';
 
 // ---------------------------------------------------------------------------
 // localStorage mock helpers

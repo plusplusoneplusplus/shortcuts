@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getConversationTurns } from '../../../../src/server/spa/client/react/chat/chatConversationUtils';
+import { getConversationTurns } from '../../../../src/server/spa/client/react/features/chat/conversation/chatConversationUtils';
 
 describe('getConversationTurns', () => {
     describe('process.conversationTurns (highest priority)', () => {

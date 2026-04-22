@@ -7,11 +7,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useUnseenChat, getTaskCompletedAtIso } from '../../../../src/server/spa/client/react/hooks/useUnseenChat';
-import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/seenStateApi';
+import { useUnseenChat, getTaskCompletedAtIso } from '../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat';
+import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
 
 // Mock the API module
-vi.mock('../../../../src/server/spa/client/react/hooks/seenStateApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', () => ({
     fetchSeenMap: vi.fn(),
     patchSeenState: vi.fn(),
     deleteSeenEntry: vi.fn(),

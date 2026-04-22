@@ -19,7 +19,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenChat', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     computeUnseenCount: vi.fn(() => 0),
 }));
 

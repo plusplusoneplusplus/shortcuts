@@ -12,9 +12,9 @@ import {
     HunkNavButtons,
     computeEditStarts,
     computeDiffLines,
-} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
-import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/repos/SideBySideDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 
 const MULTI_HUNK_DIFF = `diff --git a/foo.ts b/foo.ts
 index 0000000..1111111 100644
@@ -432,7 +432,7 @@ describe('UnifiedDiffViewerHandle', () => {
 // CommitFileContent — nav buttons presence
 // ============================================================================
 
-import { CommitFileContent } from '../../../../src/server/spa/client/react/repos/CommitFileContent';
+import { CommitFileContent } from '../../../../src/server/spa/client/react/features/git/commits/CommitFileContent';
 
 const mockFetchApi = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({

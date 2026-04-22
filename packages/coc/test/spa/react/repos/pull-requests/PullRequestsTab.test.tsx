@@ -17,11 +17,11 @@ vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => (
 }));
 
 // Default to desktop layout.
-vi.mock('../../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 288,
         isDragging: false,

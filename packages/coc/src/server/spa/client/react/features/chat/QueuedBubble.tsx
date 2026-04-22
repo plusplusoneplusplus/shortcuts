@@ -1,4 +1,4 @@
-import type { QueuedMessage } from '../utils/chatUtils';
+import type { QueuedMessage } from '../../utils/chatUtils';
 
 function QueuedItem({ msg }: { msg: QueuedMessage }) {
     return (

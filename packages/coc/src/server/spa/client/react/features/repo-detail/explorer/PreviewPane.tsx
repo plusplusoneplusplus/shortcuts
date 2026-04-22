@@ -10,8 +10,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchApi } from '../../hooks/useApi';
-import { Spinner, Button } from '../../shared';
+import { fetchApi } from '../../../hooks/useApi';
+import { Spinner, Button } from '../../../shared';
 import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 

@@ -14,7 +14,7 @@ import { ProcessDetail } from '../../../src/server/spa/client/react/processes/Pr
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
     invalidateDisplaySettings: vi.fn(),
 }));

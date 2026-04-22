@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { useWiki } from '../hooks/useWiki';
+import { useWiki } from './hooks/useWiki';
 import { Card, Badge, Button, Spinner } from '../shared';
 import { AddWikiDialog } from './AddWikiDialog';
 import { EditWikiDialog } from './EditWikiDialog';

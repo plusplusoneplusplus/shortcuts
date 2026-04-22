@@ -28,14 +28,14 @@ vi.mock('../../../src/server/spa/client/react/tasks/comments/ContextMenu', () =>
 }));
 
 // Stub useBreakpoint used by Dialog
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
 // Mock useLongPress — captures callbacks for test assertions
 let _longPressCallback: ((x: number, y: number) => void) | null = null;
 let _longPressFired = false;
-vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
     useLongPress: (cb: (x: number, y: number) => void) => {
         _longPressCallback = cb;
         return {

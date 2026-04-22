@@ -6,8 +6,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, cn } from '../../shared';
 import { Spinner } from '../../shared';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
 import { WorkItemExecutionSession } from './WorkItemExecutionSession';

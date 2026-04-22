@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FilePathLink } from './FilePathLink';
 import { BottomSheet } from './BottomSheet';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 export interface ReferencesDropdownProps {
     planPath?: string;

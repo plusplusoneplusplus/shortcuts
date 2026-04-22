@@ -1,0 +1,689 @@
+/* src/server/spa/client/react/features/notes/editor/commentsPanel.css */
+.comment-thread-enter {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.comment-thread-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+.comment-thread-resolved .comment-anchor-text {
+  text-decoration: line-through;
+}
+.comment-reply-input:focus {
+  outline: none;
+  border-color: #0078d4;
+  box-shadow: 0 0 0 1px #0078d4;
+}
+@media (prefers-color-scheme: dark) {
+  .comment-reply-input:focus {
+    border-color: #3794ff;
+    box-shadow: 0 0 0 1px #3794ff;
+  }
+}
+
+/* ../../node_modules/@xterm/xterm/css/xterm.css */
+.xterm {
+  cursor: text;
+  position: relative;
+  user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+}
+.xterm.focus,
+.xterm:focus {
+  outline: none;
+}
+.xterm .xterm-helpers {
+  position: absolute;
+  top: 0;
+  z-index: 5;
+}
+.xterm .xterm-helper-textarea {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  position: absolute;
+  opacity: 0;
+  left: -9999em;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: -5;
+  white-space: nowrap;
+  overflow: hidden;
+  resize: none;
+}
+.xterm .composition-view {
+  background: #000;
+  color: #FFF;
+  display: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 1;
+}
+.xterm .composition-view.active {
+  display: block;
+}
+.xterm .xterm-viewport {
+  background-color: #000;
+  overflow-y: scroll;
+  cursor: default;
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+.xterm .xterm-screen {
+  position: relative;
+}
+.xterm .xterm-screen canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.xterm-char-measure-element {
+  display: inline-block;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: -9999em;
+  line-height: normal;
+}
+.xterm.enable-mouse-events {
+  cursor: default;
+}
+.xterm.xterm-cursor-pointer,
+.xterm .xterm-cursor-pointer {
+  cursor: pointer;
+}
+.xterm.column-select.focus {
+  cursor: crosshair;
+}
+.xterm .xterm-accessibility:not(.debug),
+.xterm .xterm-message {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 10;
+  color: transparent;
+  pointer-events: none;
+}
+.xterm .xterm-accessibility-tree:not(.debug) *::selection {
+  color: transparent;
+}
+.xterm .xterm-accessibility-tree {
+  font-family: monospace;
+  user-select: text;
+  white-space: pre;
+}
+.xterm .xterm-accessibility-tree > div {
+  transform-origin: left;
+  width: fit-content;
+}
+.xterm .live-region {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.xterm-dim {
+  opacity: 1 !important;
+}
+.xterm-underline-1 {
+  text-decoration: underline;
+}
+.xterm-underline-2 {
+  text-decoration: double underline;
+}
+.xterm-underline-3 {
+  text-decoration: wavy underline;
+}
+.xterm-underline-4 {
+  text-decoration: dotted underline;
+}
+.xterm-underline-5 {
+  text-decoration: dashed underline;
+}
+.xterm-overline {
+  text-decoration: overline;
+}
+.xterm-overline.xterm-underline-1 {
+  text-decoration: overline underline;
+}
+.xterm-overline.xterm-underline-2 {
+  text-decoration: overline double underline;
+}
+.xterm-overline.xterm-underline-3 {
+  text-decoration: overline wavy underline;
+}
+.xterm-overline.xterm-underline-4 {
+  text-decoration: overline dotted underline;
+}
+.xterm-overline.xterm-underline-5 {
+  text-decoration: overline dashed underline;
+}
+.xterm-strikethrough {
+  text-decoration: line-through;
+}
+.xterm-screen .xterm-decoration-container .xterm-decoration {
+  z-index: 6;
+  position: absolute;
+}
+.xterm-screen .xterm-decoration-container .xterm-decoration.xterm-decoration-top-layer {
+  z-index: 7;
+}
+.xterm-decoration-overview-ruler {
+  z-index: 8;
+  position: absolute;
+  top: 0;
+  right: 0;
+  pointer-events: none;
+}
+.xterm-decoration-top {
+  z-index: 2;
+  position: relative;
+}
+.xterm .xterm-scrollable-element > .scrollbar {
+  cursor: default;
+}
+.xterm .xterm-scrollable-element > .scrollbar > .scra {
+  cursor: pointer;
+  font-size: 11px !important;
+}
+.xterm .xterm-scrollable-element > .visible {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0);
+  transition: opacity 100ms linear;
+  z-index: 11;
+}
+.xterm .xterm-scrollable-element > .invisible {
+  opacity: 0;
+  pointer-events: none;
+}
+.xterm .xterm-scrollable-element > .invisible.fade {
+  transition: opacity 800ms linear;
+}
+.xterm .xterm-scrollable-element > .shadow {
+  position: absolute;
+  display: none;
+}
+.xterm .xterm-scrollable-element > .shadow.top {
+  display: block;
+  top: 0;
+  left: 3px;
+  height: 3px;
+  width: 100%;
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 0 6px 6px -6px inset;
+}
+.xterm .xterm-scrollable-element > .shadow.left {
+  display: block;
+  top: 3px;
+  left: 0;
+  height: 100%;
+  width: 3px;
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset;
+}
+.xterm .xterm-scrollable-element > .shadow.top-left-corner {
+  display: block;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 3px;
+}
+.xterm .xterm-scrollable-element > .shadow.top.left {
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset;
+}
+
+/* src/server/spa/client/react/features/notes/editor/noteEditor.css */
+.note-editor .ProseMirror {
+  outline: none;
+  min-height: 300px;
+  padding: 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+.note-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #999;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.note-editor .ProseMirror h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+}
+.note-editor .ProseMirror h2 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+.note-editor .ProseMirror h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+.note-editor .ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.note-editor .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.note-editor .ProseMirror ul[data-type=taskList] {
+  list-style: none;
+  padding-left: 0;
+}
+.note-editor .ProseMirror ul[data-type=taskList] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.note-editor .ProseMirror ul[data-type=taskList] li input[type=checkbox] {
+  margin-top: 0.3rem;
+}
+.note-editor .ProseMirror blockquote {
+  border-left: 3px solid #d0d0d0;
+  padding-left: 1rem;
+  color: #666;
+  margin: 0.75rem 0;
+}
+.note-editor .ProseMirror code {
+  background: #f3f3f3;
+  color: #c7254e;
+  border-radius: 4px;
+  padding: 0.12em 0.38em;
+  font-size: 0.92em;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+.note-editor .ProseMirror pre {
+  background: #f6f8fa;
+  color: #1e1e1e;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  font-size: 0.875em;
+}
+.note-editor .ProseMirror pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+.note-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 1.5rem 0;
+}
+.note-editor .ProseMirror a {
+  color: #0078d4;
+  text-decoration: underline;
+}
+.note-editor .ProseMirror mark {
+  border-radius: 2px;
+  padding: 0.05rem 0.1rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.dark .note-editor .ProseMirror blockquote {
+  border-left-color: #555;
+  color: #aaa;
+}
+.dark .note-editor .ProseMirror code {
+  background: #2d2d2d;
+  color: #ff9da4;
+}
+.dark .note-editor .ProseMirror pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-color: #3c3c3c;
+}
+.dark .note-editor .ProseMirror hr {
+  border-top-color: #3c3c3c;
+}
+.dark .note-editor .ProseMirror mark {
+  color: #e0e0e0;
+}
+.note-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  table-layout: fixed;
+  overflow: hidden;
+}
+.note-editor .ProseMirror th,
+.note-editor .ProseMirror td {
+  border: 1px solid #e0e0e0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  position: relative;
+  box-sizing: border-box;
+}
+.note-editor .ProseMirror th {
+  background: #f3f3f3;
+  font-weight: 600;
+}
+.note-editor .ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 120, 212, 0.12);
+  pointer-events: none;
+}
+.note-editor .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: #0078d4;
+  opacity: 0;
+}
+.dark .note-editor .ProseMirror th,
+.dark .note-editor .ProseMirror td {
+  border-color: #3c3c3c;
+}
+.dark .note-editor .ProseMirror th {
+  background: #252526;
+}
+.dark .note-editor .ProseMirror .selectedCell::after {
+  background: rgba(0, 120, 212, 0.22);
+}
+.note-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.5em 0;
+  cursor: default;
+  display: block;
+}
+.note-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #0078d4;
+  outline-offset: 2px;
+}
+.image-resize-wrapper {
+  display: block;
+  margin: 0.5em 0;
+}
+.image-resize-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+.image-resize-container img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  cursor: default;
+  margin: 0;
+}
+.image-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0078d4;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.image-resize-container:hover .image-resize-handle,
+.image-resizing .image-resize-handle {
+  opacity: 1;
+}
+.image-resize-handle.top-left {
+  top: 4px;
+  left: 4px;
+  cursor: nwse-resize;
+}
+.image-resize-handle.top-right {
+  top: 4px;
+  right: 4px;
+  cursor: nesw-resize;
+}
+.image-resize-handle.bottom-left {
+  bottom: 4px;
+  left: 4px;
+  cursor: nesw-resize;
+}
+.image-resize-handle.bottom-right {
+  bottom: 4px;
+  right: 4px;
+  cursor: nwse-resize;
+}
+.image-resizing .image-resize-container {
+  outline: 2px dashed #0078d4;
+  outline-offset: 2px;
+}
+.image-resize-tooltip {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+.image-resize-reset {
+  position: absolute;
+  top: 4px;
+  right: 20px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 0;
+}
+.image-resize-container:hover .image-resize-reset {
+  opacity: 1;
+}
+.image-resize-reset:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+.dark .image-resize-handle {
+  background: #4fc3f7;
+  border-color: #1e1e1e;
+}
+.dark .image-resizing .image-resize-container {
+  outline-color: #4fc3f7;
+}
+.dark .image-resize-tooltip {
+  background: rgba(50, 50, 50, 0.9);
+}
+.dark .image-resize-reset {
+  background: rgba(255, 255, 255, 0.25);
+  color: #e0e0e0;
+}
+.dark .image-resize-reset:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+.note-editor .ProseMirror span[data-comment-id] {
+  background-color: rgba(255, 212, 0, 0.2);
+  border-bottom: 2px solid rgba(255, 212, 0, 0.6);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  border-radius: 1px;
+  padding: 0.05rem 0;
+}
+.note-editor .ProseMirror span[data-comment-id]:hover {
+  background-color: rgba(255, 212, 0, 0.35);
+}
+.note-editor .ProseMirror span[data-comment-id].comment-active {
+  background-color: rgba(255, 212, 0, 0.45);
+  border-bottom-color: rgba(255, 212, 0, 0.9);
+}
+.note-editor .ProseMirror span[data-comment-id].comment-resolved {
+  background-color: rgba(128, 128, 128, 0.1);
+  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+}
+.note-editor .ProseMirror .block-comment {
+  border-left: 3px solid rgba(255, 212, 0, 0.6);
+  padding-left: 8px;
+  background-color: rgba(255, 212, 0, 0.05);
+  transition: background-color 0.15s, border-left-color 0.15s;
+}
+.note-editor .ProseMirror .block-comment:hover {
+  background-color: rgba(255, 212, 0, 0.1);
+}
+.note-editor .ProseMirror .block-comment.block-comment-active {
+  border-left-color: rgba(255, 212, 0, 0.9);
+  background-color: rgba(255, 212, 0, 0.12);
+}
+.note-editor .ProseMirror .block-comment.block-comment-resolved {
+  border-left: 2px dashed rgba(128, 128, 128, 0.4);
+  background-color: rgba(128, 128, 128, 0.03);
+}
+.note-editor .ProseMirror .ai-edit-added {
+  color: #2563eb;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 2px;
+}
+.note-editor .ProseMirror .ai-edit-removed {
+  color: #b91c1c;
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.6);
+  border-radius: 2px;
+  opacity: 0.75;
+}
+.note-editor .ProseMirror .ai-edit-deleted-block {
+  background: rgba(127, 29, 29, 0.08);
+  border: 1px solid rgba(185, 28, 28, 0.25);
+  border-radius: 4px;
+  margin: 4px 0;
+  overflow: hidden;
+  display: block;
+}
+.note-editor .ProseMirror .ai-edit-deleted-header {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(127, 29, 29, 0.12);
+  border-bottom: 1px solid rgba(185, 28, 28, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.note-editor .ProseMirror .ai-edit-deleted-header:hover {
+  background: rgba(127, 29, 29, 0.18);
+}
+.note-editor .ProseMirror .ai-edit-deleted-body {
+  padding: 6px 8px;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+.dark .note-editor .ProseMirror .ai-edit-added {
+  color: #60a5fa;
+  border-bottom-color: rgba(96, 165, 250, 0.35);
+}
+.dark .note-editor .ProseMirror .ai-edit-removed {
+  color: #f87171;
+  text-decoration-color: rgba(248, 113, 113, 0.6);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-block {
+  background: rgba(127, 29, 29, 0.15);
+  border-color: rgba(248, 113, 113, 0.25);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-header {
+  color: #f87171;
+  background: rgba(127, 29, 29, 0.2);
+  border-bottom-color: rgba(248, 113, 113, 0.15);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-header:hover {
+  background: rgba(127, 29, 29, 0.3);
+}
+.dark .note-editor .ProseMirror span[data-comment-id] {
+  background-color: rgba(255, 212, 0, 0.15);
+  border-bottom-color: rgba(255, 212, 0, 0.4);
+}
+.dark .note-editor .ProseMirror span[data-comment-id]:hover {
+  background-color: rgba(255, 212, 0, 0.25);
+}
+.dark .note-editor .ProseMirror span[data-comment-id].comment-active {
+  background-color: rgba(255, 212, 0, 0.35);
+  border-bottom-color: rgba(255, 212, 0, 0.7);
+}
+.dark .note-editor .ProseMirror span[data-comment-id].comment-resolved {
+  background-color: rgba(128, 128, 128, 0.08);
+  border-bottom-color: rgba(128, 128, 128, 0.3);
+}
+.dark .note-editor .ProseMirror .block-comment {
+  border-left-color: rgba(255, 212, 0, 0.4);
+  background-color: rgba(255, 212, 0, 0.04);
+}
+.dark .note-editor .ProseMirror .block-comment.block-comment-active {
+  border-left-color: rgba(255, 212, 0, 0.7);
+  background-color: rgba(255, 212, 0, 0.08);
+}
+/*! Bundled license information:
+
+@xterm/xterm/css/xterm.css:
+  (**
+   * Copyright (c) 2014 The xterm.js authors. All rights reserved.
+   * Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
+   * https://github.com/chjj/term.js
+   * @license MIT
+   *
+   * Permission is hereby granted, free of charge, to any person obtaining a copy
+   * of this software and associated documentation files (the "Software"), to deal
+   * in the Software without restriction, including without limitation the rights
+   * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   * copies of the Software, and to permit persons to whom the Software is
+   * furnished to do so, subject to the following conditions:
+   *
+   * The above copyright notice and this permission notice shall be included in
+   * all copies or substantial portions of the Software.
+   *
+   * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+   * THE SOFTWARE.
+   *
+   * Originally forked from (with the author's permission):
+   *   Fabrice Bellard's javascript vt100 for jslinux:
+   *   http://bellard.org/jslinux/
+   *   Copyright (c) 2011 Fabrice Bellard
+   *   The original design remains. The terminal itself
+   *   has been extended to include xterm CSI codes, among
+   *   other features.
+   *)
+*/

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatListPane.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'ChatListPane.tsx'
 );
 const ENQUEUE_DIALOG_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'EnqueueDialog.tsx'
@@ -25,7 +25,7 @@ const QUEUE_CONTEXT_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'QueueContext.tsx'
 );
 const REPO_ACTIVITY_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'RepoChatTab.tsx'
 );
 
 describe('Refresh button spin during mutations', () => {

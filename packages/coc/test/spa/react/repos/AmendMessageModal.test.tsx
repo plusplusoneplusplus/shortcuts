@@ -5,8 +5,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AmendMessageModal } from '../../../../src/server/spa/client/react/repos/AmendMessageModal';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { AmendMessageModal } from '../../../../src/server/spa/client/react/features/git/working-tree/AmendMessageModal';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 const mockCommit: GitCommitItem = {
     hash: 'abc123',

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useCommitCommentTotals } from '../../../../src/server/spa/client/react/hooks/useCommitCommentTotals';
+import { useCommitCommentTotals } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitCommentTotals';
 
 // ============================================================================
 // WebSocket Mock

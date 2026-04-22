@@ -6,8 +6,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Spinner, BottomSheet } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';
-import { useMermaid } from '../hooks/useMermaid';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useMermaid } from '../hooks/ui/useMermaid';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;

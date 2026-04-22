@@ -58,11 +58,11 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
 }));
 
 // Default breakpoint mock — desktop
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 288,
         isDragging: false,
@@ -73,7 +73,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
 }));
 
 const SCHEDULES_TAB_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoSchedulesTab.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'schedules', 'RepoSchedulesTab.tsx'),
     'utf-8'
 );
 
@@ -97,7 +97,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
     const { RepoSchedulesTab } = await import(
-        '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+        '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
     );
     const result = render(
         <Wrap>
@@ -115,7 +115,7 @@ async function renderEmpty() {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
     const { RepoSchedulesTab } = await import(
-        '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+        '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
     );
     const result = render(
         <Wrap>
@@ -260,7 +260,7 @@ describe('Split-panel layout', () => {
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
         const { RepoSchedulesTab } = await import(
-            '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+            '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
         );
 
         // The component auto-selects first schedule, so we verify the detail renders

@@ -13,8 +13,8 @@ import {
     getSegmentColor,
     MINIMAP_WIDTH,
     type DiffSegment,
-} from '../../../../src/server/spa/client/react/repos/DiffMiniMap';
-import type { DiffLine } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap';
+import type { DiffLine } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

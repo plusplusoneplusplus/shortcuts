@@ -7,7 +7,7 @@
  */
 
 import { createContext, useContext, useReducer, useCallback, useMemo, type ReactNode } from 'react';
-import { usePopOutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
+import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';
 
 // ── State ──────────────────────────────────────────────────────────────────────
 

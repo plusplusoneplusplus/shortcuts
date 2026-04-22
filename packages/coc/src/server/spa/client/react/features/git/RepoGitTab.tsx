@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getApiBase } from '../../utils/config';
 import { Spinner } from '../../shared';
 import { CommitList } from './commits/CommitList';
@@ -31,7 +31,7 @@ import { WorkingTreeAllComments } from './working-tree/WorkingTreeAllComments';
 import { BranchRangeAllComments } from './branches/BranchRangeAllComments';
 import { BranchPickerModal } from './branches/BranchPickerModal';
 import { AmendMessageModal } from './working-tree/AmendMessageModal';
-import { SkillContextDialog } from '../../repos/SkillContextDialog';
+import { SkillContextDialog } from '../chat/SkillContextDialog';
 import { clearCacheForHash } from './hooks/useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './hooks/useBranchRangeCache';
 import { getCommitsCache, setCommitsCache, clearCommitsCache } from './hooks/useCommitsCache';

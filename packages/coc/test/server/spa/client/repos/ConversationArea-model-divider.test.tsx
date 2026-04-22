@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ConversationArea } from '../../../../../src/server/spa/client/react/repos/ConversationArea';
+import { ConversationArea } from '../../../../../src/server/spa/client/react/features/chat/ConversationArea';
 import type { ClientConversationTurn } from '../../../../../src/server/spa/client/react/types/dashboard';
 
 // scrollIntoView is not implemented in jsdom
@@ -25,7 +25,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     ConversationTurnBubble: ({ turn }: any) => <div data-testid={`turn-${turn.turnIndex}`}>{turn.content}</div>,
 }));
 
@@ -33,15 +33,15 @@ vi.mock('../../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel',
     PendingTaskInfoPanel: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/QueuedBubble', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({
     QueuedFollowUps: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/BackgroundTasksIndicator', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/BackgroundTasksIndicator', () => ({
     BackgroundTasksIndicator: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/AskUserInline', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/AskUserInline', () => ({
     AskUserInline: () => null,
 }));
 

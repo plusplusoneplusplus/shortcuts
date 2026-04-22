@@ -10,17 +10,17 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useMarkdownPreview } from '../../../src/server/spa/client/react/hooks/useMarkdownPreview';
-import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/useCodeBlockActions';
-import { useMermaid } from '../../../src/server/spa/client/react/hooks/useMermaid';
+import { useMarkdownPreview } from '../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview';
+import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/ui/useCodeBlockActions';
+import { useMermaid } from '../../../src/server/spa/client/react/hooks/ui/useMermaid';
 
 // Mock useMermaid since it requires DOM manipulation
-vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
     useMermaid: vi.fn(),
 }));
 
 // Mock useCodeBlockActions since it requires DOM event delegation
-vi.mock('../../../src/server/spa/client/react/hooks/useCodeBlockActions', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useCodeBlockActions', () => ({
     useCodeBlockActions: vi.fn(),
 }));
 

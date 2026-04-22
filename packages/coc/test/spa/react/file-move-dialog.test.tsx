@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { FileMoveDialog, type FileMoveDialogProps } from '../../../src/server/spa/client/react/tasks/FileMoveDialog';
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useLongPress } from '../../../../src/server/spa/client/react/hooks/useLongPress';
+import { useLongPress } from '../../../../src/server/spa/client/react/hooks/ui/useLongPress';
 
 // Minimal touch event helpers
 function makeTouchEvent(x: number, y: number, numTouches = 1): React.TouchEvent {

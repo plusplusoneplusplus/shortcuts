@@ -3,20 +3,20 @@ export { ConversationTurnBubble, chatMarkdownToHtml, toContentHtml, mergeConsecu
 export { ConversationMiniMap, buildStrips, getTurnColor, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW } from './ConversationMiniMap';
 export type { ConversationMiniMapProps, StripInfo } from './ConversationMiniMap';
 export { ConversationMetadataPopover, getSessionIdFromProcess, buildRows } from './ConversationMetadataPopover';
-export { ToolCallView } from './ToolCallView';
-export { ToolCallGroupView, groupStartLabel, groupDuration } from './ToolCallGroupView';
-export type { RenderToolCall, ToolCallGroupViewProps } from './ToolCallGroupView';
-export { ToolResultPopover } from './ToolResultPopover';
-export { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
+export { ToolCallView } from './tool-calls/ToolCallView';
+export { ToolCallGroupView, groupStartLabel, groupDuration } from './tool-calls/ToolCallGroupView';
+export type { RenderToolCall, ToolCallGroupViewProps } from './tool-calls/ToolCallGroupView';
+export { ToolResultPopover } from './tool-calls/ToolResultPopover';
+export { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
-export { JsonResponseView } from '../shared/JsonResponseView';
+export { JsonResponseView } from '../../../shared/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
 export { getConversationTurns } from './chatConversationUtils';
 
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
 export type { DetectedCommit } from './commitDetection';
-export { isJsonResponse } from '../shared/json-utils';
+export { isJsonResponse } from '../../../shared/json-utils';
 export { mergeConsecutiveContentItems } from './timeline-utils';
 export {
     CATEGORY_MAP, CATEGORY_ICONS,
@@ -24,9 +24,9 @@ export {
     getToolGroupStatus, isSingleLineHtml,
     groupConsecutiveToolChunks, filterWhisperChunks,
     computeNetDiff, computeFileEditTotals,
-} from './toolGroupUtils';
+} from './tool-calls/toolGroupUtils';
 export type {
     ToolGroupCategory, GroupContentItem, GroupOrderedItem,
     ToolGroupStatus, GroupOptions, FileEdit,
     WhisperSummary, WhisperGroupChunk,
-} from './toolGroupUtils';
+} from './tool-calls/toolGroupUtils';

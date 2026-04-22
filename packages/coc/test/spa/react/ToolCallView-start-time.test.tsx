@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import React from 'react';
-import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
+import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,

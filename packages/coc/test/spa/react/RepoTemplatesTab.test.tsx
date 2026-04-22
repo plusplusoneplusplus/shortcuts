@@ -339,7 +339,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoTemplatesTab.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'templates', 'RepoTemplatesTab.tsx'),
     'utf-8',
 );
 

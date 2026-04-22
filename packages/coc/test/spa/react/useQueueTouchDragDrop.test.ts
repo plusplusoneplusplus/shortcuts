@@ -10,7 +10,7 @@ import {
     useQueueTouchDragDrop,
     LONG_PRESS_DELAY,
     MOVE_THRESHOLD,
-} from '../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop';
+} from '../../../src/server/spa/client/react/queue/hooks/useQueueTouchDragDrop';
 
 // ── computeDropIndex (pure function) ───────────────────────────────────
 

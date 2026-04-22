@@ -9,11 +9,11 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 const mockFetchDiffFromSource = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/diffSource', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
     fetchDiffFromSource: (...args: any[]) => mockFetchDiffFromSource(...args),
 }));
 
-import { useFileDiff } from '../../../../src/server/spa/client/react/repos/useFileDiff';
+import { useFileDiff } from '../../../../src/server/spa/client/react/features/git/hooks/useFileDiff';
 
 describe('useFileDiff', () => {
     beforeEach(() => {

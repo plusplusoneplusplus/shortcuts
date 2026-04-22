@@ -6,9 +6,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import type { ModelInfo } from '../hooks/useModels';
-import { isMetaCommand } from './slash-command-parser';
-import { filterModels } from './ModelCommandMenu';
+import type { ModelInfo } from '../../../hooks/useModels';
+import { isMetaCommand } from '../slash-command-parser';
+import { filterModels } from '../ModelCommandMenu';
 
 export interface UseModelCommandResult {
     /** Whether the model picker menu is visible */

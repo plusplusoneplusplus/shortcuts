@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useImagePaste } from '../../../src/server/spa/client/react/hooks/useImagePaste';
+import { useImagePaste } from '../../../src/server/spa/client/react/features/chat/hooks/useImagePaste';
 
 let imageCounter = 0;
 const OriginalFileReader = globalThis.FileReader;

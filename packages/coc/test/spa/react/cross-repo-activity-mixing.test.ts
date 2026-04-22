@@ -15,7 +15,7 @@ import { queueReducer, type QueueContextState } from '../../../src/server/spa/cl
 // ── Source file readers ────────────────────────────────────────────────
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 
@@ -35,7 +35,7 @@ const QUEUE_CONTEXT_SOURCE = fs.readFileSync(
 );
 
 const REPO_ACTIVITY_TAB_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'RepoChatTab.tsx'),
     'utf-8',
 );
 

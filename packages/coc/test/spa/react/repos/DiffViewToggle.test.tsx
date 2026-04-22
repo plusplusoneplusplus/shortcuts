@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { DiffViewToggle } from '../../../../src/server/spa/client/react/repos/DiffViewToggle';
+import { DiffViewToggle } from '../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle';
 
 describe('DiffViewToggle', () => {
     it('renders both buttons with correct labels', () => {

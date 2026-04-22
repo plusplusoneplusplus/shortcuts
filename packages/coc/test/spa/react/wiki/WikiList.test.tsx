@@ -11,7 +11,7 @@ import { WikiList } from '../../../../src/server/spa/client/react/wiki/WikiList'
 
 // Mock hooks to avoid real API calls and context requirement
 const mockDispatch = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/hooks/useWiki', () => ({
+vi.mock('../../../../src/server/spa/client/react/wiki/hooks/useWiki', () => ({
     useWiki: vi.fn(() => ({ wikis: [], reload: vi.fn() })),
 }));
 vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
@@ -21,7 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     })),
 }));
 
-import { useWiki } from '../../../../src/server/spa/client/react/hooks/useWiki';
+import { useWiki } from '../../../../src/server/spa/client/react/wiki/hooks/useWiki';
 
 afterEach(() => {
     vi.clearAllMocks();

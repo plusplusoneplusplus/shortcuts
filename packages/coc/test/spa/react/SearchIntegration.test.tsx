@@ -27,11 +27,11 @@ vi.mock('../../../src/server/spa/client/react/tasks/comments/ContextMenu', () =>
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
     useLongPress: () => ({
         onTouchStart: vi.fn(),
         onTouchEnd: vi.fn(),

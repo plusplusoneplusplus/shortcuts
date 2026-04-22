@@ -1,6 +1,6 @@
 import type { DAGNodeState } from './types';
 import { cn } from '../../shared/cn';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
 export interface PhaseDetail {

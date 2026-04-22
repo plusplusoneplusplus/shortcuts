@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REPOS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat'
 );
 const CSS_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'tailwind.css'

@@ -3,12 +3,12 @@
  * same-category tool calls (read / write / shell).
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { cn } from '../shared';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { cn } from '../../../../shared';
+import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
-import type { DetectedCommit } from './commitDetection';
-import { CommitStrip } from './CommitStrip';
+import type { DetectedCommit } from '../commitDetection';
+import { CommitStrip } from '../CommitStrip';
 
 export interface RenderToolCall {
     id: string;

@@ -14,8 +14,8 @@ import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/
 import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import { buildFileTooltip } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import { TaskSearchResults, highlightMatch } from '../../../src/server/spa/client/react/tasks/TaskSearchResults';
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
-import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
+import { useTaskGeneration } from '../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration';
 import type { TasksPanelNavState } from '../../../src/server/spa/client/react/types/dashboard';
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -1313,7 +1313,7 @@ describe('TasksPanel — preserves navigation on refresh', () => {
 // TasksPanel — GenerateTaskDialog integration
 // ============================================================================
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration', () => ({
     useTaskGeneration: vi.fn(),
 }));
 

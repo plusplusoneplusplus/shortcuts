@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateUnifiedDiff } from '../../../../src/server/spa/client/react/repos/unifiedDiffUtils';
+import { generateUnifiedDiff } from '../../../../src/server/spa/client/react/features/git/diff/unifiedDiffUtils';
 
 describe('generateUnifiedDiff', () => {
     it('produces no +/- content lines for identical input', () => {

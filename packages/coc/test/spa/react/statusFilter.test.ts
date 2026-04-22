@@ -12,7 +12,7 @@ import {
     type TaskFolder,
     type TaskDocument,
     type TaskDocumentGroup,
-} from '../../../src/server/spa/client/react/hooks/useTaskTree';
+} from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 

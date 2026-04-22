@@ -7,11 +7,11 @@ const { mockContainerWidth, mockBreakpoint } = vi.hoisted(() => ({
     mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => mockContainerWidth,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: ({ isOpen, children }: any) => isOpen ? <div data-testid="refs-bottomsheet">{children}</div> : null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
 }));
 
@@ -70,7 +70,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusLabel: (s: string) => s,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 
@@ -78,12 +78,12 @@ vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu', () => ({
     ChatHeaderOverflowMenu: ({ items }: any) =>
         items.length > 0 ? <span data-testid="overflow-menu" data-count={items.length}>⋮</span> : null,
 }));
 
-import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
+import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/features/chat/ChatHeader';
 
 function defaultProps(overrides: Partial<ChatHeaderProps> = {}): ChatHeaderProps {
     return {

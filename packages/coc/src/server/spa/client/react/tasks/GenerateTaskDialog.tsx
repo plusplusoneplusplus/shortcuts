@@ -9,13 +9,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Dialog, FloatingDialog, Button, ImageLightbox } from '../shared';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
-import { usePreferences } from '../hooks/usePreferences';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { useQueueTaskGeneration } from '../queue/hooks/useQueueTaskGeneration';
+import { usePreferences } from '../hooks/preferences/usePreferences';
+import { useImagePaste } from '../features/chat/hooks/useImagePaste';
 import { useGlobalToast } from '../context/ToastContext';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
-import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
+import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
 // ── helpers ──────────────────────────────────────────────────────────────────

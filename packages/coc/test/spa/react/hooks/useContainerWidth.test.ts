@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useContainerWidth } from '../../../../src/server/spa/client/react/hooks/useContainerWidth';
+import { useContainerWidth } from '../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth';
 
 // Helper: create a mock ref with a fake element
 function createMockRef(clientWidth: number) {

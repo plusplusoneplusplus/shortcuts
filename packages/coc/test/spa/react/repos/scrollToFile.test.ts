@@ -8,7 +8,7 @@ import {
     computeDiffLines,
     computeSideBySideLines,
     extractFilePathFromDiffHeader,
-} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 describe('extractFilePathFromDiffHeader', () => {
     it('extracts file path from standard diff header', () => {
@@ -119,7 +119,7 @@ describe('UnifiedDiffViewerHandle: scrollToFile interface', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'UnifiedDiffViewer.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'UnifiedDiffViewer.tsx'),
             'utf-8'
         );
         expect(source).toContain('scrollToFile:');
@@ -132,7 +132,7 @@ describe('SideBySideDiffViewer: data-file-path in source', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'SideBySideDiffViewer.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'SideBySideDiffViewer.tsx'),
             'utf-8'
         );
         expect(source).toContain('data-file-path={row.filePath');
@@ -142,7 +142,7 @@ describe('SideBySideDiffViewer: data-file-path in source', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'SideBySideDiffViewer.tsx'),
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'SideBySideDiffViewer.tsx'),
             'utf-8'
         );
         expect(source).toContain('scrollToFile:');

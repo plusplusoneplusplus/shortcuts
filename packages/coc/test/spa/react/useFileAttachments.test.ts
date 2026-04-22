@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useFileAttachments } from '../../../src/server/spa/client/react/hooks/useFileAttachments';
+import { useFileAttachments } from '../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments';
 
 let fileCounter = 0;
 const OriginalFileReader = globalThis.FileReader;

@@ -6,9 +6,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import React, { createRef } from 'react';
-import { UnifiedDiffViewer } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
-import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/repos/SideBySideDiffViewer';
+import { UnifiedDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 
 const MULTI_HUNK_DIFF = `diff --git a/foo.ts b/foo.ts
 index 0000000..1111111 100644

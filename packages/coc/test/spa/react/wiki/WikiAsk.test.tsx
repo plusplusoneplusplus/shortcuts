@@ -7,11 +7,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: vi.fn(() => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' })),
 }));
 
-import { useBreakpoint } from '../../../../src/server/spa/client/react/hooks/useBreakpoint';
+import { useBreakpoint } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
 const defaultProps = { wikiId: 'wiki-1', wikiName: 'Test Wiki', currentComponentId: null };
 

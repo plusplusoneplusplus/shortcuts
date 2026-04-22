@@ -98,11 +98,11 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => `rel:${d}`,
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 288,
         isDragging: false,
@@ -126,7 +126,7 @@ function Wrap({ children }: { children: ReactNode }) {
 
 async function getScheduleDetail() {
     const { ScheduleDetail } = await import(
-        '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+        '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
     );
     return ScheduleDetail;
 }

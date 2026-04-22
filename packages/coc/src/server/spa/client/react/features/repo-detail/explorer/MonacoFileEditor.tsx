@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor as monacoEditor } from 'monaco-editor';
-import { useTheme } from '../../layout/ThemeProvider';
+import { useTheme } from '../../../layout/ThemeProvider';
 
 export interface MonacoFileEditorProps {
     value: string;

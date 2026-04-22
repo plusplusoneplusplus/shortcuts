@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { BulkFollowPromptDialog } from '../../../src/server/spa/client/react/shared/BulkFollowPromptDialog';
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 const mockFetch = vi.fn();
 const mockAddToast = vi.fn();

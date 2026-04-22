@@ -4,17 +4,17 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { GenerateTaskDialog, EFFORT_PRESETS } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
-import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
-import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
+import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/queue/hooks/useQueueTaskGeneration';
+import { usePreferences } from '../../../src/server/spa/client/react/hooks/preferences/usePreferences';
 import { mockViewport } from '../../spa/helpers/viewport-mock';
 
 // ── mock useQueueTaskGeneration ─────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useQueueTaskGeneration', () => ({
+vi.mock('../../../src/server/spa/client/react/queue/hooks/useQueueTaskGeneration', () => ({
     useQueueTaskGeneration: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/usePreferences', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/usePreferences', () => ({
     usePreferences: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ const mockClearImages = vi.fn();
 const mockAddFromPaste = vi.fn();
 const mockRemoveImage = vi.fn();
 
-vi.mock('../../../src/server/spa/client/react/hooks/useImagePaste', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useImagePaste', () => ({
     useImagePaste: vi.fn(() => ({
         images: [],
         addFromPaste: mockAddFromPaste,
@@ -31,7 +31,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useImagePaste', () => ({
     })),
 }));
 
-import { useImagePaste } from '../../../src/server/spa/client/react/hooks/useImagePaste';
+import { useImagePaste } from '../../../src/server/spa/client/react/features/chat/hooks/useImagePaste';
 
 const mockUseQueueTaskGeneration = useQueueTaskGeneration as Mock;
 const mockUsePreferences = usePreferences as Mock;

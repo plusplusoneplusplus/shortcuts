@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildLineCommentMap,
     getLineHighlightClass,
-} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import type { DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
 
 // ============================================================================

@@ -4,7 +4,7 @@
  */
 
 import type { RefObject } from 'react';
-import { cn } from '../../shared/cn';
+import { cn } from '../../../shared/cn';
 
 export interface SearchBarProps {
     value: string;

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useChatPreferences } from '../../../../src/server/spa/client/react/hooks/useChatPreferences';
+import { useChatPreferences } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatPreferences';
 
 // Mock fetch globally
 const fetchMock = vi.fn();

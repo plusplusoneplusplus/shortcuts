@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { TaskTreeItem, type TaskTreeItemProps } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
-import type { TaskFolder, TaskDocument } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder, TaskDocument } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 vi.mock('../../../src/server/spa/client/react/shared/AIActionsDropdown', () => ({
     AIActionsDropdown: ({ wsId, taskPath }: { wsId: string; taskPath: string }) => (

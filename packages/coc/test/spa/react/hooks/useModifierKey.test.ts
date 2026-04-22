@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useModifierKey } from '../../../../src/server/spa/client/react/hooks/useModifierKey';
+import { useModifierKey } from '../../../../src/server/spa/client/react/hooks/ui/useModifierKey';
 import { createRef } from 'react';
 
 function fireKey(type: 'keydown' | 'keyup', key: string) {

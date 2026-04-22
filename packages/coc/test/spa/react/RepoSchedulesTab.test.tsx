@@ -45,7 +45,7 @@ function Wrap({ children }: { children: ReactNode }) {
 // Lazy-import the component after mocks are set up
 async function renderSchedulesTab() {
     const { RepoSchedulesTab } = await import(
-        '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+        '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
     );
     const result = render(
         <Wrap>

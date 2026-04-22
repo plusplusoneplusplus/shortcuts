@@ -38,7 +38,7 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 async function getRunHistoryList() {
-    const mod = await import('../../../src/server/spa/client/react/repos/RunHistoryList');
+    const mod = await import('../../../src/server/spa/client/react/features/chat/RunHistoryList');
     return mod.RunHistoryList;
 }
 

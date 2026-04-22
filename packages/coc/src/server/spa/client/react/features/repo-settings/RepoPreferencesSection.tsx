@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { usePreferences, type SkillMode } from '../../hooks/usePreferences';
+import { usePreferences, type SkillMode } from '../../hooks/preferences/usePreferences';
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
-import { useUiLayoutMode } from '../../hooks/useUiLayoutMode';
+import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useGlobalToast } from '../../context/ToastContext';
 import { useRepos } from '../../context/ReposContext';
 import { getApiBase } from '../../utils/config';

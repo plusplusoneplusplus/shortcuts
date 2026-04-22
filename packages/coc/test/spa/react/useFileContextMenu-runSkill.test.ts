@@ -7,8 +7,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useFileContextMenu } from '../../../src/server/spa/client/react/hooks/useFileContextMenu';
-import type { FileCtxMenu, FileCtxInfo } from '../../../src/server/spa/client/react/hooks/useFileDialogHandlers';
+import { useFileContextMenu } from '../../../src/server/spa/client/react/tasks/hooks/useFileContextMenu';
+import type { FileCtxMenu, FileCtxInfo } from '../../../src/server/spa/client/react/tasks/hooks/useFileDialogHandlers';
 
 function makeMockCtxItem(overrides: Partial<FileCtxInfo> = {}): FileCtxInfo {
     return {

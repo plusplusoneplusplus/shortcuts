@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
-import { ChatHeaderOverflowMenu } from '../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu';
-import type { OverflowMenuItem } from '../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu';
+import { ChatHeaderOverflowMenu } from '../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu';
+import type { OverflowMenuItem } from '../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu';
 
 describe('ChatHeaderOverflowMenu', () => {
     beforeEach(() => {

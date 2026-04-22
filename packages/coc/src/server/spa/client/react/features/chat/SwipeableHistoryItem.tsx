@@ -6,7 +6,7 @@
  */
 
 import { type ReactNode } from 'react';
-import { useSwipeToArchive } from '../hooks/useSwipeToArchive';
+import { useSwipeToArchive } from './hooks/useSwipeToArchive';
 
 export interface SwipeableHistoryItemProps {
     /** Whether mobile swipe is enabled. */

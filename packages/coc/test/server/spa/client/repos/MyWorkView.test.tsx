@@ -41,7 +41,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', (
 }));
 
 // Stub RepoChatTab — just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
     RepoChatTab: (props: any) => (
         <div data-testid="repo-activity-tab" data-workspace-id={props.workspaceId} />
     ),
@@ -55,7 +55,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesGitTab',
 }));
 
 // Stub RepoSchedulesTab — just render a marker div
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({
     RepoSchedulesTab: (props: any) => (
         <div data-testid="repo-schedules-tab" data-workspace-id={props.workspaceId} />
     ),

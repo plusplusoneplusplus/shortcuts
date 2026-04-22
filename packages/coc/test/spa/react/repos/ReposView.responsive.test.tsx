@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
-import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/useBreakpoint';
+import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
@@ -27,7 +27,7 @@ let mockRepos: any[] = [];
 
 // ── Module mocks (before imports) ──────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
@@ -58,11 +58,11 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useRepoQueueStats', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
     useRepoQueueStats: () => ({ running: 0, queued: 0 }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/usePreferences', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/usePreferences', () => ({
     usePreferences: () => ({ model: 'test-model', setModel: vi.fn() }),
 }));
 
@@ -141,11 +141,11 @@ vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab
     TemplatesTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({
     RepoSchedulesTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
     RepoGitTab: () => null,
 }));
 

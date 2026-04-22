@@ -8,7 +8,7 @@ import {
     computeSideBySideLines,
     computeDiffLines,
     buildIntraLinePartsMap,
-} from '../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 // ---------------------------------------------------------------------------
 // computeIntraLineDiff

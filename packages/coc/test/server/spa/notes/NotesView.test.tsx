@@ -12,7 +12,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
 }));
 
 const mockUseBreakpoint = vi.fn(() => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }));
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockUseBreakpoint(),
 }));
 
@@ -57,7 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NotesSide
 }));
 
 // Mock useResizablePanel
-vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: ({ initialWidth }: { initialWidth?: number } = {}) => ({
         width: initialWidth ?? 320,
         isDragging: false,

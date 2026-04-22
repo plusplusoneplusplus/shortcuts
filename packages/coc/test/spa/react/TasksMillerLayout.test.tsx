@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { createRef } from 'react';
-import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // ── Mock child components ──────────────────────────────────────────────
 

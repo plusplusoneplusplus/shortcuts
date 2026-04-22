@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 // Mock useRepoQueueStats to return zeroes by default
 const mockQueueStats = vi.fn(() => ({ running: 0, queued: 0 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useRepoQueueStats', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
     useRepoQueueStats: (...args: any[]) => mockQueueStats(...args),
 }));
 

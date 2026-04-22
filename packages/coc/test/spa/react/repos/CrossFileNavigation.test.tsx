@@ -7,8 +7,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useCrossFileNav } from '../../../../src/server/spa/client/react/repos/useCrossFileNav';
-import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import { useCrossFileNav } from '../../../../src/server/spa/client/react/features/git/hooks/useCrossFileNav';
+import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 function createMockViewer(overrides: Partial<UnifiedDiffViewerHandle> = {}): React.RefObject<UnifiedDiffViewerHandle> {
     const handle: UnifiedDiffViewerHandle = {

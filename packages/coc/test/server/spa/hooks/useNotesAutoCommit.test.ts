@@ -23,7 +23,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/cron', () => ({
 }));
 
 import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
-import { useNotesAutoCommit } from '../../../../src/server/spa/client/react/hooks/useNotesAutoCommit';
+import { useNotesAutoCommit } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit';
 
 const mockGetAutoCommitStatus = notesApi.getAutoCommitStatus as ReturnType<typeof vi.fn>;
 const mockEnableAutoCommit = notesApi.enableAutoCommit as ReturnType<typeof vi.fn>;

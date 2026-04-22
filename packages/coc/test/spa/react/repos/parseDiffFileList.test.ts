@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseDiffFileList } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import { parseDiffFileList } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 describe('parseDiffFileList', () => {
     it('extracts single modified file', () => {

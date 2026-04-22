@@ -11,10 +11,10 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
-import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import { useTaskGeneration } from '../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration';
 import type { Mock } from 'vitest';
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration', () => ({
     useTaskGeneration: vi.fn(),
 }));
 

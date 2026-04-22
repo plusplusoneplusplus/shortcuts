@@ -9,7 +9,7 @@ import {
     adaptSearchResults,
     deduplicateSearchResults,
 } from '../../../../src/server/spa/client/react/utils/search-adapter';
-import type { ProcessSearchResult } from '../../../../src/server/spa/client/react/hooks/useProcessSearch';
+import type { ProcessSearchResult } from '../../../../src/server/spa/client/react/processes/hooks/useProcessSearch';
 
 function makeSearchResult(overrides: Partial<ProcessSearchResult> = {}): ProcessSearchResult {
     return {

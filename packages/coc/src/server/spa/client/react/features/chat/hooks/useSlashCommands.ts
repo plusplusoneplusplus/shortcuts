@@ -6,9 +6,9 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { parseSlashCommands, getSlashCommandContext } from './slash-command-parser';
-import type { SkillItem } from './SlashCommandMenu';
-import type { RichTextInputHandle } from '../shared/RichTextInput';
+import { parseSlashCommands, getSlashCommandContext } from '../slash-command-parser';
+import type { SkillItem } from '../SlashCommandMenu';
+import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
 export interface UseSlashCommandsResult {
     menuVisible: boolean;

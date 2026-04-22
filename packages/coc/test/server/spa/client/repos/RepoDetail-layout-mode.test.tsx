@@ -59,31 +59,31 @@ vi.mock('../../../../../src/server/spa/client/react/context/WorkItemContext', ()
     loadUnseenWorkItemIds: () => [],
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useUiLayoutMode', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
     useUiLayoutMode: () => [mockUiLayoutMode, vi.fn()],
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useRepoQueueStats', () => ({
+vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
     useRepoQueueStats: () => ({ running: 0, queued: 0 }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useGitInfo', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({
     useGitInfo: () => ({ ahead: 0, behind: 0 }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useTerminalEnabled', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({
     useTerminalEnabled: () => false,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useNotesEnabled', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({
     useNotesEnabled: () => false,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useNotesAutoCommit', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
     useNotesAutoCommit: () => false,
 }));
 
@@ -113,7 +113,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 // Stub RepoChatTab — render a marker div that captures mode prop
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
     RepoChatTab: (props: any) => (
         <div
             data-testid={`repo-chat-tab-${props.mode ?? 'activity'}`}
@@ -126,8 +126,8 @@ vi.mock('../../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
 // Stub all other tab components
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({ RepoGitTab: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
+vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({ RepoGitTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));

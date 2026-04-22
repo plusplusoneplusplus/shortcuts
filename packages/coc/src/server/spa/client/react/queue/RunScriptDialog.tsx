@@ -12,7 +12,7 @@ import { Dialog, FloatingDialog, Button } from '../shared';
 import { useModels } from '../hooks/useModels';
 import { useScriptTemplates, type ScriptTemplate } from '../features/templates/hooks/useScriptTemplates';
 import { getApiBase } from '../utils/config';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { TaskDefs } from '../../../../task-types';
 

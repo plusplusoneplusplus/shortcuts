@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext';
 import { Badge, Button, Spinner, ResponsiveSidebar } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { WikiComponentTree } from './WikiComponentTree';
 import { WikiComponent } from './WikiComponent';
 import { WikiGraph } from './WikiGraph';

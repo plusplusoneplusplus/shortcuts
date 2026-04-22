@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const REPO_DETAIL_SOURCE_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'
 );
 
 describe('RepoDetail deep-link redirect guards', () => {

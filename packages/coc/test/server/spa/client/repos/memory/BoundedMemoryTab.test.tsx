@@ -23,7 +23,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi
     },
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/hooks/preferencesApi', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
     getWorkspacePreferences: vi.fn(async () => ({ boundedMemory: { enabled: true } })),
     patchWorkspacePreferences: vi.fn(async () => ({})),
 }));

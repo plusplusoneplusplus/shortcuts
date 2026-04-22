@@ -4,8 +4,8 @@
 
 import { useRef } from 'react';
 import { cn } from '../shared';
-import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon, getTaskNodePath } from '../hooks/useTaskTree';
-import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from '../hooks/useTaskTree';
+import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon, getTaskNodePath } from './hooks/useTaskTree';
+import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from './hooks/useTaskTree';
 
 export interface TaskTreeItemProps {
     item: TaskNode;

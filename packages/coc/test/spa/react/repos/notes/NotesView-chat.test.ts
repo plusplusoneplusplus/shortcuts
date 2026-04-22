@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const VIEW_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'NotesView.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'NotesView.tsx'
 );
 
 describe('NotesView (notes chat refactor)', () => {

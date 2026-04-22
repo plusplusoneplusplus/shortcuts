@@ -19,7 +19,7 @@ import {
     type TaskDocumentGroup,
     type TaskDocument,
     type TaskStatusValue,
-} from '../../../src/server/spa/client/react/hooks/useTaskTree';
+} from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 import { rebuildColumnsFromKeys } from '../../../src/server/spa/client/react/tasks/TaskTree';
 
 const mockDoc: TaskDocument = {
@@ -661,7 +661,7 @@ describe('filterFolderTree — archive exclusion', () => {
 
 
 
-import { getTaskStatusIcon } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { getTaskStatusIcon } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 describe('getTaskStatusIcon', () => {
     it('returns ✅ for done', () => {

@@ -15,7 +15,7 @@ import {
     type FileChange,
     type FilesViewMode,
 } from './FileTree';
-import { useResizablePanel } from '../../../hooks/useResizablePanel';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 export interface PopOutFilePanelProps {

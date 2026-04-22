@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
 }));
 
 // Mock useMermaid
-vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
     useMermaid: () => {},
 }));
 

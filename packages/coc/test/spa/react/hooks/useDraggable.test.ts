@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { createRef } from 'react';
-import { useDraggable } from '../../../../src/server/spa/client/react/hooks/useDraggable';
+import { useDraggable } from '../../../../src/server/spa/client/react/hooks/ui/useDraggable';
 
 function makeContainerRef(width = 0, height = 0) {
     const ref = createRef<HTMLElement | null>() as React.MutableRefObject<HTMLElement | null>;

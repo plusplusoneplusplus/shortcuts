@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const EXPLORER_DIR = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer'
 );
 
 describe('Explorer Context Menu', () => {

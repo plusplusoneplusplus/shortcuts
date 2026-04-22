@@ -34,15 +34,15 @@ vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
 }));
 
 // Mock heavy tab components that have side effects (API calls, context deps) when always-mounted via display:none
-vi.mock('../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
+vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
     RepoGitTab: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
     RepoChatTab: () => null,
 }));
 
 let mockUiLayoutModeValue = 'classic';
-vi.mock('../../../src/server/spa/client/react/hooks/useUiLayoutMode', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
     useUiLayoutMode: () => [mockUiLayoutModeValue, vi.fn()],
 }));
 
@@ -1012,7 +1012,7 @@ describe('RepoDetail — ExplorerPanel keep-mounted', () => {
         const fs = require('fs');
         const path = require('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
             'utf-8',
         );
     });

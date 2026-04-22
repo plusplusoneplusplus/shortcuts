@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSendMessage } from '../../../../src/server/spa/client/react/hooks/useSendMessage';
-import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/hooks/useSendMessage';
+import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
+import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     clearDraft: vi.fn(),
 }));
 
@@ -132,7 +132,7 @@ describe('useSendMessage', () => {
 
     it('calls clearDraft after initiating send', async () => {
         const { clearDraft } = await import(
-            '../../../../src/server/spa/client/react/hooks/useDraftStore'
+            '../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore'
         );
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
         const opts = makeOptions();

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getWorkspacePreferences, patchWorkspacePreferences } from
-    '../../../../src/server/spa/client/react/hooks/preferencesApi';
+    '../../../../src/server/spa/client/react/hooks/preferences/preferencesApi';
 
 // Mock getApiBase
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({

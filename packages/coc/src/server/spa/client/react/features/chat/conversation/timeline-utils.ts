@@ -1,4 +1,4 @@
-import type { ClientTimelineItem } from '../types/dashboard';
+import type { ClientTimelineItem } from '../../../types/dashboard';
 
 /**
  * Merge consecutive 'content' timeline items into single items.

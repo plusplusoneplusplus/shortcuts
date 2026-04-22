@@ -25,7 +25,7 @@ import {
     taskMatchesSearch,
     getTaskTypeIcon,
     getTaskPromptPreview,
-} from '../../../../src/server/spa/client/react/repos/ChatListPane';
+} from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -78,13 +78,13 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
 
 // ── Display settings ──
 let mockDisplaySettings = { taskCardDensity: 'normal' as string, showReportIntent: false };
-vi.mock('../../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
 }));
 
 // ── Queue drag-drop (desktop) ──
-vi.mock('../../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useQueueDragDrop', () => ({
     useQueueDragDrop: () => ({
         draggedTaskId: null, dropTargetIndex: null, dropPosition: null,
         createDragStartHandler: () => vi.fn(), createDragEndHandler: () => vi.fn(),
@@ -94,7 +94,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => 
 }));
 
 // ── Queue touch drag ──
-vi.mock('../../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useQueueTouchDragDrop', () => ({
     useQueueTouchDragDrop: () => ({
         draggedTaskId: null, dropTargetIndex: null, dropPosition: null,
         createTouchStartHandler: () => vi.fn(),
@@ -102,13 +102,13 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', (
 }));
 
 // ── Long-press ──
-vi.mock('../../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
     useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn(), didLongPress: () => false }),
 }));
 
 // ── Draft store ──
 const mockGetDraft = vi.fn().mockReturnValue(null);
-vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     getDraft: (id: string) => mockGetDraft(id),
 }));
 
@@ -128,22 +128,22 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     buildRows: () => [{ label: 'Type', value: 'chat' }],
 }));
 
 // ── Swipeable wrapper — passthrough ──
-vi.mock('../../../../src/server/spa/client/react/repos/SwipeableHistoryItem', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/SwipeableHistoryItem', () => ({
     SwipeableHistoryItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // ── Summarize dialog — stub ──
-vi.mock('../../../../src/server/spa/client/react/repos/SummarizeChatDialog', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/SummarizeChatDialog', () => ({
     SummarizeChatDialog: () => null,
 }));
 
 // ── useBreakpoint (used by Dialog inside RenameDialog) ──
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 

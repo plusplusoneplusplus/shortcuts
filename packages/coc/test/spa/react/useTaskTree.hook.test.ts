@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // Mock fetchApi at module level — useTaskTree calls fetchApi, not fetch directly
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -14,7 +14,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 import { fetchApi } from '../../../src/server/spa/client/react/hooks/useApi';
-import { useTaskTree } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { useTaskTree } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
 

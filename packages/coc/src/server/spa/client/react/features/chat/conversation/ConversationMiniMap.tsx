@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ClientConversationTurn } from '../types/dashboard';
+import type { ClientConversationTurn } from '../../../types/dashboard';
 
 // ── Constants ──────────────────────────────────────────────────────────
 

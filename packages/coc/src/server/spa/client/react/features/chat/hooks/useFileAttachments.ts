@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import type { ChatAttachment, AttachmentPayload } from '../types/attachments';
-import { MAX_FILE_SIZE, MAX_ATTACHMENTS, MAX_FILE_SIZE_LABEL, getAttachmentCategory } from '../types/attachments';
+import type { ChatAttachment, AttachmentPayload } from '../../../types/attachments';
+import { MAX_FILE_SIZE, MAX_ATTACHMENTS, MAX_FILE_SIZE_LABEL, getAttachmentCategory } from '../../../types/attachments';
 
 export interface UseFileAttachmentsResult {
     /** Current list of attachments */

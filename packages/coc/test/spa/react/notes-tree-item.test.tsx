@@ -8,7 +8,7 @@ import { NotesTreeItem } from '../../../src/server/spa/client/react/features/not
 import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 // Mock useBreakpoint (ContextMenu / Dialog may use it transitively)
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 

@@ -34,7 +34,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
     useFileAttachments: () => ({
         attachments: [],
         addFromPaste: vi.fn(),
@@ -92,7 +92,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
     useSlashCommands: () => ({
         menuVisible: false,
         menuFilter: '',
@@ -106,7 +106,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/useSlashCommands', () 
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => ({
         modelMenuVisible: false,
         modelFilter: '',
@@ -122,15 +122,15 @@ vi.mock('../../../../../src/server/spa/client/react/repos/useModelCommand', () =
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
     ModelCommandMenu: () => null,
 }));
 
-import { NewChatArea } from '../../../../../src/server/spa/client/react/repos/NewChatArea';
+import { NewChatArea } from '../../../../../src/server/spa/client/react/features/chat/NewChatArea';
 
 // ---------------------------------------------------------------------------
 // Helpers

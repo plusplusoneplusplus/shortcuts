@@ -9,7 +9,7 @@ import React from 'react';
 import { ResolveContextDialog, shouldSkipResolveDialog, resetSkipResolveDialog } from '../../../../src/server/spa/client/react/shared/ResolveContextDialog';
 
 // Mock useSlashCommands
-vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
     useSlashCommands: () => ({
         menuVisible: false,
         menuFilter: '',
@@ -24,7 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => 
 }));
 
 // Mock SlashCommandMenu
-vi.mock('../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));
 
@@ -34,7 +34,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 // Mock useBreakpoint (required by Dialog)
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 

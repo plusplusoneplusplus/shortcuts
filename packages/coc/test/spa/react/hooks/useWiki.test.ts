@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useWiki } from '../../../../src/server/spa/client/react/hooks/useWiki';
+import { useWiki } from '../../../../src/server/spa/client/react/wiki/hooks/useWiki';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 

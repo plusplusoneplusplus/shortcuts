@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { fetchSeenMap, patchSeenState, deleteSeenEntry } from './seenStateApi';
+import { fetchSeenMap, patchSeenState, deleteSeenEntry } from '../../../hooks/preferences/seenStateApi';
 
 const STORAGE_PREFIX = 'coc-unseen-';
 

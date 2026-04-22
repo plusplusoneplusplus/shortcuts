@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useItemProcessEvents } from '../../../../src/server/spa/client/react/hooks/useItemProcessEvents';
+import { useItemProcessEvents } from '../../../../src/server/spa/client/react/processes/hooks/useItemProcessEvents';
 
 function createMockEventSource() {
     const listeners = new Map<string, Set<(e: Event) => void>>();

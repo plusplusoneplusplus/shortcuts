@@ -15,7 +15,7 @@ import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskC
 import { TaskPreview } from '../../../src/server/spa/client/react/tasks/TaskPreview';
 
 /* ── Mock useTaskComments ── */
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskComments', () => ({
     useTaskComments: () => ({
         comments: [],
         loading: false,
@@ -31,7 +31,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
     useMarkdownPreview: ({ content }: { content: string }) => ({
         html: content ? `<p>${content}</p>` : '',
     }),

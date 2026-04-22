@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { type ReactNode } from 'react';
 
-vi.mock('../../../src/server/spa/client/react/hooks/pinArchiveApi', () => ({
+vi.mock('../../../src/server/spa/client/react/queue/hooks/pinArchiveApi', () => ({
     pinProcess: vi.fn().mockResolvedValue(undefined),
     unpinProcess: vi.fn().mockResolvedValue(undefined),
     archiveProcess: vi.fn().mockResolvedValue(undefined),
@@ -27,7 +27,7 @@ import {
     unarchiveProcess,
     archiveProcesses,
     unarchiveProcesses,
-} from '../../../src/server/spa/client/react/hooks/pinArchiveApi';
+} from '../../../src/server/spa/client/react/queue/hooks/pinArchiveApi';
 import {
     ChatPreferencesProvider,
     useChatPrefs,

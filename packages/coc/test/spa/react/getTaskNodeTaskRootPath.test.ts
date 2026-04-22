@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getTaskNodeTaskRootPath } from '../../../src/server/spa/client/react/hooks/useTaskTree';
-import type { TaskDocument, TaskDocumentGroup, TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { getTaskNodeTaskRootPath } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
+import type { TaskDocument, TaskDocumentGroup, TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 describe('getTaskNodeTaskRootPath', () => {
     it('returns taskRootPath from a TaskDocument', () => {

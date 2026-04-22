@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getDraft, setDraft, clearDraft, pruneExpired } from '../../../../src/server/spa/client/react/hooks/useDraftStore';
+import { getDraft, setDraft, clearDraft, pruneExpired } from '../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore';
 
 // ---------------------------------------------------------------------------
 // localStorage mock helpers

@@ -8,7 +8,7 @@ import {
     UnifiedDiffViewer,
     buildLineCommentMap,
     getLineHighlightClass,
-} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import type { DiffComment, DiffCommentSelection } from '../../../../src/server/spa/client/diff-comment-types';
 
 // Minimal two-line single-file diff

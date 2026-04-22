@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFolderActions } from '../../../src/server/spa/client/react/hooks/useFolderActions';
+import { useFolderActions } from '../../../src/server/spa/client/react/tasks/hooks/useFolderActions';
 
 // Stub getApiBase to return a known prefix
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({

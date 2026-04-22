@@ -17,7 +17,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
 
-import { useFilesViewMode } from '../../../../src/server/spa/client/react/hooks/useFilesViewMode';
+import { useFilesViewMode } from '../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode';
 
 describe('useFilesViewMode', () => {
     let fetchSpy: ReturnType<typeof vi.spyOn>;

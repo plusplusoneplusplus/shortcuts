@@ -4,17 +4,17 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { AddRepoDialog } from './AddRepoDialog';
-import { AddFolderDialog } from './AddFolderDialog';
-import type { RepoData, RepoGroup } from './repoGrouping';
-import { groupReposByRemote, applyGroupOrder } from './repoGrouping';
-import { useApp } from '../context/AppContext';
-import { useQueue } from '../context/QueueContext';
-import { isHidden as isHiddenTask } from '../hooks/useRepoQueueStats';
-import { getApiBase } from '../utils/config';
-import { fetchApi } from '../hooks/useApi';
-import { useUiLayoutMode } from '../hooks/useUiLayoutMode';
-import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
+import { AddRepoDialog } from '../../repos/AddRepoDialog';
+import { AddFolderDialog } from '../../repos/AddFolderDialog';
+import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
+import { groupReposByRemote, applyGroupOrder } from '../../repos/repoGrouping';
+import { useApp } from '../../context/AppContext';
+import { useQueue } from '../../context/QueueContext';
+import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
+import { getApiBase } from '../../utils/config';
+import { fetchApi } from '../../hooks/useApi';
+import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
+import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
 export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
 

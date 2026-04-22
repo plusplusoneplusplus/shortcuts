@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 export interface DialogProps {
     open: boolean;

@@ -10,7 +10,7 @@ import { DAGBreadcrumb } from './DAGBreadcrumb';
 import { WorkflowPhasePopover } from './WorkflowPhasePopover';
 import { DAGHoverTooltip } from './DAGHoverTooltip';
 import { mapErrorsToPhases, getNodeErrors } from './errorMapping';
-import { useZoomPan } from '../../hooks/useZoomPan';
+import { useZoomPan } from '../../hooks/ui/useZoomPan';
 import { ZoomControls } from './ZoomControls';
 import type { PhaseDetail } from './WorkflowPhasePopover';
 import type { EdgeState } from './dag-colors';

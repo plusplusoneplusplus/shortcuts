@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { ChatDetail } from '../../../src/server/spa/client/react/repos/ChatDetail';
+import { ChatDetail } from '../../../src/server/spa/client/react/features/chat/ChatDetail';
 
 // Mock useChatPrefs to avoid ChatPreferencesProvider requirement
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
@@ -34,12 +34,12 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 // Mock useDisplaySettings
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
     invalidateDisplaySettings: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 

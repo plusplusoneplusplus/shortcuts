@@ -13,10 +13,10 @@ import { ToastProvider } from '../../../src/server/spa/client/react/context/Toas
 import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
-import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import { useTaskGeneration } from '../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration';
 import type { Mock } from 'vitest';
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration', () => ({
     useTaskGeneration: vi.fn(),
 }));
 

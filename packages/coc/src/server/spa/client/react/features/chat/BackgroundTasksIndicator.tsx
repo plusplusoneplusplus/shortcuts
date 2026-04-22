@@ -5,8 +5,8 @@
  * waiting for background agents/shells to complete.
  */
 import React, { useState, useCallback, useEffect } from 'react';
-import { cn } from '../shared/cn';
-import type { BackgroundTasksState } from '../hooks/useChatSSE';
+import { cn } from '../../shared/cn';
+import type { BackgroundTasksState } from './hooks/useChatSSE';
 
 export interface BackgroundTasksIndicatorProps {
     backgroundTasks: BackgroundTasksState;

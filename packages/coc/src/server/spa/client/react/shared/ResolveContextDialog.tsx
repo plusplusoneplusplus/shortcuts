@@ -9,8 +9,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Dialog } from './Dialog';
 import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
-import { useSlashCommands } from '../repos/useSlashCommands';
-import { SlashCommandMenu, type SkillItem } from '../repos/SlashCommandMenu';
+import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
+import { SlashCommandMenu, type SkillItem } from '../features/chat/SlashCommandMenu';
 import { fetchApi } from '../hooks/useApi';
 
 const SESSION_KEY = 'coc:skipResolveDialog';

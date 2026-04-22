@@ -1,20 +1,20 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { Button, SuggestionChips, SendButton } from '../shared';
-import { AttachmentPreviews } from '../shared/AttachmentPreviews';
-import { PastePreview } from '../shared/PastePreview';
-import { AttachedContextPreviews } from '../shared/AttachedContextPreviews';
-import { cn } from '../shared/cn';
-import { RichTextInput } from '../shared/RichTextInput';
-import type { RichTextInputHandle } from '../shared/RichTextInput';
+import { Button, SuggestionChips, SendButton } from '../../shared';
+import { AttachmentPreviews } from '../../shared/AttachmentPreviews';
+import { PastePreview } from '../../shared/PastePreview';
+import { AttachedContextPreviews } from '../../shared/AttachedContextPreviews';
+import { cn } from '../../shared/cn';
+import { RichTextInput } from '../../shared/RichTextInput';
+import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { useModifierKey } from '../hooks/useModifierKey';
-import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
+import { useModifierKey } from '../../hooks/ui/useModifierKey';
+import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
-import type { ModelInfo } from '../hooks/useModels';
+import type { ModelInfo } from '../../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { AttachedContextItem } from '../hooks/useAttachedContext';
-import type { ChatAttachment } from '../types/attachments';
+import type { AttachedContextItem } from './hooks/useAttachedContext';
+import type { ChatAttachment } from '../../types/attachments';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;

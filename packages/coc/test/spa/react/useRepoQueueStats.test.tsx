@@ -8,7 +8,7 @@ import { useEffect, type ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { useRepoQueueStats } from '../../../src/server/spa/client/react/hooks/useRepoQueueStats';
+import { useRepoQueueStats } from '../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats';
 
 function Wrap({ children }: { children: ReactNode }) {
     return (

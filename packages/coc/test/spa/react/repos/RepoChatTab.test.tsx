@@ -29,7 +29,7 @@ import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/
 const mockListPane = vi.fn();
 const mockDetailPane = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/ChatListPane', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatListPane', () => ({
     ChatListPane: (props: any) => {
         mockListPane(props);
         return React.createElement('div', { 'data-testid': 'mock-list-pane' },
@@ -74,7 +74,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/ChatListPane', () => ({
     },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ChatDetailPane', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetailPane', () => ({
     ChatDetailPane: (props: any) => {
         mockDetailPane(props);
         return React.createElement('div', {
@@ -111,12 +111,12 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
 // ── Mock hooks ─────────────────────────────────────────────────────────
 
 let mockBreakpoint = { isMobile: false, isTablet: false };
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
 let lastResizablePanelOpts: any = null;
-vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: (opts: any) => {
         lastResizablePanelOpts = opts;
         return {
@@ -133,7 +133,7 @@ const mockMarkAllSeen = vi.fn();
 const mockMarkTasksSeen = vi.fn();
 const mockMarkUnseen = vi.fn();
 let mockUnseenTaskIds = new Set<string>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenChat', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     useUnseenChat: () => ({
         unseenProcessIds: mockUnseenTaskIds,
         markSeen: mockMarkSeen,
@@ -173,7 +173,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 // ── Import component under test (after mocks) ─────────────────────────
 
-import { RepoChatTab } from '../../../../src/server/spa/client/react/repos/RepoChatTab';
+import { RepoChatTab } from '../../../../src/server/spa/client/react/features/chat/RepoChatTab';
 
 // ── Test helpers ───────────────────────────────────────────────────────
 

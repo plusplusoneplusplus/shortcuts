@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff } from '../../../../notes-git-types';
+import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff } from '../../../../../../notes-git-types';
 
 export interface UseNotesGitReturn {
     status: NotesGitStatus | null;

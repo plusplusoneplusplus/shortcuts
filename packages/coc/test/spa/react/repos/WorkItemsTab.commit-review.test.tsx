@@ -14,11 +14,11 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (path: string, options?: RequestInit) => mockFetchApi(path, options),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 340,
         isDragging: false,
@@ -32,14 +32,14 @@ vi.mock('../../../../src/server/spa/client/react/context/WorkItemContext', () =>
     WorkItemProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => {
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => {
     const stableMap = new Map();
     return { useFileCommentCounts: () => stableMap };
 });
 
 // Mock CommitDetail to verify it receives correct props
 const mockCommitDetail = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/repos/CommitDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
     CommitDetail: (props: any) => {
         mockCommitDetail(props);
         return (
@@ -52,7 +52,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/CommitDetail', () => ({
 
 // Mock FileDiffPanel — rendered when a specific file is selected
 const mockFileDiffPanel = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/repos/FileDiffPanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
     FileDiffPanel: (props: any) => {
         mockFileDiffPanel(props);
         return (
@@ -65,7 +65,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/FileDiffPanel', () => ({
 
 // Mock createCommitDiffSource
 const mockCreateCommitDiffSource = vi.fn().mockReturnValue({ type: 'commit' });
-vi.mock('../../../../src/server/spa/client/react/repos/diffSource', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
     createCommitDiffSource: (...args: any[]) => mockCreateCommitDiffSource(...args),
 }));
 

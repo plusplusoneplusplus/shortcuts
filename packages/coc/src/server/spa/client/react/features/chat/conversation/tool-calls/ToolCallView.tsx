@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn, FilePathLink, shortenFilePath } from '../shared';
-import { isImageFile, getImageMimeType } from '../shared/file-path-utils';
-import { computeLineDiff, type DiffLine } from '../../diff-utils';
+import { cn, FilePathLink, shortenFilePath } from '../../../../shared';
+import { isImageFile, getImageMimeType } from '../../../../shared/file-path-utils';
+import { computeLineDiff, type DiffLine } from '../../../../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
-import { copyToClipboard } from '../utils/format';
+import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
+import { renderMarkdownToHtml } from '../../../../../markdown-renderer';
+import { copyToClipboard } from '../../../../utils/format';
 
 interface ToolCallData {
     id?: string;

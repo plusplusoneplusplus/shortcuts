@@ -13,7 +13,7 @@ const mockAskAI = vi.fn().mockResolvedValue(undefined);
 const mockClearAiError = vi.fn();
 const mockUseDiffComments = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
@@ -26,12 +26,12 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
 // Mock UnifiedDiffViewer — renders a line element with data-diff-line-index for scroll targeting
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ onAddComment, onCommentClick, comments, 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-diff-viewer'} data-comment-count={String(comments?.length ?? 0)}>
             <div data-diff-line-index="5" data-testid="diff-line-5">line 5</div>
@@ -65,8 +65,8 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-import { FileDiffPanel } from '../../../../src/server/spa/client/react/repos/FileDiffPanel';
-import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/repos/WorkingTreeFileDiff';
+import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 
 function makeHook(overrides: Record<string, unknown> = {}) {
     return {

@@ -6,8 +6,8 @@ import {
     groupConsecutiveToolChunks,
     isSingleLineHtml,
     filterWhisperChunks,
-} from '../../../src/server/spa/client/react/chat/toolGroupUtils';
-import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
+} from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
+import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
 // ---------------------------------------------------------------------------
 // getToolGroupCategory

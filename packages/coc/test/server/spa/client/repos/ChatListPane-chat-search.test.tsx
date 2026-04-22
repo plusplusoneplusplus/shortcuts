@@ -44,11 +44,11 @@ vi.mock('../../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: vi.fn(() => '1m ago'),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     buildRows: () => [],
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => ({
+vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useQueueDragDrop', () => ({
     useQueueDragDrop: () => ({
         activeDraggedTaskId: null,
         activeDropTargetIndex: null,
@@ -62,7 +62,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useQueueDragDrop', () 
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', () => ({
+vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useQueueTouchDragDrop', () => ({
     useQueueTouchDragDrop: () => ({
         createTouchStartHandler: () => () => {},
     }),
@@ -84,11 +84,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/workflow/hooks/useW
     useWorkflowProgress: () => ({ progress: null }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     getDraft: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
     useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn() }),
 }));
 
@@ -119,27 +119,27 @@ vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => (
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ taskCardDensity: 'normal', historyGrouping: false }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/SwipeableHistoryItem', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/SwipeableHistoryItem', () => ({
     SwipeableHistoryItem: ({ children }: any) => <>{children}</>,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/SummarizeChatDialog', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/SummarizeChatDialog', () => ({
     SummarizeChatDialog: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/history-grouping', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/git/history-grouping', () => ({
     groupHistoryByPlanFile: () => [],
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/HistoryGroupHeader', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/git/commits/HistoryGroupHeader', () => ({
     HistoryGroupHeader: () => null,
 }));
 
-import { ChatListPane } from '../../../../../src/server/spa/client/react/repos/ChatListPane';
+import { ChatListPane } from '../../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ---------------------------------------------------------------------------
 // Helpers

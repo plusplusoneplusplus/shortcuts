@@ -4,12 +4,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useQueueChat } from '../hooks/useQueueChat';
-import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
-import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath, getTaskNodeTaskRootPath } from '../hooks/useTaskTree';
-import { useTaskDragDrop } from '../hooks/useTaskDragDrop';
-import type { DragItem } from '../hooks/useTaskDragDrop';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { useQueueChat } from '../queue/hooks/useQueueChat';
+import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from './hooks/useTaskTree';
+import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath, getTaskNodeTaskRootPath } from './hooks/useTaskTree';
+import { useTaskDragDrop } from './hooks/useTaskDragDrop';
+import type { DragItem } from './hooks/useTaskDragDrop';
 import { TaskTreeItem } from './TaskTreeItem';
 
 interface TaskTreeProps {

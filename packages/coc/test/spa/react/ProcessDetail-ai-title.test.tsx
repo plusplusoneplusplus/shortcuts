@@ -12,7 +12,7 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
 
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
     invalidateDisplaySettings: vi.fn(),
 }));

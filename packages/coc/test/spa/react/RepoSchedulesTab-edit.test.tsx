@@ -62,7 +62,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
     const { RepoSchedulesTab } = await import(
-        '../../../src/server/spa/client/react/repos/RepoSchedulesTab'
+        '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
     );
     const result = render(
         <Wrap>

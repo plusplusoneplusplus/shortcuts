@@ -22,7 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     clearDraft: vi.fn(),
 }));
 
@@ -33,17 +33,17 @@ vi.mock('../../../../../src/server/spa/client/react/context/ChatPreferencesConte
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useTextPaste', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useTextPaste', () => ({
     CLIENT_PASTE_THRESHOLD: 50000,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useAttachedContext', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext', () => ({
     formatAttachedContext: () => '',
 }));
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-import { useSendMessage } from '../../../../../src/server/spa/client/react/hooks/useSendMessage';
+import { useSendMessage } from '../../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 
 // ---------------------------------------------------------------------------
 // Helpers

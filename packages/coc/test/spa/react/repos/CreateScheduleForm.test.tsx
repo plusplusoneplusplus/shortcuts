@@ -24,9 +24,9 @@ const mockFetch = vi.fn().mockResolvedValue({
 });
 global.fetch = mockFetch;
 
-async function renderForm(overrides: Partial<Parameters<typeof import('../../../../src/server/spa/client/react/repos/CreateScheduleForm').CreateScheduleForm>[0]> = {}) {
+async function renderForm(overrides: Partial<Parameters<typeof import('../../../../src/server/spa/client/react/features/schedules/CreateScheduleForm').CreateScheduleForm>[0]> = {}) {
     const { CreateScheduleForm } = await import(
-        '../../../../src/server/spa/client/react/repos/CreateScheduleForm'
+        '../../../../src/server/spa/client/react/features/schedules/CreateScheduleForm'
     );
     const onCreated = vi.fn();
     const onCancel = vi.fn();

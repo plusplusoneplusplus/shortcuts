@@ -5,14 +5,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 // Controllable toolCompactness
 let mockToolCompactness: 0 | 1 | 2 | 3 = 0;
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: mockToolCompactness }),
 }));
 
@@ -27,7 +27,7 @@ vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
 }));
 
 // Track ToolCallView renders
-vi.mock('../../../src/server/spa/client/react/chat/ToolCallView', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView', () => ({
     ToolCallView: ({ toolCall, children }: { toolCall: { id: string; toolName: string }; children?: React.ReactNode }) => (
         <div data-testid="tool-call-view" data-tool-id={toolCall.id} data-tool-name={toolCall.toolName}>
             {children}
@@ -36,7 +36,7 @@ vi.mock('../../../src/server/spa/client/react/chat/ToolCallView', () => ({
 }));
 
 // Track ToolCallGroupView renders
-vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView', () => ({
     ToolCallGroupView: ({
         category,
         toolCalls,
@@ -59,7 +59,7 @@ vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
 }));
 
 // Track WhisperCollapsedGroup renders
-vi.mock('../../../src/server/spa/client/react/chat/WhisperCollapsedGroup', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup', () => ({
     WhisperCollapsedGroup: ({
         summary,
     }: {

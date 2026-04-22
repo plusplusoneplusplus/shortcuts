@@ -11,7 +11,7 @@ import type { DAGChartData } from '../../../../src/server/spa/client/react/proce
 import type { PhaseDetail } from '../../../../src/server/spa/client/react/processes/dag/WorkflowPhasePopover';
 import type { PipelineConfig } from '@plusplusoneplusplus/forge';
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 

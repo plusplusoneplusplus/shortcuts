@@ -13,7 +13,7 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

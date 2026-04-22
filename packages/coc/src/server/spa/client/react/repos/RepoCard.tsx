@@ -6,7 +6,7 @@
 import type { RepoData } from './repoGrouping';
 import { truncatePath } from './repoGrouping';
 import { Card, cn } from '../shared';
-import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
+import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
 
 interface RepoCardProps {
     repo: RepoData;

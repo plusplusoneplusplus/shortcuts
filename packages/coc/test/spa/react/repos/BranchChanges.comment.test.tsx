@@ -21,7 +21,7 @@ vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
 
 // Mock useFileCommentCounts so we control what counts are returned
 const mockUseFileCommentCounts = vi.fn<[], Map<string, number>>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => ({
     useFileCommentCounts: () => mockUseFileCommentCounts(),
 }));
 
@@ -34,8 +34,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));
 
-import { BranchChanges } from '../../../../src/server/spa/client/react/repos/BranchChanges';
-import type { BranchRangeInfo } from '../../../../src/server/spa/client/react/repos/BranchChanges';
+import { BranchChanges } from '../../../../src/server/spa/client/react/features/git/branches/BranchChanges';
+import type { BranchRangeInfo } from '../../../../src/server/spa/client/react/features/git/branches/BranchChanges';
 import userEvent from '@testing-library/user-event';
 
 const RANGE_INFO: BranchRangeInfo = {

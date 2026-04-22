@@ -15,8 +15,8 @@ import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../context/ToastContext';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { ToastContainer, useToast } from '../shared';
-import { ChatDetail } from '../repos/ChatDetail';
-import { usePopOutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
+import { ChatDetail } from '../features/chat/ChatDetail';
+import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';
 import { getHostname } from '../utils/config';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────

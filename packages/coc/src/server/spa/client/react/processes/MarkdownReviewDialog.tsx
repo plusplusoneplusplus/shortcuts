@@ -10,7 +10,7 @@ import { useRef, useState } from 'react';
 import { FloatingDialog } from '../shared/FloatingDialog';
 import { BottomSheet } from '../shared/BottomSheet';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';

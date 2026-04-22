@@ -4,20 +4,20 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import { RichTextInput } from '../shared/RichTextInput';
-import type { RichTextInputHandle } from '../shared/RichTextInput';
-import { AttachmentPreviews } from '../shared/AttachmentPreviews';
-import { cn } from '../shared/cn';
-import { MODE_BORDER_COLORS, cycleMode } from './modeConfig';
-import type { ChatMode } from './modeConfig';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
-import { getApiBase } from '../utils/config';
-import { useFileAttachments } from '../hooks/useFileAttachments';
-import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
-import { useModels } from '../hooks/useModels';
-import { useSlashCommands } from './useSlashCommands';
-import { useModelCommand } from './useModelCommand';
+import { RichTextInput } from '../../shared/RichTextInput';
+import type { RichTextInputHandle } from '../../shared/RichTextInput';
+import { AttachmentPreviews } from '../../shared/AttachmentPreviews';
+import { cn } from '../../shared/cn';
+import { MODE_BORDER_COLORS, cycleMode } from '../../repos/modeConfig';
+import type { ChatMode } from '../../repos/modeConfig';
+import { useQueue } from '../../context/QueueContext';
+import { useApp } from '../../context/AppContext';
+import { getApiBase } from '../../utils/config';
+import { useFileAttachments } from './hooks/useFileAttachments';
+import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
+import { useModels } from '../../hooks/useModels';
+import { useSlashCommands } from './hooks/useSlashCommands';
+import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 

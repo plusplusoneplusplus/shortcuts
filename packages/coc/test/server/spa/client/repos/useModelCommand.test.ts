@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useModelCommand, isModelCommandPrefix } from '../../../../../src/server/spa/client/react/repos/useModelCommand';
+import { useModelCommand, isModelCommandPrefix } from '../../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand';
 import type { ModelInfo } from '../../../../../src/server/spa/client/react/hooks/useModels';
 
 const MODELS: ModelInfo[] = [
@@ -161,9 +161,9 @@ describe('useSlashCommands with model entry (regression)', () => {
     // (Tab/Enter) correctly identifies the "model" item and transitions to the
     // model picker instead of falling through.
 
-    let useSlashCommands: typeof import('../../../../../src/server/spa/client/react/repos/useSlashCommands').useSlashCommands;
+    let useSlashCommands: typeof import('../../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands').useSlashCommands;
     beforeAll(async () => {
-        const mod = await import('../../../../../src/server/spa/client/react/repos/useSlashCommands');
+        const mod = await import('../../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands');
         useSlashCommands = mod.useSlashCommands;
     });
 

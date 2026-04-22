@@ -6,7 +6,7 @@
 import { useCallback } from 'react';
 import { DAGEdge } from '../../processes/dag/DAGEdge';
 import { getNodeColors } from '../../processes/dag/dag-colors';
-import { useZoomPan } from '../../hooks/useZoomPan';
+import { useZoomPan } from '../../hooks/ui/useZoomPan';
 import { ZoomControls } from '../../processes/dag/ZoomControls';
 import type { WorkflowPreviewData } from './buildPreviewDAG';
 

@@ -15,7 +15,7 @@ import {
     getLandmark,
     MIN_TURNS_TO_SHOW,
     type StripInfo,
-} from '../../../src/server/spa/client/react/chat/ConversationMiniMap';
+} from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 // ── Helpers ────────────────────────────────────────────────────────────

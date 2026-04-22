@@ -15,7 +15,7 @@ vi.mock('react-dom', async (importOriginal) => {
 });
 
 // Stub useBreakpoint used by Dialog
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 

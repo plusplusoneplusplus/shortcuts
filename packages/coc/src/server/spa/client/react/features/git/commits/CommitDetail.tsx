@@ -17,7 +17,7 @@ import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitChatPanel } from './CommitChatPanel';
-import { useResizablePanel } from '../../../hooks/useResizablePanel';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../context/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../context/GitReviewPopOutContext';

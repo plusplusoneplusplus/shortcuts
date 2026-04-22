@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS } from '../../../src/server/spa/client/react/repos/slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
 
 const AVAILABLE_SKILLS = ['impl', 'go-deep', 'draft', 'pipeline-generator', 'review'];
 

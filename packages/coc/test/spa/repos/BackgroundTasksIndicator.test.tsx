@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { BackgroundTasksIndicator } from '../../../src/server/spa/client/react/repos/BackgroundTasksIndicator';
-import type { BackgroundTasksState } from '../../../src/server/spa/client/react/hooks/useChatSSE';
+import { BackgroundTasksIndicator } from '../../../src/server/spa/client/react/features/chat/BackgroundTasksIndicator';
+import type { BackgroundTasksState } from '../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 
 function makeState(overrides: Partial<BackgroundTasksState> = {}): BackgroundTasksState {
     return {

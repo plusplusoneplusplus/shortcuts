@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SOURCE_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches'
 );
 const SOURCE = fs.readFileSync(path.join(SOURCE_DIR, 'BranchAllFilesDiff.tsx'), 'utf-8');
 

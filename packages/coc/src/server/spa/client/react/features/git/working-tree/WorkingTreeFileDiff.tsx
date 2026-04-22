@@ -21,7 +21,7 @@ import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../context/QueueContext';
 import { useCrossFileNav } from '../hooks/useCrossFileNav';
-import { PreviewPane } from '../../../repos/explorer';
+import { PreviewPane } from '../../repo-detail/explorer';
 import { buildDiffContext } from '../../../../diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
 import type { DiffCommentSelection, DiffComment } from '../../../../diff-comment-types';

@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ModelCommandMenu, filterModels } from '../../../../../src/server/spa/client/react/repos/ModelCommandMenu';
+import { ModelCommandMenu, filterModels } from '../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu';
 import type { ModelInfo } from '../../../../../src/server/spa/client/react/hooks/useModels';
 
 // scrollIntoView is not implemented in jsdom

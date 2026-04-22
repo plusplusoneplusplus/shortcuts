@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/useCodeBlockActions';
+import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/ui/useCodeBlockActions';
 
 describe('useCodeBlockActions', () => {
     let container: HTMLDivElement;

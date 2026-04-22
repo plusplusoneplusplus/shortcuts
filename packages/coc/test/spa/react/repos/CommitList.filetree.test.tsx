@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
-import { buildFileTree, compactFolders } from '../../../../src/server/spa/client/react/repos/FileTree';
+import { buildFileTree, compactFolders } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // --- Module mocks (same pattern as CommitList.comment.test.tsx) ---
 
@@ -18,7 +18,7 @@ vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
 }));
 
 const mockUseFileCommentCounts = vi.fn<[string, string | null, string | null], Map<string, number>>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => ({
     useFileCommentCounts: (...args: any[]) => mockUseFileCommentCounts(...args),
 }));
 
@@ -31,12 +31,12 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/CommitTooltip', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitTooltip', () => ({
     CommitTooltip: () => null,
 }));
 
-import { CommitList } from '../../../../src/server/spa/client/react/repos/CommitList';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { CommitList } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 const COMMIT_A: GitCommitItem = {
     hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',

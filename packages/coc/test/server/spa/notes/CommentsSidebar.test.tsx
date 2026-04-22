@@ -7,7 +7,7 @@ import type { CommentThread } from '../../../../src/server/spa/client/react/feat
 
 // ── Mock useBreakpoint ─────────────────────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 

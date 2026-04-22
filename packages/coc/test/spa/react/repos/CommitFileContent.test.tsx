@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { CommitFileContent } from '../../../../src/server/spa/client/react/repos/CommitFileContent';
+import { CommitFileContent } from '../../../../src/server/spa/client/react/features/git/commits/CommitFileContent';
 
 const mockFetchApi = vi.fn();
 

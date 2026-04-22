@@ -5,8 +5,8 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '../shared';
-import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath, getTaskNodeTaskRootPath } from '../hooks/useTaskTree';
-import type { TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
+import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath, getTaskNodeTaskRootPath } from './hooks/useTaskTree';
+import type { TaskDocument, TaskDocumentGroup } from './hooks/useTaskTree';
 
 export function highlightMatch(text: string, query: string): ReactNode {
     if (!query) return text;

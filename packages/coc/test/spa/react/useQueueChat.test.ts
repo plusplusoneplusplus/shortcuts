@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { QueueChatMap, QueueFolderChatMap } from '../../../src/server/spa/client/react/hooks/useQueueChat';
+import type { QueueChatMap, QueueFolderChatMap } from '../../../src/server/spa/client/react/queue/hooks/useQueueChat';
 
 /**
  * Replicates the folderMap computation logic from useQueueChat.

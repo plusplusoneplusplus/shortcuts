@@ -10,7 +10,7 @@ import { useQueue } from '../context/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
 import { RenameDialog } from '../shared/RenameDialog';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
-import { useLongPress } from '../hooks/useLongPress';
+import { useLongPress } from '../hooks/ui/useLongPress';
 import { fetchApi } from '../hooks/useApi';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';

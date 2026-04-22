@@ -11,7 +11,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // --- Module mocks (hoisted by Vitest) ---
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: () => ({
         comments: [],
         loading: false,
@@ -41,7 +41,7 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
@@ -49,7 +49,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-diff-viewer'}>diff content</div>
     ),
@@ -66,8 +66,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 const makeCommit = (overrides: Partial<GitCommitItem> = {}): GitCommitItem => ({
     hash: 'abc123def456abc123def456abc123def456abc1',

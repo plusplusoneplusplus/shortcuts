@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
-import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/chat/WhisperCollapsedGroup';
-import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
+import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -19,19 +19,19 @@ vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/commitDetection', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/commitDetection', () => ({
     detectCommitsInToolGroup: () => [],
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/CommitStrip', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/CommitStrip', () => ({
     CommitStrip: () => null,
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView', () => ({
     ToolCallGroupView: () => <div data-testid="tool-call-group-view" />,
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/toolGroupUtils', async (importOriginal) => {
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

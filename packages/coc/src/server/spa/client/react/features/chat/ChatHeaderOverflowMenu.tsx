@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
-import { cn } from '../shared/cn';
+import { cn } from '../../shared/cn';
 
 export interface OverflowMenuItem {
     key: string;

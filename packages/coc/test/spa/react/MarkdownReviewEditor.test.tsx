@@ -25,7 +25,7 @@ const mockRefresh = vi.fn();
 /** Mutable overrides read by the useTaskComments mock factory. */
 let hookOverrides: Record<string, any> = {};
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskComments', () => ({
     useTaskComments: () => ({
         comments: [],
         loading: false,
@@ -49,7 +49,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
 }));
 
 /* ── Mock useMarkdownPreview ── */
-vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
     useMarkdownPreview: ({ content, viewMode, comments }: { content: string; viewMode?: string; comments?: Array<{ id: string; selection: any; status: string }> }) => {
         if (!content) return { html: '' };
         if (viewMode === 'source') return { html: `<pre class="src-block">${content}</pre>` };

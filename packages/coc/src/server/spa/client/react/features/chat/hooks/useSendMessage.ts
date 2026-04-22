@@ -1,13 +1,13 @@
 import { useCallback, useRef } from 'react';
-import { getApiBase } from '../utils/config';
+import { getApiBase } from '../../../utils/config';
 import { clearDraft } from './useDraftStore';
-import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { useChatPrefs } from '../../../context/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';
-import type { ClientConversationTurn } from '../types/dashboard';
+import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { AttachmentPayload } from '../types/attachments';
+import type { AttachmentPayload } from '../../../types/attachments';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 

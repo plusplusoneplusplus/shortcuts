@@ -8,7 +8,7 @@ import { renderHook, act } from '@testing-library/react';
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-import { useConversationSelection } from '../../../../src/server/spa/client/react/hooks/useConversationSelection';
+import { useConversationSelection } from '../../../../src/server/spa/client/react/features/chat/hooks/useConversationSelection';
 
 function createMouseEvent(overrides: Partial<React.MouseEvent> = {}): React.MouseEvent {
     return {

@@ -11,7 +11,7 @@ import { MarkdownReviewDialog } from '../../../src/server/spa/client/react/proce
 
 const mockBreakpoint = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const };
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
@@ -29,7 +29,7 @@ vi.mock('../../../src/server/spa/client/react/shared/BottomSheet', () => ({
 
 /* ── Mocks required by MarkdownReviewEditor (used inside the dialog) ── */
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskComments', () => ({
     useTaskComments: () => ({
         comments: [],
         loading: false,
@@ -50,7 +50,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
     useMarkdownPreview: ({ content }: { content: string }) => ({
         html: content ? `<p>${content}</p>` : '',
     }),

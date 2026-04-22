@@ -17,16 +17,16 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
-import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ChatListPane';
+import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ── Mocks for QueueTaskItem's transitive dependencies ──────────────────
 vi.mock('../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress', () => ({
     useWorkflowProgress: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     getDraft: () => undefined,
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
     useLongPress: () => ({
         onTouchStart: vi.fn(),
         onTouchEnd: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
         didLongPress: () => false,
     }),
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => ({
+vi.mock('../../../src/server/spa/client/react/queue/hooks/useQueueDragDrop', () => ({
     useQueueDragDrop: () => ({
         activeDraggedTaskId: null,
         handleDragStart: vi.fn(),
@@ -43,7 +43,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => ({
         handleDragEnd: vi.fn(),
     }),
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', () => ({
+vi.mock('../../../src/server/spa/client/react/queue/hooks/useQueueTouchDragDrop', () => ({
     useQueueTouchDragDrop: () => ({
         draggedTaskId: null,
         dropTargetIndex: null,
@@ -62,7 +62,7 @@ vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', (
         unarchiveChat: vi.fn(),
     }),
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ taskCardDensity: 'normal', showReportIntent: false }),
     invalidateDisplaySettings: vi.fn(),
 }));

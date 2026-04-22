@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { useGlobalToast } from '../context/ToastContext';
-import { Button } from '../shared';
-import { fetchApi } from '../hooks/useApi';
-import { WikiDetail } from '../wiki/WikiDetail';
-import type { WikiProjectTab, WikiAdminTab } from '../types/dashboard';
+import { useApp } from '../../context/AppContext';
+import { useGlobalToast } from '../../context/ToastContext';
+import { Button } from '../../shared';
+import { fetchApi } from '../../hooks/useApi';
+import { WikiDetail } from '../../wiki/WikiDetail';
+import type { WikiProjectTab, WikiAdminTab } from '../../types/dashboard';
 
 function slugify(name: string): string {
     const s = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');

@@ -27,7 +27,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 const mockSetFilesViewMode = vi.fn();
 let mockFilesViewModeValue: 'flat' | 'tree' = 'tree';
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => {
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => {
     const { useState, useCallback } = require('react');
     return {
         useFilesViewMode: () => {

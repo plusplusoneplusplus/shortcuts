@@ -9,11 +9,11 @@ import type { ClientTokenUsageStatsResponse } from '../../../../../src/server/sp
 
 const mockReload = vi.fn();
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useTokenUsageStats', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats', () => ({
     useTokenUsageStats: vi.fn(),
 }));
 
-import { useTokenUsageStats } from '../../../../../src/server/spa/client/react/hooks/useTokenUsageStats';
+import { useTokenUsageStats } from '../../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats';
 
 const makeHookResult = (overrides: Partial<{
     data: ClientTokenUsageStatsResponse | null;

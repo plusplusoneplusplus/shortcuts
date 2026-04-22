@@ -7,7 +7,7 @@ import {
     getNotesParentPath,
     canNoteDrop,
     type NoteDragItem,
-} from '../../../src/server/spa/client/react/hooks/useNotesDragDrop';
+} from '../../../src/server/spa/client/react/features/notes/hooks/useNotesDragDrop';
 
 // ── getNotesParentPath ─────────────────────────────────────────────────
 

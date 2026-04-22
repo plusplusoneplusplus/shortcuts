@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getLanguageFromFileName, highlightLine, highlightBlock, escapeHtml } from '../../../src/server/spa/client/react/repos/useSyntaxHighlight';
+import { getLanguageFromFileName, highlightLine, highlightBlock, escapeHtml } from '../../../src/server/spa/client/react/features/git/hooks/useSyntaxHighlight';
 
 describe('escapeHtml', () => {
     it('escapes ampersands', () => {

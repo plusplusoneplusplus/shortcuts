@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTextPaste, CLIENT_PASTE_THRESHOLD } from '../../../src/server/spa/client/react/hooks/useTextPaste';
+import { useTextPaste, CLIENT_PASTE_THRESHOLD } from '../../../src/server/spa/client/react/features/chat/hooks/useTextPaste';
 
 function createMockPasteEvent(text: string): React.ClipboardEvent {
     const preventDefault = vi.fn();

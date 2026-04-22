@@ -58,7 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoManagementPopover', (
     RepoManagementPopover: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false }),
 }));
 

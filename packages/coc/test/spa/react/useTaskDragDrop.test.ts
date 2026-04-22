@@ -9,8 +9,8 @@ import {
     serializeDragData,
     deserializeDragData,
     DRAG_MIME_TYPE,
-} from '../../../src/server/spa/client/react/hooks/useTaskDragDrop';
-import type { DragItem } from '../../../src/server/spa/client/react/hooks/useTaskDragDrop';
+} from '../../../src/server/spa/client/react/tasks/hooks/useTaskDragDrop';
+import type { DragItem } from '../../../src/server/spa/client/react/tasks/hooks/useTaskDragDrop';
 
 // ── getParentPath ──────────────────────────────────────────────────────
 

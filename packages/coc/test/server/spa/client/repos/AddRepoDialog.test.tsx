@@ -42,7 +42,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => (
     normalizeRemoteUrl: (url: string) => url.toLowerCase().replace(/\.git$/, ''),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/colorUtils', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/git/diff/colorUtils', () => ({
     resolveAutoColor: (_existing: string[], palette: any[]) =>
         palette.length > 0 ? palette[0].value : '',
 }));

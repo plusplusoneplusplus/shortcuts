@@ -11,22 +11,22 @@ import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/co
 import { ProcessFilters } from '../../../src/server/spa/client/react/processes/ProcessFilters';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import { ProcessesView } from '../../../src/server/spa/client/react/processes/ProcessesView';
-import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
+import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 // QueuePanel merged into ProcessesSidebar
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
-import { ChatDetail } from '../../../src/server/spa/client/react/repos/ChatDetail';
+import { ChatDetail } from '../../../src/server/spa/client/react/features/chat/ChatDetail';
 
 // Mock useDisplaySettings — controls report_intent visibility
 const mockDisplaySettings = { showReportIntent: false };
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 

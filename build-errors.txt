@@ -1,0 +1,177 @@
+
+> @plusplusoneplusplus/coc@1.2.0 build:client
+> node scripts/build-client.mjs
+
+Γ£ÿ [ERROR] Could not resolve "../repos/ChatDetail"
+
+    src/server/spa/client/react/layout/PopOutChatShell.tsx:18:27:
+      18 Γöé import { ChatDetail } from '../repos/ChatDetail';
+         Γò╡                            ~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../hooks/usePopOutChannel"
+
+    src/server/spa/client/react/layout/PopOutChatShell.tsx:19:53:
+      19 Γöé ...OutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
+         Γò╡                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/useSlashCommands"
+
+    src/server/spa/client/react/shared/ResolveContextDialog.tsx:12:33:
+      12 Γöé import { useSlashCommands } from '../repos/useSlashCommands';
+         Γò╡                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/SlashCommandMenu"
+
+    src/server/spa/client/react/shared/ResolveContextDialog.tsx:13:49:
+      13 Γöé ...ashCommandMenu, type SkillItem } from '../repos/SlashCommandMenu';
+         Γò╡                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../../repos/ChatDetail"
+
+    src/server/spa/client/react/features/git/commits/CommitChatPanel.tsx:3:27:
+      3 Γöé import { ChatDetail } from '../../../repos/ChatDetail';
+        Γò╡                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../hooks/useImagePaste"
+
+    src/server/spa/client/react/queue/EnqueueDialog.tsx:13:30:
+      13 Γöé import { useImagePaste } from '../hooks/useImagePaste';
+         Γò╡                               ~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../hooks/usePopOutChannel"
+
+    src/server/spa/client/react/context/PopOutContext.tsx:10:53:
+      10 Γöé ...OutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
+         Γò╡                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/FloatingChatContent"
+
+    src/server/spa/client/react/layout/FloatingChatManager.tsx:12:36:
+      12 Γöé import { FloatingChatContent } from '../repos/FloatingChatContent';
+         Γò╡                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../hooks/useTokenUsageStats"
+
+    src/server/spa/client/react/views/stats/UsageStatsView.tsx:2:35:
+      2 Γöé import { useTokenUsageStats } from '../../hooks/useTokenUsageStats';
+        Γò╡                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./explorer/ExplorerPanel"
+
+    src/server/spa/client/react/repos/index.ts:24:30:
+      24 Γöé export { ExplorerPanel } from './explorer/ExplorerPanel';
+         Γò╡                               ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./explorer/FileTree"
+
+    src/server/spa/client/react/repos/index.ts:26:46:
+      26 Γöé export { FileTree, flattenVisibleNodes } from './explorer/FileTree';
+         Γò╡                                               ~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./explorer/TreeNode"
+
+    src/server/spa/client/react/repos/index.ts:28:25:
+      28 Γöé export { TreeNode } from './explorer/TreeNode';
+         Γò╡                          ~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/useSlashCommands"
+
+    src/server/spa/client/react/queue/EnqueueDialog.tsx:19:33:
+      19 Γöé import { useSlashCommands } from '../repos/useSlashCommands';
+         Γò╡                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/RepoTabStrip"
+
+    src/server/spa/client/react/layout/TopBar.tsx:11:29:
+      11 Γöé import { RepoTabStrip } from '../repos/RepoTabStrip';
+         Γò╡                              ~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../repos/SlashCommandMenu"
+
+    src/server/spa/client/react/queue/EnqueueDialog.tsx:20:33:
+      20 Γöé import { SlashCommandMenu } from '../repos/SlashCommandMenu';
+         Γò╡                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./RepoChatTab"
+
+    src/server/spa/client/react/repos/index.ts:30:28:
+      30 Γöé export { RepoChatTab } from './RepoChatTab';
+         Γò╡                             ~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./RepoDetail"
+
+    src/server/spa/client/react/repos/ReposView.tsx:15:27:
+      15 Γöé import { RepoDetail } from './RepoDetail';
+         Γò╡                            ~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../repos/SkillContextDialog"
+
+    src/server/spa/client/react/features/git/RepoGitTab.tsx:34:35:
+      34 Γöé import { SkillContextDialog } from '../../repos/SkillContextDialog';
+         Γò╡                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./RepoChatTab"
+
+    src/server/spa/client/react/repos/MyWorkView.tsx:11:28:
+      11 Γöé import { RepoChatTab } from './RepoChatTab';
+         Γò╡                             ~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "./RepoChatTab"
+
+    src/server/spa/client/react/repos/MyLifeView.tsx:11:28:
+      11 Γöé import { RepoChatTab } from './RepoChatTab';
+         Γò╡                             ~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../../repos/explorer"
+
+    src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff.tsx:24:28:
+      24 Γöé import { PreviewPane } from '../../../repos/explorer';
+         Γò╡                             ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../../repos/ChatDetail"
+
+    src/server/spa/client/react/features/notes/editor/NoteChatPanel.tsx:3:27:
+      3 Γöé import { ChatDetail } from '../../../repos/ChatDetail';
+        Γò╡                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Γ£ÿ [ERROR] Could not resolve "../../repos/RunHistoryList"
+
+    src/server/spa/client/react/features/schedules/ScheduleDetail.tsx:4:31:
+      4 Γöé import { RunHistoryList } from '../../repos/RunHistoryList';
+        Γò╡                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+23 errors
+D:\projects\shortcuts\node_modules\esbuild\lib\main.js:1472
+  let error = new Error(text);
+              ^
+
+Error: Build failed with 23 errors:
+src/server/spa/client/react/context/PopOutContext.tsx:10:53: ERROR: Could not resolve "../hooks/usePopOutChannel"
+src/server/spa/client/react/features/git/RepoGitTab.tsx:34:35: ERROR: Could not resolve "../../repos/SkillContextDialog"
+src/server/spa/client/react/features/git/commits/CommitChatPanel.tsx:3:27: ERROR: Could not resolve "../../../repos/ChatDetail"
+src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff.tsx:24:28: ERROR: Could not resolve "../../../repos/explorer"
+src/server/spa/client/react/features/notes/editor/NoteChatPanel.tsx:3:27: ERROR: Could not resolve "../../../repos/ChatDetail"
+...
+    at failureErrorWithLog (D:\projects\shortcuts\node_modules\esbuild\lib\main.js:1472:15)
+    at D:\projects\shortcuts\node_modules\esbuild\lib\main.js:945:25
+    at D:\projects\shortcuts\node_modules\esbuild\lib\main.js:897:52
+    at buildResponseToResult (D:\projects\shortcuts\node_modules\esbuild\lib\main.js:943:7)
+    at D:\projects\shortcuts\node_modules\esbuild\lib\main.js:970:16
+    at responseCallbacks.<computed> (D:\projects\shortcuts\node_modules\esbuild\lib\main.js:622:9)
+    at handleIncomingPacket (D:\projects\shortcuts\node_modules\esbuild\lib\main.js:677:12)
+    at Socket.readFromStdout (D:\projects\shortcuts\node_modules\esbuild\lib\main.js:600:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:563:12) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter]
+}
+
+Node.js v24.14.1
+npm error Lifecycle script `build:client` failed with error:
+npm error code 1
+npm error path D:\projects\shortcuts\packages\coc
+npm error workspace @plusplusoneplusplus/coc@1.2.0
+npm error location D:\projects\shortcuts\packages\coc
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node scripts/build-client.mjs
+

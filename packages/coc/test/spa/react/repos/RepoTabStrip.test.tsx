@@ -45,7 +45,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () =
 }));
 
 let mockUiLayoutMode = 'classic';
-vi.mock('../../../../src/server/spa/client/react/hooks/useUiLayoutMode', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
     useUiLayoutMode: () => [mockUiLayoutMode, vi.fn()],
 }));
 

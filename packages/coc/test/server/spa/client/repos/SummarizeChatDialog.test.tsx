@@ -32,7 +32,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     ),
 }));
 
-import { SummarizeChatDialog } from '../../../../../src/server/spa/client/react/repos/SummarizeChatDialog';
+import { SummarizeChatDialog } from '../../../../../src/server/spa/client/react/features/chat/SummarizeChatDialog';
 
 // ---------------------------------------------------------------------------
 // Helpers

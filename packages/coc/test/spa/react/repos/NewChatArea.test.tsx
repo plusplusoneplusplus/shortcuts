@@ -59,19 +59,19 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [{ id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true }], loading: false, error: null, reload: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
     useSlashCommands: () => mockSlashCommands,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => mockModelCommand,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
     ModelCommandMenu: () => null,
 }));
 
@@ -101,7 +101,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
-import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewChatArea';
+import { NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 
 beforeEach(() => {
     vi.clearAllMocks();

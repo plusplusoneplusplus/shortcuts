@@ -12,7 +12,7 @@ import * as path from 'path';
 const EXT_PATH = path.join(
     __dirname,
     '..', '..', '..', '..', '..', '..', '..', '..', '..', '..', '..', '..',
-    'src', 'server', 'spa', 'client', 'react', 'repos', 'notes', 'extensions', 'AiEditDecorationExtension.ts',
+    'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'editor', 'extensions', 'AiEditDecorationExtension.ts',
 );
 
 const SRC_PATH = path.resolve(

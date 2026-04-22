@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { chatMarkdownToHtml, toContentHtml } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
+import { chatMarkdownToHtml, toContentHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
 describe('chatMarkdownToHtml', () => {
     // --- Empty / whitespace ---

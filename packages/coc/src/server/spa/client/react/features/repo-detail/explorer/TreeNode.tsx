@@ -4,10 +4,10 @@
  */
 
 import { useEffect, useRef, useState, type Ref } from 'react';
-import { cn } from '../../shared/cn';
-import { Spinner } from '../../shared';
-import { fetchApi } from '../../hooks/useApi';
-import { highlightMatch } from '../../tasks/TaskSearchResults';
+import { cn } from '../../../shared/cn';
+import { Spinner } from '../../../shared';
+import { fetchApi } from '../../../hooks/useApi';
+import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import { filterEntries } from './FileTree';
 import type { TreeEntry } from './types';
 

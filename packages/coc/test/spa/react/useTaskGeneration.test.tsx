@@ -8,7 +8,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import {
     useTaskGeneration,
     type TaskGenerationParams,
-} from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+} from '../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',

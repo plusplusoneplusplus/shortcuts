@@ -3,7 +3,7 @@ import {
     createCommitDiffSource,
     createBranchRangeDiffSource,
     fetchDiffFromSource,
-} from '../../../../src/server/spa/client/react/repos/diffSource';
+} from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn(),

@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const PANEL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'ExplorerPanel.tsx',
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'ExplorerPanel.tsx',
 );
 
 // ---------------------------------------------------------------------------

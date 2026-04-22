@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const PR_DIR = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'pull-requests'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'pull-requests'
 );
 
 describe('PullRequestsTab — URL construction', () => {

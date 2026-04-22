@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileActions } from '../../../src/server/spa/client/react/hooks/useFileActions';
+import { useFileActions } from '../../../src/server/spa/client/react/tasks/hooks/useFileActions';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',

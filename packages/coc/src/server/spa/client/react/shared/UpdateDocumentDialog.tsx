@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button } from './index';
-import { usePreferences } from '../hooks/usePreferences';
+import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';

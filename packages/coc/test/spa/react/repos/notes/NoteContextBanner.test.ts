@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const BANNER_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'notes', 'NoteContextBanner.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'editor', 'NoteContextBanner.tsx'
 );
 
 describe('NoteContextBanner', () => {

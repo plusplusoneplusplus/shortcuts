@@ -44,7 +44,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
@@ -53,12 +53,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 let mockMyWorkEnabled = false;
-vi.mock('../../../../src/server/spa/client/react/hooks/useMyWorkEnabled', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => mockMyWorkEnabled,
 }));
 
 let mockMyLifeEnabled = false;
-vi.mock('../../../../src/server/spa/client/react/hooks/useMyLifeEnabled', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
 }));
 

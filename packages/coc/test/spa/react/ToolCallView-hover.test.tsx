@@ -5,15 +5,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
 import React from 'react';
-import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
-import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
+import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
+import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
 
 let mockBreakpoint: BreakpointState = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' };
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 

@@ -15,7 +15,7 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/CreateScheduleForm', () => ({
+vi.mock('../../../src/server/spa/client/react/features/schedules/CreateScheduleForm', () => ({
     CreateScheduleForm: ({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) => (
         <div data-testid="mock-form">
             <button data-testid="mock-save" onClick={() => onCreated()}>Save</button>

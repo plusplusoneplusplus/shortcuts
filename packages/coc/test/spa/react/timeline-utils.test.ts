@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeConsecutiveContentItems } from '../../../src/server/spa/client/react/chat/timeline-utils';
+import { mergeConsecutiveContentItems } from '../../../src/server/spa/client/react/features/chat/conversation/timeline-utils';
 import type { ClientTimelineItem, ClientToolCall } from '../../../src/server/spa/client/react/types/dashboard';
 
 function content(text: string, timestamp?: string): ClientTimelineItem {

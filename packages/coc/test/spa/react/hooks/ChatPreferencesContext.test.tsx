@@ -25,7 +25,7 @@ const unarchiveProcessMock = vi.fn().mockResolvedValue(undefined);
 const archiveProcessesMock = vi.fn().mockResolvedValue(undefined);
 const unarchiveProcessesMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../../../src/server/spa/client/react/hooks/pinArchiveApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/pinArchiveApi', () => ({
     pinProcess: (...args: any[]) => pinProcessMock(...args),
     unpinProcess: (...args: any[]) => unpinProcessMock(...args),
     archiveProcess: (...args: any[]) => archiveProcessMock(...args),

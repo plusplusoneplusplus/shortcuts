@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { getApiBase } from '../utils/config';
+import { getApiBase } from '../../../utils/config';
 
 export interface NoteEditCardProps {
     editId: string;

@@ -7,12 +7,12 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 // Mock child components to isolate ChatDetailPane logic
-vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () => ({
     ChatDetail: (props: any) =>
         React.createElement('div', { 'data-testid': 'activity-chat-detail' }, `task=${props.taskId}`),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/NewChatArea', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/NewChatArea', () => ({
     NewChatArea: (props: any) =>
         React.createElement('div', { 'data-testid': 'new-chat-area' }, `ws=${props.workspaceId}`),
 }));
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
     useFloatingChats: () => ({ floatingChats: new Set(), unfloatChat: vi.fn() }),
 }));
 
-import { ChatDetailPane } from '../../../../src/server/spa/client/react/repos/ChatDetailPane';
+import { ChatDetailPane } from '../../../../src/server/spa/client/react/features/chat/ChatDetailPane';
 
 describe('ChatDetailPane', () => {
     it('renders NewChatArea when no task is selected', () => {

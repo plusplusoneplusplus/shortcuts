@@ -7,8 +7,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSlashCommands } from '../../../../src/server/spa/client/react/repos/useSlashCommands';
-import type { SkillItem } from '../../../../src/server/spa/client/react/repos/SlashCommandMenu';
+import { useSlashCommands } from '../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands';
+import type { SkillItem } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
 
 const skills: SkillItem[] = [

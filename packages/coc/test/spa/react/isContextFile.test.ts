@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isContextFile, CONTEXT_FILES } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { isContextFile, CONTEXT_FILES } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 describe('isContextFile', () => {
     it('returns true for README.md (case-insensitive)', () => {

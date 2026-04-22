@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import type { ModelInfo } from '../hooks/useModels';
+import type { ModelInfo } from '../../hooks/useModels';
 
 export interface ModelCommandMenuProps {
     models: ModelInfo[];

@@ -2,8 +2,8 @@
  * toolGroupUtils — category types, classification helpers, and the
  * groupConsecutiveToolChunks algorithm for compact tool-call display.
  */
-import type { DetectedCommit } from './commitDetection';
-import { detectCommitsInToolGroup } from './commitDetection';
+import type { DetectedCommit } from '../commitDetection';
+import { detectCommitsInToolGroup } from '../commitDetection';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 

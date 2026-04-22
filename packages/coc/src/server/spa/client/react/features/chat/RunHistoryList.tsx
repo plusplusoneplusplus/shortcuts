@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { cn } from '../shared';
-import { fetchApi } from '../hooks/useApi';
-import { formatRelativeTime } from '../utils/format';
-import type { RunRecord } from '../features/schedules/scheduleTypes';
+import { cn } from '../../shared';
+import { fetchApi } from '../../hooks/useApi';
+import { formatRelativeTime } from '../../utils/format';
+import type { RunRecord } from '../schedules/scheduleTypes';
 
 export const HISTORY_PAGE_SIZE = 20;
 

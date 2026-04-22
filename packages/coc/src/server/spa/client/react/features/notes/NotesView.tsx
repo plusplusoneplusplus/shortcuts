@@ -8,8 +8,8 @@ import { CommentsSidebar } from './editor/CommentsSidebar';
 import { NoteChatPanel } from './editor/NoteChatPanel';
 import { useComments } from './editor/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useResizablePanel } from '../../hooks/useResizablePanel';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../context/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 

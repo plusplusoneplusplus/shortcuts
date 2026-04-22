@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
     parseHunkHeader,
     computeDiffLines,
-} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 // ============================================================================
 // parseHunkHeader

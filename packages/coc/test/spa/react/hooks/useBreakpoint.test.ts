@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useBreakpoint } from '../../../../src/server/spa/client/react/hooks/useBreakpoint';
+import { useBreakpoint } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 import { mockViewport } from '../../helpers/viewport-mock';
 
 describe('useBreakpoint', () => {

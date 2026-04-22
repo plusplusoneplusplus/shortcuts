@@ -6,8 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ToolCallView } from '../../../src/server/spa/client/react/chat/ToolCallView';
-import { ToolResultPopover } from '../../../src/server/spa/client/react/chat/ToolResultPopover';
+import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
+import { ToolResultPopover } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolResultPopover';
 
 function makeToolCall(overrides: Record<string, any> = {}) {
     return {

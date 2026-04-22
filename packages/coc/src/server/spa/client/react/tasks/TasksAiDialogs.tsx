@@ -4,7 +4,7 @@
  * via QueueContext dispatch (OPEN_DIALOG with contextFiles).
  */
 
-import type { TaskFolder } from '../hooks/useTaskTree';
+import type { TaskFolder } from './hooks/useTaskTree';
 import { UpdateDocumentDialog } from '../shared/UpdateDocumentDialog';
 
 interface TasksAiDialogsProps {

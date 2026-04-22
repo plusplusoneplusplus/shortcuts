@@ -17,7 +17,7 @@ import {
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
 import { fetchApi } from '../hooks/useApi';
-import { fetchUnseenCount } from '../hooks/seenStateApi';
+import { fetchUnseenCount } from '../hooks/preferences/seenStateApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
 

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useTokenUsageStats } from '../../../../src/server/spa/client/react/hooks/useTokenUsageStats';
+import { useTokenUsageStats } from '../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats';
 import type { ClientTokenUsageStatsResponse } from '../../../../src/server/spa/client/react/types/dashboard';
 
 // Mock fetchApi

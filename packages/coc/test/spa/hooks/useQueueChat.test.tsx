@@ -7,7 +7,7 @@ import { renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
-import { useQueueChat } from '../../../src/server/spa/client/react/hooks/useQueueChat';
+import { useQueueChat } from '../../../src/server/spa/client/react/queue/hooks/useQueueChat';
 
 // ── Wrapper ──────────────────────────────────────────────────────────────────
 

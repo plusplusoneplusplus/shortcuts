@@ -1,5 +1,5 @@
 import { cn } from './cn';
-import type { AttachedContextItem } from '../hooks/useAttachedContext';
+import type { AttachedContextItem } from '../features/chat/hooks/useAttachedContext';
 
 export interface AttachedContextPreviewsProps {
     items: AttachedContextItem[];

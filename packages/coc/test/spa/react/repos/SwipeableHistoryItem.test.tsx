@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { SwipeableHistoryItem } from '../../../../src/server/spa/client/react/repos/SwipeableHistoryItem';
+import { SwipeableHistoryItem } from '../../../../src/server/spa/client/react/features/chat/SwipeableHistoryItem';
 
 describe('SwipeableHistoryItem', () => {
     it('renders children directly on desktop (no swipe wrapper)', () => {

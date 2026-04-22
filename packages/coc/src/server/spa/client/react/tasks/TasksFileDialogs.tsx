@@ -2,8 +2,8 @@
  * TasksFileDialogs — rename, delete, and move file dialog portals.
  */
 
-import type { FileCtxInfo } from '../hooks/useFileDialogHandlers';
-import type { TaskFolder } from '../hooks/useTaskTree';
+import type { FileCtxInfo } from './hooks/useFileDialogHandlers';
+import type { TaskFolder } from './hooks/useTaskTree';
 import { FolderActionDialog } from './FolderActionDialog';
 import { FileMoveDialog } from './FileMoveDialog';
 import { Dialog } from '../shared/Dialog';

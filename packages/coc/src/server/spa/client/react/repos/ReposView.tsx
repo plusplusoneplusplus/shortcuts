@@ -8,11 +8,11 @@
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useMyWorkEnabled } from '../hooks/useMyWorkEnabled';
-import { useMyLifeEnabled } from '../hooks/useMyLifeEnabled';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
+import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { ReposGrid } from './ReposGrid';
-import { RepoDetail } from './RepoDetail';
+import { RepoDetail } from '../features/repo-detail/RepoDetail';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
 

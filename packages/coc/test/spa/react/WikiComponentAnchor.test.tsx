@@ -22,11 +22,11 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
     useMermaid: vi.fn(),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { formatDuration } from '../utils/format';
-import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { BottomSheet } from '../shared/BottomSheet';
+import { formatDuration } from '../../../utils/format';
+import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
+import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
+import { BottomSheet } from '../../../shared/BottomSheet';
 
 interface MetaRow {
     label: string;

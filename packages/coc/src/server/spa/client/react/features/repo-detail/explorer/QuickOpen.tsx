@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchApi } from '../../hooks/useApi';
-import { cn } from '../../shared/cn';
+import { fetchApi } from '../../../hooks/useApi';
+import { cn } from '../../../shared/cn';
 
 export interface QuickOpenProps {
     workspaceId: string;

@@ -11,12 +11,12 @@ import { QueueProvider } from '../../../src/server/spa/client/react/context/Queu
 import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/context/TaskContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskTree, getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
-import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
-import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
+import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
+import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
 let mockBreakpointState: BreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpointState,
 }));
 

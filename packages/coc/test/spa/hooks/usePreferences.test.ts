@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
+import { usePreferences } from '../../../src/server/spa/client/react/hooks/preferences/usePreferences';
 
 const mockFetch = vi.fn();
 

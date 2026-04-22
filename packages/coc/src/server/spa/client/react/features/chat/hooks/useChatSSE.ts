@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getApiBase } from '../utils/config';
-import type { ClientConversationTurn } from '../types/dashboard';
-import type { QueuedMessage } from '../utils/chatUtils';
+import { getApiBase } from '../../../utils/config';
+import type { ClientConversationTurn } from '../../../types/dashboard';
+import type { QueuedMessage } from '../../../utils/chatUtils';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;

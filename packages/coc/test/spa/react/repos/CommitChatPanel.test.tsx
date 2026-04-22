@@ -13,11 +13,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 const mockCreateChat = vi.fn();
 const mockUseCommitChatBinding = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useCommitChatBinding', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding', () => ({
     useCommitChatBinding: (...args: any[]) => mockUseCommitChatBinding(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () => ({
     ChatDetail: (props: any) => (
         <div data-testid="activity-chat-detail"
              data-task-id={props.taskId}

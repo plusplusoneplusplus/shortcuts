@@ -7,23 +7,23 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { cn } from '../shared';
-import { fetchApi } from '../hooks/useApi';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
-import { useRepos } from '../context/ReposContext';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useResizablePanel } from '../hooks/useResizablePanel';
+import { cn } from '../../shared';
+import { fetchApi } from '../../hooks/useApi';
+import { useQueue } from '../../context/QueueContext';
+import { useApp } from '../../context/AppContext';
+import { useRepos } from '../../context/ReposContext';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
-import { useUnseenChat } from '../hooks/useUnseenChat';
-import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
-import { useNotifications } from '../context/NotificationContext';
-import { useProcessSearch } from '../hooks/useProcessSearch';
-import { adaptSearchResults } from '../utils/search-adapter';
-import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
-import { TaskDefs } from '../../../../task-types';
-import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
+import { useUnseenChat } from './hooks/useUnseenChat';
+import { ChatPreferencesProvider, ChatPrefsSync } from '../../context/ChatPreferencesContext';
+import { useNotifications } from '../../context/NotificationContext';
+import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
+import { adaptSearchResults } from '../../utils/search-adapter';
+import type { ProcessHistoryItem } from '../../../../../../shared/process-history-item';
+import { TaskDefs } from '../../../../../task-types';
+import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 
 export interface RepoChatTabProps {
     workspaceId: string;

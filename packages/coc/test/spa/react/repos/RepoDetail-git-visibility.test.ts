@@ -16,7 +16,7 @@ import * as path from 'path';
 import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
 );
 

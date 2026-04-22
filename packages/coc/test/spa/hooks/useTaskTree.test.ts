@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useTaskTree } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { useTaskTree } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 const mockFetch = vi.fn();
 

@@ -8,7 +8,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Spinner } from '../../shared';
 import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
 export interface AICommandMenuProps {

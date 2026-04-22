@@ -7,7 +7,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
-import type { TaskFolder } from '../hooks/useTaskTree';
+import type { TaskFolder } from './hooks/useTaskTree';
 import { buildDestinations } from './FolderMoveDialog';
 
 export interface FileMoveDialogProps {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 const DRAWER_BACKDROP_Z = 9000;
 const DRAWER_PANEL_Z = 9001;

@@ -13,11 +13,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { Badge, Spinner } from '../../shared';
-import { ConversationArea } from '../../repos/ConversationArea';
-import { ConversationMiniMap } from '../../chat/ConversationMiniMap';
-import { useQueuedTaskPoll } from '../../hooks/useQueuedTaskPoll';
-import { useChatSSE } from '../../hooks/useChatSSE';
-import { getConversationTurns } from '../../chat/chatConversationUtils';
+import { ConversationArea } from '../chat/ConversationArea';
+import { ConversationMiniMap } from '../chat/conversation/ConversationMiniMap';
+import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
+import { useChatSSE } from '../chat/hooks/useChatSSE';
+import { getConversationTurns } from '../chat/conversation/chatConversationUtils';
 import { MetaRow, FilePathValue } from '../../queue/PendingTaskPayload';
 import type { ClientConversationTurn } from '../../types/dashboard';
 

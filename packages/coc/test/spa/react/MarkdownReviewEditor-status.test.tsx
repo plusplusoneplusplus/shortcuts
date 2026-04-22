@@ -9,7 +9,7 @@ import React from 'react';
 import { MarkdownReviewEditor, parseFrontmatterStatus } from '../../../src/server/spa/client/react/shared/MarkdownReviewEditor';
 
 /* ── Mock useTaskComments ── */
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
+vi.mock('../../../src/server/spa/client/react/tasks/hooks/useTaskComments', () => ({
     useTaskComments: () => ({
         comments: [],
         loading: false,
@@ -30,7 +30,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
 }));
 
 /* ── Mock useMarkdownPreview ── */
-vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
     useMarkdownPreview: ({ content }: { content: string }) => ({
         html: content ? `<p>${content}</p>` : '',
     }),

@@ -4,15 +4,15 @@
  * and message counts. Expands to reveal Compact-level (level 1) rendering.
  */
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn } from '../shared';
+import { cn } from '../../../../shared';
 import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
-import { MarkdownView } from '../shared/MarkdownView';
-import { detectCommitsInToolGroup } from './commitDetection';
-import type { DetectedCommit } from './commitDetection';
-import { CommitStrip } from './CommitStrip';
+import { MarkdownView } from '../../../../shared/MarkdownView';
+import { detectCommitsInToolGroup } from '../commitDetection';
+import type { DetectedCommit } from '../commitDetection';
+import { CommitStrip } from '../CommitStrip';
 
 interface ToolLike {
     toolName: string;

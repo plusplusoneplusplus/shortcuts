@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useChatSSE } from '../../../src/server/spa/client/react/hooks/useChatSSE';
+import { useChatSSE } from '../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 
 // ── Mock EventSource ──────────────────────────────────────────────────────────
 

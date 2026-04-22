@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSwipeToArchive, SWIPE_ARCHIVE_THRESHOLD } from '../../../../src/server/spa/client/react/hooks/useSwipeToArchive';
+import { useSwipeToArchive, SWIPE_ARCHIVE_THRESHOLD } from '../../../../src/server/spa/client/react/features/chat/hooks/useSwipeToArchive';
 
 function makeTouchEvent(x: number, y: number): React.TouchEvent {
     const touch = { clientX: x, clientY: y } as Touch;

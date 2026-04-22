@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
-import { buildFileTree, normalizeStatus } from '../../../../src/server/spa/client/react/repos/FileTree';
+import { buildFileTree, normalizeStatus } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // --- Module mocks ---
 
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
 }));
 
 const mockUseFileCommentCounts = vi.fn<[], Map<string, number>>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => ({
     useFileCommentCounts: () => mockUseFileCommentCounts(),
 }));
 
@@ -33,7 +33,7 @@ const mockSetFilesViewMode = vi.fn();
 let mockFilesViewModeInitial: 'flat' | 'tree' = 'tree';
 
 // Use a stateful mock that triggers React re-renders
-vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => {
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => {
     const { useState, useCallback } = require('react');
     return {
         useFilesViewMode: () => {
@@ -57,8 +57,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));
 
-import { BranchChanges } from '../../../../src/server/spa/client/react/repos/BranchChanges';
-import type { BranchRangeInfo } from '../../../../src/server/spa/client/react/repos/BranchChanges';
+import { BranchChanges } from '../../../../src/server/spa/client/react/features/git/branches/BranchChanges';
+import type { BranchRangeInfo } from '../../../../src/server/spa/client/react/features/git/branches/BranchChanges';
 
 const RANGE_INFO: BranchRangeInfo = {
     baseRef: 'origin/main',

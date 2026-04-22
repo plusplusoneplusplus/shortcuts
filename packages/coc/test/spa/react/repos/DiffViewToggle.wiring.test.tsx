@@ -9,7 +9,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 // --- Module mocks (hoisted by Vitest) ---
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: () => ({
         comments: [],
         loading: false,
@@ -40,7 +40,7 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
@@ -49,7 +49,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-unified-viewer'} data-viewer="unified">unified</div>
     ),
@@ -61,13 +61,13 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/SideBySideDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer', () => ({
     SideBySideDiffViewer: ({ 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-sbs-viewer'} data-viewer="split">side-by-side</div>
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/DiffMiniMap', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap', () => ({
     DiffMiniMap: () => <div data-testid="diff-minimap" />,
 }));
 
@@ -75,11 +75,11 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
-import { CommitFileContent } from '../../../../src/server/spa/client/react/repos/CommitFileContent';
-import { FileDiffPanel } from '../../../../src/server/spa/client/react/repos/FileDiffPanel';
-import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/repos/WorkingTreeFileDiff';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
+import { CommitFileContent } from '../../../../src/server/spa/client/react/features/git/commits/CommitFileContent';
+import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 // Reset localStorage between tests
 beforeEach(() => {

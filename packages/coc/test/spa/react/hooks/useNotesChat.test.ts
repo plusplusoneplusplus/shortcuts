@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const HOOK_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useNotesChat.ts'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'hooks', 'useNotesChat.ts'
 );
 
 describe('useNotesChat', () => {

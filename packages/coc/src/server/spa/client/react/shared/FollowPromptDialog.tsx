@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button, Spinner } from './index';
 import { useModels } from '../hooks/useModels';
-import { usePreferences } from '../hooks/usePreferences';
+import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';

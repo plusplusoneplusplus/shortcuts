@@ -2,7 +2,7 @@
  * Unit tests for resolveAutoColor utility.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveAutoColor } from '../../../../src/server/spa/client/react/repos/colorUtils';
+import { resolveAutoColor } from '../../../../src/server/spa/client/react/features/git/diff/colorUtils';
 
 const PALETTE = [
     { label: 'Blue', value: '#0078d4' },

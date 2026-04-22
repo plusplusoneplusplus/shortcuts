@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
-import { useProcessSearch } from '../hooks/useProcessSearch';
+import { useProcessSearch } from './hooks/useProcessSearch';
 
 export function ProcessFilters() {
     const { state, dispatch } = useApp();

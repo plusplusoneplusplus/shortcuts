@@ -12,8 +12,8 @@ import {
     groupDuration,
     CATEGORY_ICONS,
     ToolCallGroupView,
-} from '../../../src/server/spa/client/react/chat/ToolCallGroupView';
-import type { RenderToolCall } from '../../../src/server/spa/client/react/chat/ToolCallGroupView';
+} from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView';
+import type { RenderToolCall } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +145,6 @@ it('renders without throwing', () => {
 // ─── Exported surface ─────────────────────────────────────────────────────────
 
 it('exports ToolCallGroupView as named export', async () => {
-    const mod = await import('../../../src/server/spa/client/react/chat/ToolCallGroupView');
+    const mod = await import('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView');
     expect(typeof mod.ToolCallGroupView).toBe('function');
 });

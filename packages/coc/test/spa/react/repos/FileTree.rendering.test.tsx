@@ -23,8 +23,8 @@ import {
     normalizeStatus,
     STATUS_COLORS,
     STATUS_LABELS,
-} from '../../../../src/server/spa/client/react/repos/FileTree';
-import type { FileChange, FilesViewMode } from '../../../../src/server/spa/client/react/repos/FileTree';
+} from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
+import type { FileChange, FilesViewMode } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // Mock TruncatedPath to a simple span
 vi.mock('../../../../src/server/spa/client/react/shared', () => ({

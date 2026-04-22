@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { NotesView } from '../features/notes/NotesView';
-import { RepoChatTab } from './RepoChatTab';
+import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';

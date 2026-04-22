@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import React, { createRef } from 'react';
-import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/repos/SideBySideDiffViewer';
-import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
+import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 // Minimal two-hunk diff with both added and removed lines
 const TWO_HUNK_DIFF = `diff --git a/foo.ts b/foo.ts

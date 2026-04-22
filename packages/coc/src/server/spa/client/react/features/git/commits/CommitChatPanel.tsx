@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useCommitChatBinding } from '../hooks/useCommitChatBinding';
-import { ChatDetail } from '../../../repos/ChatDetail';
+import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../context/ChatPreferencesContext';
 import { RichTextInput } from '../../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';

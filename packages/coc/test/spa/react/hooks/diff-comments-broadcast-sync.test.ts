@@ -6,15 +6,15 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const HOOKS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
+const GIT_HOOKS_DIR = path.join(
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks'
 );
 
 describe('useDiffComments: BroadcastChannel sync', () => {
     let source: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(path.join(HOOKS_DIR, 'useDiffComments.ts'), 'utf-8');
+        source = fs.readFileSync(path.join(GIT_HOOKS_DIR, 'useDiffComments.ts'), 'utf-8');
     });
 
     it('imports GIT_REVIEW_POPOUT_CHANNEL', () => {
@@ -42,7 +42,7 @@ describe('useAllCommitComments: BroadcastChannel sync', () => {
     let source: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(path.join(HOOKS_DIR, 'useAllCommitComments.ts'), 'utf-8');
+        source = fs.readFileSync(path.join(GIT_HOOKS_DIR, 'useAllCommitComments.ts'), 'utf-8');
     });
 
     it('imports GIT_REVIEW_POPOUT_CHANNEL', () => {

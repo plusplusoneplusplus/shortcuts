@@ -6,8 +6,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { getApiBase } from '../utils/config';
-import type { AskUserQuestion } from '../hooks/useChatSSE';
+import { getApiBase } from '../../utils/config';
+import type { AskUserQuestion } from './hooks/useChatSSE';
 
 export interface AskUserInlineProps {
     question: AskUserQuestion;

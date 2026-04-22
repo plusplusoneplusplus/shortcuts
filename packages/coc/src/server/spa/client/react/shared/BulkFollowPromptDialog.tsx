@@ -6,14 +6,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Dialog, Button, Spinner } from './index';
-import { usePreferences } from '../hooks/usePreferences';
+import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
-import type { TaskFolder } from '../hooks/useTaskTree';
-import { isContextFile } from '../hooks/useTaskTree';
+import type { TaskFolder } from '../tasks/hooks/useTaskTree';
+import { isContextFile } from '../tasks/hooks/useTaskTree';
 
 interface SkillItem {
     name: string;

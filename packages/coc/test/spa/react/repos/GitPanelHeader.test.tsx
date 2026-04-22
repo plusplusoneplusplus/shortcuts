@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { GitPanelHeader } from '../../../../src/server/spa/client/react/repos/GitPanelHeader';
+import { GitPanelHeader } from '../../../../src/server/spa/client/react/features/git/GitPanelHeader';
 
 const defaultProps = {
     branch: 'main',

@@ -27,7 +27,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn(),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/CommitTooltip', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitTooltip', () => ({
     CommitTooltip: () => null,
 }));
 
@@ -37,8 +37,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
 
 // --- Fixtures ---
 
-import { CommitList } from '../../../../src/server/spa/client/react/repos/CommitList';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { CommitList } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 const COMMIT_A: GitCommitItem = {
     hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',

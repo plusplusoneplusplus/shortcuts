@@ -29,11 +29,11 @@ const defaultHookReturn = {
 
 let hookReturn = { ...defaultHookReturn };
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useNotesGit', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesGit', () => ({
     useNotesGit: () => hookReturn,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 320,
         isDragging: false,
@@ -68,7 +68,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     ),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ diff, enableComments, ...rest }: any) => (
         <div data-testid={rest['data-testid'] ?? 'unified-diff-viewer'} data-enable-comments={enableComments}>
             {diff}

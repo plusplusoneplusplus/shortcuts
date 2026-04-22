@@ -9,7 +9,7 @@ import { render, screen } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 let mockModHeld = false;
-vi.mock('../../../../../src/server/spa/client/react/hooks/useModifierKey', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useModifierKey', () => ({
     useModifierKey: () => mockModHeld,
 }));
 
@@ -45,7 +45,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
     RichTextInput: vi.fn().mockImplementation(() => null),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));
 
@@ -62,7 +62,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-import { FollowUpInputArea } from '../../../../../src/server/spa/client/react/repos/FollowUpInputArea';
+import { FollowUpInputArea } from '../../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import { createRef } from 'react';
 
 // ---------------------------------------------------------------------------

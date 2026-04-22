@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useTaskComments } from '../../../../src/server/spa/client/react/hooks/useTaskComments';
+import { useTaskComments } from '../../../../src/server/spa/client/react/tasks/hooks/useTaskComments';
 
 // Mock config
 vi.mock('../../../../src/server/spa/client/config', () => ({

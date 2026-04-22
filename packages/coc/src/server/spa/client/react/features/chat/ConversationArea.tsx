@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Spinner } from '../shared';
-import { ConversationTurnBubble } from '../chat/ConversationTurnBubble';
-import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
-import { cn } from '../shared/cn';
+import { Spinner } from '../../shared';
+import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
+import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
+import { cn } from '../../shared/cn';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
-import type { ClientConversationTurn } from '../types/dashboard';
-import type { QueuedMessage } from '../utils/chatUtils';
-import type { BackgroundTasksState, AskUserQuestion } from '../hooks/useChatSSE';
+import type { ClientConversationTurn } from '../../types/dashboard';
+import type { QueuedMessage } from '../../utils/chatUtils';
+import type { BackgroundTasksState, AskUserQuestion } from './hooks/useChatSSE';
 
 export interface ConversationAreaProps {
     loading: boolean;

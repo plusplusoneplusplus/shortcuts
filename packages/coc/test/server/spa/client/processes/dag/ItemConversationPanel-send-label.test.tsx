@@ -9,7 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 let mockModHeld = false;
-vi.mock('../../../../../../src/server/spa/client/react/hooks/useModifierKey', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/hooks/ui/useModifierKey', () => ({
     useModifierKey: () => mockModHeld,
 }));
 
@@ -73,7 +73,7 @@ vi.mock('../../../../../../src/server/spa/client/react/shared', () => ({
     },
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     ConversationTurnBubble: ({ turn }: any) => <div data-testid="turn">{turn.content}</div>,
 }));
 

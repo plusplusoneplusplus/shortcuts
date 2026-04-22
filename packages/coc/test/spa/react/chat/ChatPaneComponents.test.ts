@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const CHAT_UTILS_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'chatConversationUtils.ts'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'conversation', 'chatConversationUtils.ts'
 );
 
 describe('chatConversationUtils (standalone)', () => {

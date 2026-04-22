@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTaskSearch } from '../../../../src/server/spa/client/react/hooks/useTaskSearch';
-import type { TaskFolder } from '../../../../src/server/spa/client/react/hooks/useTaskTree';
+import { useTaskSearch } from '../../../../src/server/spa/client/react/tasks/hooks/useTaskSearch';
+import type { TaskFolder } from '../../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
 function makeTree(overrides: Partial<TaskFolder> = {}): TaskFolder {
     return {

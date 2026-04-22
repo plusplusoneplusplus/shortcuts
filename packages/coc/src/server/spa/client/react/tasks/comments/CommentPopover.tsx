@@ -12,7 +12,7 @@ import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import type { AnyComment, AnyCommentCategory } from '../../../shared-comment-types';
 import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../shared-comment-types';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';

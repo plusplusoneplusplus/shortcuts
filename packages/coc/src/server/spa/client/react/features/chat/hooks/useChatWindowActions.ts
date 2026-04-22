@@ -1,7 +1,7 @@
 import { useCallback, useContext } from 'react';
-import { ToastContext } from '../context/ToastContext';
-import { usePopOut } from '../context/PopOutContext';
-import { useFloatingChats } from '../context/FloatingChatsContext';
+import { ToastContext } from '../../../context/ToastContext';
+import { usePopOut } from '../../../context/PopOutContext';
+import { useFloatingChats } from '../../../context/FloatingChatsContext';
 
 export interface UseChatWindowActionsOptions {
     task: any;

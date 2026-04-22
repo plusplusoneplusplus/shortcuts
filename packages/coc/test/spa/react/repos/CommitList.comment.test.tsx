@@ -19,7 +19,7 @@ vi.mock('../../../../src/server/spa/client/diff-comment-utils', () => ({
 }));
 
 const mockUseFileCommentCounts = vi.fn<[string, string | null, string | null], Map<string, number>>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => ({
     useFileCommentCounts: (...args: any[]) => mockUseFileCommentCounts(...args),
 }));
 
@@ -32,7 +32,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/CommitTooltip', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitTooltip', () => ({
     CommitTooltip: () => null,
 }));
 
@@ -40,8 +40,8 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));
 
-import { CommitList } from '../../../../src/server/spa/client/react/repos/CommitList';
-import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
+import { CommitList } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
+import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
 const COMMIT_A: GitCommitItem = {
     hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',

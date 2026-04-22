@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { TasksToolbar } from '../../../src/server/spa/client/react/tasks/TasksToolbar';
-import { STATUS_PILLS, type TaskStatusValue } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { STATUS_PILLS, type TaskStatusValue } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 import { createRef } from 'react';
 
 afterEach(cleanup);

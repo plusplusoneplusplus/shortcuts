@@ -2,8 +2,8 @@
  * TasksFolderDialogs — rename, create-subfolder, create-task, delete, and move folder dialog portals.
  */
 
-import type { FolderDialogAction } from '../hooks/useFolderDialogHandlers';
-import type { TaskFolder } from '../hooks/useTaskTree';
+import type { FolderDialogAction } from './hooks/useFolderDialogHandlers';
+import type { TaskFolder } from './hooks/useTaskTree';
 import { FolderActionDialog } from './FolderActionDialog';
 import { FolderMoveDialog } from './FolderMoveDialog';
 import { Dialog } from '../shared/Dialog';

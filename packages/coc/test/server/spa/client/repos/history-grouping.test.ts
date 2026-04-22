@@ -4,7 +4,7 @@
  * Tests for history-grouping.ts — groupHistoryByPlanFile utility.
  */
 import { describe, it, expect } from 'vitest';
-import { groupHistoryByPlanFile, type HistoryGroup, type HistoryEntry } from '../../../../../src/server/spa/client/react/repos/history-grouping';
+import { groupHistoryByPlanFile, type HistoryGroup, type HistoryEntry } from '../../../../../src/server/spa/client/react/features/git/history-grouping';
 import type { ProcessHistoryItem } from '../../../../../src/server/spa/client/react/types/dashboard';
 
 function makeItem(overrides: Partial<ProcessHistoryItem> & { id: string }): ProcessHistoryItem {

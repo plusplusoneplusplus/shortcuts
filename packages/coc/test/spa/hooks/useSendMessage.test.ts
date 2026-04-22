@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSendMessage } from '../../../src/server/spa/client/react/hooks/useSendMessage';
+import { useSendMessage } from '../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 
 // ── Mock useChatPrefs ─────────────────────────────────────────────────────────
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({

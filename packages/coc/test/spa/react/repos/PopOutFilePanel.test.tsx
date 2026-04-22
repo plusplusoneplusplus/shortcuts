@@ -7,11 +7,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { PopOutFilePanel } from '../../../../src/server/spa/client/react/repos/PopOutFilePanel';
-import type { FileChange } from '../../../../src/server/spa/client/react/repos/FileTree';
+import { PopOutFilePanel } from '../../../../src/server/spa/client/react/features/git/diff/PopOutFilePanel';
+import type { FileChange } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // Mock useFilesViewMode
-vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => ({
     useFilesViewMode: () => ({
         mode: 'tree' as const,
         setMode: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => 
 }));
 
 // Mock useResizablePanel
-vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 280,
         isDragging: false,

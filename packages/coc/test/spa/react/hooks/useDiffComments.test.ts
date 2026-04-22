@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useDiffComments } from '../../../../src/server/spa/client/react/hooks/useDiffComments';
+import { useDiffComments } from '../../../../src/server/spa/client/react/features/git/hooks/useDiffComments';
 import type { DiffCommentContext, DiffCommentSelection, DiffComment } from '../../../../src/server/spa/client/diff-comment-types';
 
 // ============================================================================
@@ -550,7 +550,7 @@ describe('useDiffComments', () => {
 // runRelocation tests
 // ============================================================================
 
-import type { DiffLine } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import type { DiffLine } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 /** Build a DiffLine with the given content. */
 function makeDiffLine(content: string, index: number): DiffLine {

@@ -14,7 +14,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
-import { useNotesGit } from '../../../../src/server/spa/client/react/hooks/useNotesGit';
+import { useNotesGit } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesGit';
 
 const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
 

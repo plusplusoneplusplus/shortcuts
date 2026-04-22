@@ -3,11 +3,11 @@
  */
 
 import type { RefObject } from 'react';
-import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
+import type { TaskFolder, TaskDocument, TaskDocumentGroup } from './hooks/useTaskTree';
 import { TaskTree } from './TaskTree';
 import { TaskSearchResults } from './TaskSearchResults';
 import { TaskPreview } from './TaskPreview';
-import type { DragItem } from '../hooks/useTaskDragDrop';
+import type { DragItem } from './hooks/useTaskDragDrop';
 
 interface TasksMillerLayoutProps {
     scrollRef: RefObject<HTMLDivElement>;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDiffLines, computeSideBySideLines } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import { computeDiffLines, computeSideBySideLines } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 describe('computeSideBySideLines', () => {
     it('returns [] for empty input', () => {

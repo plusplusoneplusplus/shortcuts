@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from './useApi';
-import { ClientTokenUsageStatsResponse } from '../types/dashboard';
+import { fetchApi } from '../../../hooks/useApi';
+import { ClientTokenUsageStatsResponse } from '../../../types/dashboard';
 
 export function useTokenUsageStats(days?: number): {
     data: ClientTokenUsageStatsResponse | null;

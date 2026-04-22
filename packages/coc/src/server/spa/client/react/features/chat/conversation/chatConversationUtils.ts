@@ -1,4 +1,4 @@
-import type { ClientConversationTurn } from '../types/dashboard';
+import type { ClientConversationTurn } from '../../../types/dashboard';
 
 /**
  * Extract conversation turns from a process/queue API response.

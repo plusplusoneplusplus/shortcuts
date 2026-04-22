@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from './preferencesApi';
+import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../../hooks/preferences/preferencesApi';
 
 const MAX_PINNED = 50;
 const MAX_ARCHIVED = 500;

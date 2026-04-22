@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SlashCommandMenu, SkillItem } from '../../../../src/server/spa/client/react/repos/SlashCommandMenu';
+import { SlashCommandMenu, SkillItem } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
 // jsdom doesn't implement scrollIntoView
 beforeEach(() => {

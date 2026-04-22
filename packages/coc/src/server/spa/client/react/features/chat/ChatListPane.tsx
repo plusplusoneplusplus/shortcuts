@@ -7,28 +7,28 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, cn, FilterDropdown } from '../shared';
-import type { FilterItem } from '../shared';
-import { getApiBase } from '../utils/config';
-import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../utils/format';
-import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
-import { buildRows } from '../chat/ConversationMetadataPopover';
-import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
-import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
-import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
-import { RenameDialog } from '../shared/RenameDialog';
-import { fetchApi } from '../hooks/useApi';
-import { useWorkflowProgress } from '../features/workflow/hooks/useWorkflowProgress';
-import { getDraft } from '../hooks/useDraftStore';
-import { useLongPress } from '../hooks/useLongPress';
-import { useChatPrefs } from '../context/ChatPreferencesContext';
-import { useQueue } from '../context/QueueContext';
-import { useApp } from '../context/AppContext';
-import { useDisplaySettings } from '../hooks/useDisplaySettings';
+import { Card, Button, cn, FilterDropdown } from '../../shared';
+import type { FilterItem } from '../../shared';
+import { getApiBase } from '../../utils/config';
+import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
+import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
+import { buildRows } from './conversation/ConversationMetadataPopover';
+import { useQueueDragDrop } from '../../queue/hooks/useQueueDragDrop';
+import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
+import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { RenameDialog } from '../../shared/RenameDialog';
+import { fetchApi } from '../../hooks/useApi';
+import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
+import { getDraft } from './hooks/useDraftStore';
+import { useLongPress } from '../../hooks/ui/useLongPress';
+import { useChatPrefs } from '../../context/ChatPreferencesContext';
+import { useQueue } from '../../context/QueueContext';
+import { useApp } from '../../context/AppContext';
+import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
-import { groupHistoryByPlanFile, type HistoryGroup } from '../features/git/history-grouping';
-import { HistoryGroupHeader } from '../features/git/commits/HistoryGroupHeader';
+import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-grouping';
+import { HistoryGroupHeader } from '../git/commits/HistoryGroupHeader';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {

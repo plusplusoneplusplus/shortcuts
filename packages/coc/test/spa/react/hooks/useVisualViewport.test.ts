@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useVisualViewport } from '../../../../src/server/spa/client/react/hooks/useVisualViewport';
+import { useVisualViewport } from '../../../../src/server/spa/client/react/hooks/ui/useVisualViewport';
 
 describe('useVisualViewport', () => {
     let originalVisualViewport: VisualViewport | null;

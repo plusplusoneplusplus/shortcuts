@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge } from '../shared';
-import { Button } from '../shared';
-import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../shared/ReferencesDropdown';
-import { BottomSheet } from '../shared/BottomSheet';
-import { ConversationMetadataPopover } from '../chat/ConversationMetadataPopover';
-import { ContextWindowIndicator } from '../shared/ContextWindowIndicator';
-import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../utils/format';
-import { chatMarkdownToHtml } from '../chat/ConversationTurnBubble';
-import { snapshotConversation } from '../utils/snapshot-copy-utils';
-import { cn } from '../shared/cn';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useContainerWidth, type ContainerWidthTier } from '../hooks/useContainerWidth';
-import { useFloatingChats } from '../context/FloatingChatsContext';
+import { Badge } from '../../shared';
+import { Button } from '../../shared';
+import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../shared/ReferencesDropdown';
+import { BottomSheet } from '../../shared/BottomSheet';
+import { ConversationMetadataPopover } from './conversation/ConversationMetadataPopover';
+import { ContextWindowIndicator } from '../../shared/ContextWindowIndicator';
+import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../../utils/format';
+import { chatMarkdownToHtml } from './conversation/ConversationTurnBubble';
+import { snapshotConversation } from '../../utils/snapshot-copy-utils';
+import { cn } from '../../shared/cn';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainerWidth';
+import { useFloatingChats } from '../../context/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
-import type { ClientConversationTurn } from '../types/dashboard';
+import type { ClientConversationTurn } from '../../types/dashboard';
 
 export interface ChatHeaderProps {
     task: any;

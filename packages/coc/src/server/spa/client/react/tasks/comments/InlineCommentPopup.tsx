@@ -7,9 +7,9 @@ import ReactDOM from 'react-dom';
 import { Button } from '../../shared';
 import type { TaskCommentCategory } from '../../../task-comments-types';
 import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../task-comments-types';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
-import { useDraggable } from '../../hooks/useDraggable';
+import { useDraggable } from '../../hooks/ui/useDraggable';
 
 // Re-export for backward compatibility (tests and other consumers import from here).
 export { clampToViewport } from './viewportUtils';

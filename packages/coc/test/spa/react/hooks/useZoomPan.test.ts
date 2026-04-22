@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useZoomPan } from '../../../../src/server/spa/client/react/hooks/useZoomPan';
+import { useZoomPan } from '../../../../src/server/spa/client/react/hooks/ui/useZoomPan';
 
 const defaultOptions = { contentWidth: 400, contentHeight: 200 };
 

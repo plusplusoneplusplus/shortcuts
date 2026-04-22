@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useProcessSearch } from '../../../src/server/spa/client/react/hooks/useProcessSearch';
+import { useProcessSearch } from '../../../src/server/spa/client/react/processes/hooks/useProcessSearch';
 
 // Stub config
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({

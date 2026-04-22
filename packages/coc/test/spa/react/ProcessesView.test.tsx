@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
+import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ let mockQueueState: any = {
 
 // ── Module mocks ───────────────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
@@ -54,7 +54,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ running: [], queued: [], history: [], stats: {} }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/ChatListPane', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/ChatListPane', () => ({
     ChatListPane: (props: any) => (
         <div
             data-testid="activity-list-pane"
@@ -69,7 +69,7 @@ vi.mock('../../../src/server/spa/client/react/repos/ChatListPane', () => ({
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/ChatDetailPane', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/ChatDetailPane', () => ({
     ChatDetailPane: (props: any) => (
         <div data-testid="activity-detail-pane" data-selected-task-id={props.selectedTaskId ?? ''}>
             {props.onBack && <button data-testid="detail-back-btn" onClick={props.onBack}>back</button>}

@@ -4,13 +4,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { ConversationTurnBubble } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
-import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/chat/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
 // Mock useDisplaySettings — module-level cache, no provider needed
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
 }));
 

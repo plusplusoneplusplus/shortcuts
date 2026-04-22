@@ -10,10 +10,10 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
-import { computeLineDiff, type DiffLine } from '../../diff-utils';
-import { useBreakpoint } from '../hooks/useBreakpoint';
-import { BottomSheet } from '../shared/BottomSheet';
+import { renderMarkdownToHtml } from '../../../../../markdown-renderer';
+import { computeLineDiff, type DiffLine } from '../../../../../diff-utils';
+import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
+import { BottomSheet } from '../../../../shared/BottomSheet';
 
 const MAX_PREVIEW_LENGTH = 2000;
 

@@ -9,7 +9,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { FloatingDialog } from '../shared/FloatingDialog';
 import { Spinner } from '../shared';
-import { FloatingChatContent } from '../repos/FloatingChatContent';
+import { FloatingChatContent } from '../features/chat/FloatingChatContent';
 import { useFloatingChats, type FloatingChatEntry } from '../context/FloatingChatsContext';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { useApp } from '../context/AppContext';

@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 // Display settings
-vi.mock('../../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: 0, taskCardDensity: 'compact', groupSingleLineMessages: false }),
     invalidateDisplaySettings: vi.fn(),
 }));
@@ -93,12 +93,12 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
 }));
 
 // useChatSSE
-vi.mock('../../../../src/server/spa/client/react/hooks/useChatSSE', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE', () => ({
     useChatSSE: () => ({ stopStreaming: mockState.stopStreaming }),
 }));
 
 // useSendMessage
-vi.mock('../../../../src/server/spa/client/react/hooks/useSendMessage', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage', () => ({
     useSendMessage: (opts: any) => {
         // Capture setSessionExpired for session expiry tests
         (globalThis as any).__useSendMessage_opts = opts;
@@ -111,12 +111,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useSendMessage', () => ({
 }));
 
 // useQueuedTaskPoll
-vi.mock('../../../../src/server/spa/client/react/hooks/useQueuedTaskPoll', () => ({
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useQueuedTaskPoll', () => ({
     useQueuedTaskPoll: () => {},
 }));
 
 // useChatWindowActions
-vi.mock('../../../../src/server/spa/client/react/hooks/useChatWindowActions', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useChatWindowActions', () => ({
     useChatWindowActions: () => ({
         handlePopOut: mockState.handlePopOut,
         handleFloat: mockState.handleFloat,
@@ -124,7 +124,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useChatWindowActions', ()
 }));
 
 // useFileAttachments
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
     useFileAttachments: () => ({
         attachments: [],
         images: [],
@@ -139,16 +139,16 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () =
 }));
 
 // useBreakpoint
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 
 // useDraftStore
-vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     getDraft: (...args: any[]) => mockState.getDraft(...args),
     setDraft: (...args: any[]) => mockState.setDraft(...args),
     clearDraft: (...args: any[]) => mockState.clearDraft(...args),
@@ -156,7 +156,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
 }));
 
 // useSlashCommands
-vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
     useSlashCommands: () => ({
         menuVisible: false,
         menuFilter: '',
@@ -195,23 +195,23 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 // ConversationMiniMap — stub
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMiniMap', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap', () => ({
     ConversationMiniMap: () => React.createElement('div', { 'data-testid': 'conversation-minimap' }),
 }));
 
 // ConversationTurnBubble — stub that renders turn content
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     ConversationTurnBubble: (props: any) =>
         React.createElement('div', { 'data-testid': `turn-${props.turn?.role}`, 'data-turn-index': props.turn?.turnIndex }, props.turn?.content ?? ''),
 }));
 
 // QueuedBubble — stub
-vi.mock('../../../../src/server/spa/client/react/repos/QueuedBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({
     QueuedBubble: (props: any) => React.createElement('div', { 'data-testid': 'queued-bubble' }, props.msg?.content ?? ''),
 }));
 
 // BackgroundTasksIndicator — stub
-vi.mock('../../../../src/server/spa/client/react/repos/BackgroundTasksIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/BackgroundTasksIndicator', () => ({
     BackgroundTasksIndicator: () => React.createElement('div', { 'data-testid': 'bg-tasks-indicator' }),
 }));
 
@@ -226,7 +226,7 @@ vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', ()
 }));
 
 // ConversationMetadataPopover — getSessionIdFromProcess + stub component
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     getSessionIdFromProcess: (proc: any) => proc?.metadata?.sessionId ?? null,
     ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
 }));
@@ -240,7 +240,7 @@ vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal)
 });
 
 // Now import the component under test (after mocks)
-import { ChatDetail } from '../../../../src/server/spa/client/react/repos/ChatDetail';
+import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
 

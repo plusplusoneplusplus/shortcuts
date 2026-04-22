@@ -23,14 +23,14 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
-import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ChatListPane';
+import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
 import { useWorkflowProgress } from '../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress';
 import { createMockFetch } from './test-utils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false }),
     invalidateDisplaySettings: vi.fn(),
 }));

@@ -8,12 +8,12 @@ import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { Badge, Button, Spinner, SendButton } from '../../shared';
-import { ConversationTurnBubble } from '../../chat/ConversationTurnBubble';
+import { ConversationTurnBubble } from '../../features/chat/conversation/ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import { useModifierKey } from '../../hooks/useModifierKey';
+import { useModifierKey } from '../../hooks/ui/useModifierKey';
 
 export interface ItemConversationPanelProps {
     processId: string;

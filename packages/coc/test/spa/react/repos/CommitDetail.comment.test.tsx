@@ -12,11 +12,11 @@ const mockUseDiffComments = vi.fn();
 const mockFetchApi = vi.fn();
 const mockUseAllCommitComments = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useAllCommitComments', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useAllCommitComments', () => ({
     useAllCommitComments: (...args: any[]) => mockUseAllCommitComments(...args),
 }));
 
@@ -29,7 +29,7 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
@@ -38,7 +38,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
 }));
 
 // Mock UnifiedDiffViewer to expose controllable callback triggers
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ onAddComment, onCommentClick, comments, 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-diff-viewer'} data-comment-count={String(comments?.length ?? 0)}>
             <button
@@ -68,7 +68,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
     CommitChatPanel: () => null,
 }));
 
-import { CommitDetail }from '../../../../src/server/spa/client/react/repos/CommitDetail';
+import { CommitDetail }from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 
 function makeHook(overrides: Record<string, unknown> = {}) {
     return {

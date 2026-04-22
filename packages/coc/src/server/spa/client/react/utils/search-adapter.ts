@@ -3,7 +3,7 @@
  * compatible with ChatListPane's Card rendering.
  */
 
-import type { ProcessSearchResult } from '../hooks/useProcessSearch';
+import type { ProcessSearchResult } from '../processes/hooks/useProcessSearch';
 
 export interface SearchResultTask {
     id: string;

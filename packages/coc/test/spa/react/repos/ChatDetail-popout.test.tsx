@@ -33,11 +33,11 @@ const {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
     useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
 }));
 
@@ -65,11 +65,11 @@ vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
 }));
 
 // Mock child components for ChatDetailPane
-vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () => ({
     ChatDetail: (props: any) =>
         React.createElement('div', { 'data-testid': 'activity-chat-detail' }, `task=${props.taskId}`),
 }));
-vi.mock('../../../../src/server/spa/client/react/repos/NewChatArea', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/NewChatArea', () => ({
     NewChatArea: () => React.createElement('div', { 'data-testid': 'new-chat-area' }),
 }));
 
@@ -87,7 +87,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () 
 vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationMetadataPopover', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
@@ -102,7 +102,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusIcon: vi.fn().mockReturnValue(''),
     statusLabel: vi.fn().mockReturnValue(''),
 }));
-vi.mock('../../../../src/server/spa/client/react/chat/ConversationTurnBubble', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue(''),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
@@ -110,9 +110,9 @@ vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
 }));
 
 // Imports (after mocks)
-import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
-import { ChatDetailPane } from '../../../../src/server/spa/client/react/repos/ChatDetailPane';
-import { useChatWindowActions } from '../../../../src/server/spa/client/react/hooks/useChatWindowActions';
+import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/features/chat/ChatHeader';
+import { ChatDetailPane } from '../../../../src/server/spa/client/react/features/chat/ChatDetailPane';
+import { useChatWindowActions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatWindowActions';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

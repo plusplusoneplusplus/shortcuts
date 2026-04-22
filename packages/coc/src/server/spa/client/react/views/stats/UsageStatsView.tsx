@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTokenUsageStats } from '../../hooks/useTokenUsageStats';
+import { useTokenUsageStats } from '../../features/chat/hooks/useTokenUsageStats';
 import type { ClientTokenUsageStatsEntry, ClientTokenUsage } from '../../types/dashboard';
 
 const DAY_OPTIONS = [

@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const HOOKS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'hooks'
 );
 const SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'usePopOutChannel.ts'), 'utf-8');
 

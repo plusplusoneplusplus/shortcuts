@@ -5,7 +5,7 @@
 import type { RefObject } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from '../shared/Button';
-import { STATUS_PILLS, type TaskStatusValue } from '../hooks/useTaskTree';
+import { STATUS_PILLS, type TaskStatusValue } from './hooks/useTaskTree';
 
 interface TasksToolbarProps {
     isMobile: boolean;

@@ -21,7 +21,7 @@ import {
     unarchiveProcess as apiUnarchiveProcess,
     archiveProcesses as apiArchiveProcesses,
     unarchiveProcesses as apiUnarchiveProcesses,
-} from '../hooks/pinArchiveApi';
+} from '../queue/hooks/pinArchiveApi';
 
 const MAX_PINNED = 50;
 const MAX_ARCHIVED = 500;

@@ -12,7 +12,7 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api'
 }));
 
 // Mock UnifiedDiffViewer
-vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ diff, 'data-testid': testId }: any) => (
         <div data-testid={testId}>{diff}</div>
     ),
@@ -20,7 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
 }));
 
 // Mock generateUnifiedDiff
-vi.mock('../../../../src/server/spa/client/react/repos/unifiedDiffUtils', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/unifiedDiffUtils', () => ({
     generateUnifiedDiff: (oldText: string, newText: string, fileName: string) =>
         `--- a/${fileName}\n+++ b/${fileName}\n@@ mock diff @@\n-old\n+new`,
 }));

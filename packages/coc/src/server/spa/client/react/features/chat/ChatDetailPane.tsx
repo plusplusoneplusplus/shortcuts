@@ -15,8 +15,8 @@
 
 import { ChatDetail } from './ChatDetail';
 import { NewChatArea } from './NewChatArea';
-import { usePopOut } from '../context/PopOutContext';
-import { useFloatingChats } from '../context/FloatingChatsContext';
+import { usePopOut } from '../../context/PopOutContext';
+import { useFloatingChats } from '../../context/FloatingChatsContext';
 
 export interface ChatDetailPaneProps {
     selectedTaskId: string | null;

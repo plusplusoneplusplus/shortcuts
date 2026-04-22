@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { TreeNode } from './TreeNode';
-import { highlightMatch } from '../../tasks/TaskSearchResults';
+import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import type { TreeEntry } from './types';
 
 export interface FileTreeProps {

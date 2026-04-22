@@ -12,8 +12,8 @@ import {
     buildFixupGroups,
     FIXUP_GROUP_COLORS_LIGHT,
     FIXUP_GROUP_COLORS_DARK,
-} from '../../../../src/server/spa/client/react/repos/fixup-utils';
-import type { FixupCommitInput } from '../../../../src/server/spa/client/react/repos/fixup-utils';
+} from '../../../../src/server/spa/client/react/features/git/fixup-utils';
+import type { FixupCommitInput } from '../../../../src/server/spa/client/react/features/git/fixup-utils';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

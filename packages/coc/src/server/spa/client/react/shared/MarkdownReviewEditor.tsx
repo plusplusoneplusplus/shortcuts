@@ -7,9 +7,9 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { useMarkdownPreview } from '../hooks/useMarkdownPreview';
+import { useMarkdownPreview } from '../hooks/ui/useMarkdownPreview';
 import type { RenderCommentInfo } from '../../markdown-renderer';
-import { useTaskComments } from '../hooks/useTaskComments';
+import { useTaskComments } from '../tasks/hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
 import { ModeToggleToolbar } from './ModeToggleToolbar';
@@ -32,7 +32,7 @@ import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../context/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
-import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getLanguageFromFileName } from '../features/git/hooks/useSyntaxHighlight';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';

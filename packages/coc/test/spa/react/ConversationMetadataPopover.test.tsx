@@ -4,7 +4,7 @@ import {
     ConversationMetadataPopover,
     getSessionIdFromProcess,
     buildRows,
-} from '../../../src/server/spa/client/react/chat/ConversationMetadataPopover';
+} from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover';
 
 beforeEach(() => {
     vi.restoreAllMocks();

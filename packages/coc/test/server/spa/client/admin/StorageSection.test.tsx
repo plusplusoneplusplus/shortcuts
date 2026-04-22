@@ -8,7 +8,7 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 
