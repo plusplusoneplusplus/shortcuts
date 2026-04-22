@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SearchBar } from '../../../../../src/server/spa/client/react/repos/explorer/SearchBar';
+import { SearchBar } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/SearchBar';
 import { createRef } from 'react';
 
 describe('SearchBar', () => {

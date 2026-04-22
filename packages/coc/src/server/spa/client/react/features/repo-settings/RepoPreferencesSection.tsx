@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences, type SkillMode } from '../../hooks/usePreferences';
 import { useModels, type ModelInfo } from '../../hooks/useModels';
-import { useFilesViewMode } from '../../hooks/useFilesViewMode';
+import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useUiLayoutMode } from '../../hooks/useUiLayoutMode';
 import { useGlobalToast } from '../../context/ToastContext';
 import { useRepos } from '../../context/ReposContext';

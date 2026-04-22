@@ -8,7 +8,7 @@
 
 import { getApiBase } from './config';
 import type { DiffComment, DiffCommentContext } from '../../diff-comment-types';
-import type { UpdateDiffCommentRequest } from '../hooks/useDiffComments';
+import type { UpdateDiffCommentRequest } from '../features/git/hooks/useDiffComments';
 
 // ============================================================================
 // Storage key

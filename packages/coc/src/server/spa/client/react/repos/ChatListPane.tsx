@@ -27,8 +27,8 @@ import { useApp } from '../context/AppContext';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
-import { groupHistoryByPlanFile, type HistoryGroup } from './history-grouping';
-import { HistoryGroupHeader } from './HistoryGroupHeader';
+import { groupHistoryByPlanFile, type HistoryGroup } from '../features/git/history-grouping';
+import { HistoryGroupHeader } from '../features/git/commits/HistoryGroupHeader';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {

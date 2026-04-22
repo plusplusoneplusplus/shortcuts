@@ -1,0 +1,129 @@
+/**
+ * CommitFileContent — right-panel view showing the unified diff of a single
+ * file in a commit, with green/red coloring via UnifiedDiffViewer.
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchApi } from '../../../hooks/useApi';
+import { Spinner, Button, TruncatedPath } from '../../../shared';
+import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
+import { useDiffViewMode } from '../hooks/useDiffViewMode';
+import { DiffViewToggle } from '../diff/DiffViewToggle';
+import { DiffMiniMap } from '../diff/DiffMiniMap';
+
+export interface CommitFileContentProps {
+    workspaceId: string;
+    hash: string;
+    filePath: string;
+}
+
+export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileContentProps) {
+    const [diff, setDiff] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [truncated, setTruncated] = useState(false);
+    const [totalLines, setTotalLines] = useState(0);
+    const [fullRequested, setFullRequested] = useState(false);
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+    const [viewMode, setViewMode] = useDiffViewMode();
+
+    const fetchDiff = useCallback((full = false) => {
+        setLoading(true);
+        setError(null);
+        setDiff(null);
+        const suffix = full ? '?full=true' : '';
+        fetchApi(
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff${suffix}`
+        )
+            .then(data => {
+                setDiff(data.diff ?? '');
+                setTruncated(!!data.truncated);
+                setTotalLines(data.totalLines ?? 0);
+            })
+            .catch(err => setError(err.message || 'Failed to load diff'))
+            .finally(() => setLoading(false));
+    }, [workspaceId, hash, filePath]);
+
+    useEffect(() => {
+        setFullRequested(false);
+        fetchDiff();
+    }, [fetchDiff]);
+
+    useEffect(() => {
+        if (fullRequested) fetchDiff(true);
+    }, [fullRequested, fetchDiff]);
+
+    return (
+        <div className="commit-file-content flex flex-col h-full overflow-hidden" data-testid="commit-file-content">
+            <div
+                className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]"
+                data-testid="commit-file-path"
+            >
+                <div className="flex items-center gap-2">
+                    <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                    <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Commit diff</span>
+                </div>
+            </div>
+
+            <div className="flex flex-1 min-h-0">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="commit-file-content-body">
+                    {loading ? (
+                        <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="commit-file-content-loading">
+                            <Spinner size="sm" /> Loading diff...
+                        </div>
+                    ) : error ? (
+                        <div className="flex items-center gap-2" data-testid="commit-file-content-error">
+                            <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
+                            <Button variant="secondary" size="sm" onClick={fetchDiff}>Retry</Button>
+                        </div>
+                    ) : diff ? (
+                        <>
+                            {viewMode === 'split' ? (
+                                <SideBySideDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    showLineNumbers
+                                    onLinesReady={(lines) => { setDiffLines(lines); }}
+                                    data-testid="commit-file-diff-content"
+                                />
+                            ) : (
+                                <UnifiedDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    showLineNumbers
+                                    onLinesReady={(lines) => { setDiffLines(lines); }}
+                                    data-testid="commit-file-diff-content"
+                                />
+                            )}
+                            {truncated && !fullRequested && (
+                                <div className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="diff-truncation-banner">
+                                    <span>Diff truncated (showing first 5,000 of {totalLines.toLocaleString()} lines).</span>
+                                    <button
+                                        className="text-[#0366d6] dark:text-[#58a6ff] underline hover:no-underline font-medium"
+                                        onClick={() => setFullRequested(true)}
+                                        data-testid="load-full-diff-btn"
+                                    >
+                                        Load full diff
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="text-xs text-[#848484]" data-testid="commit-file-content-empty">(empty diff)</div>
+                    )}
+                </div>
+                {diff && !loading && !error && (
+                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
+                )}
+            </div>
+        </div>
+    );
+}

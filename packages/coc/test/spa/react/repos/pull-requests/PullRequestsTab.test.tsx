@@ -66,7 +66,7 @@ function mockFetchNetworkError() {
 
 async function renderTab(props: Partial<any> = {}) {
     const { PullRequestsTab } = await import(
-        '../../../../../src/server/spa/client/react/repos/pull-requests/PullRequestsTab'
+        '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab'
     );
     return render(
         <PullRequestsTab repoId="repo-1" workspaceId="ws-1" {...props} />

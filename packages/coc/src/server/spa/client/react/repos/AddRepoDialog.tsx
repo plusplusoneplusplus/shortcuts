@@ -9,7 +9,7 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { hashString, normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
-import { resolveAutoColor } from './colorUtils';
+import { resolveAutoColor } from '../features/git/diff/colorUtils';
 
 const AUTO_VALUE = 'auto';
 

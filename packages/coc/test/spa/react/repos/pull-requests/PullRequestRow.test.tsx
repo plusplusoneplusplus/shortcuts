@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { PullRequestRow } from '../../../../../src/server/spa/client/react/repos/pull-requests/PullRequestRow';
-import type { PullRequest } from '../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+import { PullRequestRow } from '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestRow';
+import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 function makePr(overrides: Partial<PullRequest> = {}): PullRequest {
     return {

@@ -12,7 +12,7 @@ import ReactDOM from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
-import { getLanguageFromFileName, highlightBlock } from '../repos/useSyntaxHighlight';
+import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
 import { Spinner } from './Spinner';
 import { cn } from './cn';
 

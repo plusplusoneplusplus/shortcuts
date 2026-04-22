@@ -11,14 +11,14 @@ import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
 import { WorkItemExecutionSession } from './WorkItemExecutionSession';
-import { CommitDetail } from '../../repos/CommitDetail';
-import { FileDiffPanel } from '../../repos/FileDiffPanel';
-import { createCommitDiffSource } from '../../repos/diffSource';
+import { CommitDetail } from '../git/commits/CommitDetail';
+import { FileDiffPanel } from '../git/diff/FileDiffPanel';
+import { createCommitDiffSource } from '../git/diff/diffSource';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../../context/WorkItemContext';
 import { fetchApi } from '../../hooks/useApi';
-import { buildFileTree, compactFolders, FileTreeView } from '../../repos/FileTree';
-import { useFileCommentCounts } from '../../hooks/useFileCommentCounts';
+import { buildFileTree, compactFolders, FileTreeView } from '../git/diff/FileTree';
+import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../diff-comment-utils';
 
 export interface WorkItemsTabProps {

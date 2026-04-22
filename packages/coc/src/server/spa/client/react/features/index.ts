@@ -17,3 +17,4 @@ export * from './repo-settings';
 export * from './skills';
 export * from './notes';
 export * from './memory';
+export * from './git';

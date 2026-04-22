@@ -1,0 +1,14 @@
+export { UnifiedDiffViewer, computeDiffLines, parseHunkHeader, HunkNavButtons, parseDiffFileList } from './UnifiedDiffViewer';
+export type { UnifiedDiffViewerProps, UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+export { SideBySideDiffViewer } from './SideBySideDiffViewer';
+export { DiffMiniMap } from './DiffMiniMap';
+export { DiffViewToggle } from './DiffViewToggle';
+export { FileDiffPanel } from './FileDiffPanel';
+export type { FileDiffPanelProps } from './FileDiffPanel';
+export { FileTree, buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle, STATUS_COLORS, STATUS_LABELS, normalizeStatus, flattenVisibleNodes } from './FileTree';
+export type { FileChange, FileNode, FilesViewMode } from './FileTree';
+export { PopOutFilePanel } from './PopOutFilePanel';
+export { createCommitDiffSource, createBranchRangeDiffSource, fetchDiffFromSource } from './diffSource';
+export type { DiffSource, DiffCommentContext as DiffSourceCommentContext, DiffFetchResult } from './diffSource';
+export { generateUnifiedDiff } from './unifiedDiffUtils';
+export { resolveAutoColor } from './colorUtils';

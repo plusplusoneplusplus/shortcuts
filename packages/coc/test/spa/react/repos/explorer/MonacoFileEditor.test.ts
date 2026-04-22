@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS } from '../../../../../src/server/spa/client/react/repos/explorer/MonacoFileEditor';
+import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor';
 
 describe('getMonacoLanguage', () => {
     it('maps TypeScript extensions', () => {

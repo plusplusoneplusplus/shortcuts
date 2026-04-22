@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
-import { RepoTabStrip, computeVisibleRepoIds } from '../../../../src/server/spa/client/react/repos/RepoTabStrip';
+import { RepoTabStrip, computeVisibleRepoIds } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();

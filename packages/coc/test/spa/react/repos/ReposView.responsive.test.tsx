@@ -76,7 +76,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => 
     MiniReposSidebar: () => <div data-testid="mini-sidebar">MiniReposSidebar</div>,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoDetail', () => ({
     RepoDetail: () => <div data-testid="repo-detail">RepoDetail</div>,
     SUB_TABS: [
         { key: 'chats', label: 'Chats' },
@@ -133,7 +133,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
     TasksPanel: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoInfoTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({
     RepoInfoTab: () => null,
 }));
 
@@ -149,11 +149,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
     RepoGitTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoWikiTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({
     RepoWikiTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoCopilotTab', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoCopilotTab', () => ({
     RepoCopilotTab: () => null,
 }));
 
@@ -365,7 +365,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
             repoSubTabNavState: {},
         };
         const mod = await vi.importActual<any>(
-            '../../../../src/server/spa/client/react/repos/RepoDetail'
+            '../../../../src/server/spa/client/react/features/repo-detail/RepoDetail'
         );
         RealRepoDetail = mod.RepoDetail;
     });

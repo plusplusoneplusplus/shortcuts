@@ -4,8 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ReviewerBadge } from '../../../../../src/server/spa/client/react/repos/pull-requests/ReviewerBadge';
-import type { Reviewer } from '../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+import { ReviewerBadge } from '../../../../../src/server/spa/client/react/features/pull-requests/ReviewerBadge';
+import type { Reviewer } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 function makeReviewer(overrides: Partial<Reviewer> = {}): Reviewer {
     return {

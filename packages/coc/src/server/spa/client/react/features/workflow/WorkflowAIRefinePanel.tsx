@@ -7,8 +7,8 @@
 import { useState, useRef } from 'react';
 import { Button, Spinner } from '../../shared';
 import { refineWorkflow } from './workflow-api';
-import { UnifiedDiffViewer } from '../../repos/UnifiedDiffViewer';
-import { generateUnifiedDiff } from '../../repos/unifiedDiffUtils';
+import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
+import { generateUnifiedDiff } from '../git/diff/unifiedDiffUtils';
 
 export interface WorkflowAIRefinePanelProps {
     workspaceId: string;

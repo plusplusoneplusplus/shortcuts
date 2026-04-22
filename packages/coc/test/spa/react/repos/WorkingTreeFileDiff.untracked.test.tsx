@@ -28,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/explorer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer', () => ({
     PreviewPane: ({ repoId, filePath, fileName, readOnly }: any) => (
         <div
             data-testid="mock-preview-pane"

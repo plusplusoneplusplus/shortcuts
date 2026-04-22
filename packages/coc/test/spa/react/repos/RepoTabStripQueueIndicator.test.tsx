@@ -13,7 +13,7 @@ import {
     RepoTabStrip,
     getDotAnimationClass,
     type QueueDotStatus,
-} from '../../../../src/server/spa/client/react/repos/RepoTabStrip';
+} from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 /* ── Configurable queue mock ─────────────────────────────────────────── */
 

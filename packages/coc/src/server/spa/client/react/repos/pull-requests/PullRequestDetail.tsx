@@ -10,7 +10,7 @@ import { getApiBase } from '../../utils/config';
 import { prStatusBadge, formatTimestamp } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
-import { UnifiedDiffViewer } from '../UnifiedDiffViewer';
+import { UnifiedDiffViewer } from '../../features/git/diff/UnifiedDiffViewer';
 import type { PullRequest, CommentThread } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
 

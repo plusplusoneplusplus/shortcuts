@@ -3,14 +3,14 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { TreeEntry } from '../../../../../src/server/spa/client/react/repos/explorer/types';
+import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
 describe('filterEntries', () => {
-    let filterFn: typeof import('../../../../../src/server/spa/client/react/repos/explorer/FileTree').filterEntries;
-    let hasMatchFn: typeof import('../../../../../src/server/spa/client/react/repos/explorer/FileTree').hasMatchingDescendant;
+    let filterFn: typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/FileTree').filterEntries;
+    let hasMatchFn: typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/FileTree').hasMatchingDescendant;
 
     beforeAll(async () => {
-        const mod = await import('../../../../../src/server/spa/client/react/repos/explorer/FileTree');
+        const mod = await import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/FileTree');
         filterFn = mod.filterEntries;
         hasMatchFn = mod.hasMatchingDescendant;
     });

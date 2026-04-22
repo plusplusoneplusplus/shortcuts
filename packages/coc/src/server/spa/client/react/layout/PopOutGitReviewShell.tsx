@@ -15,14 +15,14 @@ import { QueueProvider } from '../context/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../context/ToastContext';
 import { ToastContainer, useToast } from '../shared';
-import { CommitDetail } from '../repos/CommitDetail';
-import { BranchRangeOverview } from '../repos/BranchRangeOverview';
-import { PopOutFilePanel } from '../repos/PopOutFilePanel';
+import { CommitDetail } from '../features/git/commits/CommitDetail';
+import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
+import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { useCachedDiff } from '../repos/useCommitDiffCache';
-import { parseDiffFileList } from '../repos/UnifiedDiffViewer';
-import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
+import { parseDiffFileList } from '../features/git/diff/UnifiedDiffViewer';
+import { useFileCommentCounts } from '../features/git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
 import {
     useGitReviewPopOutChannel,
@@ -31,10 +31,10 @@ import {
     gitReviewBranchPopOutKey,
 } from '../context/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
-import type { GitCommitItem } from '../repos/CommitList';
-import type { BranchRangeInfo } from '../repos/BranchChanges';
-import type { BranchRangeFile } from '../repos/BranchAllFilesDiff';
-import type { FileChange } from '../repos/FileTree';
+import type { GitCommitItem } from '../features/git/commits/CommitList';
+import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
+import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
+import type { FileChange } from '../features/git/diff/FileTree';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 

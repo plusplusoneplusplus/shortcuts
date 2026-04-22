@@ -14,7 +14,7 @@ import { useState, useCallback } from 'react';
 import { useNotesGit } from './hooks/useNotesGit';
 import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { Button, Spinner, SectionHeader } from '../../shared';
-import { UnifiedDiffViewer } from '../../repos/UnifiedDiffViewer';
+import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
 import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes-git-types';
 
 interface NotesGitTabProps {

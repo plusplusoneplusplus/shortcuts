@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatRelativeTime, formatTimestamp, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+import { formatRelativeTime, formatTimestamp, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 describe('formatTimestamp', () => {
     it('returns a non-empty string for a valid ISO date', () => {

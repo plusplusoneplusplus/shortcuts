@@ -33,7 +33,7 @@ import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../context/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
+import { getLanguageFromFileName } from '../features/git/hooks/useSyntaxHighlight';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';

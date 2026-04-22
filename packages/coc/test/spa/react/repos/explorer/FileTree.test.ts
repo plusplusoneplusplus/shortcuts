@@ -154,10 +154,10 @@ describe('FileTree', () => {
 });
 
 describe('flattenVisibleNodes', () => {
-    let flattenFn: typeof import('../../../../../src/server/spa/client/react/repos/explorer/FileTree').flattenVisibleNodes;
+    let flattenFn: typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/FileTree').flattenVisibleNodes;
 
     beforeAll(async () => {
-        const mod = await import('../../../../../src/server/spa/client/react/repos/explorer/FileTree');
+        const mod = await import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/FileTree');
         flattenFn = mod.flattenVisibleNodes;
     });
 

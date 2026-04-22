@@ -59,7 +59,7 @@ function mockFetchPrError(status = 500, message = 'Server error') {
 
 async function renderDetail(props: Partial<any> = {}) {
     const { PullRequestDetail } = await import(
-        '../../../../../src/server/spa/client/react/repos/pull-requests/PullRequestDetail'
+        '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail'
     );
     const onBack = props.onBack ?? vi.fn();
     return render(

@@ -57,8 +57,8 @@ describe('TreeEntry type', () => {
 // Unit tests for seedFromEntries
 // ---------------------------------------------------------------------------
 
-import { seedFromEntries } from '../../../../../src/server/spa/client/react/repos/explorer/ExplorerPanel';
-import type { TreeEntry } from '../../../../../src/server/spa/client/react/repos/explorer/types';
+import { seedFromEntries } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
+import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
 describe('seedFromEntries', () => {
     it('populates map with direct children of root-level dirs', () => {

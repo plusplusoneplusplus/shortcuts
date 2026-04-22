@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Breadcrumbs } from '../../../../../src/server/spa/client/react/repos/explorer/Breadcrumbs';
+import { Breadcrumbs } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/Breadcrumbs';
 
 describe('Breadcrumbs', () => {
     it('renders repo name as root segment', () => {

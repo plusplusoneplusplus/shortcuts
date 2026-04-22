@@ -10,7 +10,7 @@ import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
 import { useWorkItems } from '../../context/WorkItemContext';
-import { useCommitCommentTotals } from '../../hooks/useCommitCommentTotals';
+import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 

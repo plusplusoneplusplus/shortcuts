@@ -27,7 +27,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/explorer', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer', () => ({
     PreviewPane: ({ repoId, filePath, fileName, readOnly }: any) => (
         <div data-testid="mock-preview-pane" data-repo-id={repoId} data-file-path={filePath} data-file-name={fileName} data-read-only={String(!!readOnly)} />
     ),

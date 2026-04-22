@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
-vi.mock('../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils', async (importOriginal) => {
+vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/pr-utils', async (importOriginal) => {
     const actual = await importOriginal<any>();
     return { ...actual, formatRelativeTime: (d: string) => d ?? '' };
 });
@@ -29,7 +29,7 @@ const makeMultiThread = (overrides: Partial<any> = {}) => ({
 
 async function renderThreadList(threads: any[]) {
     const { ThreadList } = await import(
-        '../../../../../src/server/spa/client/react/repos/pull-requests/ThreadList'
+        '../../../../../src/server/spa/client/react/features/pull-requests/ThreadList'
     );
     return render(<ThreadList threads={threads} />);
 }

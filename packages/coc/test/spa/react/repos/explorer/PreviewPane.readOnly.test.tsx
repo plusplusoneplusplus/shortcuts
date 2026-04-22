@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { PreviewPane } from '../../../../../src/server/spa/client/react/repos/explorer/PreviewPane';
+import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 
 const mockFetchApi = vi.fn();
 
@@ -12,7 +12,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: unknown[]) => mockFetchApi(...args),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/explorer/MonacoFileEditor', () => ({
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
     MonacoFileEditor: ({ value, language, onChange, onSave, readOnly }: any) => (
         <div data-testid="mock-monaco-editor" data-language={language} data-value={value} data-read-only={String(!!readOnly)}>
             <textarea

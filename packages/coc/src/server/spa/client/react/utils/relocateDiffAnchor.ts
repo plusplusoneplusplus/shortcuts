@@ -12,7 +12,7 @@
  * Returns the existing diffLineStart unchanged when the comment has no anchor.
  */
 
-import type { DiffLine } from '../repos/UnifiedDiffViewer';
+import type { DiffLine } from '../features/git/diff/UnifiedDiffViewer';
 import type { DiffComment } from '../../diff-comment-types';
 
 /** djb2 hash — mirrors pipeline-core's hashText implementation. */

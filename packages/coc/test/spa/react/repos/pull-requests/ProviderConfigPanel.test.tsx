@@ -12,7 +12,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 
 async function renderPanel(props: { detected?: 'GitHub' | 'ADO' | string | null; remoteUrl?: string; onConfigured?: () => void } = {}) {
     const { ProviderConfigPanel } = await import(
-        '../../../../../src/server/spa/client/react/repos/pull-requests/ProviderConfigPanel'
+        '../../../../../src/server/spa/client/react/features/pull-requests/ProviderConfigPanel'
     );
     const onConfigured = props.onConfigured ?? vi.fn();
     const detected = Object.prototype.hasOwnProperty.call(props, 'detected') ? props.detected! : 'GitHub';

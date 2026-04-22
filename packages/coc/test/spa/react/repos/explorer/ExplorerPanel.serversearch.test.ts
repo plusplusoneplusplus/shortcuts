@@ -113,7 +113,7 @@ describe('ExplorerPanel — server search (source)', () => {
 // Unit tests for getAncestorPaths
 // ---------------------------------------------------------------------------
 
-import { getAncestorPaths } from '../../../../../src/server/spa/client/react/repos/explorer/ExplorerPanel';
+import { getAncestorPaths } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
 
 describe('getAncestorPaths', () => {
     it('returns empty array for a root-level file', () => {
@@ -153,8 +153,8 @@ describe('getAncestorPaths', () => {
 // Unit tests for mergeServerResultsIntoChildrenMap
 // ---------------------------------------------------------------------------
 
-import { mergeServerResultsIntoChildrenMap } from '../../../../../src/server/spa/client/react/repos/explorer/ExplorerPanel';
-import type { TreeEntry } from '../../../../../src/server/spa/client/react/repos/explorer/types';
+import { mergeServerResultsIntoChildrenMap } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
+import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
 // Mock fetchApi
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
