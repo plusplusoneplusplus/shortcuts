@@ -38,24 +38,28 @@
     margin: 0.75rem 0;
 }
 
-/* Code */
+/* Code — inline */
 .note-editor .ProseMirror code {
-    background: #f0f0f0;
-    border-radius: 3px;
-    padding: 0.15rem 0.3rem;
-    font-size: 0.875em;
+    background: #f3f3f3;
+    color: #c7254e;
+    border-radius: 4px;
+    padding: 0.12em 0.38em;
+    font-size: 0.92em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+/* Code — fenced blocks (light default) */
 .note-editor .ProseMirror pre {
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: #f6f8fa;
+    color: #1e1e1e;
+    border: 1px solid #e1e4e8;
     border-radius: 6px;
     padding: 0.75rem 1rem;
     overflow-x: auto;
     font-size: 0.875em;
 }
 
-.note-editor .ProseMirror pre code { background: none; padding: 0; }
+.note-editor .ProseMirror pre code { background: none; color: inherit; padding: 0; }
 
 /* Horizontal rule */
 .note-editor .ProseMirror hr { border: none; border-top: 1px solid #e0e0e0; margin: 1.5rem 0; }
@@ -72,13 +76,16 @@
 }
 
 /* Dark mode overrides */
-@media (prefers-color-scheme: dark) {
-    .note-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
-    .note-editor .ProseMirror code { background: #2d2d2d; }
-    .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
-    .note-editor .ProseMirror mark {
-        color: #e0e0e0;
-    }
+.dark .note-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
+.dark .note-editor .ProseMirror code { background: #2d2d2d; color: #ff9da4; }
+.dark .note-editor .ProseMirror pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-color: #3c3c3c;
+}
+.dark .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
+.dark .note-editor .ProseMirror mark {
+    color: #e0e0e0;
 }
 
 /* Tables */
@@ -127,19 +134,17 @@
 }
 
 /* Dark mode — tables */
-@media (prefers-color-scheme: dark) {
-    .note-editor .ProseMirror th,
-    .note-editor .ProseMirror td {
-        border-color: #3c3c3c;
-    }
+.dark .note-editor .ProseMirror th,
+.dark .note-editor .ProseMirror td {
+    border-color: #3c3c3c;
+}
 
-    .note-editor .ProseMirror th {
-        background: #252526;
-    }
+.dark .note-editor .ProseMirror th {
+    background: #252526;
+}
 
-    .note-editor .ProseMirror .selectedCell::after {
-        background: rgba(0, 120, 212, 0.22);
-    }
+.dark .note-editor .ProseMirror .selectedCell::after {
+    background: rgba(0, 120, 212, 0.22);
 }
 
 /* ── Images ──────────────────────────────────────────────────────────────── */
@@ -253,24 +258,22 @@
 }
 
 /* Dark mode — resize handles */
-@media (prefers-color-scheme: dark) {
-    .image-resize-handle {
-        background: #4fc3f7;
-        border-color: #1e1e1e;
-    }
-    .image-resizing .image-resize-container {
-        outline-color: #4fc3f7;
-    }
-    .image-resize-tooltip {
-        background: rgba(50, 50, 50, 0.9);
-    }
-    .image-resize-reset {
-        background: rgba(255, 255, 255, 0.25);
-        color: #e0e0e0;
-    }
-    .image-resize-reset:hover {
-        background: rgba(255, 255, 255, 0.4);
-    }
+.dark .image-resize-handle {
+    background: #4fc3f7;
+    border-color: #1e1e1e;
+}
+.dark .image-resizing .image-resize-container {
+    outline-color: #4fc3f7;
+}
+.dark .image-resize-tooltip {
+    background: rgba(50, 50, 50, 0.9);
+}
+.dark .image-resize-reset {
+    background: rgba(255, 255, 255, 0.25);
+    color: #e0e0e0;
+}
+.dark .image-resize-reset:hover {
+    background: rgba(255, 255, 255, 0.4);
 }
 
 /* ── Comment highlights ─────────────────────────────────────────────────── */
@@ -375,52 +378,48 @@
     line-height: 1.5;
 }
 
-@media (prefers-color-scheme: dark) {
-    .note-editor .ProseMirror .ai-edit-added {
-        color: #60a5fa;
-        border-bottom-color: rgba(96, 165, 250, 0.35);
-    }
-    .note-editor .ProseMirror .ai-edit-removed {
-        color: #f87171;
-        text-decoration-color: rgba(248, 113, 113, 0.6);
-    }
-    .note-editor .ProseMirror .ai-edit-deleted-block {
-        background: rgba(127, 29, 29, 0.15);
-        border-color: rgba(248, 113, 113, 0.25);
-    }
-    .note-editor .ProseMirror .ai-edit-deleted-header {
-        color: #f87171;
-        background: rgba(127, 29, 29, 0.2);
-        border-bottom-color: rgba(248, 113, 113, 0.15);
-    }
-    .note-editor .ProseMirror .ai-edit-deleted-header:hover {
-        background: rgba(127, 29, 29, 0.3);
-    }
+.dark .note-editor .ProseMirror .ai-edit-added {
+    color: #60a5fa;
+    border-bottom-color: rgba(96, 165, 250, 0.35);
+}
+.dark .note-editor .ProseMirror .ai-edit-removed {
+    color: #f87171;
+    text-decoration-color: rgba(248, 113, 113, 0.6);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-block {
+    background: rgba(127, 29, 29, 0.15);
+    border-color: rgba(248, 113, 113, 0.25);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-header {
+    color: #f87171;
+    background: rgba(127, 29, 29, 0.2);
+    border-bottom-color: rgba(248, 113, 113, 0.15);
+}
+.dark .note-editor .ProseMirror .ai-edit-deleted-header:hover {
+    background: rgba(127, 29, 29, 0.3);
 }
 
 /* Dark mode — comments */
-@media (prefers-color-scheme: dark) {
-    .note-editor .ProseMirror span[data-comment-id] {
-        background-color: rgba(255, 212, 0, 0.15);
-        border-bottom-color: rgba(255, 212, 0, 0.4);
-    }
-    .note-editor .ProseMirror span[data-comment-id]:hover {
-        background-color: rgba(255, 212, 0, 0.25);
-    }
-    .note-editor .ProseMirror span[data-comment-id].comment-active {
-        background-color: rgba(255, 212, 0, 0.35);
-        border-bottom-color: rgba(255, 212, 0, 0.7);
-    }
-    .note-editor .ProseMirror span[data-comment-id].comment-resolved {
-        background-color: rgba(128, 128, 128, 0.08);
-        border-bottom-color: rgba(128, 128, 128, 0.3);
-    }
-    .note-editor .ProseMirror .block-comment {
-        border-left-color: rgba(255, 212, 0, 0.4);
-        background-color: rgba(255, 212, 0, 0.04);
-    }
-    .note-editor .ProseMirror .block-comment.block-comment-active {
-        border-left-color: rgba(255, 212, 0, 0.7);
-        background-color: rgba(255, 212, 0, 0.08);
-    }
+.dark .note-editor .ProseMirror span[data-comment-id] {
+    background-color: rgba(255, 212, 0, 0.15);
+    border-bottom-color: rgba(255, 212, 0, 0.4);
+}
+.dark .note-editor .ProseMirror span[data-comment-id]:hover {
+    background-color: rgba(255, 212, 0, 0.25);
+}
+.dark .note-editor .ProseMirror span[data-comment-id].comment-active {
+    background-color: rgba(255, 212, 0, 0.35);
+    border-bottom-color: rgba(255, 212, 0, 0.7);
+}
+.dark .note-editor .ProseMirror span[data-comment-id].comment-resolved {
+    background-color: rgba(128, 128, 128, 0.08);
+    border-bottom-color: rgba(128, 128, 128, 0.3);
+}
+.dark .note-editor .ProseMirror .block-comment {
+    border-left-color: rgba(255, 212, 0, 0.4);
+    background-color: rgba(255, 212, 0, 0.04);
+}
+.dark .note-editor .ProseMirror .block-comment.block-comment-active {
+    border-left-color: rgba(255, 212, 0, 0.7);
+    background-color: rgba(255, 212, 0, 0.08);
 }
