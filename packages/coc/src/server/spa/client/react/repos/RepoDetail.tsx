@@ -142,6 +142,31 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
                 .filter(t => t.key !== 'work-items')
                 .map(t => t.key === 'tasks' ? { ...t, label: 'Plans' } : t);
+        } else {
+            // Dev-workflow: relabel and reorder tabs
+            const devWorkflowRelabels: Record<string, string> = {
+                'schedules': 'Jobs',
+                'pull-requests': 'Full Requests',
+            };
+            const devWorkflowOrder: RepoSubTab[] = [
+                'chats', 'work-items', 'schedules', 'explorer',
+                'workflows', 'git', 'pull-requests', 'tasks', 'settings',
+            ];
+            const tabMap = new Map(tabs.map(t => [t.key, t]));
+            const ordered: typeof tabs = [];
+            for (const key of devWorkflowOrder) {
+                const tab = tabMap.get(key);
+                if (tab) {
+                    const newLabel = devWorkflowRelabels[key];
+                    ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
+                    tabMap.delete(key);
+                }
+            }
+            // Append dynamic tabs (terminal, notes, wiki) that aren't in the fixed order
+            for (const [, tab] of tabMap) {
+                ordered.push(tab);
+            }
+            tabs = ordered;
         }
         return tabs;
     }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);

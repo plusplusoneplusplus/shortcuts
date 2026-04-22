@@ -647,3 +647,45 @@ describe('RepoDetail PullRequestsTab always-mounted', () => {
         expect(overflowLine).toBeDefined();
     });
 });
+
+describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
+    it('dev-workflow branch relabels schedules to "Jobs"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("'schedules': 'Jobs'");
+    });
+
+    it('dev-workflow branch relabels pull-requests to "Full Requests"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("'pull-requests': 'Full Requests'");
+    });
+
+    it('dev-workflow branch defines the correct tab order', () => {
+        expect(REPO_DETAIL_SOURCE).toContain(
+            "'chats', 'work-items', 'schedules', 'explorer',",
+        );
+        expect(REPO_DETAIL_SOURCE).toContain(
+            "'workflows', 'git', 'pull-requests', 'tasks', 'settings',",
+        );
+    });
+
+    it('classic branch does NOT apply dev-workflow relabels', () => {
+        // Classic branch relabels Tasks as Plans, not Jobs/Full Requests
+        const classicBlock = REPO_DETAIL_SOURCE.split("if (uiLayoutMode === 'classic')")[1]?.split('} else {')[0] ?? '';
+        expect(classicBlock).not.toContain("'Jobs'");
+        expect(classicBlock).not.toContain("'Full Requests'");
+    });
+
+    it('dev-workflow appends dynamic tabs after the fixed order', () => {
+        // The else branch must iterate tabMap leftovers (terminal, notes, wiki) after the ordered array
+        expect(REPO_DETAIL_SOURCE).toContain("// Append dynamic tabs");
+        expect(REPO_DETAIL_SOURCE).toContain("for (const [, tab] of tabMap)");
+    });
+
+    it('tab keys are unchanged — only labels differ', () => {
+        // devWorkflowOrder uses the same keys as SUB_TABS
+        const devOrderMatch = REPO_DETAIL_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
+        expect(devOrderMatch).toBeTruthy();
+        const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
+        for (const key of keys) {
+            expect(SUB_TABS.find(t => t.key === key)).toBeDefined();
+        }
+    });
+});
