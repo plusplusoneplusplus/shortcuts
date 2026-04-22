@@ -5,3 +5,7 @@ export type { InstructionMode } from './CustomInstructionsPanel';
 export { McpServersPanel } from './McpServersPanel';
 export type { McpServerEntry } from './McpServersPanel';
 export { useRecentSkills } from './hooks/useRecentSkills';
+export { SkillsView } from './SkillsView';
+export { SkillsBundledPanel } from './SkillsBundledPanel';
+export { SkillsConfigPanel } from './SkillsConfigPanel';
+export { SkillsInstalledPanel } from './SkillsInstalledPanel';

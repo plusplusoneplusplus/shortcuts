@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { SkillsInstalledPanel } from '../../../../../src/server/spa/client/react/views/skills/SkillsInstalledPanel';
+import { SkillsInstalledPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsInstalledPanel';
 
 // Mock fetchApi so tests don't make real HTTP calls
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({

@@ -6,7 +6,7 @@
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { render, cleanup, fireEvent, act } from '@testing-library/react';
 
-import { LogsView } from '../../../src/server/spa/client/react/views/logs/LogsView';
+import { LogsView } from '../../../src/server/spa/client/react/features/logs/LogsView';
 
 afterEach(cleanup);
 

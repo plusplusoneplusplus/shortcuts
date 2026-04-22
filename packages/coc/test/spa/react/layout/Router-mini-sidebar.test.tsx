@@ -54,11 +54,11 @@ vi.mock('../../../../src/server/spa/client/react/wiki/WikiView', () => ({
     WikiView: () => <div id="view-wiki" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/views/memory/MemoryView', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/memory/MemoryView', () => ({
     MemoryView: () => <div id="view-memory" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/views/skills/SkillsView', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/skills/SkillsView', () => ({
     SkillsView: () => <div id="view-skills" />,
 }));
 
@@ -66,7 +66,7 @@ vi.mock('../../../../src/server/spa/client/react/admin/AdminPanel', () => ({
     AdminPanel: () => <div id="view-admin" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/views/logs/LogsView', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/logs/LogsView', () => ({
     LogsView: () => <div id="view-logs" />,
 }));
 

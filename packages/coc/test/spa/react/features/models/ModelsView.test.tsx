@@ -11,7 +11,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModelConfig: () => mockUseModelConfig(),
 }));
 
-import { ModelsView } from '../../../../../src/server/spa/client/react/views/models/ModelsView';
+import { ModelsView } from '../../../../../src/server/spa/client/react/features/models/ModelsView';
 
 function makeModels() {
     return [

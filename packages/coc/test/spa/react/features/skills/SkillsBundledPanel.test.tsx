@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { SkillsBundledPanel } from '../../../../../src/server/spa/client/react/views/skills/SkillsBundledPanel';
+import { SkillsBundledPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsBundledPanel';
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn(),

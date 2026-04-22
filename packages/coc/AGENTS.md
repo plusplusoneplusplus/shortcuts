@@ -209,9 +209,6 @@ src/
 │               │   └── comments/        # Inline comment system (CommentCard, CommentSidebar, SelectionToolbar)
 │               ├── types/               # TypeScript type definitions
 │               ├── utils/               # Utility modules (config, format, path-resolution)
-│               ├── views/
-│               │   ├── memory/          # Memory management (MemoryView, MemoryConfigPanel, bounded memory file viewer)
-│               │   └── skills/          # Skills management (SkillsView, installed/bundled/config panels)
 │               ├── welcome/             # Onboarding system (WelcomeModal, FirstStepsCard, FeatureTip, tips registry)
 │               ├── featureFlags.ts      # Compile-time feature flags (SHOW_WELCOME_TUTORIAL)
 │               └── wiki/                # Wiki UI (WikiView, WikiAsk, WikiGraph, WikiComponentTree, etc.)

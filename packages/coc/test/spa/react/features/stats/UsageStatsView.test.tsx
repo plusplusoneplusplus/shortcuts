@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { UsageStatsView } from '../../../../../src/server/spa/client/react/views/stats/UsageStatsView';
+import { UsageStatsView } from '../../../../../src/server/spa/client/react/features/stats/UsageStatsView';
 import type { ClientTokenUsageStatsResponse } from '../../../../../src/server/spa/client/react/types/dashboard';
 
 const mockReload = vi.fn();

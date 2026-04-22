@@ -19,7 +19,7 @@ function read(relativePath: string) {
 // SkillsView — desktop layout check
 // ---------------------------------------------------------------------------
 describe('SkillsView mobile layout', () => {
-    const src = read('views/skills/SkillsView.tsx');
+    const src = read('features/skills/SkillsView.tsx');
 
     it('desktop layout retains vertical sidebar', () => {
         expect(src).toContain('border-l-2');
@@ -30,7 +30,7 @@ describe('SkillsView mobile layout', () => {
 // MemoryView — touch target fix
 // ---------------------------------------------------------------------------
 describe('MemoryView touch targets', () => {
-    const src = read('views/memory/MemoryView.tsx');
+    const src = read('features/memory/MemoryView.tsx');
 
     it('does not use bare h-8 on tab buttons (below 44px minimum)', () => {
         // h-8 = 32px which violates touch target guidelines

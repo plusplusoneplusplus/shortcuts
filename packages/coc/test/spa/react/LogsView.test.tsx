@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, act } from '@testing-library/react';
 
-import { LogsView } from '../../../src/server/spa/client/react/views/logs/LogsView';
+import { LogsView } from '../../../src/server/spa/client/react/features/logs/LogsView';
 
 // ── Types (mirror the component's internal LogEntry) ──────────────────────
 

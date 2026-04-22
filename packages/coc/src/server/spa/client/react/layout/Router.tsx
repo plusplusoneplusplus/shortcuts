@@ -13,12 +13,12 @@ import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
-const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
-const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
-const UsageStatsView = lazy(() => import('../views/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
+const MemoryView = lazy(() => import('../features/memory/MemoryView').then(m => ({ default: m.MemoryView })));
+const SkillsView = lazy(() => import('../features/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
-const LogsView = lazy(() => import('../views/logs/LogsView').then(m => ({ default: m.LogsView })));
-const ModelsView = lazy(() => import('../views/models/ModelsView').then(m => ({ default: m.ModelsView })));
+const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ default: m.LogsView })));
+const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;

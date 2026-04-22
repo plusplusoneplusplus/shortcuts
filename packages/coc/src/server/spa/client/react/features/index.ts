@@ -5,7 +5,7 @@
  * that belong to one product domain (git, chat, tasks, work-items, …).
  *
  * This barrel will re-export public surfaces as features are migrated here
- * from repos/, views/, and hooks/.
+ * from repos/ and hooks/.
  */
 
 export * from './schedules';
@@ -18,3 +18,6 @@ export * from './skills';
 export * from './notes';
 export * from './memory';
 export * from './git';
+export * from './logs';
+export * from './models';
+export * from './stats';

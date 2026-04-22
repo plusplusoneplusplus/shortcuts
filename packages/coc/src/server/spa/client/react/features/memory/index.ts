@@ -10,3 +10,8 @@ export { FeedList } from './FeedList';
 export { FeedItem as FeedItemComponent } from './FeedItem';
 export { MemoryHeader } from './MemoryHeader';
 export { PipelineStatusStrip } from './PipelineStatusStrip';
+export { MemoryView } from './MemoryView';
+export { BoundedMemoryPanel } from './BoundedMemoryPanel';
+export { MemoryConfigPanel } from './MemoryConfigPanel';
+export { ExploreCachePanel } from './ExploreCachePanel';
+export { ExploreCacheBrowserPanel } from './ExploreCacheBrowserPanel';

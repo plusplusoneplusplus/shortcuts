@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SkillsView } from '../../../../../src/server/spa/client/react/views/skills/SkillsView';
+import { SkillsView } from '../../../../../src/server/spa/client/react/features/skills/SkillsView';
 
 // SkillsInstalledPanel and siblings make fetch calls — mock fetchApi to silence them
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({

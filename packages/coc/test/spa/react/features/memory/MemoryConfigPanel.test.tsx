@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryConfigPanel } from '../../../../../src/server/spa/client/react/views/memory/MemoryConfigPanel';
+import { MemoryConfigPanel } from '../../../../../src/server/spa/client/react/features/memory/MemoryConfigPanel';
 
 const defaultConfig = {
     storageDir: '~/.coc/memory',
