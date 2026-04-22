@@ -447,22 +447,12 @@ export function buildCreateWorkItemAddon(
     const suffix =
         '\n\nYou have access to the `create_work_item` and `create_bug` tools. ' +
         'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
-        'use `create_work_item`. When the user asks to file a bug, report a defect, or log an issue, ' +
-        'use `create_bug`. Both tools follow the same workflow:\n' +
-        '1. **Draft** — Analyze the request and present a summary:\n' +
-        '   📋 Work Item Draft / 🐛 Bug Report Draft\n' +
-        '   Title: <title>\n' +
-        '   Priority: <high|normal|low>\n' +
-        '   Tags: <tags or "none">\n' +
-        '   Description: <markdown description>\n' +
-        '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
-        '   Then ask "Confirm to create, or give feedback to refine."\n' +
-        '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
-        '3. **Create** — Once the user confirms, IMMEDIATELY call the tool. Do not deliberate, plan, or think about what to do next — just call the tool right away with all the fields from the draft.\n' +
-        'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
-        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.\n' +
-        'When the user discusses work, features, or tasks without explicitly asking to create a work item, ' +
-        'proactively suggest creating a work item to track the work.';
+        'invoke the `create-work-item` skill — it guides the draft→refine→create workflow and calls the tool at the right time. ' +
+        'When the user asks to file a bug, report a defect, or log an issue, ' +
+        'invoke the `create-bug` skill instead. ' +
+        'When the user asks to modify, edit, revise, or update an existing work item, ' +
+        'invoke the `update-work-item` skill. ' +
+        'Do NOT handle the work-item creation/update workflow inline — always defer to the matching skill.';
 
     return { tools: [workItemTool, bugTool], suffix };
 }
