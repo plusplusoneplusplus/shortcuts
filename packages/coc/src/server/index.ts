@@ -66,7 +66,6 @@ interface CloseHandlerDeps {
     terminalSessionManager?: { destroyAll(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
-    clientCache?: { disposeAll(): Promise<void> };
 }
 
 function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }> {
@@ -95,11 +94,6 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         queuePersistence.dispose();
         if (!closeOptions?.drain) {
             bridge.dispose();
-        }
-
-        // Stop all cached CopilotClient child processes
-        if (deps.clientCache) {
-            await deps.clientCache.disposeAll();
         }
 
         deps.terminalSessionManager?.destroyAll();
@@ -148,7 +142,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, options, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
-        resolvedConfig.clientPool,
     );
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
 
@@ -227,7 +220,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
-    bridge.clientCache.initialize().catch(() => { /* best-effort — pool is optional */ });
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -245,7 +237,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             activeSockets, server,
-            clientCache: bridge.clientCache,
         }),
     };
 }

@@ -9,7 +9,6 @@ import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
 import { ExecutorRegistry } from './executors/executor-registry';
-import type { CopilotClientCache } from './executors/copilot-client-cache';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from './memory/background-review';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -20,10 +19,6 @@ export interface CLITaskExecutorOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
-    /** Shared CopilotClient cache (optional — when provided, AI calls reuse clients). */
-    clientCache?: CopilotClientCache;
-    /** Client pool configuration from resolved config. */
-    clientPool?: { enabled: boolean; size: number };
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -90,7 +85,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             onMemoryCaptured: (wsId: string, target: string) => this.enqueueMemoryAggregate(wsId, target as 'memory' | 'system', 'capture-trigger'),
             getWsServer: options.getWsServer,
-            clientCache: options.clientCache,
         });
     }
 

@@ -134,10 +134,9 @@ src/
 │   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 conversation search)
 │   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
 │   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
-│   ├── executors/                 # AI chat execution layer — process lifecycle, client caching, prompt building
-│   │   ├── copilot-client-cache.ts # CopilotClient process pool: per-process caching + pre-warmed idle pool (default 3). Idle timeout: 5 min. Pool rotation: 5 min. Retry-on-death handled in executors.
+│   ├── executors/                 # AI chat execution layer — process lifecycle, prompt building
 │   │   ├── base-executor.ts       # Abstract base: streaming, throttling, tool-event capture, session state, output persistence
-│   │   ├── chat-base-executor.ts  # Abstract chat executor: AI call lifecycle with retry-on-client-death (1 retry with fresh client from pool)
+│   │   ├── chat-base-executor.ts  # Abstract chat executor: AI call lifecycle
 │   │   ├── chat-executor.ts       # Ask-mode executor (interactive)
 │   │   ├── plan-executor.ts       # Plan-mode executor
 │   │   ├── autopilot-executor.ts  # Autopilot-mode executor

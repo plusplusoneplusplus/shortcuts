@@ -176,7 +176,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         restartExitCode: 75,
         configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile },
         tokenTtlMs,
-        onClientPoolConfigChanged: (config) => bridge.clientCache.reconfigure(config),
     });
     registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
         const workspaces = await store.getWorkspaces();
