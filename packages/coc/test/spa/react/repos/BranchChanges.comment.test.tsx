@@ -29,7 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: () => Promise.resolve({ files: [] }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     Spinner: () => <span>loading</span>,
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));

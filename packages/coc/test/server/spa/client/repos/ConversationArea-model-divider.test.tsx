@@ -17,11 +17,11 @@ beforeAll(() => {
 });
 
 // Mock dependencies that ConversationArea renders
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Spinner: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 

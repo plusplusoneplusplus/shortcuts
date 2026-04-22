@@ -110,7 +110,7 @@ vi.mock('../../src/server/spa/client/react/queue/EnqueueDialog', () => ({
     EnqueueDialog: () => null,
 }));
 
-vi.mock('../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../src/server/spa/client/react/ui', () => ({
     ToastContainer: () => null,
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
 }));

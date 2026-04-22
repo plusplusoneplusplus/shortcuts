@@ -27,7 +27,7 @@ import {
 import type { FileChange, FilesViewMode } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 // Mock TruncatedPath to a simple span
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     TruncatedPath: ({ path, className }: { path: string; className?: string }) => (
         <span className={className}>{path}</span>
     ),

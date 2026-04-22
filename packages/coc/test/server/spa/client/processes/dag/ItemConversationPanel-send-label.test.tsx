@@ -42,7 +42,7 @@ vi.mock('../../../../../../src/server/spa/client/react/utils/workspace', () => (
     getProcessWorkspaceId: () => 'ws-1',
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/ui', () => ({
     Badge: ({ children }: any) => <span>{children}</span>,
     Button: ({ children, className, title, disabled, onClick, ...rest }: any) => (
         <button

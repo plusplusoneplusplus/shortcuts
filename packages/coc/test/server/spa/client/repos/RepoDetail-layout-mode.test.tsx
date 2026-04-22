@@ -91,12 +91,12 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
     Button: (props: any) => <button {...props} />,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/ErrorBoundary', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/ErrorBoundary', () => ({
     ErrorBoundary: ({ children }: any) => <>{children}</>,
 }));
 

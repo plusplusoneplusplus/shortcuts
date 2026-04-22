@@ -52,7 +52,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     Spinner: () => <span>loading</span>,
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));

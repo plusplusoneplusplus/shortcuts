@@ -13,7 +13,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useModifierKey', ()
     useModifierKey: () => mockModHeld,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
     SuggestionChips: () => null,
     SendButton: ({ disabled, ctrlHeld, onSend, ...rest }: any) => {
@@ -33,11 +33,11 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     },
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
     AttachmentPreviews: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 

@@ -47,7 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/CommentSidebar',
         ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     Spinner: () => React.createElement('span', { 'data-testid': 'spinner' }, '…'),
 }));
 

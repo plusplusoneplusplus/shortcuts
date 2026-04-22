@@ -42,7 +42,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitTool
     CommitTooltip: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     TruncatedPath: ({ path }: { path: string }) => <span>{path}</span>,
 }));
 

@@ -51,7 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
 }));
 
 // Mock TruncatedPath (used in FileDiffPanel)
-vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal) => {
+vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

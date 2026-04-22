@@ -232,7 +232,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 }));
 
 // shared — use real module (Badge, Button, Spinner, etc.)
-vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal) => {
+vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => {
     const actual = await importOriginal<Record<string, any>>();
     return {
         ...actual,

@@ -24,7 +24,7 @@ import type { WhisperSummary } from '../../../src/server/spa/client/react/featur
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: string[]) => args.filter(Boolean).join(' '),
 }));
 
