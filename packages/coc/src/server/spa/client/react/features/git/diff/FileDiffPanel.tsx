@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Spinner, Button, TruncatedPath } from '../../../shared';
+import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';

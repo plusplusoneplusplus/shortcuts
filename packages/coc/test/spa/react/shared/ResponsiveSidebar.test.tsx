@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ResponsiveSidebar } from '../../../../src/server/spa/client/react/shared/ResponsiveSidebar';
+import { ResponsiveSidebar } from '../../../../src/server/spa/client/react/ui/ResponsiveSidebar';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: vi.fn(() => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' })),

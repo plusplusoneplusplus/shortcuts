@@ -16,7 +16,7 @@ import { fetchApi } from '../../hooks/useApi';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getApiBase } from '../../utils/config';
-import { Spinner } from '../../shared';
+import { Spinner } from '../../ui';
 import { CommitList } from './commits/CommitList';
 import { CommitDetail } from './commits/CommitDetail';
 import { BranchRangeOverview } from './branches/BranchRangeOverview';

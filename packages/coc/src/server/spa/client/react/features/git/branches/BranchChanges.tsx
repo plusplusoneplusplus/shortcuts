@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import { Spinner } from '../../../shared';
+import { Spinner } from '../../../ui';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../../comments/diff-comment-utils';
 import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from '../diff/FileTree';

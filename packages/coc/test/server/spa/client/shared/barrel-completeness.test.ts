@@ -56,22 +56,6 @@ describe('ui/ barrel completeness', () => {
     });
 });
 
-describe('shared/ backward-compat shims', () => {
-    it('every ui/ module has a re-export shim in shared/', () => {
-        const uiFiles = getModuleFiles(UI_DIR);
-        const sharedFiles = new Set(getModuleFiles(SHARED_DIR));
-
-        const missing: string[] = [];
-        for (const file of uiFiles) {
-            if (!sharedFiles.has(file)) {
-                missing.push(file);
-            }
-        }
-
-        expect(missing, `ui/ files without backward-compat shim in shared/:\n  ${missing.join('\n  ')}`).toEqual([]);
-    });
-});
-
 describe('features/ namespace', () => {
     it('features/index.ts exists and is a valid module', () => {
         const featuresIndex = join(REACT_DIR, 'features/index.ts');

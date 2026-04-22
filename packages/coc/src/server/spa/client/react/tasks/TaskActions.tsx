@@ -2,7 +2,7 @@
  * TaskActions — toolbar rendered above the Miller columns.
  */
 
-import { Button } from '../shared';
+import { Button } from '../ui';
 import { useTaskPanel } from '../contexts/TaskContext';
 
 import { isContextFile } from './hooks/useTaskTree';

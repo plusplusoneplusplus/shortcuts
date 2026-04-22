@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { FloatingDialog } from '../../../src/server/spa/client/react/shared/FloatingDialog';
+import { FloatingDialog } from '../../../src/server/spa/client/react/ui/FloatingDialog';
 
 describe('FloatingDialog', () => {
     it('renders nothing when open={false}', () => {

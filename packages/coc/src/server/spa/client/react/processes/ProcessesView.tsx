@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { cn } from '../shared';
+import { cn } from '../ui';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';

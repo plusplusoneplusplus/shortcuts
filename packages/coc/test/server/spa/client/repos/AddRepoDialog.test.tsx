@@ -8,7 +8,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 // Mocks – must be declared before importing the component under test
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Dialog: ({ open, children, footer, title, id, onClose }: any) =>
         open ? (
             <div data-testid="dialog" id={id}>

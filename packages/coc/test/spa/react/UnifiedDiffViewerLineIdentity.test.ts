@@ -16,10 +16,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'UnifiedDiffViewer.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('parseHunkHeader', () => {
     it('parses standard hunk header with counts', () => {
         expect(parseHunkHeader('@@ -10,6 +12,8 @@')).toEqual({ oldStart: 10, newStart: 12 });
@@ -158,20 +154,13 @@ describe('computeDiffLines — line number assignment', () => {
 
 describe('DiffLine type and new exports', () => {
     let source: string;
-    let indexSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
-        indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
     });
 
     it('source file exports DiffLine interface', () => {
         expect(source).toContain('export interface DiffLine');
-    });
-
-    it('index.ts exports DiffLine type', () => {
-        expect(indexSource).toContain("DiffLine");
-        expect(indexSource).toContain("from '../features/git/diff/UnifiedDiffViewer'");
     });
 
     it('source exports computeDiffLines', () => {
@@ -182,13 +171,6 @@ describe('DiffLine type and new exports', () => {
         expect(source).toContain('export function parseHunkHeader');
     });
 
-    it('index.ts exports computeDiffLines', () => {
-        expect(indexSource).toContain('computeDiffLines');
-    });
-
-    it('index.ts exports parseHunkHeader', () => {
-        expect(indexSource).toContain('parseHunkHeader');
-    });
 });
 
 describe('UnifiedDiffViewer new props (structural)', () => {

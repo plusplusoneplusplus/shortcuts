@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Dialog } from './Dialog';
+import { Dialog } from '../ui/Dialog';
 import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
 import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
 import { SlashCommandMenu, type SkillItem } from '../features/chat/SlashCommandMenu';

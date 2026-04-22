@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn, FilePathLink, shortenFilePath } from '../../../../shared';
+import { cn, FilePathLink } from '../../../../ui';
+import { shortenFilePath } from '../../../../shared';
 import { isImageFile, getImageMimeType } from '../../../../shared/file-path-utils';
 import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';

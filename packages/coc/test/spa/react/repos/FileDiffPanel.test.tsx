@@ -117,8 +117,8 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', ()
     }),
 }));
 
-// Mock TruncatedPath in shared
-vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal) => {
+// Mock TruncatedPath in ui
+vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

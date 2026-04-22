@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
 import { StatusDot } from './ScheduleStatusBadge';
 import type { Schedule } from './scheduleTypes';

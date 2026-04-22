@@ -5,7 +5,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Card, Button } from '../shared';
+import { Card, Button } from '../ui';
 
 export interface SettingsCardProps {
     title: string;

@@ -14,10 +14,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('RepoGitTab', () => {
     let source: string;
 
@@ -26,12 +22,6 @@ describe('RepoGitTab', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { RepoGitTab }");
-            expect(indexSource).toContain("from '../features/git/RepoGitTab'");
-        });
-
         it('exports RepoGitTab as a named export', () => {
             expect(source).toContain('export function RepoGitTab');
         });

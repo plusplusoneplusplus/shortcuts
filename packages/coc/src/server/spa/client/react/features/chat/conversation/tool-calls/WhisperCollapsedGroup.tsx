@@ -4,7 +4,7 @@
  * and message counts. Expands to reveal Compact-level (level 1) rendering.
  */
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn } from '../../../../shared';
+import { cn } from '../../../../ui';
 import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';

@@ -10,7 +10,7 @@ import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
-import { ToastContainer, useToast } from '../shared';
+import { ToastContainer, useToast } from '../ui';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useMdPopOutChannel, type MdPopOutMessage } from '../contexts/MarkdownPopOutContext';
 import { getHostname } from '../utils/config';

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useGlobalToast } from '../../contexts/ToastContext';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { WikiDetail } from '../../wiki/WikiDetail';
 import type { WikiProjectTab, WikiAdminTab } from '../../types/dashboard';

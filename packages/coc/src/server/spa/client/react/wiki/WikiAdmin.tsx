@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as yaml from 'js-yaml';
-import { Button, Card, Spinner, Badge } from '../shared';
-import { cn } from '../shared/cn';
+import { Button, Card, Spinner, Badge } from '../ui';
+import { cn } from '../ui/cn';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import type { WikiAdminTab } from '../types/dashboard';

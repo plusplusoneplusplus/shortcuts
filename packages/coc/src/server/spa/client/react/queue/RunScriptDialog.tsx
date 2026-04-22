@@ -8,7 +8,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
-import { Dialog, FloatingDialog, Button } from '../shared';
+import { Dialog, FloatingDialog, Button } from '../ui';
 import { useModels } from '../hooks/useModels';
 import { useScriptTemplates, type ScriptTemplate } from '../features/templates/hooks/useScriptTemplates';
 import { getApiBase } from '../utils/config';

@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
 
 /* ── BottomSheet stub ────────────────────────────────────────────────────── */
 
-vi.mock('../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: ({ isOpen, onClose, title, children, height }: any) =>
         isOpen ? (
             <div data-testid="bottomsheet-mock" data-title={title} data-height={height}>

@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { formatDuration } from '../../../utils/format';
 import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../../shared/BottomSheet';
+import { BottomSheet } from '../../../ui/BottomSheet';
 
 interface MetaRow {
     label: string;

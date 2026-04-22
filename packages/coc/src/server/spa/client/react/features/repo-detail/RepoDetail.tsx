@@ -8,7 +8,7 @@ import type { AppContextState } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
-import { Button, cn } from '../../shared';
+import { Button, cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { TemplatesTab } from '../templates/TemplatesTab';
@@ -24,7 +24,7 @@ import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
 import { NotesView } from '../notes/NotesView';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
-import { ErrorBoundary } from '../../shared/ErrorBoundary';
+import { ErrorBoundary } from '../../ui/ErrorBoundary';
 
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';

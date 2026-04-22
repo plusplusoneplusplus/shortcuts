@@ -1,7 +1,7 @@
 import type { DAGNodeData } from './types';
 import { getNodeColors, getNodeIcon } from './dag-colors';
 import { formatDuration } from '../../utils/format';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import { DAGErrorPin } from './DAGErrorPin';
 import { durationRatio, ratioToStrokeWidth, ratioToBorderColor, formatPreciseDuration } from './duration-utils';
 

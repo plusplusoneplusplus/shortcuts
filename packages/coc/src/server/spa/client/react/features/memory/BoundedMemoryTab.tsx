@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { memoryApi } from './memoryApi';
 import type { MemoryStats } from './memoryApi';
-import { CapacityBar } from '../../shared/CapacityBar';
+import { CapacityBar } from '../../ui/CapacityBar';
 import { ToastContext } from '../../contexts/ToastContext';
 import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../hooks/preferences/preferencesApi';
 import { PipelineStatusStrip } from './PipelineStatusStrip';

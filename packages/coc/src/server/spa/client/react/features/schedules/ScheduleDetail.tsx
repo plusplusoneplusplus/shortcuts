@@ -1,4 +1,4 @@
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
 import { StatusBadge, failureLabel } from './ScheduleStatusBadge';
 import { RunHistoryList } from '../chat/RunHistoryList';

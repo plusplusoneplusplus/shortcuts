@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Button, Spinner } from '../shared';
+import { Button, Spinner } from '../ui';
 import { getApiBase } from '../utils/config';
 
 interface UserPreferences {

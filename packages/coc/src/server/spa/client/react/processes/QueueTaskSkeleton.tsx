@@ -1,4 +1,4 @@
-import { Card } from '../shared';
+import { Card } from '../ui';
 
 /** Single skeleton card mimicking QueueTaskItem layout. */
 export function QueueTaskSkeleton() {

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Button, Badge, Dialog, Spinner, cn } from '../../shared';
+import { Button, Badge, Dialog, Spinner, cn } from '../../ui';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';

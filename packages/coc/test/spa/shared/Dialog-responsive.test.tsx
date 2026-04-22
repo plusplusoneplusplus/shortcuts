@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Dialog } from '../../../src/server/spa/client/react/shared/Dialog';
+import { Dialog } from '../../../src/server/spa/client/react/ui/Dialog';
 import { mockViewport } from '../helpers/viewport-mock';
 
 describe('Dialog responsive layout', () => {

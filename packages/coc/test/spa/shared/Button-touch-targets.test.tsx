@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Button } from '../../../src/server/spa/client/react/shared/Button';
+import { Button } from '../../../src/server/spa/client/react/ui/Button';
 
 describe('Button touch targets', () => {
     it('renders with min-h-[44px] class by default (mobile)', () => {

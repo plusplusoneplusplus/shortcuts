@@ -5,8 +5,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Badge, Button, Spinner, ResponsiveSidebar } from '../shared';
-import { cn } from '../shared/cn';
+import { Badge, Button, Spinner, ResponsiveSidebar } from '../ui';
+import { cn } from '../ui/cn';
 import { fetchApi } from '../hooks/useApi';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { WikiComponentTree } from './WikiComponentTree';

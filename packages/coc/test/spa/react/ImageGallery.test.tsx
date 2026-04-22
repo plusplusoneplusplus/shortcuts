@@ -4,9 +4,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ImageGallery } from '../../../src/server/spa/client/react/shared/ImageGallery';
+import { ImageGallery } from '../../../src/server/spa/client/react/ui/ImageGallery';
 
-vi.mock('../../../src/server/spa/client/react/shared/ImageLightbox', () => ({
+vi.mock('../../../src/server/spa/client/react/ui/ImageLightbox', () => ({
     ImageLightbox: () => null,
 }));
 

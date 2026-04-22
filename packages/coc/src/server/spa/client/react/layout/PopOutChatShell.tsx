@@ -14,7 +14,7 @@ import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ChatPreferencesProvider } from '../contexts/ChatPreferencesContext';
-import { ToastContainer, useToast } from '../shared';
+import { ToastContainer, useToast } from '../ui';
 import { ChatDetail } from '../features/chat/ChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';
 import { getHostname } from '../utils/config';

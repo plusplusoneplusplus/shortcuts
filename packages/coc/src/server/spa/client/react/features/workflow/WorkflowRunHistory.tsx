@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Badge } from '../../shared';
+import { Badge } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { useQueue } from '../../contexts/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/format';

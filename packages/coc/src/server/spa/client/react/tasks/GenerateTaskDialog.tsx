@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Dialog, FloatingDialog, Button, ImageLightbox } from '../shared';
+import { Dialog, FloatingDialog, Button, ImageLightbox } from '../ui';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';

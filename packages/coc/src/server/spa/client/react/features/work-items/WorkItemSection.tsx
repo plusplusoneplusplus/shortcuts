@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Card, cn } from '../../shared';
+import { Card, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { useWorkItems, type WorkItemSummary } from '../../contexts/WorkItemContext';
 import { useWorkItemSearch } from './hooks/useWorkItemSearch';

@@ -22,10 +22,6 @@ const FIXUP_UTILS_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'fixup-utils.ts'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('CommitList fixup visual grouping', () => {
     let commitListSource: string;
     let tooltipSource: string;
@@ -59,12 +55,6 @@ describe('CommitList fixup visual grouping', () => {
             expect(fixupUtilsSource).toContain('while (nested)');
         });
 
-        it('is re-exported from repos index', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("from '../features/git/fixup-utils'");
-            expect(indexSource).toContain('buildFixupGroups');
-            expect(indexSource).toContain('parseFixupSubject');
-        });
     });
 
     describe('CommitList integration', () => {

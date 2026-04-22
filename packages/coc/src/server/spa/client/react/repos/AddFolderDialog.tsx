@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Dialog, Button } from '../shared';
+import { Dialog, Button } from '../ui';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { hashString } from './repoGrouping';

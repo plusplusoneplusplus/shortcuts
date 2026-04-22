@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
+import { Card, Button, Spinner, useToast, ToastContainer } from '../ui';
 import { getApiBase } from '../utils/config';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { SettingsCard } from './SettingsCard';

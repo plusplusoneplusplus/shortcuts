@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { ImagePreviews } from '../../../src/server/spa/client/react/shared/ImagePreviews';
+import { ImagePreviews } from '../../../src/server/spa/client/react/ui/ImagePreviews';
 
 afterEach(() => {
     vi.restoreAllMocks();

@@ -10,7 +10,7 @@ import {
     SkeletonCard,
     SkeletonList,
     SkeletonListItem,
-} from '../../../../src/server/spa/client/react/shared/SkeletonLoader';
+} from '../../../../src/server/spa/client/react/ui/SkeletonLoader';
 
 describe('SkeletonLine', () => {
     it('renders an animate-pulse element', () => {

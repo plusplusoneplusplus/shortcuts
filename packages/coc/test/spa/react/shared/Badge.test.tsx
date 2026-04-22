@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Badge } from '../../../../src/server/spa/client/react/shared/Badge';
+import { Badge } from '../../../../src/server/spa/client/react/ui/Badge';
 
 describe('Badge', () => {
     it('renders status text when no children', () => {

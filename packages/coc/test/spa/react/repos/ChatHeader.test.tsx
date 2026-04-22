@@ -24,8 +24,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext',
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared', async () => {
-    const actual = await vi.importActual('../../../../src/server/spa/client/react/shared');
+vi.mock('../../../../src/server/spa/client/react/ui', async () => {
+    const actual = await vi.importActual('../../../../src/server/spa/client/react/ui');
     return {
         ...actual,
         Badge: ({ children, status }: any) => <span data-testid="badge" data-status={status}>{children}</span>,
@@ -35,7 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/shared', async () => {
     };
 });
 
-vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ReferencesDropdown', () => ({
     deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
     normalizeRefPath: (p: string) => p,
     ReferencesDropdown: ({ planPath, files }: any) => {
@@ -47,7 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () 
         return total > 0 ? <span data-testid="reference-list">RefList ({total})</span> : null;
     },
 }));
-vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: ({ isOpen, children }: any) => isOpen ? <div data-testid="refs-bottomsheet">{children}</div> : null,
 }));
 
@@ -55,7 +55,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ContextWindowIndicator', () => ({
     ContextWindowIndicator: ({ tokenLimit }: any) =>
         tokenLimit ? <span data-testid="context-window">ctx</span> : null,
 }));
@@ -74,7 +74,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 

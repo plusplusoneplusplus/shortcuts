@@ -13,10 +13,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'UnifiedDiffViewer.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('UnifiedDiffViewer', () => {
     let source: string;
 
@@ -33,16 +29,6 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('export interface UnifiedDiffViewerProps');
         });
 
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { UnifiedDiffViewer }");
-            expect(indexSource).toContain("from '../features/git/diff/UnifiedDiffViewer'");
-        });
-
-        it('exports UnifiedDiffViewerProps type from index', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export type { UnifiedDiffViewerProps }");
-        });
     });
 
     describe('component signature', () => {

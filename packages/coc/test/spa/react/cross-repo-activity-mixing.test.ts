@@ -3,7 +3,7 @@
  *
  * Verifies:
  * - Fix 1: Tab components use key={ws.id} to force remount on workspace change
- * - Fix 2: selectedTaskId is cleared on repo switch in MiniReposSidebar and ReposGrid
+ * - Fix 2: selectedTaskId is cleared on repo switch in ReposGrid
  * - Fix 3: Per-repo selectedTaskIdByRepo map in QueueContext
  */
 
@@ -16,11 +16,6 @@ import { queueReducer, type QueueContextState } from '../../../src/server/spa/cl
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
-    'utf-8',
-);
-
-const MINI_SIDEBAR_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'MiniReposSidebar.tsx'),
     'utf-8',
 );
 
@@ -103,26 +98,6 @@ describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
 // ════════════════════════════════════════════════════════════════════════
 
 describe('Fix 2: clear selectedTaskId on repo switch', () => {
-    describe('MiniReposSidebar', () => {
-        it('imports useQueue', () => {
-            expect(MINI_SIDEBAR_SOURCE).toContain("import { useQueue } from '../contexts/QueueContext'");
-        });
-
-        it('dispatches SELECT_QUEUE_TASK with null in selectRepo', () => {
-            // selectRepo and expandAndSelect both clear queue selection
-            const selectRepoStart = MINI_SIDEBAR_SOURCE.indexOf('const selectRepo');
-            const expandStart = MINI_SIDEBAR_SOURCE.indexOf('const expandAndSelect');
-            const selectRepoBody = MINI_SIDEBAR_SOURCE.slice(selectRepoStart, expandStart);
-            expect(selectRepoBody).toContain("type: 'SELECT_QUEUE_TASK', id: null");
-        });
-
-        it('dispatches SELECT_QUEUE_TASK with null in expandAndSelect', () => {
-            const expandStart = MINI_SIDEBAR_SOURCE.indexOf('const expandAndSelect');
-            const expandBody = MINI_SIDEBAR_SOURCE.slice(expandStart, expandStart + 500);
-            expect(expandBody).toContain("type: 'SELECT_QUEUE_TASK', id: null");
-        });
-    });
-
     describe('ReposGrid', () => {
         it('imports useQueue', () => {
             expect(REPOS_GRID_SOURCE).toContain("import { useQueue } from '../contexts/QueueContext'");

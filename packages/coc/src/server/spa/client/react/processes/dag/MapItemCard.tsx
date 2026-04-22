@@ -1,4 +1,4 @@
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import { statusIcon, formatDuration } from '../../utils/format';
 import { getNodeColors } from './dag-colors';
 import type { DAGNodeState } from './types';

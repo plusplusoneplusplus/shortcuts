@@ -7,8 +7,8 @@
  */
 
 import { useRef, useState } from 'react';
-import { FloatingDialog } from '../shared/FloatingDialog';
-import { BottomSheet } from '../shared/BottomSheet';
+import { FloatingDialog } from '../ui/FloatingDialog';
+import { BottomSheet } from '../ui/BottomSheet';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMarkdownPopOut } from '../contexts/MarkdownPopOutContext';

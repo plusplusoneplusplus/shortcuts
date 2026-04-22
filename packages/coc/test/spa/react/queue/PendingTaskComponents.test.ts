@@ -183,7 +183,7 @@ describe('ChatDetail imports extracted components', () => {
     });
 
     it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
-        expect(chatHeaderSource).toContain("from '../../shared/ReferencesDropdown'");
+        expect(chatHeaderSource).toContain("from '../../ui/ReferencesDropdown'");
         expect(chatHeaderSource).toContain('ReferencesDropdown');
     });
 

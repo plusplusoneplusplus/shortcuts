@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Button, cn, Dialog, Spinner } from '../../shared';
+import { Button, cn, Dialog, Spinner } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useGlobalToast } from '../../contexts/ToastContext';

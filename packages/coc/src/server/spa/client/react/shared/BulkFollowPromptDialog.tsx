@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Dialog, Button, Spinner } from './index';
+import { Dialog, Spinner } from '../ui';
+import { Button } from '../ui/Button';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../contexts/AppContext';

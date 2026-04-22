@@ -80,24 +80,24 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/NewChatArea', () 
 }));
 
 // Mock heavy ChatHeader dependencies
-vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     Badge: ({ children }: any) => React.createElement('span', null, children),
     Button: ({ children, onClick }: any) => React.createElement('button', { onClick }, children),
     Spinner: ({ size }: any) => React.createElement('span', { 'data-testid': 'spinner', 'data-size': size }),
 }));
-vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ReferencesDropdown', () => ({
     deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
     normalizeRefPath: (p: string) => p,
     ReferencesDropdown: () => null,
     ReferenceList: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ContextWindowIndicator', () => ({
     ContextWindowIndicator: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -112,12 +112,12 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
     chatMarkdownToHtml: vi.fn().mockReturnValue(''),
 }));
-vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
 // FloatingChatManager dependencies
-vi.mock('../../../../src/server/spa/client/react/shared/FloatingDialog', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/FloatingDialog', () => ({
     FloatingDialog: ({ children, title, onClose, noPadding, id }: any) =>
         React.createElement('div', {
             'data-testid': `floating-dialog-${id ?? 'unknown'}`,

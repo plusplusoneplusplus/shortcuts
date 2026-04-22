@@ -8,7 +8,7 @@
  * - Anchoring hint when the user selects a different note
  */
 
-import { cn } from '../../../shared/cn';
+import { cn } from '../../../ui/cn';
 
 // ============================================================================
 // Types

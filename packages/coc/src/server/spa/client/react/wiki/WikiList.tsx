@@ -5,11 +5,11 @@
 import { useState, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useWiki } from './hooks/useWiki';
-import { Card, Badge, Button, Spinner } from '../shared';
+import { Card, Badge, Button, Spinner } from '../ui';
 import { AddWikiDialog } from './AddWikiDialog';
 import { EditWikiDialog } from './EditWikiDialog';
 import { DeleteWikiDialog } from './DeleteWikiDialog';
-import { cn } from '../shared/cn';
+import { cn } from '../ui/cn';
 import { getApiBase } from '../utils/config';
 
 type WikiStatus = 'loaded' | 'generating' | 'error' | 'pending';

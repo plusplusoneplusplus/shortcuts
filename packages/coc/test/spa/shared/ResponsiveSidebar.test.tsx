@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ResponsiveSidebar } from '../../../src/server/spa/client/react/shared/ResponsiveSidebar';
+import { ResponsiveSidebar } from '../../../src/server/spa/client/react/ui/ResponsiveSidebar';
 import { mockViewport } from '../helpers/viewport-mock';
 
 describe('ResponsiveSidebar', () => {

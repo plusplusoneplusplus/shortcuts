@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { ImageGallery, FilePathLink } from '../shared';
+import { ImageGallery, FilePathLink } from '../ui';
 
 export function MetaRow({ label, value, breakAll }: { label: string; value: string; breakAll?: boolean }) {
     return (

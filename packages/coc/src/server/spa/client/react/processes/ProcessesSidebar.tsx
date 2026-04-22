@@ -7,8 +7,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
-import { Card, Badge, Button, cn } from '../shared';
-import { RenameDialog } from '../shared/RenameDialog';
+import { Card, Badge, Button, cn } from '../ui';
+import { RenameDialog } from '../ui/RenameDialog';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useLongPress } from '../hooks/ui/useLongPress';
 import { fetchApi } from '../hooks/useApi';

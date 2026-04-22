@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { cn } from '../shared';
+import { cn } from '../ui';
 import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath, getTaskNodeTaskRootPath } from './hooks/useTaskTree';
 import type { TaskDocument, TaskDocumentGroup } from './hooks/useTaskTree';
 

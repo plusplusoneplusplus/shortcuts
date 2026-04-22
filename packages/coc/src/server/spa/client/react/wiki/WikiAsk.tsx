@@ -5,8 +5,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, Spinner } from '../shared';
-import { cn } from '../shared/cn';
+import { Button, Spinner } from '../ui';
+import { cn } from '../ui/cn';
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 

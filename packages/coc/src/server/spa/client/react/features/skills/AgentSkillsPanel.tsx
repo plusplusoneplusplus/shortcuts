@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Button, SkillListItem } from '../../shared';
+import { Button } from '../../ui';
+import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { getApiBase } from '../../utils/config';

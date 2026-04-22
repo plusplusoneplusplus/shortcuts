@@ -7,7 +7,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Button } from '../../../shared';
+import { Button } from '../../../ui';
 import { copyToClipboard } from '../../../utils/format';
 import type { GitCommitItem } from './CommitList';
 import type { FixupEntry, FixupGroupTarget } from '../fixup-utils';

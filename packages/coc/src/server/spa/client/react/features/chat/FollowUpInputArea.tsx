@@ -1,9 +1,9 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { Button, SuggestionChips, SendButton } from '../../shared';
-import { AttachmentPreviews } from '../../shared/AttachmentPreviews';
-import { PastePreview } from '../../shared/PastePreview';
-import { AttachedContextPreviews } from '../../shared/AttachedContextPreviews';
-import { cn } from '../../shared/cn';
+import { Button, SuggestionChips, SendButton } from '../../ui';
+import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
+import { PastePreview } from '../../ui/PastePreview';
+import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
+import { cn } from '../../ui/cn';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';

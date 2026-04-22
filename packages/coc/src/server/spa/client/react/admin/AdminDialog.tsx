@@ -2,7 +2,7 @@
  * AdminDialog — wraps AdminPanel inside an overlay Dialog.
  */
 
-import { Dialog } from '../shared/Dialog';
+import { Dialog } from '../ui/Dialog';
 import { AdminPanel } from './AdminPanel';
 
 export interface AdminDialogProps {

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
-import { CopySectionBtn } from '../../../src/server/spa/client/react/shared/CopySectionBtn';
+import { CopySectionBtn } from '../../../src/server/spa/client/react/ui/CopySectionBtn';
 
 // Mock copyToClipboard
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({

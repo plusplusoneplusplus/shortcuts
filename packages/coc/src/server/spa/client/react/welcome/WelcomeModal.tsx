@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { Dialog } from '../shared/Dialog';
-import { Button } from '../shared/Button';
+import { Dialog } from '../ui/Dialog';
+import { Button } from '../ui/Button';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 

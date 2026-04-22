@@ -10,7 +10,7 @@ import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../../shared/SourceEditor';
-import type { ModeOption } from '../../../shared/ModeToggleToolbar';
+import type { ModeOption } from '../../../ui/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import { wordDiff } from './noteEditDiff';

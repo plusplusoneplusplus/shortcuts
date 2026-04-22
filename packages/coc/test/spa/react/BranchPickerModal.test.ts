@@ -13,10 +13,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches', 'BranchPickerModal.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('BranchPickerModal', () => {
     let source: string;
 
@@ -25,12 +21,6 @@ describe('BranchPickerModal', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { BranchPickerModal }");
-            expect(indexSource).toContain("from '../features/git/branches/BranchPickerModal'");
-        });
-
         it('exports BranchPickerModal as a named export', () => {
             expect(source).toContain('export function BranchPickerModal');
         });

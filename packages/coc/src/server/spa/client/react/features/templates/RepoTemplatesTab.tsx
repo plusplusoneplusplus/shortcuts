@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Button, cn, Dialog, Spinner } from '../../shared';
+import { Button, cn, Dialog, Spinner } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { formatRelativeTime } from '../../utils/format';

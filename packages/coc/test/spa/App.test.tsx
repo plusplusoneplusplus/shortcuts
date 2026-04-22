@@ -119,7 +119,7 @@ vi.mock('../../src/server/spa/client/react/queue/EnqueueDialog', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../src/server/spa/client/react/ui', () => ({
     ToastContainer: () => null,
     useToast: () => ({ toasts: [], addToast: mockAddToast, removeToast: vi.fn() }),
 }));

@@ -6,8 +6,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Spinner } from '../shared';
-import { cn } from '../shared/cn';
+import { Spinner } from '../ui';
+import { cn } from '../ui/cn';
 
 interface ComponentInfo {
     id: string;

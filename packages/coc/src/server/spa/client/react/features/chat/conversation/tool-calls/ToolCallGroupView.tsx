@@ -3,7 +3,7 @@
  * same-category tool calls (read / write / shell).
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { cn } from '../../../../shared';
+import { cn } from '../../../../ui';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';

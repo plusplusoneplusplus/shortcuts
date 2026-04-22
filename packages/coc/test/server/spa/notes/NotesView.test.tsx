@@ -68,7 +68,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', ()
 }));
 
 // Mock ResponsiveSidebar
-vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ResponsiveSidebar', () => ({
     ResponsiveSidebar: ({ children }: any) => <div data-testid="responsive-sidebar">{children}</div>,
 }));
 

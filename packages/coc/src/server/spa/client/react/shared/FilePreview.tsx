@@ -13,8 +13,8 @@ import { useApp } from '../contexts/AppContext';
 import { getApiBase } from '../utils/config';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
-import { Spinner } from './Spinner';
-import { cn } from './cn';
+import { Spinner } from '../ui/Spinner';
+import { cn } from '../ui/cn';
 
 interface FilePreviewResponse {
     type?: 'file';

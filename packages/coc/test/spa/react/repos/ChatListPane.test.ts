@@ -941,9 +941,9 @@ describe('ChatListPane: filter dropdown rework', () => {
             expect(source).toContain('<FilterDropdown');
         });
 
-        it('imports FilterDropdown from shared', () => {
+        it('imports FilterDropdown from ui', () => {
             expect(source).toContain('FilterDropdown');
-            expect(source).toContain("from '../../shared'");
+            expect(source).toContain("from '../../ui'");
         });
 
         it('passes availableFilters as items to FilterDropdown', () => {

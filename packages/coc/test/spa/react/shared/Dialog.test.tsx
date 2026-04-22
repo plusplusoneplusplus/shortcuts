@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Dialog } from '../../../../src/server/spa/client/react/shared/Dialog';
+import { Dialog } from '../../../../src/server/spa/client/react/ui/Dialog';
 
 afterEach(() => {
     // Clean up any portal nodes appended to document.body

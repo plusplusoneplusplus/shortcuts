@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Dialog, Button } from '../shared';
+import { Dialog, Button } from '../ui';
 import { getApiBase } from '../utils/config';
 
 interface DeleteWikiDialogProps {

@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 
 export type InstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
 

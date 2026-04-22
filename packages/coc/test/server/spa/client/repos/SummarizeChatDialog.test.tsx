@@ -8,7 +8,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 // Mocks – declared before component import
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../../../src/server/spa/client/react/shared/Dialog', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/Dialog', () => ({
     Dialog: ({ open, children, footer, title, onClose }: any) =>
         open ? (
             <div data-testid="dialog">
@@ -19,7 +19,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/Dialog', () => ({
         ) : null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ onClick, disabled, children, variant, ...rest }: any) => (
         <button
             onClick={onClick}

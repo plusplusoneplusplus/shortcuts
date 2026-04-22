@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Card } from '../../../src/server/spa/client/react/shared/Card';
+import { Card } from '../../../src/server/spa/client/react/ui/Card';
 
 describe('Card', () => {
     it('renders children', () => {

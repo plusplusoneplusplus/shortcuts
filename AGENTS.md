@@ -197,10 +197,11 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 **Turn actions layer:** `turn-actions-handler.ts` (`registerTurnActionRoutes`) exposes per-message delete, pin, and archive on conversation turns. Routes: `DELETE /api/processes/:id/turns/:turnIndex` (soft-delete), `PATCH .../restore`, `PATCH .../pin`, `PATCH .../archive`, `GET /api/processes/:id/turns/pinned`. Backed by `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER` columns on `conversation_turns` table. SPA: `ConversationTurnBubble` context menu (Delete/Pin/Archive), `ProcessDetail` renders collapsible Pinned Messages section, archived toggle, undo-delete toast.
 
 **SPA module layout (`packages/coc/src/server/spa/client/react/`):**
-- `chat/` — Reusable conversation rendering: `ConversationTurnBubble`, `ConversationMiniMap`, `ConversationMetadataPopover`, tool call components (`ToolCallView`, `ToolCallGroupView`, `ToolResultPopover`, `WhisperCollapsedGroup`), `CommitStrip`, `NoteEditCard`, and utilities (`commitDetection`, `toolGroupUtils`, `timeline-utils`, `chatConversationUtils`). Barrel: `chat/index.ts` (re-exports `JsonResponseView` and `isJsonResponse` from `shared/` for backward compat).
+- `chat/` — Reusable conversation rendering: `ConversationTurnBubble`, `ConversationMiniMap`, `ConversationMetadataPopover`, tool call components (`ToolCallView`, `ToolCallGroupView`, `ToolResultPopover`, `WhisperCollapsedGroup`), `CommitStrip`, `NoteEditCard`, and utilities (`commitDetection`, `toolGroupUtils`, `timeline-utils`, `chatConversationUtils`). Barrel: `chat/index.ts`.
 - `processes/` — Process-list/detail UI: `ProcessDetail`, `ProcessesView`, `ProcessesSidebar`, `ProcessFilters`, `QueueTaskSkeleton`, `WorkflowResultCard`, `MarkdownReviewDialog`, plus `dag/` sub-module for workflow DAG visualization.
-- `shared/` — Generic UI primitives: `Button`, `Card`, `Dialog`, `Spinner`, `MarkdownView`, `CopySectionBtn`, `RichTextInput`, `ImageGallery`, `FilePathLink`, `ContextWindowIndicator`, `JsonResponseView`, `json-utils`, etc. Barrel: `shared/index.ts`.
-- `repos/` — Per-repo chat detail, sidebar, activity list. Consumes `chat/` components.
+- `shared/` — Feature-level shared components: `MarkdownView`, `MarkdownReviewEditor`, `RichTextInput`, `SourceEditor`, `FollowPromptDialog`, `ResolveContextDialog`, `FilePreview`, `NotificationBell`, `SkillDetailPanel`, etc. Barrel: `shared/index.ts`.
+- `ui/` — Generic UI primitives: `Button`, `Card`, `Dialog`, `Spinner`, `Badge`, `Toast`, `cn`, `ImageGallery`, `FilePathLink`, `ContextWindowIndicator`, `JsonResponseView`, `json-utils`, etc. Barrel: `ui/index.ts`.
+- `repos/` — Per-repo views: `ReposView`, `ReposGrid`. Consumes `features/` components directly.
 - `tasks/` — Task/plan/comment management. Consumes `shared/MarkdownView`.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.

@@ -1,4 +1,4 @@
-import { Spinner } from '../../../shared/Spinner';
+import { Spinner } from '../../../ui/Spinner';
 import { CommentThreadCard } from './CommentThreadCard';
 import type { UseCommentsReturn, CommentFilter } from './useComments';
 import './commentsPanel.css';

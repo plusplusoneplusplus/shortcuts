@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { TruncatedPath } from '../../../../src/server/spa/client/react/shared/TruncatedPath';
+import { TruncatedPath } from '../../../../src/server/spa/client/react/ui/TruncatedPath';
 
 describe('TruncatedPath', () => {
     it('renders nothing for empty path', () => {

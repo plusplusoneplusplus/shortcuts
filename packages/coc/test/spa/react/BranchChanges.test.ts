@@ -14,10 +14,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'branches', 'BranchChanges.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 const REPO_GIT_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'
 );
@@ -30,12 +26,6 @@ describe('BranchChanges', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { BranchChanges }");
-            expect(indexSource).toContain("from '../features/git/branches/BranchChanges'");
-        });
-
         it('exports BranchChanges as a named export', () => {
             expect(source).toContain('export function BranchChanges');
         });
@@ -257,9 +247,9 @@ describe('BranchChanges', () => {
             expect(source).toContain('expandedFile');
         });
 
-        it('imports Spinner from shared', () => {
+        it('imports Spinner from ui', () => {
             expect(source).toContain("Spinner");
-            expect(source).toContain("from '../../../shared'");
+            expect(source).toContain("from '../../../ui'");
         });
 
         it('shows loading spinner during file fetch', () => {

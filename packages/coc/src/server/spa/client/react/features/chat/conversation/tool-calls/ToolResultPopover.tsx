@@ -13,7 +13,7 @@ import ReactDOM from 'react-dom';
 import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
 import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../../../shared/BottomSheet';
+import { BottomSheet } from '../../../../ui/BottomSheet';
 
 const MAX_PREVIEW_LENGTH = 2000;
 

@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { TruncatedPath } from '../../../shared';
+import { TruncatedPath } from '../../../ui';
 
 // ----- Types -----
 

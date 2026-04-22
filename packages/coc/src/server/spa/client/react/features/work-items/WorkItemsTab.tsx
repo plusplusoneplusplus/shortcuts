@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Button, cn } from '../../shared';
-import { Spinner } from '../../shared';
+import { Button, cn } from '../../ui';
+import { Spinner } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';

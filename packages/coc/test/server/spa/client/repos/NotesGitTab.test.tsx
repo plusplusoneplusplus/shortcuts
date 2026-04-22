@@ -43,7 +43,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel',
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ onClick, loading, disabled, children, ...rest }: any) => (
         <button
             onClick={onClick}

@@ -168,12 +168,12 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContaine
     useContainerWidth: () => 800,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ReferencesDropdown', () => ({
     ReferencesDropdown: () => null,
     ReferenceList: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: () => null,
 }));
 
@@ -181,7 +181,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     ConversationMetadataPopover: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/ContextWindowIndicator', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ContextWindowIndicator', () => ({
     ContextWindowIndicator: () => null,
 }));
 
@@ -199,7 +199,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 

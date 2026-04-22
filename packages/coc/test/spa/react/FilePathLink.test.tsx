@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import React from 'react';
-import { FilePathLink } from '../../../src/server/spa/client/react/shared/FilePathLink';
+import { FilePathLink } from '../../../src/server/spa/client/react/ui/FilePathLink';
 
 describe('FilePathLink', () => {
     it('renders a span with file-path-link class', () => {

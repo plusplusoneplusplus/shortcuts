@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { PastePreview } from '../../../src/server/spa/client/react/shared/PastePreview';
+import { PastePreview } from '../../../src/server/spa/client/react/ui/PastePreview';
 
 describe('PastePreview', () => {
     it('renders nothing when charCount is 0', () => {

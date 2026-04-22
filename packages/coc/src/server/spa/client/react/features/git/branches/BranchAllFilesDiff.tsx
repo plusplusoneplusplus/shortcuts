@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import { Spinner, TruncatedPath } from '../../../shared';
+import { Spinner, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 import { STATUS_COLORS, STATUS_LABELS, normalizeStatus } from '../diff/FileTree';
 

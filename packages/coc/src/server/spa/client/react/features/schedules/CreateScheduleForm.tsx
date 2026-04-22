@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, cn } from '../../shared';
+import { Button, cn } from '../../ui';
 import { getApiBase } from '../../utils/config';
 import { fetchWorkflows } from '../workflow/workflow-api';
 import { parseCronToInterval, describeCron, intervalToCron, CRON_EXAMPLES } from '../../utils/cron';

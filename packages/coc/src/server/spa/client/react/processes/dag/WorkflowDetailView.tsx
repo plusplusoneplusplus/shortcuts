@@ -10,7 +10,7 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { fetchApi } from '../../hooks/useApi';
 import { formatDuration, statusIcon } from '../../utils/format';
 import { detectDarkMode } from '../../utils/theme';
-import { BottomSheet } from '../../shared';
+import { BottomSheet } from '../../ui';
 import type { PhaseDetail } from './WorkflowPhasePopover';
 
 export interface WorkflowDetailViewProps {

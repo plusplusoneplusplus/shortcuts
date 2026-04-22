@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { AttachmentPreviews } from '../../../src/server/spa/client/react/shared/AttachmentPreviews';
+import { AttachmentPreviews } from '../../../src/server/spa/client/react/ui/AttachmentPreviews';
 import type { ChatAttachment } from '../../../src/server/spa/client/react/types/attachments';
 
 afterEach(() => {

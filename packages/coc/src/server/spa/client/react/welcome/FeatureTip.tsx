@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { cn } from '../shared/cn';
+import { cn } from '../ui/cn';
 import { TIPS } from './tips';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 

@@ -251,7 +251,7 @@ describe('ChatDetail', () => {
         });
 
         it('imports AttachmentPreviews component', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { AttachmentPreviews } from '../../shared/AttachmentPreviews'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { AttachmentPreviews } from '../../ui/AttachmentPreviews'");
         });
 
         it('destructures useFileAttachments result', () => {

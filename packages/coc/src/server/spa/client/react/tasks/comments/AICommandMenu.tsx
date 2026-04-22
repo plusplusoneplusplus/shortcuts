@@ -6,10 +6,10 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Button, Spinner } from '../../shared';
+import { Button, Spinner } from '../../ui';
 import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../shared/BottomSheet';
+import { BottomSheet } from '../../ui/BottomSheet';
 
 export interface AICommandMenuProps {
     onCommand: (commandId: string, customQuestion?: string) => void;

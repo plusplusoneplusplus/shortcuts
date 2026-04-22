@@ -4,11 +4,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 import type { TaskCommentCategory } from '../../../comments/task-comments-types';
 import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../comments/task-comments-types';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../shared/BottomSheet';
+import { BottomSheet } from '../../ui/BottomSheet';
 import { useDraggable } from '../../hooks/ui/useDraggable';
 
 // Re-export for backward compatibility (tests and other consumers import from here).

@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useTaskPanel } from '../contexts/TaskContext';
-import { Button } from '../shared';
+import { Button } from '../ui';
 
 interface TaskPreviewProps {
     wsId: string;

@@ -1,7 +1,7 @@
 import type { DAGNodeState } from './types';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../shared/BottomSheet';
+import { BottomSheet } from '../../ui/BottomSheet';
 
 export interface PhaseDetail {
     phase: string;

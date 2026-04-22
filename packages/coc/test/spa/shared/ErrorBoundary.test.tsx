@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ErrorBoundary } from '../../../src/server/spa/client/react/shared/ErrorBoundary';
+import { ErrorBoundary } from '../../../src/server/spa/client/react/ui/ErrorBoundary';
 
 /* ---------- helpers ---------- */
 

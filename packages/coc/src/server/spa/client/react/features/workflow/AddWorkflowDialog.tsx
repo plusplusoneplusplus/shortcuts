@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef } from 'react';
-import { Button, Dialog, Badge, Spinner } from '../../shared';
+import { Button, Dialog, Badge, Spinner } from '../../ui';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { createWorkflow, generateWorkflow } from './workflow-api';
 

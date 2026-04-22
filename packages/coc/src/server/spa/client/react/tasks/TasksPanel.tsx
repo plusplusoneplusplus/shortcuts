@@ -16,7 +16,7 @@ import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
-import { Spinner } from '../shared';
+import { Spinner } from '../ui';
 import { normalizeRemoteUrl } from '../repos/repoGrouping';
 import type { TasksPanelNavState } from '../types/dashboard';
 import { parseTaskHashParams } from '../utils/taskHashParams';

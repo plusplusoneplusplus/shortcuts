@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog } from '../../shared/Dialog';
-import { Button } from '../../shared';
+import { Dialog } from '../../ui/Dialog';
+import { Button } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 
 export interface CreateWorkItemDialogProps {

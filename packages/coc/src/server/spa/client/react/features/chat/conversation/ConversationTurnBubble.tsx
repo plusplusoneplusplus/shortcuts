@@ -2,14 +2,14 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState, useMemo, useCallback } from 'react';
-import { cn, ImageGallery, Spinner } from '../../../shared';
+import { cn, ImageGallery, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { MarkdownView } from '../../../shared/MarkdownView';
 import { ToolCallView } from './tool-calls/ToolCallView';
-import { JsonResponseView } from '../../../shared/JsonResponseView';
-import { isJsonResponse } from '../../../shared/json-utils';
+import { JsonResponseView } from '../../../ui/JsonResponseView';
+import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';

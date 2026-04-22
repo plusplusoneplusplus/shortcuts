@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Button } from '../../../src/server/spa/client/react/shared/Button';
+import { Button } from '../../../src/server/spa/client/react/ui/Button';
 
 describe('Button', () => {
     it('renders children for primary variant', () => {

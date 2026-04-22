@@ -13,10 +13,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 const FILE_TREE_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
 );
@@ -31,12 +27,6 @@ describe('CommitList', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { CommitList }");
-            expect(indexSource).toContain("from '../features/git/commits/CommitList'");
-        });
-
         it('exports CommitList as a named export', () => {
             expect(source).toContain('export function CommitList');
         });

@@ -3,7 +3,7 @@
  * Styling matches AddRepoDialog / DAGBreadcrumb patterns.
  */
 
-import { cn } from '../../../shared/cn';
+import { cn } from '../../../ui/cn';
 
 export interface BreadcrumbsProps {
     /** Path segments from repo root to current directory, e.g. ["src", "server", "spa"] */

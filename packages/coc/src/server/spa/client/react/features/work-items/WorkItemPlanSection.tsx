@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Button, cn } from '../../shared';
+import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { FloatingDialog } from '../../../../src/server/spa/client/react/shared/FloatingDialog';
+import { FloatingDialog } from '../../../../src/server/spa/client/react/ui/FloatingDialog';
 
 afterEach(() => {
     document.querySelectorAll('[data-testid="floating-dialog-panel"]').forEach(el => el.remove());

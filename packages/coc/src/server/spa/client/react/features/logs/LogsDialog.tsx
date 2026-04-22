@@ -3,7 +3,7 @@
  */
 
 import { lazy, Suspense } from 'react';
-import { Dialog } from '../../shared/Dialog';
+import { Dialog } from '../../ui/Dialog';
 
 const LogsView = lazy(() => import('./LogsView').then(m => ({ default: m.LogsView })));
 

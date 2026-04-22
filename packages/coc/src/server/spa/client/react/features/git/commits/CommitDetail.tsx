@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { copyToClipboard } from '../../../utils/format';
 import { useCachedDiff } from '../hooks/useCommitDiffCache';
-import { Spinner, Button } from '../../../shared';
+import { Spinner, Button } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';

@@ -5,8 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
-import { Button, Card, Spinner } from '../../shared';
-import { CapacityBar } from '../../shared/CapacityBar';
+import { Button, Card, Spinner } from '../../ui';
+import { CapacityBar } from '../../ui/CapacityBar';
 
 // ---------------------------------------------------------------------------
 // Types

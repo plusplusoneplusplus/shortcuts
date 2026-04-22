@@ -5,8 +5,8 @@
  */
 
 import { useState } from 'react';
-import { BottomSheet } from '../shared/BottomSheet';
-import { cn } from '../shared';
+import { BottomSheet } from '../ui/BottomSheet';
+import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
 
 const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];

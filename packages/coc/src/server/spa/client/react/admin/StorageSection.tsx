@@ -7,8 +7,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Spinner } from '../shared';
-import { Dialog } from '../shared/Dialog';
+import { Button, Spinner } from '../ui';
+import { Dialog } from '../ui/Dialog';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 

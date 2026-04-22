@@ -58,7 +58,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
     )),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
     AttachmentPreviews: () => null,
 }));
 
@@ -84,7 +84,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
     },
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 

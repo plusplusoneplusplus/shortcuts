@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { cn, Button } from '../../shared';
+import { cn, Button } from '../../ui';
 import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';

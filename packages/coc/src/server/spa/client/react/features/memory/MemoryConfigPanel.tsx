@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
-import { Button, Card, Spinner } from '../../shared';
+import { Button, Card, Spinner } from '../../ui';
 import { ExploreCachePanel } from './ExploreCachePanel';
 
 interface MemoryConfig {

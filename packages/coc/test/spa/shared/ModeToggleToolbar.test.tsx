@@ -2,8 +2,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
-import { ModeToggleToolbar } from '../../../src/server/spa/client/react/shared/ModeToggleToolbar';
-import type { ModeOption } from '../../../src/server/spa/client/react/shared/ModeToggleToolbar';
+import { ModeToggleToolbar } from '../../../src/server/spa/client/react/ui/ModeToggleToolbar';
+import type { ModeOption } from '../../../src/server/spa/client/react/ui/ModeToggleToolbar';
 
 afterEach(() => {
     cleanup();

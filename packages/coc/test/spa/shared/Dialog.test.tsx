@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Dialog } from '../../../src/server/spa/client/react/shared/Dialog';
+import { Dialog } from '../../../src/server/spa/client/react/ui/Dialog';
 
 describe('Dialog', () => {
     it('when open={false}: renders nothing', () => {

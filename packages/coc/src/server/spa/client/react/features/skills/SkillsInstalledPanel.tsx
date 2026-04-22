@@ -5,7 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { Button, SkillListItem } from '../../shared';
+import { Button } from '../../ui';
+import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
 
 

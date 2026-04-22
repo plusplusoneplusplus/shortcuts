@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ContextWindowIndicator } from '../../../src/server/spa/client/react/shared/ContextWindowIndicator';
+import { ContextWindowIndicator } from '../../../src/server/spa/client/react/ui/ContextWindowIndicator';
 
 describe('ContextWindowIndicator', () => {
     it('renders nothing when tokenLimit is not provided', () => {

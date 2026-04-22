@@ -6,8 +6,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
-import { AttachmentPreviews } from '../../shared/AttachmentPreviews';
-import { cn } from '../../shared/cn';
+import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
+import { cn } from '../../ui/cn';
 import { MODE_BORDER_COLORS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';

@@ -14,7 +14,7 @@ import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../contexts/AppContext';
-import { cn } from '../shared';
+import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
 

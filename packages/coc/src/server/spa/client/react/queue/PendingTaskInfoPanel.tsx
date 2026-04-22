@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { Button, Spinner } from '../shared';
+import { Button, Spinner } from '../ui';
 import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload';
 
 export interface PendingTaskInfoPanelProps {

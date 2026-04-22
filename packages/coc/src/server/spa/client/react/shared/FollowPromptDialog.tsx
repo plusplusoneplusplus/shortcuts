@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { FloatingDialog, Button, Spinner } from './index';
+import { FloatingDialog, Spinner } from '../ui';
+import { Button } from '../ui/Button';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';

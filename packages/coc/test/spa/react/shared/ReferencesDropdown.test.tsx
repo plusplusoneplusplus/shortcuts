@@ -26,7 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
         ) : null,
 }));
 
-import { ReferencesDropdown } from '../../../../src/server/spa/client/react/shared/ReferencesDropdown';
+import { ReferencesDropdown } from '../../../../src/server/spa/client/react/ui/ReferencesDropdown';
 
 // FilePathLink renders a span with the path — no context needed
 

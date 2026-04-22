@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ToastContainer } from '../../../src/server/spa/client/react/shared/Toast';
-import type { ToastItem } from '../../../src/server/spa/client/react/shared/Toast';
+import { ToastContainer } from '../../../src/server/spa/client/react/ui/Toast';
+import type { ToastItem } from '../../../src/server/spa/client/react/ui/Toast';
 
 describe('ToastContainer', () => {
     const makeToasts = (count: number): ToastItem[] =>

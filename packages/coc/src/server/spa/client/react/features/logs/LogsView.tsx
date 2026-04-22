@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { getApiBase } from '../../utils/config';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

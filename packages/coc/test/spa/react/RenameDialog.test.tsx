@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { RenameDialog } from '../../../src/server/spa/client/react/shared/RenameDialog';
+import { RenameDialog } from '../../../src/server/spa/client/react/ui/RenameDialog';
 
 // Portal passthrough so Dialog renders inline
 vi.mock('react-dom', async (importOriginal) => {

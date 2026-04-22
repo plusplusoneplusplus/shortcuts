@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { cn, Button, Spinner } from '../../shared';
+import { cn, Button, Spinner } from '../../ui';
 import { clampToViewport } from './InlineCommentPopup';
 import { AICommandMenu } from './AICommandMenu';
 import { MarkdownView } from '../../shared/MarkdownView';
@@ -13,7 +13,7 @@ import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import type { AnyComment, AnyCommentCategory } from '../../../comments/shared-comment-types';
 import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../comments/shared-comment-types';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { BottomSheet } from '../../shared/BottomSheet';
+import { BottomSheet } from '../../ui/BottomSheet';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 

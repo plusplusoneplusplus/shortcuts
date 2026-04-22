@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import { Spinner, Button, TruncatedPath } from '../../../shared';
+import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';

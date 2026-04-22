@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Dialog } from '../shared/Dialog';
-import { Button } from '../shared/Button';
+import { Dialog } from '../ui/Dialog';
+import { Button } from '../ui/Button';
 
 const DOC_TYPES = ['', 'plan', 'spec', 'test', 'notes', 'todo', 'design', 'impl', 'review'] as const;
 

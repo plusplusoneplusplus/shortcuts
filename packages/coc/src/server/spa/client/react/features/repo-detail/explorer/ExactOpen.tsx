@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { fetchApi } from '../../../hooks/useApi';
-import { cn } from '../../../shared/cn';
+import { cn } from '../../../ui/cn';
 
 /** Prefix used to mark trusted absolute-path file selections. */
 export const TRUSTED_PATH_PREFIX = '__trusted__:';

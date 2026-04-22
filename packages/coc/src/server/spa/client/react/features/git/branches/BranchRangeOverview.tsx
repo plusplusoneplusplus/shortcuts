@@ -16,7 +16,7 @@ import type { GitCommitItem } from '../commits/CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
-import { Spinner } from '../../../shared';
+import { Spinner } from '../../../ui';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';

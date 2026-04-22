@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Dialog } from '../../shared/Dialog';
+import { Dialog } from '../../ui/Dialog';
 import { memoryApi } from './memoryApi';
 import { getApiBase } from '../../utils/config';
 import { useModels } from '../../hooks/useModels';

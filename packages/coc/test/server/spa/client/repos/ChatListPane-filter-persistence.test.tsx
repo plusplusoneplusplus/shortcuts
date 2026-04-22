@@ -12,7 +12,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 // Mocks – declared before importing the component under test
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Card: ({ children, className, onClick, 'data-task-id': dtid, 'data-testid': dtestid, ...rest }: any) => (
         <div className={className} onClick={onClick} data-task-id={dtid} data-testid={dtestid ?? 'card'}>{children}</div>
     ),
@@ -32,7 +32,7 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     ),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 
@@ -75,7 +75,7 @@ vi.mock('../../../../../src/server/spa/client/react/tasks/comments/ContextMenu',
     ContextMenu: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/RenameDialog', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui/RenameDialog', () => ({
     RenameDialog: () => null,
 }));
 

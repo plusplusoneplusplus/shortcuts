@@ -4,7 +4,7 @@
  */
 
 import { useRef } from 'react';
-import { Card, Badge, Button } from '../shared';
+import { Card, Badge, Button } from '../ui';
 import { MarkdownView } from '../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { useMermaid } from '../hooks/ui/useMermaid';

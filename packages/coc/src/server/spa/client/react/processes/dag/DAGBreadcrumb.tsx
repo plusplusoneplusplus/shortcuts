@@ -1,5 +1,5 @@
 import type { DAGNodeData } from './types';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 
 export interface DAGBreadcrumbProps {
     nodes: DAGNodeData[];

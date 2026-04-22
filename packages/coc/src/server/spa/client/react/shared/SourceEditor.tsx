@@ -1,5 +1,5 @@
 import { useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
-import { cn } from './cn';
+import { cn } from '../ui/cn';
 
 export interface SourceEditorProps {
     content: string;

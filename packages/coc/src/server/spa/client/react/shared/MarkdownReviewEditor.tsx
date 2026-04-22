@@ -10,18 +10,18 @@ import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/ui/useMarkdownPreview';
 import type { RenderCommentInfo } from '../../diff/markdown-renderer';
 import { useTaskComments } from '../tasks/hooks/useTaskComments';
-import { Spinner } from './Spinner';
+import { Spinner } from '../ui/Spinner';
 import { SourceEditor } from './SourceEditor';
-import { ModeToggleToolbar } from './ModeToggleToolbar';
-import type { ModeOption } from './ModeToggleToolbar';
-import { Button } from './Button';
+import { ModeToggleToolbar } from '../ui/ModeToggleToolbar';
+import type { ModeOption } from '../ui/ModeToggleToolbar';
+import { Button } from '../ui/Button';
 import { UpdateDocumentDialog } from './UpdateDocumentDialog';
 import { ResolveContextDialog, shouldSkipResolveDialog } from './ResolveContextDialog';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
-import { ResponsiveSidebar } from './ResponsiveSidebar';
+import { ResponsiveSidebar } from '../ui/ResponsiveSidebar';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../comments/task-comments-types';
 import {
     createAnchorData,

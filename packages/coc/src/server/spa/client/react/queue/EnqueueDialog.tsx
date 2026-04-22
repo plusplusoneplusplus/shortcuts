@@ -6,13 +6,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
-import { Dialog, FloatingDialog, Button } from '../shared';
+import { Dialog, FloatingDialog, Button } from '../ui';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useImagePaste } from '../features/chat/hooks/useImagePaste';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { ImagePreviews } from '../shared/ImagePreviews';
+import { ImagePreviews } from '../ui/ImagePreviews';
 import { filterGitMetadataFolders } from '../tasks/hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';

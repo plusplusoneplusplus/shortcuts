@@ -7,8 +7,8 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, cn, FilterDropdown } from '../../shared';
-import type { FilterItem } from '../../shared';
+import { Card, Button, cn, FilterDropdown } from '../../ui';
+import type { FilterItem } from '../../ui';
 import { getApiBase } from '../../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
@@ -16,7 +16,7 @@ import { buildRows } from './conversation/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../../queue/hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import { RenameDialog } from '../../shared/RenameDialog';
+import { RenameDialog } from '../../ui/RenameDialog';
 import { fetchApi } from '../../hooks/useApi';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { getDraft } from './hooks/useDraftStore';

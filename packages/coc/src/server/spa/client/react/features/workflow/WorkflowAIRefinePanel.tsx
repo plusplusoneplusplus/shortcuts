@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef } from 'react';
-import { Button, Spinner } from '../../shared';
+import { Button, Spinner } from '../../ui';
 import { refineWorkflow } from './workflow-api';
 import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
 import { generateUnifiedDiff } from '../git/diff/unifiedDiffUtils';

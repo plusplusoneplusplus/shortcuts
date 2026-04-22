@@ -3,7 +3,7 @@
  * in the component tree, including dialogs that may unmount before the toast expires.
  */
 import { createContext, useContext, type ReactNode } from 'react';
-import type { ToastItem } from '../shared/Toast';
+import type { ToastItem } from '../ui/Toast';
 
 export interface ToastContextValue {
     addToast: (message: string, type?: ToastItem['type']) => void;

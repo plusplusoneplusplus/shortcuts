@@ -6,7 +6,7 @@
 
 import { useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import type { MemorySubTab } from '../../types/dashboard';
 import { FeatureTip } from '../../welcome/FeatureTip';
 import { BoundedMemoryPanel } from './BoundedMemoryPanel';

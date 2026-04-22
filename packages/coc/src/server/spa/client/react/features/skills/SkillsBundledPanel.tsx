@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 
 interface BundledSkill {
     name: string;

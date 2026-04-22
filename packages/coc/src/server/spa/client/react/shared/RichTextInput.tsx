@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { cn } from './cn';
+import { cn } from '../ui/cn';
 
 export interface RichTextInputHandle {
     getValue(): string;

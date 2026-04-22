@@ -12,7 +12,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { Badge, Spinner } from '../../shared';
+import { Badge, Spinner } from '../../ui';
 import { ConversationArea } from '../chat/ConversationArea';
 import { ConversationMiniMap } from '../chat/conversation/ConversationMiniMap';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';

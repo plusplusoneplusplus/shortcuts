@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SectionHeader } from '../../../../src/server/spa/client/react/shared/SectionHeader';
+import { SectionHeader } from '../../../../src/server/spa/client/react/ui/SectionHeader';
 
 describe('SectionHeader', () => {
     it('renders the title', () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '../shared/Button';
+import { Button } from '../ui/Button';
 
 export interface ReposEmptyStateProps {
     onAddRepo: () => void;

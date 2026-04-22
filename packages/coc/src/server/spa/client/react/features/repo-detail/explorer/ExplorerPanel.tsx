@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
-import { Spinner } from '../../../shared';
+import { Spinner } from '../../../ui';
 import { fetchApi } from '../../../hooks/useApi';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';

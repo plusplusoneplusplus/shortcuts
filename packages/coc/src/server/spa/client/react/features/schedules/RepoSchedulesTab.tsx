@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { cn } from '../../shared';
+import { cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';

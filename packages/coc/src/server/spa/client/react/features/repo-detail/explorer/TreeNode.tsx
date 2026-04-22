@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useRef, useState, type Ref } from 'react';
-import { cn } from '../../../shared/cn';
-import { Spinner } from '../../../shared';
+import { cn } from '../../../ui/cn';
+import { Spinner } from '../../../ui';
 import { fetchApi } from '../../../hooks/useApi';
 import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import { filterEntries } from './FileTree';

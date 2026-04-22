@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 // No external hooks needed — BottomSheet is self-contained
-import { BottomSheet } from '../../../../src/server/spa/client/react/shared/BottomSheet';
+import { BottomSheet } from '../../../../src/server/spa/client/react/ui/BottomSheet';
 
 describe('BottomSheet', () => {
     let originalOverflow: string;

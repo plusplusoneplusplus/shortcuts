@@ -22,7 +22,7 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
-import { ToastContainer, useToast } from './shared';
+import { ToastContainer, useToast } from './ui';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
@@ -32,7 +32,7 @@ import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeModal } from './welcome/WelcomeModal';
 import { ConceptTour } from './welcome/ConceptTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
-import { ErrorBoundary } from './shared/ErrorBoundary';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 
 interface MarkdownReviewDialogState {
     open: boolean;

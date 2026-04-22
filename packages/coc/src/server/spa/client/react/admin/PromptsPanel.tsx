@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Spinner } from '../shared';
+import { Spinner } from '../ui';
 import { getApiBase } from '../utils/config';
 import { PromptCard } from './PromptCard';
 

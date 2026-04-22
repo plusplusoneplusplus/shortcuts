@@ -10,7 +10,7 @@ import {
     normalizeRefPath,
     deduplicateReferenceFiles,
     ReferenceList,
-} from '../../../../../src/server/spa/client/react/shared/ReferencesDropdown';
+} from '../../../../../src/server/spa/client/react/ui/ReferencesDropdown';
 
 // ---------------------------------------------------------------------------
 // normalizeRefPath

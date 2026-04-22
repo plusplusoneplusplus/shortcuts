@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
-import { Badge, Button, Spinner, SendButton } from '../../shared';
+import { Badge, Button, Spinner, SendButton } from '../../ui';
 import { ConversationTurnBubble } from '../../features/chat/conversation/ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';

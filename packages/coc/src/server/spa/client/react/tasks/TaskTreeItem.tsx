@@ -3,7 +3,7 @@
  */
 
 import { useRef } from 'react';
-import { cn } from '../shared';
+import { cn } from '../ui';
 import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon, getTaskNodePath } from './hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from './hooks/useTaskTree';
 

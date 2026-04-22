@@ -38,7 +38,7 @@ vi.mock('../../../../../../src/server/spa/client/react/hooks/useModels', () => (
 }));
 
 // Mock Dialog used by AggregatePanel
-vi.mock('../../../../../../src/server/spa/client/react/shared/Dialog', () => ({
+vi.mock('../../../../../../src/server/spa/client/react/ui/Dialog', () => ({
     Dialog: ({ children, open, title, footer }: any) =>
         open ? (
             <div data-testid="dialog" aria-label={title}>

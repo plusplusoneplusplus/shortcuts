@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import { Spinner } from '../../../shared';
+import { Spinner } from '../../../ui';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 

@@ -24,8 +24,8 @@ describe('RunScriptDialog Dialog open prop', () => {
 });
 
 describe('RunScriptDialog responsive container', () => {
-    it('imports FloatingDialog from shared', () => {
-        expect(RUN_SCRIPT_SOURCE).toMatch(/import\s*\{[^}]*FloatingDialog[^}]*\}\s*from\s*'\.\.\/shared'/);
+    it('imports FloatingDialog from ui', () => {
+        expect(RUN_SCRIPT_SOURCE).toMatch(/import\s*\{[^}]*FloatingDialog[^}]*\}\s*from\s*'\.\.\/ui'/);
     });
 
     it('imports useBreakpoint for mobile detection', () => {

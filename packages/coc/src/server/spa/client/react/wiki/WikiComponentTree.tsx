@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { cn } from '../shared/cn';
+import { cn } from '../ui/cn';
 
 interface ComponentInfo {
     id: string;

@@ -202,13 +202,14 @@ src/
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)
-│               ├── repos/               # Repository management (45+ components: git, workflows, branches, diffs)
+│               ├── repos/               # Repository management: ReposView, ReposGrid; imports from features/ directly
 │               │   ├── slash-command-parser.ts  # Parses `/skill` and `/model` (meta-command) tokens from chat input
 │               │   ├── ModelCommandMenu.tsx      # Model picker dropdown for the `/model` meta-command
 │               │   ├── useModelCommand.ts        # Hook managing model picker state and modelOverride
 │               │   └── explorer/        # File explorer with Monaco Editor
-│               ├── shared/              # Shared components (MarkdownReviewEditor, Dialog, Button, SourceEditor, etc.)
+│               ├── shared/              # Feature-level shared components (MarkdownReviewEditor, SourceEditor, RichTextInput, MarkdownView, etc.)
 │               │   └── file-path/       # File path hover preview (delegated tooltip for .file-path-link spans)
+│               ├── ui/                  # UI primitives (Button, Card, Dialog, Spinner, Badge, Toast, cn, etc.)
 │               ├── tasks/               # Task management UI (TaskTree, TaskPreview, TaskActions)
 │               │   └── comments/        # Inline comment system (CommentCard, CommentSidebar, SelectionToolbar)
 │               ├── types/               # TypeScript type definitions

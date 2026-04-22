@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
-import { ResponsiveSidebar } from '../../shared/ResponsiveSidebar';
+import { ResponsiveSidebar } from '../../ui/ResponsiveSidebar';
 import { NotesSidebar } from './editor/NotesSidebar';
 import { NoteEditor } from './editor/NoteEditor';
 import type { NoteViewMode } from './editor/NoteEditor';

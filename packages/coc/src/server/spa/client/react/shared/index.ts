@@ -1,68 +1,4 @@
-// ── UI primitives (canonical source: ../ui/) ──────────────────────────
-// These re-exports keep `from '../shared'` working for consumers that
-// haven't migrated to `from '../ui'` yet.
-export { Button } from '../ui/Button';
-export type { ButtonProps } from '../ui/Button';
-export { Card } from '../ui/Card';
-export type { CardProps } from '../ui/Card';
-export { Dialog } from '../ui/Dialog';
-export type { DialogProps } from '../ui/Dialog';
-export { FloatingDialog } from '../ui/FloatingDialog';
-export type { FloatingDialogProps } from '../ui/FloatingDialog';
-export { Badge } from '../ui/Badge';
-export type { BadgeProps } from '../ui/Badge';
-export { Spinner } from '../ui/Spinner';
-export type { SpinnerProps } from '../ui/Spinner';
-export { ToastContainer, useToast } from '../ui/Toast';
-export type { ToastProps } from '../ui/Toast';
-export { cn } from '../ui/cn';
-export { ImagePreviews } from '../ui/ImagePreviews';
-export type { ImagePreviewsProps } from '../ui/ImagePreviews';
-export { ImageGallery } from '../ui/ImageGallery';
-export type { ImageGalleryProps } from '../ui/ImageGallery';
-export { ImageLightbox } from '../ui/ImageLightbox';
-export type { ImageLightboxProps } from '../ui/ImageLightbox';
-export { SuggestionChips } from '../ui/SuggestionChips';
-export type { SuggestionChipsProps } from '../ui/SuggestionChips';
-export { ResponsiveSidebar } from '../ui/ResponsiveSidebar';
-export type { ResponsiveSidebarProps } from '../ui/ResponsiveSidebar';
-export { BottomSheet } from '../ui/BottomSheet';
-export type { BottomSheetProps } from '../ui/BottomSheet';
-export { FilePathLink } from '../ui/FilePathLink';
-export type { FilePathLinkProps } from '../ui/FilePathLink';
-export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
-export { TruncatedPath } from '../ui/TruncatedPath';
-export type { TruncatedPathProps } from '../ui/TruncatedPath';
-export { FilterDropdown } from '../ui/FilterDropdown';
-export type { FilterDropdownProps, FilterItem } from '../ui/FilterDropdown';
-export { SectionHeader } from '../ui/SectionHeader';
-export type { SectionHeaderProps } from '../ui/SectionHeader';
-export { ErrorBoundary } from '../ui/ErrorBoundary';
-export { SendButton, SplitSendButton } from '../ui/SplitSendButton';
-export type { SendButtonProps, SplitSendButtonProps } from '../ui/SplitSendButton';
-export { CommentPanelAdapter } from '../ui/CommentPanelAdapter';
-export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanelProps } from '../ui/CommentPanelAdapter';
-export { CopySectionBtn } from '../ui/CopySectionBtn';
-export { ContextWindowIndicator } from '../ui/ContextWindowIndicator';
-export { JsonResponseView } from '../ui/JsonResponseView';
-export { isJsonResponse } from '../ui/json-utils';
-export { SkeletonLine, SkeletonCard, SkeletonList, SkeletonListItem } from '../ui/SkeletonLoader';
-export { CapacityBar } from '../ui/CapacityBar';
-export { ModeToggleToolbar } from '../ui/ModeToggleToolbar';
-export type { ModeOption, ModeToggleToolbarProps } from '../ui/ModeToggleToolbar';
-export { AttachmentPreviews } from '../ui/AttachmentPreviews';
-export type { AttachmentPreviewsProps } from '../ui/AttachmentPreviews';
-export { AttachedContextPreviews } from '../ui/AttachedContextPreviews';
-export type { AttachedContextPreviewsProps } from '../ui/AttachedContextPreviews';
-export { PastePreview } from '../ui/PastePreview';
-export type { PastePreviewProps } from '../ui/PastePreview';
-export { CreatedFilesDropdown } from '../ui/CreatedFilesDropdown';
-export { ReferencesDropdown, ReferenceList, normalizeRefPath, deduplicateReferenceFiles } from '../ui/ReferencesDropdown';
-export type { ReferencesDropdownProps } from '../ui/ReferencesDropdown';
-export { RenameDialog } from '../ui/RenameDialog';
-export type { RenameDialogProps } from '../ui/RenameDialog';
-
-// ── Feature-level shared (canonical source: this directory) ────────────
+// ── Feature-level shared components (canonical source: this directory) ──
 export { SkillDetailPanel } from './SkillDetailPanel';
 export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
 export { SkillListItem } from './SkillListItem';
@@ -88,3 +24,4 @@ export type { FilePreviewProps } from './FilePreview';
 export { NotificationBell } from './NotificationBell';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
+export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';

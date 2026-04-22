@@ -1,4 +1,4 @@
-import { cn } from '../../shared';
+import { cn } from '../../ui';
 import { prStatusBadge, formatTimestamp } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 

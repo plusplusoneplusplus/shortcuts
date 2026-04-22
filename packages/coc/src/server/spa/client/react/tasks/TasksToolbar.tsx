@@ -4,7 +4,7 @@
 
 import type { RefObject } from 'react';
 import type { ReactElement } from 'react';
-import { Button } from '../shared/Button';
+import { Button } from '../ui/Button';
 import { STATUS_PILLS, type TaskStatusValue } from './hooks/useTaskTree';
 
 interface TasksToolbarProps {

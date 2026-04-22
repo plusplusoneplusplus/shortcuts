@@ -5,7 +5,7 @@
  * border, leading chevron, and always-visible count badge.
  */
 
-import { cn } from '../../../shared';
+import { cn } from '../../../ui';
 import { formatRelativeTime } from '../../../utils/format';
 import type { HistoryGroup } from '../history-grouping';
 

@@ -6,7 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
-import { SendButton, SplitSendButton } from '../../../../../src/server/spa/client/react/shared/SplitSendButton';
+import { SendButton, SplitSendButton } from '../../../../../src/server/spa/client/react/ui/SplitSendButton';
 
 // ---------------------------------------------------------------------------
 // Helpers

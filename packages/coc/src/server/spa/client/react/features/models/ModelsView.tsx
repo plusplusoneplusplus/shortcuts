@@ -3,7 +3,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { useModelConfig, type ModelInfo } from '../../hooks/useModels';
-import { Button } from '../../shared';
+import { Button } from '../../ui';
 
 type CapFilter = 'all' | 'vision' | 'reasoning';
 

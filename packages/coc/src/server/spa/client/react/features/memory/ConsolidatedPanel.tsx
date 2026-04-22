@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Dialog } from '../../shared/Dialog';
+import { Dialog } from '../../ui/Dialog';
 import { memoryApi } from './memoryApi';
 
 interface ConsolidatedPanelProps {

@@ -93,7 +93,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoDetail
     ],
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ResponsiveSidebar', () => ({
     ResponsiveSidebar: ({ children, width, tabletWidth }: any) => (
         <aside data-testid="responsive-sidebar" data-width={width} data-tablet-width={tabletWidth}>
             {children}

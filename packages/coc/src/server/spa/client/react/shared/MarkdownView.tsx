@@ -8,7 +8,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { CopySectionBtn } from './CopySectionBtn';
+import { CopySectionBtn } from '../ui/CopySectionBtn';
 
 export interface MarkdownSectionData {
     heading: string;

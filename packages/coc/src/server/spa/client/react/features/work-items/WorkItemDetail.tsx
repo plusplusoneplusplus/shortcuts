@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Button, cn } from '../../shared';
+import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';

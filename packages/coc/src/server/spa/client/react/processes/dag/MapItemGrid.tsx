@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import { MapItemCard } from './MapItemCard';
 
 export interface ChildProcess {

@@ -14,10 +14,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitDetail.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('CommitDetail', () => {
     let source: string;
 
@@ -26,12 +22,6 @@ describe('CommitDetail', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { CommitDetail }");
-            expect(indexSource).toContain("from '../features/git/commits/CommitDetail'");
-        });
-
         it('exports CommitDetail as a named export', () => {
             expect(source).toContain('export function CommitDetail');
         });

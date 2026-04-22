@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp, type OnboardingProgress } from '../contexts/AppContext';
-import { Button, Card, cn } from '../shared';
+import { Button, Card, cn } from '../ui';
 
 interface Step {
     id: string;

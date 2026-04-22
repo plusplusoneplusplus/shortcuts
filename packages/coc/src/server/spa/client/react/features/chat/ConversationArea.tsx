@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Spinner } from '../../shared';
+import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
-import { cn } from '../../shared/cn';
+import { cn } from '../../ui/cn';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';

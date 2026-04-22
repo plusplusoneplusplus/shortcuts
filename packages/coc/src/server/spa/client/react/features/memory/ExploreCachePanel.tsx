@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
-import { Button, Card, Spinner } from '../../shared';
+import { Button, Card, Spinner } from '../../ui';
 import type { ToolCallCacheStats } from '@plusplusoneplusplus/forge';
 
 export function ExploreCachePanel() {

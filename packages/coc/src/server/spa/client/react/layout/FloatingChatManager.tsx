@@ -7,8 +7,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { FloatingDialog } from '../shared/FloatingDialog';
-import { Spinner } from '../shared';
+import { FloatingDialog } from '../ui/FloatingDialog';
+import { Spinner } from '../ui';
 import { FloatingChatContent } from '../features/chat/FloatingChatContent';
 import { useFloatingChats, type FloatingChatEntry } from '../contexts/FloatingChatsContext';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';

@@ -145,12 +145,12 @@ describe('SkillContextDialog', () => {
     });
 
     describe('follows SummarizeChatDialog pattern', () => {
-        it('imports Dialog from shared', () => {
-            expect(source).toContain("import { Dialog } from '../../shared/Dialog'");
+        it('imports Dialog from ui', () => {
+            expect(source).toContain("import { Dialog } from '../../ui/Dialog'");
         });
 
-        it('imports Button from shared', () => {
-            expect(source).toContain("import { Button } from '../../shared'");
+        it('imports Button from ui', () => {
+            expect(source).toContain("import { Button } from '../../ui'");
         });
 
         it('imports useState, useEffect, useCallback from react', () => {

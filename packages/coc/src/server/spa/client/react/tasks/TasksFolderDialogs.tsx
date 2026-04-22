@@ -6,8 +6,8 @@ import type { FolderDialogAction } from './hooks/useFolderDialogHandlers';
 import type { TaskFolder } from './hooks/useTaskTree';
 import { FolderActionDialog } from './FolderActionDialog';
 import { FolderMoveDialog } from './FolderMoveDialog';
-import { Dialog } from '../shared/Dialog';
-import { Button } from '../shared/Button';
+import { Dialog } from '../ui/Dialog';
+import { Button } from '../ui/Button';
 
 interface TasksFolderDialogsProps {
     tree: TaskFolder | null;

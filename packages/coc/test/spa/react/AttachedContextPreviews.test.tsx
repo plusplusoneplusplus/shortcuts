@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { AttachedContextPreviews } from '../../../src/server/spa/client/react/shared/AttachedContextPreviews';
+import { AttachedContextPreviews } from '../../../src/server/spa/client/react/ui/AttachedContextPreviews';
 import type { AttachedContextItem } from '../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 
 function makeItem(overrides: Partial<AttachedContextItem> = {}): AttachedContextItem {

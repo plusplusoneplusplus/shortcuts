@@ -13,10 +13,6 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitTooltip.tsx'
 );
 
-const INDEX_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
-);
-
 describe('CommitTooltip', () => {
     let source: string;
 
@@ -25,12 +21,6 @@ describe('CommitTooltip', () => {
     });
 
     describe('exports', () => {
-        it('is exported from repos/index.ts', () => {
-            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
-            expect(indexSource).toContain("export { CommitTooltip }");
-            expect(indexSource).toContain("from '../features/git/commits/CommitTooltip'");
-        });
-
         it('exports CommitTooltip as a named export', () => {
             expect(source).toContain('export function CommitTooltip');
         });
@@ -167,8 +157,8 @@ describe('CommitTooltip', () => {
             expect(source).toContain('tooltipRef');
         });
 
-        it('imports Button from shared', () => {
-            expect(source).toContain("import { Button } from '../../../shared'");
+        it('imports Button from ui', () => {
+            expect(source).toContain("import { Button } from '../../../ui'");
         });
     });
 });

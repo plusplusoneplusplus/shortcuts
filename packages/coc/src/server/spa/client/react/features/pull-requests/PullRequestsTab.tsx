@@ -13,7 +13,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getApiBase } from '../../utils/config';
 import { useApp } from '../../contexts/AppContext';
-import { cn } from '../../shared';
+import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { PullRequestRow } from './PullRequestRow';

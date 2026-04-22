@@ -6,8 +6,8 @@ import type { FileCtxInfo } from './hooks/useFileDialogHandlers';
 import type { TaskFolder } from './hooks/useTaskTree';
 import { FolderActionDialog } from './FolderActionDialog';
 import { FileMoveDialog } from './FileMoveDialog';
-import { Dialog } from '../shared/Dialog';
-import { Button } from '../shared/Button';
+import { Dialog } from '../ui/Dialog';
+import { Button } from '../ui/Button';
 
 interface TasksFileDialogsProps {
     tree: TaskFolder | null;

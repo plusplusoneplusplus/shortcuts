@@ -3,8 +3,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Spinner, BottomSheet } from '../shared';
-import { cn } from '../shared/cn';
+import { Spinner, BottomSheet } from '../ui';
+import { cn } from '../ui/cn';
 import { fetchApi } from '../hooks/useApi';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
