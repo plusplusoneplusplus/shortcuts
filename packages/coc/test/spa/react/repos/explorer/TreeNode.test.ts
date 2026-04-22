@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'TreeNode.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'TreeNode.tsx'
 );
 
 describe('TreeNode', () => {
@@ -159,7 +159,7 @@ describe('TreeNode', () => {
         });
 
         it('uses fetchApi for API calls', () => {
-            expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
         });
 
         it('handles cancellation on unmount', () => {

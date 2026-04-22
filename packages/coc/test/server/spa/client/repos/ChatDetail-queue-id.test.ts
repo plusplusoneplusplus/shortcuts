@@ -71,7 +71,7 @@ describe('bareTaskId derivation', () => {
 
 describe('ChatDetail source-level regression', () => {
     const src = readFileSync(
-        resolve(__dirname, '../../../../../src/server/spa/client/react/repos/ChatDetail.tsx'),
+        resolve(__dirname, '../../../../../src/server/spa/client/react/features/chat/ChatDetail.tsx'),
         'utf-8',
     );
 

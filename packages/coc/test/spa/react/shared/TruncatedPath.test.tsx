@@ -97,11 +97,11 @@ describe('TruncatedPath', () => {
     });
 
     it('middle-truncates deeply nested paths (default maxSegments=5)', () => {
-        const path = 'packages/coc/src/server/spa/client/react/hooks/useScriptTemplates.ts';
+        const path = 'packages/coc/src/server/spa/client/react/features/templates/hooks/useScriptTemplates.ts';
         render(<TruncatedPath path={path} />);
         const el = screen.getByTitle(path);
-        // 8 dir segments > 5: head=3, tail=2 → packages/coc/src/…/react/hooks/
-        expect(el.children[0].textContent).toBe('packages/coc/src/…/react/hooks/');
+        // 10 dir segments > 5: head=3, tail=2 → packages/coc/src/…/templates/hooks/
+        expect(el.children[0].textContent).toBe('packages/coc/src/…/templates/hooks/');
         expect(el.children[1].textContent).toBe('useScriptTemplates.ts');
     });
 

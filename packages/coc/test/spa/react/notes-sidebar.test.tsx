@@ -8,11 +8,11 @@ import type { NoteTreeNode } from '../../../src/server/spa/client/react/features
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 
-const mockGetTree = vi.fn<[], Promise<NoteTreeNode[]>>();
+const mockGetTree = vi.fn<[], Promise<{ tree: NoteTreeNode[]; notesRoot: string }>>();
 const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
@@ -64,7 +64,7 @@ function renderSidebar(selectedPath: string | null = null, onSelectPage = vi.fn(
 describe('NotesSidebar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockGetTree.mockResolvedValue(SAMPLE_TREE);
+        mockGetTree.mockResolvedValue({ tree: SAMPLE_TREE, notesRoot: '/mock/notes' });
         mockCreateNode.mockResolvedValue({ path: 'new', type: 'page' });
         mockRenameNode.mockResolvedValue({ oldPath: 'x', newPath: 'y' });
         mockDeleteNode.mockResolvedValue(undefined);
@@ -76,16 +76,16 @@ describe('NotesSidebar', () => {
 
     it('renders loading state while fetching tree', async () => {
         let resolve!: (v: NoteTreeNode[]) => void;
-        mockGetTree.mockReturnValue(new Promise(r => { resolve = r; }));
+        mockGetTree.mockReturnValue(new Promise(r => { resolve = r as any; }));
 
         const { getByTestId } = renderSidebar();
         expect(getByTestId('notes-loading')).toBeTruthy();
 
-        await act(async () => resolve([]));
+        await act(async () => resolve({ tree: [], notesRoot: '/mock/notes' } as any));
     });
 
     it('renders empty state when tree has no nodes', async () => {
-        mockGetTree.mockResolvedValue([]);
+        mockGetTree.mockResolvedValue({ tree: [], notesRoot: '/mock/notes' });
         const { findByTestId } = renderSidebar();
         const empty = await findByTestId('notes-empty');
         expect(empty.textContent).toContain('No notebooks yet');
@@ -452,7 +452,7 @@ describe('NotesSidebar', () => {
     });
 
     it('right-click on empty state shows New Notebook and New Note', async () => {
-        mockGetTree.mockResolvedValue([]);
+        mockGetTree.mockResolvedValue({ tree: [], notesRoot: '/mock/notes' });
         const { findByTestId } = renderSidebar();
         const empty = await findByTestId('notes-empty');
 

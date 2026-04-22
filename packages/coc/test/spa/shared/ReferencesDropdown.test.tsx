@@ -3,14 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SHARED_DIR = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'shared'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'ui'
 );
-const REPOS_DIR = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos'
+const CHAT_DIR = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat'
 );
 
 const SOURCE = fs.readFileSync(path.join(SHARED_DIR, 'ReferencesDropdown.tsx'), 'utf-8');
-const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(CHAT_DIR, 'ChatHeader.tsx'), 'utf-8');
 
 describe('ReferencesDropdown component', () => {
     it('exports ReferencesDropdown', () => {

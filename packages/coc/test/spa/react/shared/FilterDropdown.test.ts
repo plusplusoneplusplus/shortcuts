@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const FILTER_DROPDOWN_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'shared', 'FilterDropdown.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'ui', 'FilterDropdown.tsx'
 );
 
 describe('FilterDropdown component', () => {

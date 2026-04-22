@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const QUICK_OPEN_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'QuickOpen.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'QuickOpen.tsx'
 );
 
 describe('QuickOpen component', () => {
@@ -55,7 +55,7 @@ describe('QuickOpen component', () => {
 
     describe('file fetching', () => {
         it('uses fetchApi for data loading', () => {
-            expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
         });
 
         it('manages loading state', () => {

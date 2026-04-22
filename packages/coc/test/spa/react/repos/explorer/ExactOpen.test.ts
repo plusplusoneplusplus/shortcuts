@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const EXACT_OPEN_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'ExactOpen.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'ExactOpen.tsx'
 );
 
 describe('ExactOpen component', () => {
@@ -67,7 +67,7 @@ describe('ExactOpen component', () => {
         });
 
         it('uses fetchApi for data loading', () => {
-            expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
+            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
         });
 
         it('manages loading state', () => {

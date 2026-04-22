@@ -11,12 +11,12 @@ const { mockBreakpoint } = vi.hoisted(() => ({
     mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
 // BottomSheet stub — renders inline for testability (avoids portal complexity)
-vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: ({ isOpen, onClose, title, children }: any) =>
         isOpen ? (
             <div data-testid="bottomsheet-mock" data-title={title}>

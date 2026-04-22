@@ -295,25 +295,25 @@ describe('Mermaid CSS in SPA stylesheet', () => {
 
 describe('useMermaid hook module', () => {
     it('exports useMermaid hook', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
         expect(content).toContain('export function useMermaid');
     });
 
     it('accepts optional contentKey parameter for re-triggering', () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
         expect(content).toMatch(/useMermaid\(rootRef.*contentKey/);
     });
 
     it('handles mermaid CDN loading', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
         expect(content).toContain('mermaid');
     });
 
     it('supports theme reinitialisation', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
         expect(content).toContain('theme');
     });
@@ -331,7 +331,7 @@ describe('WikiComponent mermaid integration', () => {
     const tsx = fs.readFileSync(wikiComponentPath, 'utf8');
 
     it('imports useMermaid hook', () => {
-        expect(tsx).toContain("import { useMermaid } from '../hooks/useMermaid'");
+        expect(tsx).toContain("import { useMermaid } from '../hooks/ui/useMermaid'");
     });
 
     it('calls useMermaid with contentRef and html as contentKey', () => {

@@ -14,13 +14,13 @@ import { render, fireEvent, act } from '@testing-library/react';
 import {
     computeNetDiff,
     computeFileEditTotals,
-} from '../../../src/server/spa/client/react/chat/toolGroupUtils';
-import type { FileEdit } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
+} from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
+import type { FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import {
     WhisperCollapsedGroup,
     shortenPath,
-} from '../../../src/server/spa/client/react/chat/WhisperCollapsedGroup';
-import type { WhisperSummary } from '../../../src/server/spa/client/react/chat/toolGroupUtils';
+} from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperSummary } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -34,19 +34,19 @@ vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/commitDetection', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/commitDetection', () => ({
     detectCommitsInToolGroup: () => [],
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/CommitStrip', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/CommitStrip', () => ({
     CommitStrip: () => null,
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/ToolCallGroupView', () => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallGroupView', () => ({
     ToolCallGroupView: () => <div data-testid="tool-call-group-view" />,
 }));
 
-vi.mock('../../../src/server/spa/client/react/chat/toolGroupUtils', async (importOriginal) => {
+vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
@@ -217,8 +217,8 @@ describe('shortenPath', () => {
     });
 
     it('handles deeply nested paths', () => {
-        expect(shortenPath('packages/coc/src/server/spa/client/react/features/chat/WhisperCollapsedGroup.tsx'))
-            .toBe('chat/WhisperCollapsedGroup.tsx');
+        expect(shortenPath('packages/coc/src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup'))
+            .toBe('tool-calls/WhisperCollapsedGroup');
     });
 
     it('handles backslash paths', () => {
@@ -410,11 +410,11 @@ describe('filterWhisperChunks — net diff fields', () => {
     // We need to import from the actual source (not the mocked version)
     // Since the mock only overrides groupConsecutiveToolChunks, filterWhisperChunks is untouched
     // But to avoid the mock, import via a separate path
-    let filterWhisperChunks: typeof import('../../../src/server/spa/client/react/features/chat/conversation/toolGroupUtils').filterWhisperChunks;
+    let filterWhisperChunks: typeof import('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils').filterWhisperChunks;
 
     beforeAll(async () => {
-        const mod = await vi.importActual<typeof import('../../../src/server/spa/client/react/features/chat/conversation/toolGroupUtils')>(
-            '../../../src/server/spa/client/react/features/chat/conversation/toolGroupUtils'
+        const mod = await vi.importActual<typeof import('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils')>(
+            '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils'
         );
         filterWhisperChunks = mod.filterWhisperChunks;
     });

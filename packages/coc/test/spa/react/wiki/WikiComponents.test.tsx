@@ -1646,9 +1646,9 @@ describe('wiki React source files exist', () => {
         });
     }
 
-    it('should have hooks/useWiki.ts', () => {
-        const hooksDir = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks');
-        expect(fs.existsSync(path.join(hooksDir, 'useWiki.ts'))).toBe(true);
+    it('should have wiki/hooks/useWiki.ts', () => {
+        const wikiHooksDir = path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/hooks');
+        expect(fs.existsSync(path.join(wikiHooksDir, 'useWiki.ts'))).toBe(true);
     });
 });
 

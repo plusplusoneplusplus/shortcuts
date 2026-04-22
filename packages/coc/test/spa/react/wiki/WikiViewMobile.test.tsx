@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/useBreakpoint';
+import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ let mockAppState: Record<string, any> = {};
 
 // ── Module mocks ───────────────────────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
@@ -36,7 +36,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useWiki', () => ({
+vi.mock('../../../../src/server/spa/client/react/wiki/hooks/useWiki', () => ({
     useWiki: () => ({
         wikis: [
             { id: 'w1', name: 'Wiki 1', repoPath: '/repos/one', loaded: true, componentCount: 5 },
@@ -46,11 +46,11 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWiki', () => ({
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useMermaid', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
     useMermaid: vi.fn(),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/ResponsiveSidebar', () => ({
     ResponsiveSidebar: ({ children, isOpen }: any) => (
         <aside data-testid="responsive-sidebar" data-open={isOpen}>
             {children}
@@ -58,7 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () =
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
     BottomSheet: ({ isOpen, onClose, title, children }: any) =>
         isOpen ? (
             <div data-testid="bottomsheet-mock" data-title={title}>

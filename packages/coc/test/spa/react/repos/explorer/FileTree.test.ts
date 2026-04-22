@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'FileTree.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'FileTree.tsx'
 );
 
 describe('FileTree', () => {

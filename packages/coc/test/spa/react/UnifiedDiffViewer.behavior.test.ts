@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
     extractFilePathFromDiffHeader,
     getLanguagesForLines,
-} from '../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+} from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
 describe('extractFilePathFromDiffHeader', () => {
     it('extracts file path from standard diff header', () => {
@@ -21,8 +21,8 @@ describe('extractFilePathFromDiffHeader', () => {
     });
 
     it('handles deeply nested paths', () => {
-        expect(extractFilePathFromDiffHeader('diff --git a/packages/coc/src/server/spa/client/react/repos/UnifiedDiffViewer.tsx b/packages/coc/src/server/spa/client/react/repos/UnifiedDiffViewer.tsx'))
-            .toBe('packages/coc/src/server/spa/client/react/repos/UnifiedDiffViewer.tsx');
+        expect(extractFilePathFromDiffHeader('diff --git a/packages/coc/src/server/spa/client/react/features/git/diff/UnifiedDiffViewer b/packages/coc/src/server/spa/client/react/features/git/diff/UnifiedDiffViewer'))
+            .toBe('packages/coc/src/server/spa/client/react/features/git/diff/UnifiedDiffViewer');
     });
 
     it('handles filenames with spaces', () => {

@@ -7,15 +7,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const PANEL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'ExplorerPanel.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'ExplorerPanel.tsx'
 );
 
 const TREE_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'FileTree.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'FileTree.tsx'
 );
 
 const TREENODE_PATH = path.join(
-    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'explorer', 'TreeNode.tsx'
+    __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'explorer', 'TreeNode.tsx'
 );
 
 describe('ExplorerPanel — search integration', () => {
@@ -125,7 +125,7 @@ describe('ExplorerPanel — search integration', () => {
 
     describe('match highlighting in TreeNode', () => {
         it('imports highlightMatch', () => {
-            expect(nodeSource).toContain("import { highlightMatch } from '../../tasks/TaskSearchResults'");
+            expect(nodeSource).toContain("import { highlightMatch } from '../../../tasks/TaskSearchResults'");
         });
 
         it('applies highlightMatch when filterQuery is present', () => {
