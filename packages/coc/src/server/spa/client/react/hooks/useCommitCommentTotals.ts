@@ -1,9 +1,11 @@
 /**
- * useCommitCommentTotals — fetch total active comment counts per commit hash.
+ * useCommitCommentTotals — fetch open and resolved comment counts per commit hash.
  *
- * Calls GET /api/diff-comment-totals/:wsId?commits=hash1,hash2,...&status=open
- * and returns a Map<commitHash, number>.  Returns an empty Map while loading or
- * on error — comment counts are non-critical and should never break the UI.
+ * Calls GET /api/diff-comment-totals/:wsId?commits=hash1,hash2,... twice
+ * (once for status=open, once for status=resolved) and returns a
+ * Map<commitHash, { open: number; resolved: number }>.
+ * Returns an empty Map while loading or on error — comment counts are
+ * non-critical and should never break the UI.
  *
  * Automatically refreshes when wsId or the set of commit hashes changes.
  */
@@ -11,11 +13,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase, getWsPath } from '../utils/config';
 
+export interface CommitCommentCounts {
+    open: number;
+    resolved: number;
+}
+
 export function useCommitCommentTotals(
     wsId: string,
     commitHashes: string[],
-): Map<string, number> {
-    const [totals, setTotals] = useState<Map<string, number>>(new Map());
+): Map<string, CommitCommentCounts> {
+    const [totals, setTotals] = useState<Map<string, CommitCommentCounts>>(new Map());
 
     // Stable key for the hash list so the effect only re-runs when the
     // set of commits actually changes.
@@ -26,13 +33,27 @@ export function useCommitCommentTotals(
             setTotals(new Map());
             return;
         }
-        const params = new URLSearchParams({ commits: commitsKey, status: 'open' });
-        fetch(`${getApiBase()}/diff-comment-totals/${encodeURIComponent(wsId)}?${params}`)
-            .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
-            .then((data: { totals: Record<string, number> }) => {
-                const map = new Map<string, number>();
-                for (const [k, v] of Object.entries(data.totals)) {
-                    if (v > 0) map.set(k, v);
+        const base = `${getApiBase()}/diff-comment-totals/${encodeURIComponent(wsId)}`;
+        const openParams = new URLSearchParams({ commits: commitsKey, status: 'open' });
+        const resolvedParams = new URLSearchParams({ commits: commitsKey, status: 'resolved' });
+
+        Promise.all([
+            fetch(`${base}?${openParams}`)
+                .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
+                .then((data: { totals: Record<string, number> }) => data.totals),
+            fetch(`${base}?${resolvedParams}`)
+                .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
+                .then((data: { totals: Record<string, number> }) => data.totals),
+        ])
+            .then(([openTotals, resolvedTotals]) => {
+                const map = new Map<string, CommitCommentCounts>();
+                const allKeys = new Set([...Object.keys(openTotals), ...Object.keys(resolvedTotals)]);
+                for (const k of allKeys) {
+                    const open = openTotals[k] ?? 0;
+                    const resolved = resolvedTotals[k] ?? 0;
+                    if (open > 0 || resolved > 0) {
+                        map.set(k, { open, resolved });
+                    }
                 }
                 setTotals(map);
             })

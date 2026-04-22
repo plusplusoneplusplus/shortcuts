@@ -299,8 +299,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         const sourceRunIndex = idx + 1;
         try {
             for (const commit of commits) {
-                const openCount = commentTotals.get(commit.sha)?.open ?? 0;
-                if (openCount === 0) continue;
+                const ct = commentTotals.get(commit.sha);
+                if (!ct || ct.open === 0) continue;
                 await fetchApi(
                     `${basePath}/resolve-comments`,
                     {
@@ -678,7 +678,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                     💬 {openCount}
                                                                 </span>
                                                             )}
-                                                            {isAiDone && openCount > 0 && (
+                                                            {openCount > 0 && (
                                                                 <button
                                                                     onClick={() => handlePerCommitResolve(c.sha, i + 1)}
                                                                     disabled={resolvingCommitSha === c.sha}
@@ -693,7 +693,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                     data-testid={`commit-resolve-btn-${c.sha.slice(0, 7)}`}
                                                                     title="Resolve open diff comments for this commit"
                                                                 >
-                                                                    {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve
+                                                                    {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve with agent
                                                                 </button>
                                                             )}
                                                             <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
@@ -733,7 +733,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     {change.commits.length > 0 ? (
                                         <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5">
                                             {change.commits.map(commit => {
-                                                const openCount = commentTotals.get(commit.sha) ?? 0;
+                                                const ct = commentTotals.get(commit.sha);
+                                                const openCount = ct?.open ?? 0;
+                                                const resolvedCount = ct?.resolved ?? 0;
                                                 return (
                                                     <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
                                                         {onViewCommit ? (
@@ -743,10 +745,33 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                         ) : (
                                                             <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
                                                         )}
+                                                        {resolvedCount > 0 && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[9px] shrink-0" data-testid={`commit-resolved-badge-${commit.sha.slice(0, 7)}`}>
+                                                                ✅ {resolvedCount}
+                                                            </span>
+                                                        )}
                                                         {openCount > 0 && (
                                                             <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] shrink-0" data-testid={`commit-comment-badge-${commit.sha.slice(0, 7)}`}>
                                                                 💬 {openCount}
                                                             </span>
+                                                        )}
+                                                        {openCount > 0 && (
+                                                            <button
+                                                                onClick={() => handlePerCommitResolve(commit.sha)}
+                                                                disabled={resolvingCommitSha === commit.sha}
+                                                                className={cn(
+                                                                    'inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] border transition-colors shrink-0',
+                                                                    'border-violet-300 dark:border-violet-700',
+                                                                    'bg-violet-50 dark:bg-violet-900/20',
+                                                                    'text-violet-700 dark:text-violet-400',
+                                                                    'hover:bg-violet-100 dark:hover:bg-violet-900/40',
+                                                                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                                                                )}
+                                                                data-testid={`commit-resolve-btn-${commit.sha.slice(0, 7)}`}
+                                                                title="Resolve open diff comments for this commit"
+                                                            >
+                                                                {resolvingCommitSha === commit.sha ? '⏳ ' : ''}Resolve with agent
+                                                            </button>
                                                         )}
                                                         <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
                                                         {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
