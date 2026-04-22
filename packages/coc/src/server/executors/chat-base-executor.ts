@@ -46,7 +46,6 @@ import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from '
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
 import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';
-import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -111,8 +110,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly onMemoryCapturedFn?: (workspaceId: string, target: string) => void;
 
-    constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
-        super(store, dataDir, clientCache);
+    constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
+        super(store, dataDir);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
@@ -250,16 +249,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     : undefined,
             );
 
-            // Reuse a cached CopilotClient for this process when available.
-            let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
-            if (this.clientCache) {
-                try {
-                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
-                } catch {
-                    // Non-fatal: fall back to session-per-request (no cached client)
-                }
-            }
-
             const sendTools = tools.length > 0 ? tools : undefined;
             // Guard: CoC uses its custom ask_user tool (SSE/widget flow).
             // The SDK's native onUserInputRequest must NOT be set at the same time.
@@ -267,7 +256,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
             const sendOptions = {
                 prompt: effectivePrompt,
-                client: cachedClient,
                 mode: agentMode,
                 model: task.config.model,
                 reasoningEffort: task.config.reasoningEffort ?? 'high',
@@ -305,29 +293,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             };
 
             let result;
-            try {
-                result = await this.aiService.sendMessage(sendOptions);
-            } catch (firstError) {
-                // If we used a cached client and it failed, the client process may
-                // have died mid-request. Release the dead client, reset streaming
-                // state, and retry once with a fresh client from the pool.
-                if (!cachedClient || !this.clientCache) throw firstError;
-
-                getLogger().debug(LogCategory.AI,
-                    `[ChatModeExecutor] Cached client failed for ${processId}; retrying with fresh client`);
-
-                await this.clientCache.release(processId);
-                this.resetSessionStreamingState(processId);
-
-                try {
-                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
-                    sendOptions.client = cachedClient;
-                } catch {
-                    sendOptions.client = undefined;
-                }
-
-                result = await this.aiService.sendMessage(sendOptions);
-            }
+            result = await this.aiService.sendMessage(sendOptions);
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');

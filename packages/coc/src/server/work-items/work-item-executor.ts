@@ -7,7 +7,7 @@
  */
 
 import * as crypto from 'crypto';
-import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange } from './types';
+import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
 import { isValidTransition } from './types';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
@@ -298,4 +298,50 @@ export async function handleWorkItemTaskComplete(
             });
         }
     } catch { /* non-fatal */ }
+}
+
+/**
+ * Auto-create a new plan version after a successful resolve-plan-comments session.
+ * Parses the AI's revised content from the process result and saves it as a new version
+ * only when the content actually changed.
+ *
+ * @returns The updated work item if a new version was created, or undefined otherwise.
+ */
+export async function autoVersionPlanFromResolvedComments(
+    workItemId: string,
+    processResult: string | Record<string, unknown> | undefined,
+    store: WorkItemStore,
+): Promise<WorkItem | undefined> {
+    if (!processResult) return undefined;
+
+    const parsed = typeof processResult === 'string'
+        ? JSON.parse(processResult)
+        : processResult;
+    const revisedContent: string | undefined = parsed?.revisedContent || parsed?.response;
+    if (!revisedContent) return undefined;
+
+    const item = await store.getWorkItem(workItemId);
+    if (!item) return undefined;
+
+    const currentContent = item.plan?.content ?? '';
+    if (revisedContent.trim() === currentContent.trim()) return undefined;
+
+    const now = new Date().toISOString();
+    const newVersion = (item.plan?.version ?? 0) + 1;
+    const planVersion: WorkItemPlanVersion = {
+        version: newVersion,
+        content: revisedContent,
+        createdAt: now,
+        resolvedBy: 'ai',
+        summary: 'Plan updated from resolved comments',
+    };
+    await store.savePlanVersion(workItemId, planVersion);
+    return store.updateWorkItem(workItemId, {
+        plan: {
+            version: newVersion,
+            content: revisedContent,
+            updatedAt: now,
+            resolvedBy: 'ai',
+        },
+    });
 }

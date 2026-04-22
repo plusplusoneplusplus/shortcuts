@@ -64,10 +64,6 @@ export interface CLIConfig {
     store?: {
         backend?: 'file' | 'sqlite';
     };
-    clientPool?: {
-        enabled?: boolean;
-        size?: number;
-    };
 }
 
 /** Data wiper instance for clearing server data (opaque handle). */

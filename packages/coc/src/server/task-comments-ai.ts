@@ -49,6 +49,7 @@ export function buildBatchResolvePrompt(
     absoluteFilePath: string,
     displayPath: string,
     userContext?: string,
+    documentContent?: string,
 ): string {
     const openComments = comments
         .filter(c => c.status === 'open')
@@ -60,7 +61,14 @@ export function buildBatchResolvePrompt(
     prompt += '---\n\n';
     prompt += `## File: ${displayPath}\n\n`;
     prompt += `The document is located at: ${absoluteFilePath}\n`;
-    prompt += 'Read it using your tools before making changes.\n\n';
+    if (documentContent) {
+        prompt += '\n### Current Document Content\n\n';
+        prompt += '```markdown\n';
+        prompt += documentContent;
+        prompt += '\n```\n\n';
+    } else {
+        prompt += 'Read it using your tools before making changes.\n\n';
+    }
 
     openComments.forEach((c, i) => {
         prompt += `### Comment ${i + 1} (Line ${c.selection.startLine})\n\n`;

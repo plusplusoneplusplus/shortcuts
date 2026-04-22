@@ -43,7 +43,6 @@ import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus, appen
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
-import type { CopilotClientCache } from './copilot-client-cache';
 import { flushMemories } from '../memory/pre-compression-flush';
 // ============================================================================
 // Types
@@ -98,8 +97,8 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
     private readonly onMemoryCapturedFn?: (workspaceId: string, target: string) => void;
 
-    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
-        super(store, dataDir, clientCache);
+    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
+        super(store, dataDir);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
@@ -291,19 +290,8 @@ export class FollowUpExecutor extends BaseExecutor {
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
 
-            // Reuse a cached CopilotClient for this process when available.
-            let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
-            if (this.clientCache) {
-                try {
-                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
-                } catch (err) {
-                    logger.debug(LogCategory.AI, `[FollowUp] Failed to acquire cached client for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
-
             const sendOptions = {
                 prompt: followUpMessage,
-                client: cachedClient,
                 sessionId: process.sdkSessionId,
                 ...(model ? { model } : {}),
                 mode: agentMode,
@@ -343,35 +331,7 @@ export class FollowUpExecutor extends BaseExecutor {
             };
 
             let result;
-            try {
-                result = await this.aiService.sendMessage(sendOptions);
-            } catch (firstError) {
-                // If we used a cached client and it failed, the client process may
-                // have died mid-request. Release the dead client, reset streaming
-                // state, and retry once with a fresh client from the pool.
-                if (!cachedClient || !this.clientCache) throw firstError;
-
-                logger.debug(LogCategory.AI,
-                    `[FollowUp] Cached client failed for ${processId}; retrying with fresh client`);
-
-                await this.clientCache.release(processId);
-                this.resetSessionStreamingState(processId);
-
-                try {
-                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
-                    sendOptions.client = cachedClient;
-                } catch (err) {
-                    logger.debug(LogCategory.AI, `[FollowUp] Failed to acquire fresh client for ${processId} on retry: ${err instanceof Error ? err.message : String(err)}`);
-                    sendOptions.client = undefined;
-                }
-
-                // On retry without a session, fall back to history context
-                if (!sendOptions.client) {
-                    sendOptions.sessionId = undefined;
-                }
-
-                result = await this.aiService.sendMessage(sendOptions);
-            }
+            result = await this.aiService.sendMessage(sendOptions);
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;

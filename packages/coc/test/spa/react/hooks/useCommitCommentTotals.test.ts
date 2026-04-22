@@ -59,6 +59,30 @@ describe('useCommitCommentTotals', () => {
         vi.clearAllMocks();
     });
 
+    /** Helper: mock both open and resolved fetch responses */
+    function mockOpenAndResolved(
+        openTotals: Record<string, number>,
+        resolvedTotals: Record<string, number>,
+    ) {
+        let callCount = 0;
+        fetchMock.mockImplementation((url: string) => {
+            callCount++;
+            if (url.includes('status=open')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ totals: openTotals }),
+                });
+            }
+            if (url.includes('status=resolved')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ totals: resolvedTotals }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: async () => ({ totals: {} }) });
+        });
+    }
+
     // ── 1. returns empty map when no commits ─────────────────────────
 
     it('returns empty map when commitHashes is empty', async () => {
@@ -73,41 +97,56 @@ describe('useCommitCommentTotals', () => {
 
     // ── 2. fetches totals on mount ───────────────────────────────────
 
-    it('fetches totals on mount and populates map', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: { 'abc123': 3, 'def456': 0 } }),
-        });
+    it('fetches open and resolved totals on mount and populates map', async () => {
+        mockOpenAndResolved({ 'abc123': 3, 'def456': 0 }, { 'abc123': 1 });
 
         const { result } = renderHook(() =>
             useCommitCommentTotals('ws-1', ['abc123', 'def456'])
         );
 
         await waitFor(() => {
-            expect(result.current.get('abc123')).toBe(3);
+            expect(result.current.get('abc123')).toEqual({ open: 3, resolved: 1 });
         });
 
         // Zero-count entries should not be in the map
         expect(result.current.has('def456')).toBe(false);
     });
 
-    // ── 3. WebSocket triggers re-fetch on diff-comment-updated ───────
-
-    it('re-fetches totals when diff-comment-updated WS event matches wsId', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: { 'abc123': 1 } }),
-        });
+    it('makes two fetch calls (open + resolved)', async () => {
+        mockOpenAndResolved({ 'abc123': 1 }, {});
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        const urls = fetchMock.mock.calls.map((c: any[]) => c[0] as string);
+        expect(urls.some((u: string) => u.includes('status=open'))).toBe(true);
+        expect(urls.some((u: string) => u.includes('status=resolved'))).toBe(true);
+    });
+
+    it('returns only resolved counts when open is zero', async () => {
+        mockOpenAndResolved({}, { 'abc123': 2 });
+
+        const { result } = renderHook(() =>
+            useCommitCommentTotals('ws-1', ['abc123'])
+        );
+
+        await waitFor(() => {
+            expect(result.current.get('abc123')).toEqual({ open: 0, resolved: 2 });
+        });
+    });
+
+    // ── 3. WebSocket triggers re-fetch on diff-comment-updated ───────
+
+    it('re-fetches totals when diff-comment-updated WS event matches wsId', async () => {
+        mockOpenAndResolved({ 'abc123': 1 }, {});
+
+        renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
         // Simulate server broadcasting diff-comment-updated
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: { 'abc123': 2 } }),
-        });
+        mockOpenAndResolved({ 'abc123': 2 }, { 'abc123': 1 });
 
         act(() => {
             const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
@@ -116,20 +155,17 @@ describe('useCommitCommentTotals', () => {
             });
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     });
 
     // ── 4. WS event with different workspaceId is ignored ────────────
 
     it('does not re-fetch when diff-comment-updated WS event has different workspaceId', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: { 'abc123': 1 } }),
-        });
+        mockOpenAndResolved({ 'abc123': 1 }, {});
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
         act(() => {
             const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
@@ -138,17 +174,14 @@ describe('useCommitCommentTotals', () => {
             });
         });
 
-        // Should still be only 1 call
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        // Should still be only 2 calls (open + resolved)
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     // ── 5. WS is closed on unmount ───────────────────────────────────
 
     it('closes WebSocket on unmount', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: {} }),
-        });
+        mockOpenAndResolved({}, {});
 
         const { unmount } = renderHook(() =>
             useCommitCommentTotals('ws-1', ['abc123'])
@@ -171,7 +204,7 @@ describe('useCommitCommentTotals', () => {
             useCommitCommentTotals('ws-1', ['abc123'])
         );
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
         expect(result.current.size).toBe(0);
     });
@@ -179,13 +212,10 @@ describe('useCommitCommentTotals', () => {
     // ── 7. malformed WS message is ignored ──────────────────────────
 
     it('ignores malformed WebSocket messages without throwing', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({ totals: { 'abc123': 1 } }),
-        });
+        mockOpenAndResolved({ 'abc123': 1 }, {});
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
         expect(() => {
             act(() => {
@@ -194,6 +224,6 @@ describe('useCommitCommentTotals', () => {
             });
         }).not.toThrow();
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 });

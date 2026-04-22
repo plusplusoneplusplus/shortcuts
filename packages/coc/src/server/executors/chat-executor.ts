@@ -34,7 +34,6 @@ import {
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // ChatExecutor
@@ -47,8 +46,8 @@ export interface ChatExecutorOptions extends ChatModeExecutorOptions {
 export class ChatExecutor extends ChatBaseExecutor {
     private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
 
-    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
-        super(store, options, dataDir, clientCache);
+    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string) {
+        super(store, options, dataDir);
         this.getWsServerFn = options.getWsServer;
     }
 

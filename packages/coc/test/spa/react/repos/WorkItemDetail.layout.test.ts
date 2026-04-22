@@ -138,6 +138,63 @@ describe('WorkItemDetail — layout', () => {
         });
     });
 
+    describe('Per-commit resolve button', () => {
+        it('does NOT gate the per-commit resolve button on isAiDone', () => {
+            // The resolve button should be shown whenever openCount > 0,
+            // not only when status is aiDone
+            expect(src).not.toMatch(/isAiDone\s*&&\s*openCount\s*>\s*0\s*&&\s*\(\s*<button/);
+        });
+
+        it('shows resolve button when openCount > 0 in execution history', () => {
+            // The button should be gated only on openCount > 0
+            const execHistorySection = src.indexOf('{/* Execution history */}');
+            const resolveBtn = src.indexOf('commit-resolve-btn-', execHistorySection);
+            expect(resolveBtn).toBeGreaterThan(execHistorySection);
+        });
+
+        it('labels the button "Resolve with agent" in execution history', () => {
+            const execHistorySection = src.indexOf('{/* Execution history */}');
+            const orphanedSection = src.indexOf('Orphaned changes');
+            // Find "Resolve with agent" between exec history and orphaned sections
+            const labelPos = src.indexOf('Resolve with agent', execHistorySection);
+            expect(labelPos).toBeGreaterThan(execHistorySection);
+            expect(labelPos).toBeLessThan(orphanedSection);
+        });
+
+        it('renders resolve button in orphaned changes section', () => {
+            const orphanedSection = src.indexOf('Orphaned changes');
+            const resolveBtn = src.indexOf('commit-resolve-btn-', orphanedSection);
+            expect(resolveBtn).toBeGreaterThan(orphanedSection);
+        });
+
+        it('labels the button "Resolve with agent" in orphaned changes', () => {
+            const orphanedSection = src.indexOf('Orphaned changes');
+            const labelPos = src.indexOf('Resolve with agent', orphanedSection);
+            expect(labelPos).toBeGreaterThan(orphanedSection);
+        });
+
+        it('calls handlePerCommitResolve from orphaned changes resolve button', () => {
+            const orphanedSection = src.indexOf('Orphaned changes');
+            const handleCall = src.indexOf('handlePerCommitResolve(commit.sha)', orphanedSection);
+            expect(handleCall).toBeGreaterThan(orphanedSection);
+        });
+
+        it('uses consistent commentTotals access in orphaned changes (.open/.resolved)', () => {
+            const orphanedSection = src.indexOf('Orphaned changes');
+            // Should access .open and .resolved, not use the value as a plain number
+            const openAccess = src.indexOf('ct?.open', orphanedSection);
+            const resolvedAccess = src.indexOf('ct?.resolved', orphanedSection);
+            expect(openAccess).toBeGreaterThan(orphanedSection);
+            expect(resolvedAccess).toBeGreaterThan(orphanedSection);
+        });
+
+        it('shows resolved badge in orphaned changes', () => {
+            const orphanedSection = src.indexOf('Orphaned changes');
+            const resolvedBadge = src.indexOf('commit-resolved-badge-', orphanedSection);
+            expect(resolvedBadge).toBeGreaterThan(orphanedSection);
+        });
+    });
+
     describe('Execution history inline navigation', () => {
         it('renders "View Session →" as a labeled sub-line (not a bare arrow in the header)', () => {
             expect(src).toContain('View Session →');

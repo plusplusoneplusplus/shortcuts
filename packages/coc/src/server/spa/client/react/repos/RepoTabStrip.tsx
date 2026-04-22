@@ -13,6 +13,7 @@ import { useQueue } from '../context/QueueContext';
 import { isHidden as isHiddenTask } from '../hooks/useRepoQueueStats';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
+import { useUiLayoutMode } from '../hooks/useUiLayoutMode';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 
 export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
@@ -99,6 +100,7 @@ function flattenGroups(groups: RepoGroup[]): string[] {
 }
 
 export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, onRefresh }: RepoTabStripProps) {
+    const [uiLayoutMode] = useUiLayoutMode();
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
@@ -604,28 +606,32 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         role="menu"
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
-                        <button
-                            data-testid="repo-tab-context-queue-task"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id });
-                                setContextMenu(null);
-                            }}
-                        >
-                            🤖 Queue Task
-                        </button>
-                        <button
-                            data-testid="repo-tab-context-ask"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' });
-                                setContextMenu(null);
-                            }}
-                        >
-                            💡 Ask
-                        </button>
+                        {uiLayoutMode === 'classic' && (
+                            <button
+                                data-testid="repo-tab-context-queue-task"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => {
+                                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id });
+                                    setContextMenu(null);
+                                }}
+                            >
+                                🤖 Queue Task
+                            </button>
+                        )}
+                        {uiLayoutMode === 'classic' && (
+                            <button
+                                data-testid="repo-tab-context-ask"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => {
+                                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' });
+                                    setContextMenu(null);
+                                }}
+                            >
+                                💡 Ask
+                            </button>
+                        )}
                         <button
                             data-testid="repo-tab-context-run-script"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
@@ -637,17 +643,19 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         >
                             🛠️ Prompt & Script
                         </button>
-                        <button
-                            data-testid="repo-tab-context-generate-plan"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                setGenerateDialog({ open: true, minimized: false, wsId: ws.id, targetFolder: undefined });
-                                setContextMenu(null);
-                            }}
-                        >
-                            📋 Generate Plan
-                        </button>
+                        {uiLayoutMode === 'classic' && (
+                            <button
+                                data-testid="repo-tab-context-generate-plan"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => {
+                                    setGenerateDialog({ open: true, minimized: false, wsId: ws.id, targetFolder: undefined });
+                                    setContextMenu(null);
+                                }}
+                            >
+                                📋 Generate Plan
+                            </button>
+                        )}
                         <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
                         <button
                             data-testid="repo-tab-context-edit"

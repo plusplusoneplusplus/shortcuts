@@ -49,7 +49,6 @@ import {
     isRunWorkflowPayload,
     hasNoteChatContext,
 } from '../task-types';
-import type { CopilotClientCache } from './copilot-client-cache';
 import { BaseExecutor } from './base-executor';
 
 // ============================================================================
@@ -139,10 +138,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
-        clientCache?: CopilotClientCache,
         onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void,
     ) {
-        super(store, dataDir, clientCache);
+        super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;
         this.onBackgroundReview = onBackgroundReview;
     }

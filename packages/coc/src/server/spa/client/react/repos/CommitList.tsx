@@ -448,7 +448,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                 </span>
                                             )}
                                             {(() => {
-                                                const count = commitTotals.get(commit.hash) ?? 0;
+                                                const count = commitTotals.get(commit.hash)?.open ?? 0;
                                                 return count > 0 ? (
                                                     <span
                                                         className="text-xs text-[#848484] flex-shrink-0"

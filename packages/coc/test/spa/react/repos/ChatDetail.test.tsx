@@ -411,13 +411,13 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('shows mode selector by default (hideModeSelector defaults to false)', async () => {
+        it('hides mode selector by default (hideModeSelector defaults to true)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeTruthy();
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
         });
 
         it('renders copy-conversation button', async () => {
@@ -620,14 +620,14 @@ describe('ChatDetail', () => {
     // ── Mode selector ──────────────────────────────────────────────────────
 
     describe('mode selector', () => {
-        it('mode selector is visible by default (hideModeSelector defaults to false)', async () => {
+        it('mode selector is hidden by default (hideModeSelector defaults to true)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeTruthy();
-            expect(screen.queryByTestId('mode-dropdown')).toBeTruthy();
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
         });
 
         it('shows mode selector when hideModeSelector is false', async () => {
@@ -637,29 +637,7 @@ describe('ChatDetail', () => {
                 expect(screen.getByTestId('mode-selector')).toBeTruthy();
             });
             const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            expect(dropdown.value).toBe('autopilot');
-        });
-
-        it('initializes mode from task payload.mode when visible', async () => {
-            const task = makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'test' } });
-            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
-            setupStandardFetch(task, proc);
-            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
-            await waitFor(() => {
-                const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-                expect(dropdown.value).toBe('ask');
-            });
-        });
-
-        it('initializes mode from process metadata.mode when visible', async () => {
-            const task = makeTask({ payload: { kind: 'chat', prompt: 'test' } });
-            const proc = makeProcess({ metadata: { mode: 'plan', sessionId: 'sess-1' } });
-            setupStandardFetch(task, proc);
-            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
-            await waitFor(() => {
-                const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-                expect(dropdown.value).toBe('plan');
-            });
+            expect(dropdown.value).toBe('ask');
         });
 
         it('dropdown selection changes mode when visible', async () => {
@@ -668,8 +646,8 @@ describe('ChatDetail', () => {
             await waitFor(() => {
                 expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
             });
-            fireEvent.change(screen.getByTestId('mode-dropdown'), { target: { value: 'ask' } });
-            expect((screen.getByTestId('mode-dropdown') as HTMLSelectElement).value).toBe('ask');
+            fireEvent.change(screen.getByTestId('mode-dropdown'), { target: { value: 'plan' } });
+            expect((screen.getByTestId('mode-dropdown') as HTMLSelectElement).value).toBe('plan');
         });
     });
 

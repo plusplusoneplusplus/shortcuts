@@ -78,8 +78,6 @@ export function AdminPanel() {
     const [notesEnabled, setNotesEnabled] = useState(false);
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
-    const [clientPoolEnabled, setClientPoolEnabled] = useState(false);
-    const [clientPoolSize, setClientPoolSize] = useState('3');
 
     // Preferences (theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -96,7 +94,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: true, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, clientPool: false, clientPoolSize: 3 });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -179,15 +177,11 @@ export function AdminPanel() {
             const ne = resolved.notes?.enabled ?? false;
             const mwe = resolved.myWork?.enabled ?? false;
             const mle = resolved.myLife?.enabled ?? false;
-            const cpe = resolved.clientPool?.enabled ?? false;
-            const cps = resolved.clientPool?.size ?? 3;
             setTerminalEnabled(te);
             setNotesEnabled(ne);
             setMyWorkEnabled(mwe);
             setMyLifeEnabled(mle);
-            setClientPoolEnabled(cpe);
-            setClientPoolSize(String(cps));
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, clientPool: cpe, clientPoolSize: cps });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -241,9 +235,7 @@ export function AdminPanel() {
     const featuresDirty = terminalEnabled !== featuresSnapshot.terminal ||
         notesEnabled !== featuresSnapshot.notes ||
         myWorkEnabled !== featuresSnapshot.myWork ||
-        myLifeEnabled !== featuresSnapshot.myLife ||
-        clientPoolEnabled !== featuresSnapshot.clientPool ||
-        Number(clientPoolSize) !== featuresSnapshot.clientPoolSize;
+        myLifeEnabled !== featuresSnapshot.myLife;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -395,8 +387,6 @@ export function AdminPanel() {
                     'notes.enabled': notesEnabled,
                     'myWork.enabled': myWorkEnabled,
                     'myLife.enabled': myLifeEnabled,
-                    'clientPool.enabled': clientPoolEnabled,
-                    'clientPool.size': Number(clientPoolSize),
                 }),
             });
             if (!res.ok) {
@@ -405,21 +395,19 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, clientPool: clientPoolEnabled, clientPoolSize: Number(clientPoolSize) });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, clientPoolEnabled, clientPoolSize, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
         setNotesEnabled(featuresSnapshot.notes);
         setMyWorkEnabled(featuresSnapshot.myWork);
         setMyLifeEnabled(featuresSnapshot.myLife);
-        setClientPoolEnabled(featuresSnapshot.clientPool);
-        setClientPoolSize(String(featuresSnapshot.clientPoolSize));
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1096,41 +1084,6 @@ export function AdminPanel() {
                                             </label>
                                         </div>
                                     </div>
-                                    <hr className="border-[#e0e0e0] dark:border-[#444]" />
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Client Pool</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Pre-warm Copilot SDK processes to reduce first-message latency. Disable if chats run in wrong directory.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['clientPool.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={clientPoolEnabled}
-                                                    onChange={e => setClientPoolEnabled(e.target.checked)}
-                                                    data-testid="toggle-clientpool-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    {clientPoolEnabled && (
-                                        <div className="flex items-center gap-2 ml-1">
-                                            <label className="text-xs text-[#616161] dark:text-[#999]" htmlFor="admin-clientpool-size">Pool Size:</label>
-                                            <input
-                                                id="admin-clientpool-size"
-                                                type="number"
-                                                min={0}
-                                                max={10}
-                                                value={clientPoolSize}
-                                                onChange={e => setClientPoolSize(e.target.value)}
-                                                data-testid="input-clientpool-size"
-                                                className="w-16 px-2 py-1 text-xs border rounded bg-white dark:bg-[#1e1e1e] border-[#d4d4d4] dark:border-[#555] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                                            />
-                                        </div>
-                                    )}
                                 </SettingsCard>
 
                                 {/* ── 5. Advanced & Recovery ── */}

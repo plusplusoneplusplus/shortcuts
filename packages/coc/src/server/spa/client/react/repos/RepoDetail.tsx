@@ -142,6 +142,31 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
                 .filter(t => t.key !== 'work-items')
                 .map(t => t.key === 'tasks' ? { ...t, label: 'Plans' } : t);
+        } else {
+            // Dev-workflow: relabel and reorder tabs
+            const devWorkflowRelabels: Record<string, string> = {
+                'schedules': 'Jobs',
+                'pull-requests': 'Full Requests',
+            };
+            const devWorkflowOrder: RepoSubTab[] = [
+                'chats', 'work-items', 'schedules', 'explorer',
+                'workflows', 'git', 'pull-requests', 'tasks', 'settings',
+            ];
+            const tabMap = new Map(tabs.map(t => [t.key, t]));
+            const ordered: typeof tabs = [];
+            for (const key of devWorkflowOrder) {
+                const tab = tabMap.get(key);
+                if (tab) {
+                    const newLabel = devWorkflowRelabels[key];
+                    ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
+                    tabMap.delete(key);
+                }
+            }
+            // Append dynamic tabs (terminal, notes, wiki) that aren't in the fixed order
+            for (const [, tab] of tabMap) {
+                ordered.push(tab);
+            }
+            tabs = ordered;
         }
         return tabs;
     }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);
@@ -440,15 +465,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 &gt;_ Launch CLI
                             </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                                title="Queue a new AI task (Alt+Q)"
-                                data-testid="repo-queue-task-btn"
-                            >
-                                🤖 Queue Task
-                            </Button>
+                            {uiLayoutMode === 'classic' && (
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                    title="Queue a new AI task (Alt+Q)"
+                                    data-testid="repo-queue-task-btn"
+                                >
+                                    🤖 Queue Task
+                                </Button>
+                            )}
                             <Button
                                 variant="primary"
                                 size="sm"
@@ -458,21 +485,25 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 🛠️ Prompt & Script
                             </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                title="Ask AI a question (read-only)"
-                                data-testid="repo-ask-btn"
-                            >
-                                💡 Ask
-                            </Button>
-                            <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                                📋 Generate Plan
-                                {generateDialog.open && generateDialog.minimized && (
-                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
-                                )}
-                            </Button>
+                            {uiLayoutMode === 'classic' && (
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                    title="Ask AI a question (read-only)"
+                                    data-testid="repo-ask-btn"
+                                >
+                                    💡 Ask
+                                </Button>
+                            )}
+                            {uiLayoutMode === 'classic' && (
+                                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                    📋 Generate Plan
+                                    {generateDialog.open && generateDialog.minimized && (
+                                        <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                    )}
+                                </Button>
+                            )}
 
                         </div>
                     </>
@@ -490,10 +521,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
                     actions={[
-                        { label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) },
-                        { label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) },
-                        { label: 'Prompt & Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
-                        { label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() },
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
+                        { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        ...(uiLayoutMode === 'classic' ? [{ label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() }] : []),
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
                             ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
                             : []),

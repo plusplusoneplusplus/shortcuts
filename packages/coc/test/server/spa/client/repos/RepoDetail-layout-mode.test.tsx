@@ -258,3 +258,40 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
     });
 });
+
+describe('RepoDetail — header action buttons by layout mode', () => {
+    beforeEach(() => {
+        mockDispatch.mockClear();
+        mockQueueDispatch.mockClear();
+        location.hash = '';
+    });
+
+    it('classic mode: Queue Task, Ask, Generate Plan buttons are rendered', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        expect(screen.getByTestId('repo-queue-task-btn')).toBeTruthy();
+        expect(screen.getByTestId('repo-ask-btn')).toBeTruthy();
+        expect(screen.getByTestId('repo-generate-btn')).toBeTruthy();
+    });
+
+    it('dev-workflow mode: Queue Task, Ask, Generate Plan buttons are NOT rendered', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        expect(screen.queryByTestId('repo-queue-task-btn')).toBeNull();
+        expect(screen.queryByTestId('repo-ask-btn')).toBeNull();
+        expect(screen.queryByTestId('repo-generate-btn')).toBeNull();
+    });
+
+    it('dev-workflow mode: Run Script and Launch CLI buttons remain visible', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        expect(screen.getByTestId('repo-run-script-btn')).toBeTruthy();
+        expect(screen.getByTestId('repo-launch-cli-btn')).toBeTruthy();
+    });
+});

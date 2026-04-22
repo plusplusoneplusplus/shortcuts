@@ -19,7 +19,6 @@ import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
-import { CopilotClientCache } from './copilot-client-cache';
 import { BackgroundReviewExecutor } from '../memory/background-review-executor';
 import { MemoryAggregateExecutor } from '../memory/memory-aggregate-executor';
 
@@ -38,8 +37,6 @@ export interface ExecutorRegistryOptions {
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
-    /** Shared CopilotClient cache (optional — when provided, executors reuse clients). */
-    clientCache?: CopilotClientCache;
     /** Callback when capture-mode memory.add completes (triggers aggregate enqueue). */
     onMemoryCaptured?: (workspaceId: string, target: string) => void;
 }
@@ -52,7 +49,6 @@ export interface ExecutorRegistryOptions {
 export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
     readonly runner: ProcessLifecycleRunner;
-    readonly clientCache: CopilotClientCache;
     readonly backgroundReviewExecutor: BackgroundReviewExecutor;
     readonly memoryAggregateExecutor: MemoryAggregateExecutor | undefined;
 
@@ -80,12 +76,6 @@ export class ExecutorRegistry {
         this.aiService = options.aiService;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
 
-        // Shared client cache — use the provided one or create a new instance
-        this.clientCache = options.clientCache ?? new CopilotClientCache();
-        if (!options.clientCache) {
-            this.clientCache.setAIService(options.aiService);
-        }
-
         const chatOpts = {
             workingDirectory: options.defaultWorkingDirectory,
             approvePermissions: options.approvePermissions,
@@ -103,10 +93,10 @@ export class ExecutorRegistry {
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded, onMemoryCaptured: options.onMemoryCaptured }, options.dataDir, this.clientCache);
-        this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir, this.clientCache);
-        this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir, this.clientCache);
-        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir, this.clientCache);
+        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded, onMemoryCaptured: options.onMemoryCaptured }, options.dataDir);
+        this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
+        this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir);
+        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
@@ -118,7 +108,7 @@ export class ExecutorRegistry {
         this.memoryAggregateExecutor = options.dataDir
             ? new MemoryAggregateExecutor(options.aiService, options.dataDir)
             : undefined;
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache, options.onBackgroundReview);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
