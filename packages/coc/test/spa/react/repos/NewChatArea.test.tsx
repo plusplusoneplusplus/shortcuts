@@ -147,14 +147,14 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('uses autopilot mode by default', () => {
+    it('uses ask mode by default with hidden selector', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        // Mode dropdown should exist with autopilot as default
-        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('autopilot');
+        // Mode selector should be hidden
+        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
     });
 
-    it('sends with default autopilot mode', async () => {
+    it('sends with default ask mode', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: async () => ({ id: 'task-ask' }),
@@ -169,7 +169,7 @@ describe('NewChatArea', () => {
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.payload.mode).toBe('autopilot');
+        expect(body.payload.mode).toBe('ask');
     });
 
     it('sends POST to /api/queue/tasks on submit and selects the new task', async () => {
@@ -194,7 +194,7 @@ describe('NewChatArea', () => {
         const body = JSON.parse(opts.body);
         expect(body.type).toBe('chat');
         expect(body.payload.kind).toBe('chat');
-        expect(body.payload.mode).toBe('autopilot');
+        expect(body.payload.mode).toBe('ask');
         expect(body.payload.prompt).toBe('Hello world');
         expect(body.payload.workingDirectory).toBe('/home/user/repo');
         expect(body.payload.workspaceId).toBe('ws-1');

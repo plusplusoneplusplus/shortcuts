@@ -67,7 +67,7 @@ export interface ChatDetailProps {
     readOnly?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = true, readOnly = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -96,7 +96,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
-    const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('autopilot');
+    const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('ask');
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -111,7 +111,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
     const richTextRef = useRef<RichTextInputHandle>(null);
-    const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('autopilot');
+    const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('ask');
 
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
@@ -394,9 +394,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const draft = getDraft(currentTaskId);
         if (draft) {
             setFollowUpInput(draft.text);
-            if (draft.mode && ['ask', 'plan', 'autopilot'].includes(draft.mode)) {
-                setSelectedMode(draft.mode as 'ask' | 'plan' | 'autopilot');
-            }
         } else {
             setFollowUpInput('');
         }
@@ -421,10 +418,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             metadata: loadedProcess.metadata ?? {},
                             displayName: loadedProcess.title,
                         });
-                        const processMode = loadedProcess?.metadata?.mode;
-                        if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
-                            setSelectedMode(processMode);
-                        }
                         const turns = getConversationTurns(processData);
                         setTurnsAndRef(turns);
                         setProcessDetails(loadedProcess);
@@ -440,9 +433,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
-                if (loadedTask?.payload?.mode && ['ask', 'plan', 'autopilot'].includes(loadedTask.payload.mode)) {
-                    setSelectedMode(loadedTask.payload.mode);
-                }
 
                 if (!loadedTask?.processId && loadedTask?.status === 'queued') {
                     setTask(loadedTask);
@@ -464,10 +454,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
-                            const processMode = data?.process?.metadata?.mode;
-                            if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
-                                setSelectedMode(processMode);
-                            }
                             // Sync queued follow-ups from server
                             const serverPending: any[] = data?.process?.pendingMessages ?? [];
                             setPendingQueue(serverPending.map((m: any) => ({
@@ -489,10 +475,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
                     setTask(effectiveTask);
                     setProcessDetails(procData?.process || null);
-                    const processMode = procData?.process?.metadata?.mode;
-                    if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
-                        setSelectedMode(processMode);
-                    }
                     const loadedTurns = getConversationTurns(procData, effectiveTask);
                     if (effectiveTask?.status === 'running') {
                         const lastTurn = loadedTurns[loadedTurns.length - 1];

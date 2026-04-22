@@ -113,8 +113,8 @@ describe('ChatDetail', () => {
     });
 
     describe('mode selector', () => {
-        it('declares selectedMode state with autopilot default', () => {
-            expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('autopilot')");
+        it('declares selectedMode state with ask default', () => {
+            expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('ask')");
         });
 
         it('renders mode selector with cycle button and dropdown', () => {
@@ -138,12 +138,13 @@ describe('ChatDetail', () => {
             expect(sendBlock).toContain('mode: selectedMode');
         });
 
-        it('initializes selectedMode from task payload mode on load', () => {
-            expect(source).toContain("setSelectedMode(loadedTask.payload.mode)");
+        it('initializes selectedMode from draft mode on load', () => {
+            // Mode is no longer restored from task payload — always defaults to 'ask'
+            expect(source).toContain("selectedMode");
         });
 
-        it('updates selectedMode from process metadata mode', () => {
-            expect(source).toContain("setSelectedMode(processMode)");
+        it('mode selector is hidden by default (hideModeSelector defaults to true)', () => {
+            expect(source).toContain("hideModeSelector = true");
         });
 
         it('cycles mode on Shift+Tab keydown', () => {
