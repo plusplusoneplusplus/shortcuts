@@ -18,12 +18,14 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { ProcessWebSocketServer } from '../websocket';
 import {
     appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
+    buildCreateWorkItemAddon,
 } from './prompt-builder';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -33,11 +35,16 @@ import { ChatBaseExecutor } from './chat-base-executor';
 // AutopilotExecutor
 // ============================================================================
 
-export type AutopilotExecutorOptions = ChatModeExecutorOptions;
+export interface AutopilotExecutorOptions extends ChatModeExecutorOptions {
+    getWsServer?: () => ProcessWebSocketServer | undefined;
+}
 
 export class AutopilotExecutor extends ChatBaseExecutor {
+    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
+
     constructor(store: ProcessStore, options: AutopilotExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
+        this.getWsServerFn = options.getWsServer;
     }
 
     protected async buildModeOptions(
@@ -54,14 +61,21 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
+        const createWorkItem = buildCreateWorkItemAddon(
+            this.dataDir,
+            payload.workspaceId,
+            this.getWsServerFn
+                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                : undefined,
+        );
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage: appendBoundedMemoryContext(undefined, boundedMemory),
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...boundedMemory.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + boundedMemory.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...createWorkItem.tools, ...boundedMemory.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + createWorkItem.suffix + boundedMemory.suffix,
         };
     }
 }

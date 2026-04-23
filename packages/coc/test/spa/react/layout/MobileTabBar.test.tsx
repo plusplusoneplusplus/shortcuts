@@ -18,7 +18,7 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'settings', label: 'Settings' },
 ];
 
-const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
+const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'schedules'];
 
 function renderBar(overrides: Partial<Parameters<typeof MobileTabBar>[0]> = {}) {
     const onTabChange = overrides.onTabChange ?? vi.fn();
@@ -41,12 +41,12 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
     });
 
-    it('renders pinned tabs by default (Chats, Work Items, Git)', () => {
+    it('renders pinned tabs by default (Chats, Work Items, Jobs)', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
         expect(nav.querySelector('[data-tab="chats"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="work-items"]')).toBeTruthy();
-        expect(nav.querySelector('[data-tab="git"]')).toBeTruthy();
+        expect(nav.querySelector('[data-tab="schedules"]')).toBeTruthy();
     });
 
     it('does not pin chat or queue by default', () => {
@@ -168,12 +168,12 @@ describe('MobileTabBar: tab switching', () => {
         expect(onTabChange).toHaveBeenCalledWith('work-items');
     });
 
-    it('calls onTabChange for git tab', () => {
+    it('calls onTabChange for schedules tab', () => {
         const onTabChange = vi.fn();
         renderBar({ onTabChange, activeTab: 'chats' });
-        const gitBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="git"]') as HTMLElement;
-        fireEvent.click(gitBtn);
-        expect(onTabChange).toHaveBeenCalledWith('git');
+        const jobsBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="schedules"]') as HTMLElement;
+        fireEvent.click(jobsBtn);
+        expect(onTabChange).toHaveBeenCalledWith('schedules');
     });
 });
 
@@ -193,13 +193,13 @@ describe('MobileTabBar: More sheet', () => {
         expect(screen.getByTestId('mobile-tab-more-sheet')).toBeTruthy();
     });
 
-    it('sheet lists non-pinned tabs (Explorer, Tasks, Workflows, Jobs, Settings)', () => {
+    it('sheet lists non-pinned tabs (Git, Explorer, Tasks, Workflows, Settings)', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
+        expect(screen.getByTestId('mobile-tab-more-item-git')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-explorer')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-tasks')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-workflows')).toBeTruthy();
-        expect(screen.getByTestId('mobile-tab-more-item-schedules')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-settings')).toBeTruthy();
     });
 
@@ -208,7 +208,7 @@ describe('MobileTabBar: More sheet', () => {
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
         expect(screen.queryByTestId('mobile-tab-more-item-chats')).toBeNull();
         expect(screen.queryByTestId('mobile-tab-more-item-work-items')).toBeNull();
-        expect(screen.queryByTestId('mobile-tab-more-item-git')).toBeNull();
+        expect(screen.queryByTestId('mobile-tab-more-item-schedules')).toBeNull();
     });
 
     it('selecting a tab from the sheet calls onTabChange', () => {
@@ -292,14 +292,9 @@ describe('MobileTabBar: badge display', () => {
         expect(screen.getByTestId('mobile-tab-badge-work-items').textContent).toBe('3');
     });
 
-    it('shows git badge when gitPendingCount > 0', () => {
+    it('git badge is not visible when git is not pinned by default', () => {
         renderBar({ gitPendingCount: 4 });
-        expect(screen.getByTestId('mobile-tab-badge-git')).toBeTruthy();
-        expect(screen.getByTestId('mobile-tab-badge-git').textContent).toBe('4');
-    });
-
-    it('hides git badge when gitPendingCount is 0', () => {
-        renderBar({ gitPendingCount: 0 });
+        // Git is now in the "more" sheet, so its badge won't render in the pinned bar
         expect(screen.queryByTestId('mobile-tab-badge-git')).toBeNull();
     });
 });

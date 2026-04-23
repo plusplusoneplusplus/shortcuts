@@ -143,8 +143,8 @@ describe('ChatDetail', () => {
             expect(source).toContain("selectedMode");
         });
 
-        it('mode selector is hidden by default (hideModeSelector defaults to true)', () => {
-            expect(source).toContain("hideModeSelector = true");
+        it('mode selector is visible by default (hideModeSelector defaults to false)', () => {
+            expect(source).toContain("hideModeSelector = false");
         });
 
         it('cycles mode on Shift+Tab keydown', () => {

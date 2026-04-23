@@ -411,13 +411,13 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('hides mode selector by default (hideModeSelector defaults to true)', async () => {
+        it('shows mode selector by default (hideModeSelector defaults to false)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
         });
 
         it('renders copy-conversation button', async () => {
@@ -620,24 +620,26 @@ describe('ChatDetail', () => {
     // ── Mode selector ──────────────────────────────────────────────────────
 
     describe('mode selector', () => {
-        it('mode selector is hidden by default (hideModeSelector defaults to true)', async () => {
+        it('shows mode selector by default (hideModeSelector defaults to false)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            expect(screen.queryByTestId('mode-selector')).toBeNull();
-            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+            // Mode syncs from task payload (autopilot in the default mock)
+            expect(dropdown.value).toBe('autopilot');
         });
 
-        it('shows mode selector when hideModeSelector is false', async () => {
+        it('hides mode selector when hideModeSelector is true', async () => {
             setupStandardFetch();
-            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={true} /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByTestId('mode-selector')).toBeTruthy();
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
-            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            expect(dropdown.value).toBe('ask');
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
         });
 
         it('dropdown selection changes mode when visible', async () => {

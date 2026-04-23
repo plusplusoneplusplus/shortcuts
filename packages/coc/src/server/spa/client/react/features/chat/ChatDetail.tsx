@@ -67,7 +67,7 @@ export interface ChatDetailProps {
     readOnly?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = true, readOnly = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -394,6 +394,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const draft = getDraft(currentTaskId);
         if (draft) {
             setFollowUpInput(draft.text);
+            if (draft.mode === 'ask' || draft.mode === 'plan' || draft.mode === 'autopilot') {
+                setSelectedMode(draft.mode);
+            }
         } else {
             setFollowUpInput('');
         }
@@ -513,6 +516,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             setDraft(currentTaskId, followUpInputRef.current, selectedModeRef.current);
         };
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Sync mode selector with the loaded task's mode
+    useEffect(() => {
+        if (!task) return;
+        const draft = getDraft(taskId);
+        if (draft?.mode === 'ask' || draft?.mode === 'plan' || draft?.mode === 'autopilot') return;
+        const taskMode = (task as any).payload?.mode as string | undefined;
+        if (taskMode === 'ask' || taskMode === 'plan' || taskMode === 'autopilot') {
+            setSelectedMode(taskMode);
+        }
+    }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch conversation when user re-clicks the already-selected task
     // (REFRESH_SELECTED_QUEUE_TASK bumps refreshVersion).

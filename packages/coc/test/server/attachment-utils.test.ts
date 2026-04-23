@@ -16,6 +16,7 @@ import {
     buildTextAttachmentContext,
     hasAttachments,
     processMessageAttachments,
+    TEXT_EXTERNALIZE_THRESHOLD,
 } from '../../src/server/attachment-utils';
 import type { AttachmentPayload } from '../../src/server/attachment-utils';
 
@@ -155,7 +156,7 @@ describe('validateAttachments', () => {
 // ── saveAttachmentsToTempFiles ───────────────────────────────────────────
 
 describe('saveAttachmentsToTempFiles', () => {
-    it('saves a text file and returns its content', () => {
+    it('saves a text file and returns its content with file path', () => {
         const tempDir = makeTempDir();
         const { attachments, textContents } = saveAttachmentsToTempFiles([makePayload()], tempDir);
 
@@ -166,6 +167,7 @@ describe('saveAttachmentsToTempFiles', () => {
         expect(textContents).toHaveLength(1);
         expect(textContents[0].name).toBe('test.txt');
         expect(textContents[0].content).toBe(TEXT_CONTENT);
+        expect(textContents[0].filePath).toBe(attachments[0].path);
     });
 
     it('saves an image file without text content', () => {
@@ -223,11 +225,54 @@ describe('buildTextAttachmentContext', () => {
         expect(buildTextAttachmentContext([])).toBe('');
     });
 
-    it('wraps a single file in attached_file tags', () => {
-        const ctx = buildTextAttachmentContext([{ name: 'readme.md', content: '# Hello' }]);
+    it('inlines small text in attached_file tags', () => {
+        const shortContent = 'Hello';
+        expect(shortContent.length).toBeLessThanOrEqual(TEXT_EXTERNALIZE_THRESHOLD);
+        const ctx = buildTextAttachmentContext([{ name: 'readme.md', content: shortContent }]);
         expect(ctx).toContain('<attached_file name="readme.md">');
-        expect(ctx).toContain('# Hello');
+        expect(ctx).toContain(shortContent);
         expect(ctx).toContain('</attached_file>');
+        expect(ctx).not.toContain('Read it at the path above');
+    });
+
+    it('inlines text exactly at threshold', () => {
+        const exactContent = 'x'.repeat(TEXT_EXTERNALIZE_THRESHOLD);
+        const ctx = buildTextAttachmentContext([{ name: 'exact.txt', content: exactContent, filePath: '/tmp/exact.txt' }]);
+        expect(ctx).toContain(exactContent);
+        expect(ctx).not.toContain('Read it at the path above');
+    });
+
+    it('externalizes text exceeding threshold when filePath is provided', () => {
+        const largeContent = 'x'.repeat(TEXT_EXTERNALIZE_THRESHOLD + 1);
+        const ctx = buildTextAttachmentContext([
+            { name: 'big.txt', content: largeContent, filePath: '/tmp/big.txt' },
+        ]);
+        expect(ctx).toContain('<attached_file name="big.txt" path="/tmp/big.txt">');
+        expect(ctx).toContain(`approximately ${largeContent.length} characters`);
+        expect(ctx).toContain('Read it at the path above');
+        expect(ctx).not.toContain(largeContent);
+    });
+
+    it('inlines large text when filePath is not provided (backward compat)', () => {
+        const largeContent = 'x'.repeat(TEXT_EXTERNALIZE_THRESHOLD + 100);
+        const ctx = buildTextAttachmentContext([{ name: 'big.txt', content: largeContent }]);
+        expect(ctx).toContain(largeContent);
+        expect(ctx).not.toContain('Read it at the path above');
+    });
+
+    it('handles mix of small and large text attachments', () => {
+        const small = 'short';
+        const large = 'y'.repeat(TEXT_EXTERNALIZE_THRESHOLD + 50);
+        const ctx = buildTextAttachmentContext([
+            { name: 'small.txt', content: small },
+            { name: 'large.txt', content: large, filePath: '/tmp/large.txt' },
+        ]);
+        // Small file is inlined
+        expect(ctx).toContain(small);
+        // Large file is externalized
+        expect(ctx).toContain('path="/tmp/large.txt"');
+        expect(ctx).toContain('Read it at the path above');
+        expect(ctx).not.toContain(large);
     });
 
     it('includes multiple files', () => {
@@ -239,7 +284,7 @@ describe('buildTextAttachmentContext', () => {
         expect(ctx).toContain('b.txt');
     });
 
-    it('truncates very long content', () => {
+    it('truncates very long content when inlined (no filePath)', () => {
         const longContent = 'x'.repeat(60_000);
         const ctx = buildTextAttachmentContext([{ name: 'big.txt', content: longContent }]);
         expect(ctx).toContain('... (truncated)');
@@ -284,6 +329,42 @@ describe('processMessageAttachments', () => {
         expect(result.fileAttachmentMeta![0].category).toBe('text');
     });
 
+    it('externalizes large text attachment content to file-path reference', () => {
+        const tempDir = makeTempDir();
+        const largeContent = 'z'.repeat(TEXT_EXTERNALIZE_THRESHOLD + 100);
+        const largeB64 = Buffer.from(largeContent).toString('base64');
+        const body = {
+            content: 'analyze this',
+            attachments: [makePayload({
+                name: 'big-log.txt',
+                mimeType: 'text/plain',
+                size: largeContent.length,
+                dataUrl: `data:text/plain;base64,${largeB64}`,
+            })],
+        };
+
+        const result = processMessageAttachments(body, tempDir);
+        // Text context should contain a file-path reference, not the inline content
+        expect(result.textContext).toContain('Read it at the path above');
+        expect(result.textContext).toContain(`approximately ${largeContent.length} characters`);
+        expect(result.textContext).not.toContain(largeContent);
+        // The file should still be saved as an SDK attachment
+        expect(result.sdkAttachments.length).toBeGreaterThan(0);
+    });
+
+    it('inlines small text attachment content', () => {
+        const tempDir = makeTempDir();
+        const body = {
+            content: 'test',
+            attachments: [makePayload({ name: 'small.txt' })],
+        };
+
+        const result = processMessageAttachments(body, tempDir);
+        // Small content should be inlined
+        expect(result.textContext).toContain(TEXT_CONTENT);
+        expect(result.textContext).not.toContain('Read it at the path above');
+    });
+
     it('processes legacy images when no attachments provided', () => {
         const tempDir = makeTempDir();
         const body = {
@@ -317,5 +398,29 @@ describe('processMessageAttachments', () => {
         expect(result.textContext).toBe('');
         expect(result.validatedImages).toBeUndefined();
         expect(result.fileAttachmentMeta).toBeUndefined();
+    });
+
+    it('saves bitmap/image attachments to temp files (never inlined)', () => {
+        const tempDir = makeTempDir();
+        const body = {
+            content: 'check this image',
+            attachments: [makePayload({ name: 'screenshot.png', mimeType: 'image/png', dataUrl: PNG_DATA_URL })],
+        };
+
+        const result = processMessageAttachments(body, tempDir);
+        // Image should be saved as SDK attachment with a file path
+        expect(result.sdkAttachments).toHaveLength(1);
+        expect(result.sdkAttachments[0].type).toBe('file');
+        expect(fs.existsSync(result.sdkAttachments[0].path)).toBe(true);
+        // Image content should NOT appear in text context
+        expect(result.textContext).toBe('');
+    });
+});
+
+// ── TEXT_EXTERNALIZE_THRESHOLD ───────────────────────────────────────────
+
+describe('TEXT_EXTERNALIZE_THRESHOLD', () => {
+    it('is 200', () => {
+        expect(TEXT_EXTERNALIZE_THRESHOLD).toBe(200);
     });
 });
