@@ -196,11 +196,10 @@ describe('noteMarkdown', () => {
         it('bullet list', () => {
             const md = '- item one\n- item two';
             const rt = norm(roundTrip(md));
-            expect(rt).toContain('item one');
-            expect(rt).toContain('item two');
-            // Turndown may add extra whitespace after the bullet marker
+            // Should produce tight list (no blank lines between items)
             expect(rt).toMatch(/-\s+item one/);
             expect(rt).toMatch(/-\s+item two/);
+            expect(rt).not.toMatch(/item one\n\s*\n/);
         });
 
         it('ordered list', () => {
@@ -209,6 +208,8 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('1.');
             expect(rt).toContain('first');
             expect(rt).toContain('second');
+            // Should not have blank lines between items
+            expect(rt).not.toMatch(/first\n\s*\n/);
         });
 
         it('task list preserves checked state', () => {
@@ -279,6 +280,74 @@ describe('noteMarkdown', () => {
             expect(rt.endsWith('\n')).toBe(true);
             // Should not have double trailing newlines
             expect(rt.endsWith('\n\n')).toBe(false);
+        });
+    });
+
+    // ── Tight list fix (unwrapSingleParagraphListItems) ─────────────────
+
+    describe('tight list round-trip', () => {
+        it('single-<p> bullet list items produce tight list', () => {
+            const html =
+                '<ul><li><p>alpha</p></li><li><p>beta</p></li><li><p>gamma</p></li></ul>';
+            const md = norm(htmlToMarkdown(html));
+            // Tight: no blank lines between items
+            expect(md).toMatch(/-\s+alpha/);
+            expect(md).toMatch(/-\s+beta/);
+            expect(md).toMatch(/-\s+gamma/);
+            expect(md).not.toMatch(/alpha\n\s*\n/);
+            expect(md).not.toMatch(/beta\n\s*\n/);
+        });
+
+        it('single-<p> ordered list items produce tight list', () => {
+            const html =
+                '<ol><li><p>first</p></li><li><p>second</p></li></ol>';
+            const md = norm(htmlToMarkdown(html));
+            expect(md).not.toMatch(/first\n\s*\n/);
+            expect(md).toContain('first');
+            expect(md).toContain('second');
+        });
+
+        it('multi-<p> list items still produce loose list', () => {
+            const html =
+                '<ul><li><p>para one</p><p>para two</p></li><li><p>item b</p></li></ul>';
+            const md = htmlToMarkdown(html);
+            // First item has two paragraphs — turndown should insert a blank/indented line
+            expect(md).toMatch(/para one\n[\s]*\n[\s]*para two/);
+        });
+
+        it('nested lists are not broken', () => {
+            const html =
+                '<ul>' +
+                '<li><p>parent</p><ul><li><p>child</p></li></ul></li>' +
+                '</ul>';
+            const md = norm(htmlToMarkdown(html));
+            expect(md).toContain('parent');
+            expect(md).toContain('child');
+        });
+
+        it('inline formatting inside tight list items is preserved', () => {
+            const html =
+                '<ul>' +
+                '<li><p><a href="https://example.com">link</a> and <strong>bold</strong></p></li>' +
+                '<li><p><code>code</code> text</p></li>' +
+                '</ul>';
+            const md = norm(htmlToMarkdown(html));
+            expect(md).toContain('[link](https://example.com)');
+            expect(md).toContain('**bold**');
+            expect(md).toContain('`code`');
+            // Tight — no blank lines between items
+            expect(md).not.toMatch(/bold\n\s*\n/);
+        });
+
+        it('task list items are unaffected by unwrap (own rule handles them)', () => {
+            const html =
+                '<ul data-type="taskList">' +
+                '<li data-type="taskItem" data-checked="true">done</li>' +
+                '<li data-type="taskItem" data-checked="false">todo</li>' +
+                '</ul>';
+            const md = norm(htmlToMarkdown(html));
+            expect(md).toContain('- [x] done');
+            expect(md).toContain('- [ ] todo');
         });
     });
 

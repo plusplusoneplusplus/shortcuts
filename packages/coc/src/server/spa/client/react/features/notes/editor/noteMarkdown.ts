@@ -201,6 +201,22 @@ turndown.addRule('table', {
     },
 });
 
+// ── Pre-processing helpers ──────────────────────────────────────────────────
+
+/**
+ * Unwrap single-<p> list items so turndown produces tight lists.
+ *
+ * Tiptap always wraps list item content in <p> tags, even for tight lists.
+ * Turndown interprets <li><p>...</p></li> as a loose list, adding blank lines.
+ * This strips the <p> wrapper when it's the sole child of <li>.
+ */
+function unwrapSingleParagraphListItems(html: string): string {
+    return html.replace(
+        /<li>\s*<p>((?:(?!<\/p>)[\s\S])*)<\/p>\s*<\/li>/gi,
+        (_match, inner: string) => `<li>${inner}</li>`,
+    );
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -225,7 +241,7 @@ export function htmlToMarkdown(html: string): string {
     if (!html) return '';
     // Tiptap returns `<p></p>` for an empty document
     if (/^<p>\s*<\/p>$/i.test(html.trim())) return '';
-    let md = turndown.turndown(html);
+    let md = turndown.turndown(unwrapSingleParagraphListItems(html));
     // Ensure single trailing newline
     md = md.replace(/\n*$/, '\n');
     return md;
