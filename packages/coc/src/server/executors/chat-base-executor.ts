@@ -117,7 +117,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.aiService = options.aiService;
         this.defaultTimeoutMs = options.defaultTimeoutMs;
         this.followUpSuggestions = options.followUpSuggestions;
-        this.askUser = options.askUser ?? { enabled: true };
+        this.askUser = options.askUser ?? { enabled: false };
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;

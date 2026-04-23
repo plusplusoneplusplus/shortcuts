@@ -251,7 +251,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             count: 3,
         },
         askUser: {
-            enabled: true,
+            enabled: false,
         },
     },
     serve: {

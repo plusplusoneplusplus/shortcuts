@@ -68,7 +68,7 @@ export function AdminPanel() {
     // Chat settings
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
-    const [chatAskUserEnabled, setChatAskUserEnabled] = useState(true);
+    const [chatAskUserEnabled, setChatAskUserEnabled] = useState(false);
 
     // Server name
     const [serverName, setServerName] = useState('');
@@ -92,7 +92,7 @@ export function AdminPanel() {
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: true, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
+    const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false });
 
@@ -160,7 +160,7 @@ export function AdminPanel() {
             const tc = (resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3;
             const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
             const fuc = String(resolved.chat?.followUpSuggestions?.count ?? 3);
-            const aue = resolved.chat?.askUser?.enabled ?? true;
+            const aue = resolved.chat?.askUser?.enabled ?? false;
             setShowReportIntent(sri);
             setToolCompactness(tc);
             setChatFollowUpEnabled(fue);

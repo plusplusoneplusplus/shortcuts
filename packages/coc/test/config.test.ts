@@ -56,7 +56,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
             expect(DEFAULT_CONFIG.chat).toEqual({
                 followUpSuggestions: { enabled: true, count: 3 },
-                askUser: { enabled: true },
+                askUser: { enabled: false },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
         });
