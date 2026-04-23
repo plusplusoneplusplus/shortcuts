@@ -125,8 +125,11 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing required field: content');
             }
 
+            // Absolute paths are used as-is (scratchpad / session-state files).
+            // Relative paths are resolved against notesRoot (notes tree entries).
+            const notesRoot = getNotesRoot(dataDir, ws.id);
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = path.resolve(wsDataDir, notePath);
+            const resolved = path.isAbsolute(notePath) ? path.resolve(notePath) : path.resolve(notesRoot, notePath);
 
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');

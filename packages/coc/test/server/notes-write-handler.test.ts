@@ -1,10 +1,10 @@
 /**
  * Notes Write Handler Tests
  *
- * Tests for PUT /api/workspaces/:id/notes/content security boundary:
- * - Files inside the notes directory are allowed
- * - Files inside the workspace data directory (e.g. tasks/) are allowed
- * - Files outside the workspace data directory are rejected with 403
+ * Tests for PUT /api/workspaces/:id/notes/content path resolution:
+ * - Relative paths resolve against notesRoot (~/.coc/repos/<wsId>/notes/)
+ * - Absolute paths inside wsDataDir or ~/.copilot are allowed
+ * - Absolute paths outside allowed directories are rejected with 403
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -122,21 +122,34 @@ describe('Notes Write Handler — PUT /notes/content security', { timeout: 30_00
     }
 
     // -------------------------------------------------------------------------
-    // Happy path — notes directory
+    // Happy path — notes directory (relative paths resolve against notesRoot)
     // -------------------------------------------------------------------------
 
     it('returns 200 when saving a file inside the notes directory (relative path)', async () => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
-        const res = await putJSON(contentUrl(srv), { path: 'notes/hello.md', content: '# Hello' });
+        // Relative path resolved against notesRoot — no "notes/" prefix needed
+        const res = await putJSON(contentUrl(srv), { path: 'hello.md', content: '# Hello' });
         expect(res.status).toBe(200);
         const data = JSON.parse(res.body);
         expect(data.updated).toBe(true);
 
-        // Verify the file was actually written
+        // File should be written inside the notes/ subdirectory
         const abs = path.join(wsDataDir(), 'notes', 'hello.md');
         expect(fs.readFileSync(abs, 'utf-8')).toBe('# Hello');
+    });
+
+    it('returns 200 when saving a nested note via relative path (regression: notes tree paths)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // This mirrors how the note editor saves a note selected from the tree
+        const res = await putJSON(contentUrl(srv), { path: 'Meeting/Rollout-Weekly-Sync.md', content: '# Sync' });
+        expect(res.status).toBe(200);
+
+        const abs = path.join(wsDataDir(), 'notes', 'Meeting', 'Rollout-Weekly-Sync.md');
+        expect(fs.readFileSync(abs, 'utf-8')).toBe('# Sync');
     });
 
     it('returns 200 when saving a file inside the notes directory (absolute path)', async () => {
@@ -150,7 +163,7 @@ describe('Notes Write Handler — PUT /notes/content security', { timeout: 30_00
     });
 
     // -------------------------------------------------------------------------
-    // Happy path — tasks directory (the bug scenario)
+    // Happy path — tasks directory (scratchpad uses absolute paths)
     // -------------------------------------------------------------------------
 
     it('returns 200 when saving a .plan.md file inside the tasks directory (absolute path)', async () => {
