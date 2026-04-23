@@ -13,6 +13,7 @@
  */
 
 import { execFileSync } from 'child_process';
+import { GIT_MAX_BUFFER } from '../routes/api-shared';
 
 // ============================================================================
 // Types
@@ -64,7 +65,7 @@ export function getFileDiff(
         return execFileSync(
             'git',
             ['diff', `${parentHash}..${commitHash}`, '--', filePath],
-            { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000 },
+            { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000, maxBuffer: GIT_MAX_BUFFER },
         );
     } catch {
         // Fallback for initial commits or other edge cases
@@ -72,7 +73,7 @@ export function getFileDiff(
             return execFileSync(
                 'git',
                 ['show', '--format=', commitHash, '--', filePath],
-                { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000 },
+                { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000, maxBuffer: GIT_MAX_BUFFER },
             );
         } catch {
             throw new Error(`Failed to retrieve diff for ${filePath}`);

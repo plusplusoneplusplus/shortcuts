@@ -26,8 +26,11 @@ export interface ApiRouteContext {
     db?: Database.Database;
 }
 
+/** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */
+export const GIT_MAX_BUFFER = 50 * 1024 * 1024;
+
 /** Maximum number of diff lines returned before truncation kicks in. */
-export const DIFF_LINE_LIMIT = 50_000;
+export const DIFF_LINE_LIMIT = 100_000;
 
 /**
  * If the diff exceeds DIFF_LINE_LIMIT lines and `full` is not true,

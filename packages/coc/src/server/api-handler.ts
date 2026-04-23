@@ -31,6 +31,7 @@ import { registerApiProcessRoutes } from './routes/api-process-routes';
 import { registerApiFsRoutes } from './routes/api-fs-routes';
 import { registerCommitChatRoutes } from './routes/api-commit-chat-routes';
 import type { ApiRouteContext } from './routes/api-shared';
+import { GIT_MAX_BUFFER } from './routes/api-shared';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -274,12 +275,12 @@ export function execGitSync(args: string, cwd: string): string {
     const cmd = process.platform === 'win32'
         ? `git ${args.replace(/\^/g, '^^')}`
         : `git ${args}`;
-    return childProcess.execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+    return childProcess.execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
 }
 
 /** Run a git command synchronously using an args array (shell-safe, no escaping needed). */
 export function execGitArgsSync(args: string[], cwd: string): string {
-    return childProcess.execFileSync('git', args, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+    return childProcess.execFileSync('git', args, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
 }
 
 /** Read a file's content from a specific commit, falling back to the first parent for deleted files. */
@@ -293,6 +294,7 @@ export function readGitFileAtCommit(hash: string, filePath: string, cwd: string)
                 cwd,
                 encoding: 'utf-8',
                 timeout: 5000,
+                maxBuffer: GIT_MAX_BUFFER,
             });
             return { content, resolvedRef };
         } catch (error) {
