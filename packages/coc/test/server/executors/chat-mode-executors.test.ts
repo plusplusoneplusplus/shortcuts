@@ -306,6 +306,47 @@ describe('ChatExecutor system message content', () => {
     });
 });
 
+// ============================================================================
+// ChatExecutor does NOT inject ask_user tool
+// ============================================================================
+
+describe('ChatExecutor ask_user disabled', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('does not include ask_user tool even when askUser option is enabled', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeChatTask('ask', 'task-no-ask');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).not.toContain('ask_user');
+    });
+
+    it('does not include ask_user prompt suffix', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeChatTask('ask', 'task-no-ask-suffix');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const systemContent = call.systemMessage?.content ?? '';
+        expect(systemContent).not.toContain('ask_user');
+    });
+});
+
 describe('AutopilotExecutor has no system message', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
