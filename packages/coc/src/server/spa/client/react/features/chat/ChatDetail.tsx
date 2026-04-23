@@ -41,6 +41,11 @@ import { ConversationMiniMap } from './conversation/ConversationMiniMap';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { copyHtmlToClipboard } from '../../utils/format';
+import { useScratchpadEnabled } from '../../hooks/feature-flags/useScratchpadEnabled';
+import { useScratchpadState } from './scratchpad/useScratchpadState';
+import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
+import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
+import { extractLastWrittenNotePath } from './scratchpad/scratchpadUtils';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -116,6 +121,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const turnsContainerRef = useRef<HTMLDivElement>(null);
+    const scratchpadContainerRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
 
     const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
@@ -136,6 +142,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         [skills],
     );
     const slashCommands = useSlashCommands(augmentedSkills);
+
+    const scratchpadEnabled = useScratchpadEnabled();
+    const scratchpad = useScratchpadState(scratchpadContainerRef);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -600,6 +609,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [turns, loading]);
 
+    // Auto-open scratchpad when the last assistant turn writes a .md file
+    useEffect(() => {
+        if (!scratchpadEnabled) return;
+        const path = extractLastWrittenNotePath(turns);
+        if (path && !scratchpad.isOpen) {
+            scratchpad.open(path);
+        }
+        // Intentionally omit scratchpad.isOpen from deps: we only want to re-evaluate
+        // when turns change or the feature flag changes, not when the panel itself opens.
+        // scratchpad.open is stable (never re-created).
+    }, [turns, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Track scroll position
     useEffect(() => {
         const el = conversationContainerRef.current;
@@ -752,48 +773,78 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 isSelecting={selection.isSelecting}
                 onToggleSelecting={selection.toggleSelecting}
             />
-            <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
-                <ConversationArea
-                    loading={loading}
-                    error={error}
-                    turns={turns}
-                    pendingQueue={pendingQueue}
-                    backgroundTasks={backgroundTasks}
-                    pendingQuestion={pendingAskUserQuestion}
-                    onAskUserAnswered={() => setPendingAskUserQuestion(null)}
-                    isScrolledUp={isScrolledUp}
-                    scrollRef={conversationContainerRef}
-                    turnsContainerRef={turnsContainerRef}
-                    onScrollToBottom={scrollToBottom}
-                    isPending={isPending}
-                    task={task}
-                    fullTask={fullTask}
-                    onCancel={handleCancel}
-                    onMoveToTop={handleMoveToTop}
-                    variant={variant}
-                    taskId={taskId}
-                    wsId={workspaceId}
-                    isSelecting={selection.isSelecting}
-                    selectedTurns={selection.selectedTurns}
-                    onTurnClick={selection.handleTurnClick}
-                    onCopySelected={handleCopySelected}
-                    onCancelSelection={selection.stopSelecting}
-                    onAttachContext={attachedContext.add}
-                    onDeleteTurn={handleDeleteTurn}
-                    onPinTurn={handlePinTurn}
-                    onArchiveTurn={handleArchiveTurn}
-                    undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
-                    onUndoDelete={handleUndoDelete}
-                    noteEdits={noteEdits}
-                    processId={processId ?? bareTaskId}
-                />
-                {variant !== 'floating' && !isMobile && (
-                    <ConversationMiniMap
+            <div ref={scratchpadContainerRef} className="relative flex-1 min-h-0 flex flex-col overflow-x-hidden min-w-0">
+                {/* Conversation row: shrinks to topHeightPct when scratchpad is open */}
+                <div
+                    className="relative flex min-w-0 overflow-hidden"
+                    style={scratchpadEnabled && scratchpad.isOpen
+                        ? { flex: `0 0 ${scratchpad.topHeightPct}%`, minHeight: 0 }
+                        : { flex: '1 1 auto', minHeight: 0 }
+                    }
+                >
+                    <ConversationArea
+                        loading={loading}
+                        error={error}
                         turns={turns}
-                        scrollContainerRef={conversationContainerRef}
+                        pendingQueue={pendingQueue}
+                        backgroundTasks={backgroundTasks}
+                        pendingQuestion={pendingAskUserQuestion}
+                        onAskUserAnswered={() => setPendingAskUserQuestion(null)}
+                        isScrolledUp={isScrolledUp}
+                        scrollRef={conversationContainerRef}
                         turnsContainerRef={turnsContainerRef}
-                        isStreaming={task?.status === 'running'}
+                        onScrollToBottom={scrollToBottom}
+                        isPending={isPending}
+                        task={task}
+                        fullTask={fullTask}
+                        onCancel={handleCancel}
+                        onMoveToTop={handleMoveToTop}
+                        variant={variant}
+                        taskId={taskId}
+                        wsId={workspaceId}
+                        isSelecting={selection.isSelecting}
+                        selectedTurns={selection.selectedTurns}
+                        onTurnClick={selection.handleTurnClick}
+                        onCopySelected={handleCopySelected}
+                        onCancelSelection={selection.stopSelecting}
+                        onAttachContext={attachedContext.add}
+                        onDeleteTurn={handleDeleteTurn}
+                        onPinTurn={handlePinTurn}
+                        onArchiveTurn={handleArchiveTurn}
+                        undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
+                        onUndoDelete={handleUndoDelete}
+                        noteEdits={noteEdits}
+                        processId={processId ?? bareTaskId}
                     />
+                    {variant !== 'floating' && !isMobile && (
+                        <ConversationMiniMap
+                            turns={turns}
+                            scrollContainerRef={conversationContainerRef}
+                            turnsContainerRef={turnsContainerRef}
+                            isStreaming={task?.status === 'running'}
+                        />
+                    )}
+                </div>
+                {scratchpadEnabled && scratchpad.isOpen && (
+                    <>
+                        <ScratchpadDivider
+                            linkedNotePath={scratchpad.linkedNotePath}
+                            expandMode={scratchpad.expandMode}
+                            isDragging={scratchpad.isDragging}
+                            onMouseDown={scratchpad.handleDividerMouseDown}
+                            onOpenFilePicker={() => { /* TODO: file picker integration */ }}
+                            onExpandTop={() => scratchpad.setExpandMode('top')}
+                            onExpandBottom={() => scratchpad.setExpandMode('bottom')}
+                            onSplitReset={() => scratchpad.setExpandMode('split')}
+                            onClose={scratchpad.close}
+                        />
+                        <ScratchpadPanel
+                            notePath={scratchpad.linkedNotePath}
+                            workspaceId={workspaceId ?? ''}
+                            onClose={scratchpad.close}
+                            height="auto"
+                        />
+                    </>
                 )}
             </div>
             {!isPending && noSessionForFollowUp && !readOnly && (
