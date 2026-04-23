@@ -78,8 +78,9 @@ export function AdminPanel() {
     const [notesEnabled, setNotesEnabled] = useState(false);
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
+    const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
 
-    // Preferences (theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
+    // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
@@ -94,7 +95,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -181,7 +182,9 @@ export function AdminPanel() {
             setNotesEnabled(ne);
             setMyWorkEnabled(mwe);
             setMyLifeEnabled(mle);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle });
+            const se = resolved.scratchpad?.enabled ?? false;
+            setScratchpadEnabled(se);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -235,7 +238,8 @@ export function AdminPanel() {
     const featuresDirty = terminalEnabled !== featuresSnapshot.terminal ||
         notesEnabled !== featuresSnapshot.notes ||
         myWorkEnabled !== featuresSnapshot.myWork ||
-        myLifeEnabled !== featuresSnapshot.myLife;
+        myLifeEnabled !== featuresSnapshot.myLife ||
+        scratchpadEnabled !== featuresSnapshot.scratchpad;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -387,6 +391,7 @@ export function AdminPanel() {
                     'notes.enabled': notesEnabled,
                     'myWork.enabled': myWorkEnabled,
                     'myLife.enabled': myLifeEnabled,
+                    'scratchpad.enabled': scratchpadEnabled,
                 }),
             });
             if (!res.ok) {
@@ -395,19 +400,20 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
         setNotesEnabled(featuresSnapshot.notes);
         setMyWorkEnabled(featuresSnapshot.myWork);
         setMyLifeEnabled(featuresSnapshot.myLife);
+        setScratchpadEnabled(featuresSnapshot.scratchpad);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1084,9 +1090,26 @@ export function AdminPanel() {
                                             </label>
                                         </div>
                                     </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Scratchpad panel</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Bottom-split note editor inside the chat detail view.</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['scratchpad.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={scratchpadEnabled}
+                                                    onChange={e => setScratchpadEnabled(e.target.checked)}
+                                                    data-testid="toggle-scratchpad-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
                                 </SettingsCard>
-
-                                {/* ── 5. Advanced & Recovery ── */}
                                 <SettingsCard
                                     title="Advanced & Recovery"
                                     badge="Advanced"

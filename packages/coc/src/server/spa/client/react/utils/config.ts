@@ -11,6 +11,7 @@ interface DashboardConfig {
     notesEnabled?: boolean;
     myWorkEnabled?: boolean;
     myLifeEnabled?: boolean;
+    scratchpadEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -47,4 +48,8 @@ export function isMyWorkEnabled(): boolean {
 
 export function isMyLifeEnabled(): boolean {
     return getConfig().myLifeEnabled === true;
+}
+
+export function isScratchpadEnabled(): boolean {
+    return getConfig().scratchpadEnabled === true;
 }
