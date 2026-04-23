@@ -147,11 +147,14 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('uses ask mode by default with hidden selector', () => {
+    it('renders mode selector with ask mode by default', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        // Mode selector should be hidden
-        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
-        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
+        expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
+        // Default mode is 'ask'
+        const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+        expect(dropdown.value).toBe('ask');
     });
 
     it('sends with default ask mode', async () => {
@@ -437,6 +440,71 @@ describe('NewChatArea', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             expect(input.placeholder).toContain('type / for commands');
+        });
+    });
+
+    describe('mode selector', () => {
+        it('renders mode selector between attach button and input', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const bar = screen.getByTestId('chat-input-bar');
+            const testIds = Array.from(bar.querySelectorAll('[data-testid]')).map(
+                (el) => (el as HTMLElement).dataset.testid,
+            );
+            // mode-selector should appear after attach btn, before input
+            const attachIdx = testIds.indexOf('new-chat-attach-btn');
+            const selectorIdx = testIds.indexOf('mode-selector');
+            const inputIdx = testIds.indexOf('new-chat-input');
+            expect(attachIdx).toBeLessThan(selectorIdx);
+            expect(selectorIdx).toBeLessThan(inputIdx);
+        });
+
+        it('dropdown changes mode and updates border color', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+            expect(dropdown.value).toBe('ask');
+
+            fireEvent.change(dropdown, { target: { value: 'plan' } });
+            expect(dropdown.value).toBe('plan');
+        });
+
+        it('cycle button advances mode', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const cycleBtn = screen.getByTestId('mode-cycle-btn');
+            // Default is ask, cycling should go to autopilot
+            expect(cycleBtn.textContent).toBe('💡');
+            fireEvent.click(cycleBtn);
+            expect(cycleBtn.textContent).toBe('🤖');
+        });
+
+        it('sends selected mode in payload via dropdown', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ id: 'mode-task' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+            fireEvent.change(dropdown, { target: { value: 'autopilot' } });
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Do stuff' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            expect(body.payload.mode).toBe('autopilot');
+        });
+
+        it('Shift+Tab keyboard shortcut still cycles mode', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+            expect(dropdown.value).toBe('ask');
+
+            fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
+            expect(dropdown.value).toBe('autopilot');
         });
     });
 });
