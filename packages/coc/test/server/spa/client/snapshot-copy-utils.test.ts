@@ -382,10 +382,12 @@ describe('buildPrintDocument', () => {
         expect(html).toContain('</html>');
     });
 
-    it('includes print-optimized CSS that removes overflow constraints', () => {
+    it('includes print-optimized CSS that removes height constraints', () => {
         const html = buildPrintDocument('<div>content</div>');
-        expect(html).toContain('overflow: visible !important');
         expect(html).toContain('max-height: none !important');
+        expect(html).toContain('height: auto !important');
+        // overflow must NOT be globally overridden (breaks flex layouts)
+        expect(html).not.toContain('overflow: visible !important');
     });
 
     it('includes CSS for wrapping code blocks', () => {

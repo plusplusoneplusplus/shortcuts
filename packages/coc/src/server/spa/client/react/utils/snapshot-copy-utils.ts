@@ -218,8 +218,13 @@ function wrapInContainer(innerHtml: string): string {
 
 /**
  * Build a full standalone HTML document from snapshot HTML, optimized for
- * printing / "Save as PDF". Removes all overflow/max-height constraints so
- * scrollable containers expand to show their full content.
+ * printing / "Save as PDF". Removes max-height constraints so scrollable
+ * containers expand to show their full content.
+ *
+ * Note: `overflow` is intentionally NOT overridden globally because it breaks
+ * flex layouts (text renders one-char-per-line). Since `overflow` is not in
+ * the snapshot STYLE_ALLOWLIST, it naturally defaults to `visible` in the
+ * print document — no override needed.
  */
 export function buildPrintDocument(snapshotHtml: string, title?: string): string {
     const safeTitle = escapeHtmlText(title || 'Chat Conversation');
@@ -238,10 +243,10 @@ body {
     color: #1e1e1e;
     background: #fff;
 }
-/* Remove all scroll constraints so full content is visible */
+/* Remove height caps so scrollable areas expand to full content */
 * {
-    overflow: visible !important;
     max-height: none !important;
+    height: auto !important;
 }
 /* Ensure code blocks wrap instead of causing horizontal overflow */
 pre, code {
