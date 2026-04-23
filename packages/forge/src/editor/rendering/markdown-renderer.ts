@@ -248,8 +248,9 @@ export function applyInlineMarkdown(text: string): string {
     // File paths — detect absolute paths and wrap in interactive spans.
     // Must come after inline code (so paths inside backticks are skipped)
     // and before images/links (to avoid double-processing).
-    // Match Unix absolute paths and Windows drive-letter paths (backslash, forward-slash, or mixed).
-    const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
+    // Match any Unix absolute path with ≥2 components and Windows drive-letter paths.
+    // Lookbehind (?<![:/\w]) prevents matching path tails inside URLs.
+    const FILE_PATH_RE = /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
     html = html.replace(FILE_PATH_RE, function(match: string, offset: number) {
         // Skip if inside a <span class="md-inline-code"> tag
         const before = html.substring(0, offset);

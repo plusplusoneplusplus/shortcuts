@@ -131,8 +131,28 @@ describe('File path detection in inline markdown', () => {
             expect(html).not.toContain('file-path-link');
         });
 
-        it('ignores paths not starting with known prefixes', () => {
+        it('detects previously-unknown prefixes like /unknown', () => {
             const html = renderMarkdownToHtml('See /unknown/path/file.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="/unknown/path/file.ts"');
+        });
+
+        it('detects Docker/Codespaces /workspace paths', () => {
+            const html = renderMarkdownToHtml('Edit /workspace/project/src/file.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="/workspace/project/src/file.ts"');
+        });
+
+        it('detects /app, /srv, /root, /build, /data paths', () => {
+            expect(renderMarkdownToHtml('/app/src/main.ts')).toContain('file-path-link');
+            expect(renderMarkdownToHtml('/srv/svc/cfg.yaml')).toContain('file-path-link');
+            expect(renderMarkdownToHtml('/root/project/file.ts')).toContain('file-path-link');
+            expect(renderMarkdownToHtml('/build/output/bundle.js')).toContain('file-path-link');
+            expect(renderMarkdownToHtml('/data/repos/index.ts')).toContain('file-path-link');
+        });
+
+        it('does not linkify URL path tails in raw text', () => {
+            const html = renderMarkdownToHtml('Visit https://example.com/api/v1/users');
             expect(html).not.toContain('file-path-link');
         });
     });

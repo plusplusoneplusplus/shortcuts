@@ -224,6 +224,19 @@ describe('applyInlineMarkdown', () => {
             expect(applyInlineMarkdown('/opt/bin/node')).toContain('file-path-link');
         });
 
+        it('detects general Linux paths not in the old whitelist', () => {
+            expect(applyInlineMarkdown('/workspace/project/src/file.ts')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/app/src/main.ts')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/srv/svc/cfg.yaml')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/root/project/file.ts')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/build/output/bundle.js')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/data/repos/index.ts')).toContain('file-path-link');
+        });
+
+        it('does not match URL path tails', () => {
+            expect(applyInlineMarkdown('https://example.com/api/v1/users')).not.toContain('file-path-link');
+        });
+
         it('shortens /Users/<user>/Documents/Projects/ paths', () => {
             const html = applyInlineMarkdown('/Users/john/Documents/Projects/myapp/src/index.ts');
             expect(html).toContain('>myapp/src/index.ts</span>');

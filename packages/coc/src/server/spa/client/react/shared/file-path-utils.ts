@@ -47,10 +47,14 @@ export function shortenFilePath(p: string): string {
 }
 
 /**
- * Regex matching absolute file paths — Unix (`/Users`, `/home`, …) and
- * Windows drive-letter paths (`C:\…`).
+ * Regex matching absolute file paths — any Unix absolute path with at least
+ * two components (`/foo/bar`) and Windows drive-letter paths (`C:\…`).
+ *
+ * The negative lookbehind `(?<![:/\w])` prevents matching path tails inside
+ * URLs (e.g. `https://example.com/api`) and other slash-delimited tokens.
  */
-export const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
+export const FILE_PATH_RE =
+    /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
 
 /**
  * Post-process HTML to wrap file paths in interactive `.file-path-link` spans.

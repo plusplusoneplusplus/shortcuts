@@ -72,6 +72,44 @@ describe('FILE_PATH_RE', () => {
             .toEqual(['D:/projects/repo/src/app.ts']);
     });
 
+    it('matches Docker/Codespaces /workspace paths', () => {
+        expect(findPaths('edit /workspace/project/src/file.ts please'))
+            .toEqual(['/workspace/project/src/file.ts']);
+    });
+
+    it('matches /app paths (containerised apps)', () => {
+        expect(findPaths('see /app/src/main.ts'))
+            .toEqual(['/app/src/main.ts']);
+    });
+
+    it('matches /srv paths', () => {
+        expect(findPaths('config at /srv/myservice/config.yaml'))
+            .toEqual(['/srv/myservice/config.yaml']);
+    });
+
+    it('matches /root paths', () => {
+        expect(findPaths('file at /root/project/file.ts'))
+            .toEqual(['/root/project/file.ts']);
+    });
+
+    it('matches /build paths', () => {
+        expect(findPaths('bundle at /build/output/bundle.js'))
+            .toEqual(['/build/output/bundle.js']);
+    });
+
+    it('matches /data paths', () => {
+        expect(findPaths('index at /data/repos/project/index.ts'))
+            .toEqual(['/data/repos/project/index.ts']);
+    });
+
+    it('does not match URL path tails', () => {
+        expect(findPaths('visit https://example.com/api/v1/users')).toEqual([]);
+    });
+
+    it('does not match single-component paths', () => {
+        expect(findPaths('mount /workspace')).toEqual([]);
+    });
+
     it('returns empty for no paths', () => {
         expect(findPaths('just some text with no paths')).toEqual([]);
     });
@@ -114,6 +152,25 @@ describe('linkifyFilePaths', () => {
         const html = 'file C:\\Users\\alice\\app.ts here';
         const result = linkifyFilePaths(html);
         expect(result).toContain('data-full-path="C:/Users/alice/app.ts"');
+    });
+
+    it('linkifies /workspace paths', () => {
+        const html = 'edit /workspace/project/src/file.ts please';
+        const result = linkifyFilePaths(html);
+        expect(result).toContain('data-full-path="/workspace/project/src/file.ts"');
+    });
+
+    it('linkifies /app, /srv, /root, /build, /data paths', () => {
+        expect(linkifyFilePaths('/app/src/main.ts done')).toContain('data-full-path="/app/src/main.ts"');
+        expect(linkifyFilePaths('/srv/svc/cfg.yaml')).toContain('data-full-path="/srv/svc/cfg.yaml"');
+        expect(linkifyFilePaths('/root/proj/file.ts')).toContain('data-full-path="/root/proj/file.ts"');
+        expect(linkifyFilePaths('/build/out/bundle.js')).toContain('data-full-path="/build/out/bundle.js"');
+        expect(linkifyFilePaths('/data/repos/index.ts')).toContain('data-full-path="/data/repos/index.ts"');
+    });
+
+    it('does not linkify URL path tails', () => {
+        const html = 'visit https://example.com/api/v1/users';
+        expect(linkifyFilePaths(html)).not.toContain('file-path-link');
     });
 
     it('handles html without paths', () => {
