@@ -217,12 +217,13 @@ function formatStartTime(startTime?: string): string {
     if (!startTime) return '';
     const d = new Date(startTime);
     if (isNaN(d.getTime())) return '';
-    const MM = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    const mm = String(d.getUTCMinutes()).padStart(2, '0');
-    const ss = String(d.getUTCSeconds()).padStart(2, '0');
-    return `${MM}/${dd} ${hh}:${mm}:${ss}Z`;
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${MM}/${dd} ${hh}:${mm} ${ampm}`;
 }
 
 function formatDuration(startTime?: string, endTime?: string): string {

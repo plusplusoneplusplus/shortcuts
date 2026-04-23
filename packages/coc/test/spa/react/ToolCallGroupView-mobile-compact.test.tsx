@@ -69,13 +69,24 @@ describe('ToolCallGroupView — timestamp hidden on mobile', () => {
     it('hides timestamp on mobile viewport', () => {
         viewportCleanup = mockViewport(375);
         renderGroup();
-        expect(screen.queryByText(/12:30:00Z/)).toBeNull();
+        // On mobile, the start-time label is not rendered at all
+        const d = new Date('2026-04-04T12:30:00.000Z');
+        let hh = d.getHours();
+        const ampm = hh >= 12 ? 'PM' : 'AM';
+        hh = hh % 12 || 12;
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        expect(screen.queryByText(new RegExp(`${hh}:${mm} ${ampm}`))).toBeNull();
     });
 
     it('shows timestamp on desktop viewport', () => {
         viewportCleanup = mockViewport(1024);
         renderGroup();
-        expect(screen.getByText(/12:30:00Z/)).toBeTruthy();
+        const d = new Date('2026-04-04T12:30:00.000Z');
+        let hh = d.getHours();
+        const ampm = hh >= 12 ? 'PM' : 'AM';
+        hh = hh % 12 || 12;
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        expect(screen.getByText(new RegExp(`${hh}:${mm} ${ampm}`))).toBeTruthy();
     });
 
     it('duration gets ml-auto on mobile when timestamp is hidden', () => {

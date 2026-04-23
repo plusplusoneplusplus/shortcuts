@@ -47,18 +47,19 @@ export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {
     agent: '🤖',
 };
 
-/** Formats the startTime of the earliest tool call as `MM/DD HH:MM:SSZ`. */
+/** Formats the startTime of the earliest tool call as `MM/DD h:mm AM/PM` (local time). */
 export function groupStartLabel(toolCalls: RenderToolCall[]): string {
     const first = toolCalls.find(tc => tc.startTime);
     if (!first?.startTime) return '';
     const d = new Date(first.startTime);
     if (isNaN(d.getTime())) return '';
-    const MM = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    const mm = String(d.getUTCMinutes()).padStart(2, '0');
-    const ss = String(d.getUTCSeconds()).padStart(2, '0');
-    return `${MM}/${dd} ${hh}:${mm}:${ss}Z`;
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${MM}/${dd} ${hh}:${mm} ${ampm}`;
 }
 
 /** Returns human-readable elapsed time spanning first startTime to last endTime. */

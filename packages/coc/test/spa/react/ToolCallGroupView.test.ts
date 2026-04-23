@@ -23,26 +23,39 @@ function tc(overrides: Partial<RenderToolCall> & Pick<RenderToolCall, 'id' | 'to
 
 // ─── groupStartLabel ──────────────────────────────────────────────────────────
 
+/** Helper: compute expected local-time label for a given ISO string. */
+function expectedLocalLabel(iso: string): string {
+    const d = new Date(iso);
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${MM}/${dd} ${hh}:${mm} ${ampm}`;
+}
+
 describe('groupStartLabel', () => {
     it('returns empty string when no toolCalls have startTime', () => {
         expect(groupStartLabel([tc({ id: 'a', toolName: 'view' })])).toBe('');
     });
 
-    it('formats first startTime as MM/DD HH:MM:SSZ', () => {
+    it('formats first startTime as MM/DD h:mm AM/PM in local time', () => {
+        const iso = '2025-06-15T08:30:45Z';
         const result = groupStartLabel([
-            tc({ id: 'a', toolName: 'view', startTime: '2025-06-15T08:30:45Z' }),
+            tc({ id: 'a', toolName: 'view', startTime: iso }),
         ]);
-        expect(result).toBe('06/15 08:30:45Z');
+        expect(result).toBe(expectedLocalLabel(iso));
     });
 
     it('uses the first tool call that has startTime', () => {
-        // The second has an earlier timestamp but the first-in-array that has one is used
+        const iso1 = '2025-01-02T10:00:00Z';
         const result = groupStartLabel([
-            tc({ id: 'a', toolName: 'view', startTime: '2025-01-02T10:00:00Z' }),
+            tc({ id: 'a', toolName: 'view', startTime: iso1 }),
             tc({ id: 'b', toolName: 'glob', startTime: '2025-01-01T09:00:00Z' }),
         ]);
         // groupStartLabel uses `find`, so it picks the first entry with startTime
-        expect(result).toBe('01/02 10:00:00Z');
+        expect(result).toBe(expectedLocalLabel(iso1));
     });
 
     it('returns empty string for invalid date strings', () => {
