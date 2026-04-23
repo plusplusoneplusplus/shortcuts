@@ -76,6 +76,12 @@ export function snapshotConversation(
     try {
         const clone = sourceContainer.cloneNode(true) as HTMLElement;
 
+        // Inline computed styles BEFORE any DOM mutations.
+        // inlineComputedStyles walks source and clone in lockstep; removing nodes
+        // from the clone first causes the walkers to fall out of sync, resulting in
+        // button styles (e.g. opacity:0) being applied to the wrong elements.
+        inlineComputedStyles(clone, sourceContainer);
+
         if (selectedIndices) {
             filterToSelectedTurns(clone, selectedIndices);
         }
@@ -85,8 +91,6 @@ export function snapshotConversation(
         if (expandToolGroups) {
             expandCollapsedGroups(clone);
         }
-
-        inlineComputedStyles(clone, sourceContainer);
 
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         rewriteRelativeUrls(clone, baseUrl);
@@ -118,9 +122,12 @@ export function stripInteractiveElements(clone: HTMLElement): void {
 
 /** Expand collapsed tool call groups so their content is visible. */
 export function expandCollapsedGroups(clone: HTMLElement): void {
-    // Remove 'collapsed' and 'hidden' classes from tool call bodies
+    // Remove 'collapsed' and 'hidden' classes from tool call bodies.
+    // Also clear any inlined display:none that was baked in by inlineComputedStyles
+    // before this function is called.
     clone.querySelectorAll('.tool-call-body.collapsed, .tool-call-body.hidden').forEach(el => {
         el.classList.remove('collapsed', 'hidden');
+        (el as HTMLElement).style.display = '';
     });
 
     // Expand tool groups marked as collapsed via aria-expanded

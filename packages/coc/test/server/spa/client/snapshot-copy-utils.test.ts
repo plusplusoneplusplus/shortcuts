@@ -369,6 +369,36 @@ describe('snapshotConversation', () => {
 
         document.body.removeChild(container);
     });
+
+    it('does not apply button styles (opacity:0) to content elements that follow stripped buttons', () => {
+        // Regression test: when inlineComputedStyles was called AFTER stripInteractiveElements,
+        // the parallel TreeWalker would fall out of sync — the source walker visited a removed
+        // button (opacity:0) while the clone walker was already on the next content element,
+        // baking opacity:0 onto the message content and making it invisible in the PDF.
+        const container = document.createElement('div');
+        container.innerHTML = `
+            <div class="chat-message user" data-turn-index="0">
+                <div class="header">
+                    <span class="role-label">You</span>
+                    <button class="bubble-copy-btn" style="opacity:0">📋</button>
+                    <button class="bubble-raw-btn" style="opacity:0">&lt;/&gt;</button>
+                </div>
+                <div class="chat-message-content">Hello world</div>
+            </div>
+        `;
+        document.body.appendChild(container);
+
+        const html = snapshotConversation(container);
+
+        // The .chat-message-content must not carry opacity:0 from the removed buttons
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        const content = temp.querySelector('.chat-message-content');
+        const style = content?.getAttribute('style') || '';
+        expect(style).not.toMatch(/opacity\s*:\s*0/);
+
+        document.body.removeChild(container);
+    });
 });
 
 describe('buildPrintDocument', () => {
