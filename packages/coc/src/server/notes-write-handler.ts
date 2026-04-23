@@ -27,6 +27,10 @@ function getNotesRoot(dataDir: string, workspaceId: string): string {
     return getRepoDataPath(dataDir, workspaceId, 'notes');
 }
 
+function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
+    return path.join(dataDir, 'repos', workspaceId);
+}
+
 // ============================================================================
 // Write Route Registration
 // ============================================================================
@@ -112,11 +116,11 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
-            const resolved = path.resolve(notesRoot, notePath);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
+            const resolved = path.resolve(wsDataDir, notePath);
 
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isWithinDirectory(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             try {
