@@ -97,6 +97,41 @@ export function RichEditorCore({
                 : []),
         ],
         editorProps: {
+            handleClick: (view, pos, event) => {
+                if (!(event.ctrlKey || event.metaKey)) return false;
+                const { state } = view;
+                const $pos = state.doc.resolve(pos);
+                const linkMark = $pos.marks().find((m: any) => m.type.name === 'link');
+                if (linkMark?.attrs.href) {
+                    window.open(linkMark.attrs.href, '_blank', 'noopener');
+                    return true;
+                }
+                // Fallback: check if the DOM target is an <a> element
+                const anchor = (event.target as HTMLElement).closest?.('a');
+                if (anchor?.href) {
+                    window.open(anchor.href, '_blank', 'noopener');
+                    return true;
+                }
+                return false;
+            },
+            handleDOMEvents: {
+                keydown: (view, event) => {
+                    if (event.key === 'Control' || event.key === 'Meta') {
+                        view.dom.classList.add('ctrl-held');
+                    }
+                    return false;
+                },
+                keyup: (view, event) => {
+                    if (event.key === 'Control' || event.key === 'Meta') {
+                        view.dom.classList.remove('ctrl-held');
+                    }
+                    return false;
+                },
+                blur: (view) => {
+                    view.dom.classList.remove('ctrl-held');
+                    return false;
+                },
+            },
             handlePaste: (view, event) => {
                 if (handlePasteRef.current) {
                     return handlePasteRef.current(view, event as ClipboardEvent);

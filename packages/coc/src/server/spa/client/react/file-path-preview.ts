@@ -559,6 +559,9 @@ function initFilePathPreviewDelegation(): void {
     document.body.addEventListener('click', (event) => {
         const target = findPathLink(event.target);
         if (!target) return;
+        // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
+        const me = event as MouseEvent;
+        if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
         event.preventDefault();
         event.stopPropagation();
 
@@ -629,6 +632,9 @@ function initFilePathPreviewDelegation(): void {
     document.body.addEventListener('click', (event) => {
         const target = findMdLink(event.target);
         if (!target) return;
+        // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
+        const me = event as MouseEvent;
+        if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
         event.preventDefault();
         event.stopPropagation();
 

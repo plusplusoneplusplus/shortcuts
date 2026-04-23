@@ -66,6 +66,7 @@
 
 /* Links */
 .note-editor .ProseMirror a { color: #0078d4; text-decoration: underline; }
+.note-editor .ProseMirror.ctrl-held a { cursor: pointer; }
 
 /* Highlight / <mark> */
 .note-editor .ProseMirror mark {

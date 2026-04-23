@@ -8,6 +8,7 @@ const mockSetContent = vi.fn();
 const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');
 let capturedOnUpdate: ((payload: { editor: unknown }) => void) | null = null;
+let capturedEditorProps: any = null;
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -22,8 +23,9 @@ const mockEditor = {
 };
 
 vi.mock('@tiptap/react', () => ({
-    useEditor: (config: { onUpdate?: (payload: { editor: unknown }) => void }) => {
+    useEditor: (config: { onUpdate?: (payload: { editor: unknown }) => void; editorProps?: any }) => {
         if (config?.onUpdate) capturedOnUpdate = config.onUpdate;
+        if (config?.editorProps) capturedEditorProps = config.editorProps;
         return mockEditor;
     },
     EditorContent: ({ editor }: { editor: unknown }) =>
@@ -56,6 +58,7 @@ describe('RichEditorCore', () => {
         mockSetContent.mockReset();
         mockClearContent.mockReset();
         capturedOnUpdate = null;
+        capturedEditorProps = null;
     });
 
     afterEach(() => {
@@ -131,6 +134,99 @@ describe('RichEditorCore', () => {
         // onEditorReady should only fire once, not on every parent render
         expect(editorReadyCalls.length).toBe(1);
         expect(editorReadyCalls[0]).toBe(mockEditor);
+    });
+
+    // ── Ctrl+Click link handling ───────────────────────────────────────
+
+    it('configures handleClick in editorProps for Ctrl+Click link opening', () => {
+        render(<RichEditorCore />);
+        expect(capturedEditorProps).toBeDefined();
+        expect(typeof capturedEditorProps.handleClick).toBe('function');
+    });
+
+    it('handleClick opens link when Ctrl is held', () => {
+        const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+        render(<RichEditorCore />);
+
+        const linkMark = { type: { name: 'link' }, attrs: { href: 'https://example.com' } };
+        const mockView = {
+            state: {
+                doc: {
+                    resolve: () => ({
+                        marks: () => [linkMark],
+                    }),
+                },
+            },
+        };
+        const result = capturedEditorProps.handleClick(mockView, 0, { ctrlKey: true, metaKey: false, target: document.createElement('span') });
+        expect(result).toBe(true);
+        expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener');
+        openSpy.mockRestore();
+    });
+
+    it('handleClick returns false when no modifier key is held', () => {
+        render(<RichEditorCore />);
+
+        const result = capturedEditorProps.handleClick({}, 0, { ctrlKey: false, metaKey: false });
+        expect(result).toBe(false);
+    });
+
+    it('handleClick falls back to DOM anchor when no link mark found', () => {
+        const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+        render(<RichEditorCore />);
+
+        const anchor = document.createElement('a');
+        anchor.href = 'https://fallback.com/test';
+        const mockView = {
+            state: {
+                doc: {
+                    resolve: () => ({ marks: () => [] }),
+                },
+            },
+        };
+        const result = capturedEditorProps.handleClick(mockView, 0, { ctrlKey: true, metaKey: false, target: anchor });
+        expect(result).toBe(true);
+        expect(openSpy).toHaveBeenCalledWith('https://fallback.com/test', '_blank', 'noopener');
+        openSpy.mockRestore();
+    });
+
+    // ── Ctrl-hover cursor affordance ────────────────────────────────────
+
+    it('configures handleDOMEvents for Ctrl-hover cursor affordance', () => {
+        render(<RichEditorCore />);
+        expect(capturedEditorProps.handleDOMEvents).toBeDefined();
+        expect(typeof capturedEditorProps.handleDOMEvents.keydown).toBe('function');
+        expect(typeof capturedEditorProps.handleDOMEvents.keyup).toBe('function');
+        expect(typeof capturedEditorProps.handleDOMEvents.blur).toBe('function');
+    });
+
+    it('keydown adds ctrl-held class when Control key is pressed', () => {
+        render(<RichEditorCore />);
+        const mockDom = document.createElement('div');
+        const mockView = { dom: mockDom };
+
+        capturedEditorProps.handleDOMEvents.keydown(mockView, { key: 'Control' });
+        expect(mockDom.classList.contains('ctrl-held')).toBe(true);
+    });
+
+    it('keyup removes ctrl-held class when Control key is released', () => {
+        render(<RichEditorCore />);
+        const mockDom = document.createElement('div');
+        mockDom.classList.add('ctrl-held');
+        const mockView = { dom: mockDom };
+
+        capturedEditorProps.handleDOMEvents.keyup(mockView, { key: 'Control' });
+        expect(mockDom.classList.contains('ctrl-held')).toBe(false);
+    });
+
+    it('blur removes ctrl-held class', () => {
+        render(<RichEditorCore />);
+        const mockDom = document.createElement('div');
+        mockDom.classList.add('ctrl-held');
+        const mockView = { dom: mockDom };
+
+        capturedEditorProps.handleDOMEvents.blur(mockView);
+        expect(mockDom.classList.contains('ctrl-held')).toBe(false);
     });
 
     // ── onChange callback updates without editor recreation ──────────────
