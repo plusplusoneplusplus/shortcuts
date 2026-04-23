@@ -628,7 +628,8 @@ describe('ChatDetail', () => {
             });
             expect(screen.getByTestId('mode-selector')).toBeTruthy();
             const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            expect(dropdown.value).toBe('ask');
+            // Mode syncs from task payload (autopilot in the default mock)
+            expect(dropdown.value).toBe('autopilot');
         });
 
         it('hides mode selector when hideModeSelector is true', async () => {
