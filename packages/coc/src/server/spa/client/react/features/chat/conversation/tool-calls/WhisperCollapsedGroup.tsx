@@ -13,6 +13,8 @@ import { MarkdownView } from '../../../../shared/MarkdownView';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import type { DetectedCommit } from '../commitDetection';
 import { CommitStrip } from '../CommitStrip';
+import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
+import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
 
 interface ToolLike {
     toolName: string;
@@ -310,9 +312,22 @@ interface CommitHoverPopoverProps {
 }
 
 function CommitHoverPopover({ commits, workspaceId, anchorRef }: CommitHoverPopoverProps) {
+    const { markPoppedOut } = useGitReviewPopOut();
+
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const pos = clampPopoverPosition(rect, 400, commits.length * 28 + 8);
+
+    const handlePopOut = (e: React.MouseEvent, commit: DetectedCommit) => {
+        e.stopPropagation();
+        if (!workspaceId) return;
+        const hash = commit.fullHash || commit.shortHash;
+        const url = buildGitReviewPopOutUrl(workspaceId, hash);
+        const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
+        if (win) {
+            markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
+        }
+    };
 
     return (
         <div
@@ -345,6 +360,25 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef }: CommitHoverPopo
                     <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
                         {commit.subject}
                     </span>
+                    {workspaceId && (
+                        <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => handlePopOut(e, commit)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handlePopOut(e as unknown as React.MouseEvent, commit);
+                                }
+                            }}
+                            title="Open in new window"
+                            className="shrink-0 text-xs px-1 py-0.5 rounded cursor-pointer select-none hover:bg-black/[0.1] dark:hover:bg-white/[0.12]"
+                            data-testid={`commit-popover-popout-${commit.shortHash}`}
+                            aria-label="Open commit in new window"
+                        >
+                            ↗️
+                        </span>
+                    )}
                 </div>
             ))}
         </div>

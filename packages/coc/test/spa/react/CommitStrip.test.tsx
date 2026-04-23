@@ -178,6 +178,128 @@ describe('CommitStrip', () => {
         });
     });
 
+    describe('pop-out button', () => {
+        let originalOpen: typeof window.open;
+
+        beforeEach(() => {
+            originalOpen = window.open;
+        });
+
+        function restoreOpen() {
+            window.open = originalOpen;
+        }
+
+        it('renders pop-out button when workspaceId is provided', () => {
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+            const btn = container.querySelector('[data-testid="commit-strip-popout-abc1234"]');
+            expect(btn).toBeTruthy();
+            expect(btn!.getAttribute('title')).toBe('Open in new window');
+            expect(btn!.getAttribute('aria-label')).toBe('Open commit in new window');
+            expect(btn!.textContent).toContain('↗️');
+        });
+
+        it('does not render pop-out button when workspaceId is missing', () => {
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(<CommitStrip commits={[commit]} />);
+            const btn = container.querySelector('[data-testid="commit-strip-popout-abc1234"]');
+            expect(btn).toBeNull();
+        });
+
+        it('calls window.open with pop-out URL and named window on click', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            const commit = makeCommit({
+                shortHash: 'abc1234',
+                fullHash: 'abc12340000000000000000000000000000000de',
+            });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+            const btn = container.querySelector('[data-testid="commit-strip-popout-abc1234"]')!;
+            fireEvent.click(btn);
+
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            const [url, name, features] = openSpy.mock.calls[0];
+            expect(url).toBe('/?workspace=ws-test#popout/git-review/abc12340000000000000000000000000000000de');
+            expect(name).toBe('coc-git-review-abc12340000000000000000000000000000000de');
+            expect(features).toContain('width=');
+            expect(features).toContain('height=');
+            restoreOpen();
+        });
+
+        it('uses shortHash when fullHash is not available for pop-out', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            const commit = makeCommit({ shortHash: 'shortx1' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+            const btn = container.querySelector('[data-testid="commit-strip-popout-shortx1"]')!;
+            fireEvent.click(btn);
+
+            const [, name] = openSpy.mock.calls[0];
+            expect(name).toBe('coc-git-review-shortx1');
+            restoreOpen();
+        });
+
+        it('does not navigate the main window hash when clicking pop-out', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+            const prevHash = location.hash;
+            const btn = container.querySelector('[data-testid="commit-strip-popout-abc1234"]')!;
+            fireEvent.click(btn);
+
+            expect(location.hash).toBe(prevHash);
+            restoreOpen();
+        });
+
+        it('stops propagation so the row onClick does not fire', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+            const prevHash = location.hash;
+            const btn = container.querySelector('[data-testid="commit-strip-popout-abc1234"]')!;
+            const event = new MouseEvent('click', { bubbles: true });
+            const stopSpy = vi.spyOn(event, 'stopPropagation');
+            btn.dispatchEvent(event);
+
+            expect(stopSpy).toHaveBeenCalled();
+            expect(location.hash).toBe(prevHash);
+            restoreOpen();
+        });
+
+        it('encodes workspaceId and hash in pop-out URL', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            const commit = makeCommit({ shortHash: 'ab/cd' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws/space id" />
+            );
+            const btn = container.querySelector('[data-testid="commit-strip-popout-ab/cd"]')!;
+            fireEvent.click(btn);
+
+            const [url] = openSpy.mock.calls[0];
+            expect(url).toContain('workspace=ws%2Fspace%20id');
+            expect(url).toContain('#popout/git-review/ab%2Fcd');
+            restoreOpen();
+        });
+    });
+
     describe('styling', () => {
         it('has blue-tint background', () => {
             const commit = makeCommit();

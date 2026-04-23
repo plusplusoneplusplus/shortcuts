@@ -204,4 +204,116 @@ describe('WhisperCollapsedGroup', () => {
         fireEvent.click(row);
         expect(location.hash).toBe('#repos/ws1/git/abc1234');
     });
+
+    describe('commit popover pop-out button', () => {
+        let originalOpen: typeof window.open;
+
+        beforeEach(() => {
+            originalOpen = window.open;
+        });
+
+        afterEach(() => {
+            window.open = originalOpen;
+        });
+
+        it('renders pop-out button in commit popover row when workspaceId is set', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    workspaceId="ws1"
+                    summary={makeSummary({ commitCount: 1, commits: [makeCommit()] })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-commit-hover');
+            fireEvent.mouseEnter(hoverTarget);
+            const btn = screen.getByTestId('commit-popover-popout-abc1234');
+            expect(btn).toBeDefined();
+            expect(btn.getAttribute('title')).toBe('Open in new window');
+            expect(btn.textContent).toContain('↗️');
+        });
+
+        it('does not render pop-out button when workspaceId is missing', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    summary={makeSummary({ commitCount: 1, commits: [makeCommit()] })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-commit-hover');
+            fireEvent.mouseEnter(hoverTarget);
+            expect(screen.queryByTestId('commit-popover-popout-abc1234')).toBeNull();
+        });
+
+        it('opens commit in dedicated window on pop-out button click', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    workspaceId="ws1"
+                    summary={makeSummary({ commitCount: 1, commits: [
+                        makeCommit({ shortHash: 'abc1234', fullHash: 'abc12340000000000000000000000000000000de' }),
+                    ] })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-commit-hover');
+            fireEvent.mouseEnter(hoverTarget);
+            const btn = screen.getByTestId('commit-popover-popout-abc1234');
+            fireEvent.click(btn);
+
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            const [url, name, features] = openSpy.mock.calls[0];
+            expect(url).toBe('/?workspace=ws1#popout/git-review/abc12340000000000000000000000000000000de');
+            expect(name).toBe('coc-git-review-abc12340000000000000000000000000000000de');
+            expect(features).toContain('width=');
+            expect(features).toContain('height=');
+        });
+
+        it('pop-out click stops propagation so row navigation does not occur', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    workspaceId="ws1"
+                    summary={makeSummary({ commitCount: 1, commits: [
+                        makeCommit({ shortHash: 'abc1234', fullHash: 'abc1234567890' }),
+                    ] })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-commit-hover');
+            fireEvent.mouseEnter(hoverTarget);
+
+            const prevHash = location.hash;
+            const btn = screen.getByTestId('commit-popover-popout-abc1234');
+            fireEvent.click(btn);
+
+            expect(location.hash).toBe(prevHash);
+        });
+
+        it('uses shortHash for pop-out when fullHash is absent', () => {
+            const openSpy = vi.fn().mockReturnValue({} as unknown as Window);
+            window.open = openSpy as unknown as typeof window.open;
+
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    workspaceId="ws1"
+                    summary={makeSummary({ commitCount: 1, commits: [
+                        makeCommit({ shortHash: 'abc1234', fullHash: undefined }),
+                    ] })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-commit-hover');
+            fireEvent.mouseEnter(hoverTarget);
+
+            const btn = screen.getByTestId('commit-popover-popout-abc1234');
+            fireEvent.click(btn);
+
+            const [, name] = openSpy.mock.calls[0];
+            expect(name).toBe('coc-git-review-abc1234');
+        });
+    });
 });
