@@ -477,7 +477,7 @@ describe('WorkflowInfo type', () => {
 // ===========================================================================
 describe('ReposContext WebSocket integration', () => {
     const reposContextSource = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
+        path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts', 'ReposContext.tsx'),
         'utf-8'
     );
 

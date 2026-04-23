@@ -25,7 +25,7 @@ const REPOS_GRID_SOURCE = fs.readFileSync(
 );
 
 const QUEUE_CONTEXT_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'QueueContext.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts', 'QueueContext.tsx'),
     'utf-8',
 );
 

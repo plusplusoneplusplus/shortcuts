@@ -879,7 +879,7 @@ describe('ReposContext — process event throttling', () => {
         const fs = require('fs');
         const path = require('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts', 'ReposContext.tsx'),
             'utf-8',
         );
     });
@@ -938,7 +938,7 @@ describe('ReposContext — async git-info', () => {
         const fs = require('fs');
         const path = require('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts', 'ReposContext.tsx'),
             'utf-8',
         );
     });

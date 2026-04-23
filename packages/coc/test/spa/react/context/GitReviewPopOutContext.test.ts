@@ -13,7 +13,7 @@ import {
 } from '../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext';
 
 const CONTEXT_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts'
 );
 const SOURCE = fs.readFileSync(path.join(CONTEXT_DIR, 'GitReviewPopOutContext.tsx'), 'utf-8');
 

@@ -160,7 +160,7 @@ describe('QueueContext — SEED_QUEUE removed', () => {
     let source: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(path.join(CLIENT_DIR, 'context', 'QueueContext.tsx'), 'utf-8');
+        source = fs.readFileSync(path.join(CLIENT_DIR, 'contexts', 'QueueContext.tsx'), 'utf-8');
     });
 
     it('QueueContextState includes queueInitialized', () => {

@@ -110,15 +110,15 @@ describe('ask_user tool injection in chat-mode executors', () => {
         });
     });
 
-    it('ChatExecutor (ask) includes ask_user tool with overridesBuiltInTool', async () => {
+    it('ChatExecutor (ask) does NOT include ask_user tool (disabled in chat mode)', async () => {
+        // ask_user is intentionally disabled in ChatExecutor to prevent timeout-related stalls.
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
         await executor.execute(makeChatTask('ask'), 'Hello');
 
         const askTool = capturedOptions?.tools?.find(t => t.name === 'ask_user');
-        expect(askTool).toBeDefined();
-        expect(askTool!.overridesBuiltInTool).toBe(true);
+        expect(askTool).toBeUndefined();
     });
 
     it('PlanExecutor (plan) includes ask_user tool with overridesBuiltInTool', async () => {
@@ -191,8 +191,9 @@ describe('ask_user built-in name collision regression', () => {
         );
     });
 
-    it('custom ask_user tool name matches the SDK built-in exactly', () => {
-        // Regression: if the SDK ever renames its built-in, this test flags the mismatch
+    it('ChatExecutor (ask) does not inject ask_user regardless of askUser.enabled', () => {
+        // ask_user is permanently disabled for ChatExecutor to avoid timeout-related stalls.
+        // PlanExecutor is the executor that uses ask_user (when enabled).
         const store = createMockProcessStore();
         const sdkM = createMockSDKService();
         sdkM.mockIsAvailable.mockResolvedValue({ available: true });
@@ -214,8 +215,7 @@ describe('ask_user built-in name collision regression', () => {
 
         return executor.execute(makeChatTask('ask'), 'Hello').then(() => {
             const askTool = capturedTools?.find((t: any) => t.name === 'ask_user');
-            expect(askTool).toBeDefined();
-            expect(askTool.name).toBe('ask_user');
+            expect(askTool).toBeUndefined();
         });
     });
 });

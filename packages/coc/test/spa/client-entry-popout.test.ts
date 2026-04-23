@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ENTRY_PATH = path.join(
-    __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'index.tsx'
+    __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'
 );
 
 describe('client entry point: pop-out routes', () => {

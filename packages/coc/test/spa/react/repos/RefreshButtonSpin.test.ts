@@ -22,7 +22,7 @@ const ENQUEUE_DIALOG_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'EnqueueDialog.tsx'
 );
 const QUEUE_CONTEXT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'QueueContext.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'contexts', 'QueueContext.tsx'
 );
 const REPO_ACTIVITY_TAB_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'RepoChatTab.tsx'
