@@ -11,6 +11,7 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
@@ -51,6 +52,14 @@ function getNotesRoot(dataDir: string, workspaceId: string): string {
 
 function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
     return path.join(dataDir, 'repos', workspaceId);
+}
+
+function getCopilotDir(): string {
+    return path.join(os.homedir(), '.copilot');
+}
+
+function isAllowedPath(resolved: string, wsDataDir: string): boolean {
+    return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
 }
 
 async function ensureNotesRoot(notesRoot: string): Promise<void> {
@@ -215,7 +224,7 @@ export function registerNotesRoutes(
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = path.resolve(wsDataDir, filePath);
 
-            if (!isWithinDirectory(resolved, wsDataDir)) {
+            if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 

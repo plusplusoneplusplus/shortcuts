@@ -167,6 +167,28 @@ describe('Notes Read Handler — GET /notes/content security', { timeout: 30_000
     });
 
     // -------------------------------------------------------------------------
+    // Happy path — ~/.copilot directory (session state files)
+    // -------------------------------------------------------------------------
+
+    it('returns 200 for a file inside ~/.copilot (absolute path)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        const copilotDir = path.join(os.homedir(), '.copilot', 'test-notes-read-handler-' + wsId);
+        const testFile = path.join(copilotDir, 'session.md');
+        fs.mkdirSync(copilotDir, { recursive: true });
+        fs.writeFileSync(testFile, '# Session Note', 'utf-8');
+        try {
+            const res = await request(contentUrl(srv, testFile));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.content).toBe('# Session Note');
+        } finally {
+            fs.rmSync(copilotDir, { recursive: true, force: true });
+        }
+    });
+
+    // -------------------------------------------------------------------------
     // Security — reject paths outside workspace data directory
     // -------------------------------------------------------------------------
 

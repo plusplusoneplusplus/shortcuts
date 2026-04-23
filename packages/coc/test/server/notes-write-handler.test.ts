@@ -182,6 +182,28 @@ describe('Notes Write Handler — PUT /notes/content security', { timeout: 30_00
     });
 
     // -------------------------------------------------------------------------
+    // Happy path — ~/.copilot directory (session state files)
+    // -------------------------------------------------------------------------
+
+    it('returns 200 when saving a file inside ~/.copilot (absolute path)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        const copilotDir = path.join(os.homedir(), '.copilot', 'test-notes-write-handler-' + wsId);
+        const testFile = path.join(copilotDir, 'plan.md');
+        fs.mkdirSync(copilotDir, { recursive: true });
+        try {
+            const res = await putJSON(contentUrl(srv), { path: testFile, content: '# Plan' });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.updated).toBe(true);
+            expect(fs.readFileSync(testFile, 'utf-8')).toBe('# Plan');
+        } finally {
+            fs.rmSync(copilotDir, { recursive: true, force: true });
+        }
+    });
+
+    // -------------------------------------------------------------------------
     // Security — reject paths outside workspace data directory
     // -------------------------------------------------------------------------
 
