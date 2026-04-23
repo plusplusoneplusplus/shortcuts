@@ -7,7 +7,7 @@ import { ConversationMetadataPopover } from './conversation/ConversationMetadata
 import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { chatMarkdownToHtml } from './conversation/ConversationTurnBubble';
-import { snapshotConversation } from '../../utils/snapshot-copy-utils';
+import { snapshotConversation, openPrintPreview } from '../../utils/snapshot-copy-utils';
 import { cn } from '../../ui/cn';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainerWidth';
@@ -77,6 +77,7 @@ function buildOverflowItems(
         onPopOut: () => void;
         onCopyHtml: () => void;
         copiedHtml: boolean;
+        onExportPdf: () => void;
         onOpenRefs?: () => void;
         onToggleSelecting?: () => void;
         isSelecting?: boolean;
@@ -103,6 +104,14 @@ function buildOverflowItems(
             onClick: props.onToggleSelecting,
         });
     }
+
+    // Export as PDF
+    items.push({
+        key: 'export-pdf',
+        label: 'Export as PDF',
+        icon: <span className="text-[10px]">PDF</span>,
+        onClick: props.onExportPdf,
+    });
 
     // Metadata
     if (!props.isPending && props.metadataProcess) {
@@ -258,6 +267,21 @@ export function ChatHeader({
         }
     };
 
+    const handleExportPdf = () => {
+        try {
+            let html: string;
+            if (turnsContainerRef?.current) {
+                html = snapshotConversation(turnsContainerRef.current);
+            } else {
+                html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
+            }
+            const chatTitle = title ?? turns[0]?.content?.slice(0, 60) ?? 'Chat';
+            openPrintPreview(html, chatTitle);
+        } catch (e: any) {
+            console.error('Export PDF failed:', e);
+        }
+    };
+
     const isWide = tier === 'wide';
     const isNarrow = tier === 'narrow';
     const showFloatPopout = isWide || (!isNarrow);
@@ -286,6 +310,7 @@ export function ChatHeader({
         onPopOut,
         onCopyHtml: () => void handleCopyHtml(),
         copiedHtml,
+        onExportPdf: handleExportPdf,
         onOpenRefs: () => setRefsSheetOpen(true),
         onToggleSelecting,
         isSelecting,
@@ -406,7 +431,7 @@ export function ChatHeader({
                         </svg>
                     )}
                 </button>
-                {/* Copy HTML + Metadata — inline only in wide tier */}
+                {/* Copy HTML + PDF + Metadata — inline only in wide tier */}
                 {isWide && (
                     <>
                         <button
@@ -417,6 +442,15 @@ export function ChatHeader({
                             className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                         >
                             {copiedHtml ? '✓' : 'HTML'}
+                        </button>
+                        <button
+                            title="Export conversation as PDF"
+                            data-testid="export-conversation-pdf-btn"
+                            disabled={loading || turns.length === 0}
+                            onClick={handleExportPdf}
+                            className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                        >
+                            PDF
                         </button>
                         {onToggleSelecting && turns.length > 0 && (
                             <button

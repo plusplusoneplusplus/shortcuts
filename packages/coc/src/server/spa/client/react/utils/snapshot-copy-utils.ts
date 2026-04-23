@@ -215,3 +215,73 @@ function filterToSelectedTurns(clone: HTMLElement, indices: Set<number>): void {
 function wrapInContainer(innerHtml: string): string {
     return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;max-width:800px;">${innerHtml}</div>`;
 }
+
+/**
+ * Build a full standalone HTML document from snapshot HTML, optimized for
+ * printing / "Save as PDF". Removes all overflow/max-height constraints so
+ * scrollable containers expand to show their full content.
+ */
+export function buildPrintDocument(snapshotHtml: string, title?: string): string {
+    const safeTitle = escapeHtmlText(title || 'Chat Conversation');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${safeTitle}</title>
+<style>
+@page { margin: 1cm; }
+body {
+    margin: 0;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #1e1e1e;
+    background: #fff;
+}
+/* Remove all scroll constraints so full content is visible */
+* {
+    overflow: visible !important;
+    max-height: none !important;
+}
+/* Ensure code blocks wrap instead of causing horizontal overflow */
+pre, code {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+}
+/* Images scale to fit the page */
+img {
+    max-width: 100% !important;
+    height: auto !important;
+}
+/* Avoid breaking individual turn bubbles across pages */
+[data-turn-index] {
+    break-inside: avoid;
+}
+</style>
+</head>
+<body>${snapshotHtml}</body>
+</html>`;
+}
+
+/** Escape text for safe HTML insertion (title, etc.) */
+function escapeHtmlText(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Open a print-preview window with the full conversation snapshot and trigger
+ * the browser's Print dialog (which offers "Save as PDF").
+ *
+ * Returns `true` on success, or throws with a user-facing message on failure.
+ */
+export function openPrintPreview(snapshotHtml: string, title?: string): boolean {
+    const doc = buildPrintDocument(snapshotHtml, title);
+    const win = window.open('', '_blank');
+    if (!win) {
+        throw new Error('Pop-up blocked. Please allow pop-ups for this site and try again.');
+    }
+    win.document.write(doc);
+    win.document.close();
+    win.onload = () => win.print();
+    return true;
+}

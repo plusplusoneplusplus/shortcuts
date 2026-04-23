@@ -78,6 +78,11 @@ vi.mock('../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/utils/snapshot-copy-utils', () => ({
+    snapshotConversation: vi.fn().mockReturnValue('<div>snapshot</div>'),
+    openPrintPreview: vi.fn().mockReturnValue(true),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu', () => ({
     ChatHeaderOverflowMenu: ({ items }: any) =>
         items.length > 0 ? <span data-testid="overflow-menu" data-count={items.length}>⋮</span> : null,
@@ -141,9 +146,30 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('context-window')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+            expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
             expect(screen.getByTestId('metadata-popover')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
+        });
+
+        it('shows inline PDF export button', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
+            expect(pdfBtn).toBeTruthy();
+            expect(pdfBtn.textContent).toBe('PDF');
+            expect(pdfBtn.getAttribute('title')).toBe('Export conversation as PDF');
+        });
+
+        it('disables PDF button when loading', () => {
+            render(<ChatHeader {...defaultProps({ loading: true })} />);
+            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
+            expect(pdfBtn.hasAttribute('disabled')).toBe(true);
+        });
+
+        it('disables PDF button when no turns', () => {
+            render(<ChatHeader {...defaultProps({ turns: [] })} />);
+            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
+            expect(pdfBtn.hasAttribute('disabled')).toBe(true);
         });
 
         it('does not show overflow menu', () => {
@@ -172,6 +198,7 @@ describe('ChatHeader', () => {
         it('hides inline HTML copy and metadata', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
             expect(screen.queryByTestId('metadata-popover')).toBeNull();
         });
 
@@ -209,6 +236,7 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
             expect(screen.queryByTestId('metadata-popover')).toBeNull();
         });
 
@@ -316,7 +344,7 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             const menu = screen.getByTestId('overflow-menu');
             const count = parseInt(menu.getAttribute('data-count') ?? '0');
-            expect(count).toBeGreaterThanOrEqual(5); // html, metadata, refs, resume-cli, duration, ctx-window
+            expect(count).toBeGreaterThanOrEqual(5); // html, pdf, metadata, refs, resume-cli, duration, ctx-window
         });
 
         it('has no overflow items when everything is hidden by props', () => {
@@ -331,9 +359,9 @@ describe('ChatHeader', () => {
                 sessionTokenLimit: undefined,
             })} />);
             const menu = screen.getByTestId('overflow-menu');
-            // Only copy-html remains (always shown in overflow at < 700px)
+            // copy-html and export-pdf always shown in overflow at < 700px
             const count = parseInt(menu.getAttribute('data-count') ?? '0');
-            expect(count).toBe(1);
+            expect(count).toBe(2);
         });
     });
 });

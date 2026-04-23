@@ -10,6 +10,8 @@ import {
     expandCollapsedGroups,
     inlineComputedStyles,
     rewriteRelativeUrls,
+    buildPrintDocument,
+    openPrintPreview,
 } from '../../../../src/server/spa/client/react/utils/snapshot-copy-utils';
 
 function createConversationDOM(): HTMLDivElement {
@@ -366,5 +368,93 @@ describe('snapshotConversation', () => {
         expect(html).toContain('font-family:');
 
         document.body.removeChild(container);
+    });
+});
+
+describe('buildPrintDocument', () => {
+    it('wraps snapshot HTML in a full HTML document', () => {
+        const html = buildPrintDocument('<div>Hello</div>', 'Test Chat');
+        expect(html).toContain('<!DOCTYPE html>');
+        expect(html).toContain('<html lang="en">');
+        expect(html).toContain('<title>Test Chat</title>');
+        expect(html).toContain('<div>Hello</div>');
+        expect(html).toContain('</body>');
+        expect(html).toContain('</html>');
+    });
+
+    it('includes print-optimized CSS that removes overflow constraints', () => {
+        const html = buildPrintDocument('<div>content</div>');
+        expect(html).toContain('overflow: visible !important');
+        expect(html).toContain('max-height: none !important');
+    });
+
+    it('includes CSS for wrapping code blocks', () => {
+        const html = buildPrintDocument('<pre><code>long code</code></pre>');
+        expect(html).toContain('white-space: pre-wrap !important');
+        expect(html).toContain('word-break: break-word !important');
+    });
+
+    it('includes CSS for image scaling', () => {
+        const html = buildPrintDocument('<img src="test.png">');
+        expect(html).toContain('max-width: 100% !important');
+        expect(html).toContain('height: auto !important');
+    });
+
+    it('includes break-inside: avoid for turn bubbles', () => {
+        const html = buildPrintDocument('<div data-turn-index="0">turn</div>');
+        expect(html).toContain('break-inside: avoid');
+    });
+
+    it('uses default title when none provided', () => {
+        const html = buildPrintDocument('<div>content</div>');
+        expect(html).toContain('<title>Chat Conversation</title>');
+    });
+
+    it('escapes HTML special characters in the title', () => {
+        const html = buildPrintDocument('<div>content</div>', '<script>alert("xss")</script>');
+        expect(html).not.toContain('<script>');
+        expect(html).toContain('&lt;script&gt;');
+    });
+});
+
+describe('openPrintPreview', () => {
+    it('opens a new window with the print document and calls print', () => {
+        const mockPrint = vi.fn();
+        const mockDoc = {
+            write: vi.fn(),
+            close: vi.fn(),
+        };
+        const mockWin = {
+            document: mockDoc,
+            print: mockPrint,
+            onload: null as (() => void) | null,
+        };
+        vi.spyOn(window, 'open').mockReturnValue(mockWin as any);
+
+        const result = openPrintPreview('<div>Hello</div>', 'My Chat');
+        expect(result).toBe(true);
+        expect(window.open).toHaveBeenCalledWith('', '_blank');
+        expect(mockDoc.write).toHaveBeenCalledOnce();
+        expect(mockDoc.write.mock.calls[0][0]).toContain('<!DOCTYPE html>');
+        expect(mockDoc.write.mock.calls[0][0]).toContain('<title>My Chat</title>');
+        expect(mockDoc.write.mock.calls[0][0]).toContain('<div>Hello</div>');
+        expect(mockDoc.close).toHaveBeenCalledOnce();
+
+        // Simulate load event
+        expect(mockWin.onload).toBeTypeOf('function');
+        mockWin.onload!();
+        expect(mockPrint).toHaveBeenCalledOnce();
+
+        vi.restoreAllMocks();
+    });
+
+    it('throws when popup is blocked', () => {
+        vi.spyOn(window, 'open').mockReturnValue(null);
+
+        expect(() => openPrintPreview('<div>Hello</div>')).toThrow(
+            'Pop-up blocked. Please allow pop-ups for this site and try again.'
+        );
+
+        vi.restoreAllMocks();
     });
 });
