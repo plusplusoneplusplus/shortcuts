@@ -271,7 +271,7 @@ export function ChatHeader({
         try {
             let html: string;
             if (turnsContainerRef?.current) {
-                html = snapshotConversation(turnsContainerRef.current);
+                html = snapshotConversation(turnsContainerRef.current, { forPrint: true });
             } else {
                 html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
             }

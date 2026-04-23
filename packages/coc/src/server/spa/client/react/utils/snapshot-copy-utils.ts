@@ -11,6 +11,8 @@ export interface SnapshotOptions {
     forceLightMode?: boolean;
     /** Only include turns whose data-turn-index is in this set. */
     selectedIndices?: Set<number>;
+    /** Strip absolute pixel widths from inlined styles for print output. Default: false */
+    forPrint?: boolean;
 }
 
 /** CSS properties to inline. Keeps output size reasonable while preserving visual fidelity. */
@@ -61,6 +63,7 @@ export function snapshotConversation(
         expandToolGroups = true,
         forceLightMode = true,
         selectedIndices,
+        forPrint = false,
     } = options;
 
     const docEl = sourceContainer.ownerDocument?.documentElement;
@@ -90,6 +93,10 @@ export function snapshotConversation(
 
         if (expandToolGroups) {
             expandCollapsedGroups(clone);
+        }
+
+        if (forPrint) {
+            stripAbsoluteWidths(clone);
         }
 
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -218,6 +225,34 @@ function filterToSelectedTurns(clone: HTMLElement, indices: Set<number>): void {
     });
 }
 
+/**
+ * Strip inlined absolute pixel `width` and `max-width` values that would
+ * overflow a print page. Called as a safety net when `forPrint` is true —
+ * the CSS `!important` rules in `buildPrintDocument` are the primary fix,
+ * but stripping inline values ensures no edge cases leak through.
+ */
+export function stripAbsoluteWidths(root: HTMLElement): void {
+    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    let node = walker.nextNode() as HTMLElement | null;
+    while (node) {
+        const style = node.getAttribute('style');
+        if (style) {
+            // Remove width/max-width with absolute pixel values (e.g. "max-width:1140px")
+            const cleaned = style
+                .replace(/max-width\s*:\s*\d+(\.\d+)?px\s*(;|$)/gi, '')
+                .replace(/\bwidth\s*:\s*\d+(\.\d+)?px\s*(;|$)/gi, '')
+                .replace(/;\s*$/, '')  // trailing semicolon
+                .trim();
+            if (cleaned) {
+                node.setAttribute('style', cleaned);
+            } else {
+                node.removeAttribute('style');
+            }
+        }
+        node = walker.nextNode() as HTMLElement | null;
+    }
+}
+
 /** Wrap HTML content in a container div with sensible defaults for email clients. */
 function wrapInContainer(innerHtml: string): string {
     return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;max-width:800px;">${innerHtml}</div>`;
@@ -254,11 +289,37 @@ body {
 * {
     max-height: none !important;
     height: auto !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+/* Bubble wrappers — override inlined pixel max-width */
+[data-turn-index] > div {
+    max-width: 100% !important;
+    width: 100% !important;
 }
 /* Ensure code blocks wrap instead of causing horizontal overflow */
 pre, code {
     white-space: pre-wrap !important;
     word-break: break-word !important;
+}
+/* Override overflow-x:auto on code blocks and tables (scrollbars don't exist in print) */
+.code-block-content, .md-table-container {
+    overflow-x: visible !important;
+}
+/* Tables: remove min-width, allow wrapping */
+table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    word-break: break-word !important;
+}
+td, th {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+}
+/* Long unbreakable strings (URLs, file paths) */
+a, .file-path {
+    word-break: break-all !important;
 }
 /* Images scale to fit the page */
 img {

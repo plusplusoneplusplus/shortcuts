@@ -12,6 +12,7 @@ import {
     rewriteRelativeUrls,
     buildPrintDocument,
     openPrintPreview,
+    stripAbsoluteWidths,
 } from '../../../../src/server/spa/client/react/utils/snapshot-copy-utils';
 
 function createConversationDOM(): HTMLDivElement {
@@ -488,5 +489,141 @@ describe('openPrintPreview', () => {
         );
 
         vi.restoreAllMocks();
+    });
+});
+
+describe('stripAbsoluteWidths', () => {
+    it('removes inlined pixel max-width values', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div style="max-width:1140px;color:red">content</div>';
+        stripAbsoluteWidths(root);
+        const child = root.querySelector('div')!;
+        expect(child.getAttribute('style')).toBe('color:red');
+    });
+
+    it('removes inlined pixel width values', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div style="width:800px;font-size:14px">content</div>';
+        stripAbsoluteWidths(root);
+        const child = root.querySelector('div')!;
+        expect(child.getAttribute('style')).toBe('font-size:14px');
+    });
+
+    it('removes style attribute entirely when only pixel widths remain', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div style="max-width:1140px;width:800px">content</div>';
+        stripAbsoluteWidths(root);
+        const child = root.querySelector('div')!;
+        expect(child.hasAttribute('style')).toBe(false);
+    });
+
+    it('preserves percentage and non-pixel width values', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div style="max-width:95%;width:100%">content</div>';
+        stripAbsoluteWidths(root);
+        const child = root.querySelector('div')!;
+        expect(child.getAttribute('style')).toBe('max-width:95%;width:100%');
+    });
+
+    it('handles elements without style attributes', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div>no style</div><span>also no style</span>';
+        // Should not throw
+        stripAbsoluteWidths(root);
+        expect(root.querySelector('div')!.hasAttribute('style')).toBe(false);
+    });
+
+    it('handles decimal pixel values', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<div style="max-width:1140.5px;color:blue">content</div>';
+        stripAbsoluteWidths(root);
+        const child = root.querySelector('div')!;
+        expect(child.getAttribute('style')).toBe('color:blue');
+    });
+});
+
+describe('buildPrintDocument — width constraints', () => {
+    it('includes global max-width:100% rule to constrain all elements', () => {
+        const html = buildPrintDocument('<div>content</div>');
+        expect(html).toContain('max-width: 100% !important');
+        expect(html).toContain('box-sizing: border-box !important');
+    });
+
+    it('includes bubble wrapper width overrides', () => {
+        const html = buildPrintDocument('<div data-turn-index="0"><div>bubble</div></div>');
+        expect(html).toContain('[data-turn-index] > div');
+        expect(html).toContain('width: 100% !important');
+    });
+
+    it('includes table width constraints', () => {
+        const html = buildPrintDocument('<table><tr><td>cell</td></tr></table>');
+        expect(html).toContain('table-layout: fixed !important');
+        expect(html).toContain('min-width: 0 !important');
+    });
+
+    it('overrides overflow-x on code blocks and table containers', () => {
+        const html = buildPrintDocument('<div class="code-block-content">code</div>');
+        expect(html).toContain('.code-block-content');
+        expect(html).toContain('overflow-x: visible !important');
+    });
+
+    it('includes word-break rules for long strings', () => {
+        const html = buildPrintDocument('<a href="#">link</a>');
+        expect(html).toContain('word-break: break-all !important');
+    });
+
+    it('does not globally override overflow (would break flex layouts)', () => {
+        const html = buildPrintDocument('<div>content</div>');
+        // overflow: visible should only appear on specific selectors, not on *
+        const globalRule = html.match(/\*\s*\{[^}]*\}/g) || [];
+        for (const rule of globalRule) {
+            expect(rule).not.toContain('overflow');
+        }
+    });
+});
+
+describe('snapshotConversation — forPrint', () => {
+    beforeEach(() => {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.setAttribute('data-theme', 'light');
+    });
+
+    it('strips absolute pixel widths when forPrint is true', () => {
+        const container = document.createElement('div');
+        container.innerHTML = `
+            <div class="chat-message" data-turn-index="0">
+                <div class="bubble" style="max-width:1140px;color:red">
+                    <div class="chat-message-content">Hello</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(container);
+
+        const html = snapshotConversation(container, { forPrint: true });
+
+        // The inlined max-width:1140px should be stripped
+        expect(html).not.toMatch(/max-width\s*:\s*1140px/);
+        expect(html).toContain('Hello');
+
+        document.body.removeChild(container);
+    });
+
+    it('preserves pixel widths when forPrint is false (default)', () => {
+        const container = document.createElement('div');
+        container.innerHTML = `
+            <div class="chat-message" data-turn-index="0">
+                <div class="bubble" style="max-width:1140px;color:red">
+                    <div class="chat-message-content">Hello</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(container);
+
+        const html = snapshotConversation(container);
+
+        // Default (clipboard copy) should keep inlined pixel widths
+        expect(html).toContain('max-width:1140px');
+
+        document.body.removeChild(container);
     });
 });
