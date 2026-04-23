@@ -19,9 +19,9 @@ export const MODE_LABELS: Record<ChatMode, string> = {
 };
 
 const NEXT_MODE: Record<ChatMode, ChatMode> = {
-    autopilot: 'ask',
-    ask: 'autopilot',
+    ask: 'plan',
     plan: 'autopilot',
+    autopilot: 'ask',
 };
 
 export function cycleMode(current: ChatMode): ChatMode {
