@@ -81,6 +81,9 @@ export const CLIConfigSchema = z.object({
     myLife: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    scratchpad: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
     }).passthrough().optional(),

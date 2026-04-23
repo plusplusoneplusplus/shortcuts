@@ -1310,6 +1310,52 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // PUT /api/admin/config — scratchpad.enabled
+    // ========================================================================
+
+    describe('scratchpad.enabled', () => {
+        it('should accept scratchpad.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.enabled': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.scratchpad.enabled).toBe(true);
+            expect(body.sources['scratchpad.enabled']).toBe('file');
+        });
+
+        it('should accept scratchpad.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.scratchpad.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean scratchpad.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.enabled': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('scratchpad.enabled');
+        });
+    });
+
+    // ========================================================================
     // GET /api/admin/import-token
     // ========================================================================
 

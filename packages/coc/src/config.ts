@@ -91,6 +91,10 @@ export interface CLIConfig {
     myLife?: {
         enabled?: boolean;
     };
+    /** Scratchpad configuration */
+    scratchpad?: {
+        enabled?: boolean;
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -205,6 +209,10 @@ export interface ResolvedCLIConfig {
     myLife: {
         enabled: boolean;
     };
+    /** Scratchpad configuration */
+    scratchpad: {
+        enabled: boolean;
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -272,6 +280,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     myLife: {
         enabled: false,
     },
+    scratchpad: {
+        enabled: false,
+    },
     store: {
         backend: 'sqlite',
     },
@@ -306,6 +317,7 @@ export const CONFIG_SOURCE_KEYS = [
     'notes.enabled',
     'myWork.enabled',
     'myLife.enabled',
+    'scratchpad.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -455,6 +467,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         myLife: {
             enabled: override.myLife?.enabled ?? base.myLife.enabled,
         },
+        scratchpad: {
+            enabled: override.scratchpad?.enabled ?? base.scratchpad.enabled,
+        },
         store: {
             backend: override.store?.backend ?? base.store.backend,
         },
@@ -533,6 +548,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('myLife.')) {
         const subKey = key.slice('myLife.'.length) as keyof NonNullable<CLIConfig['myLife']>;
         return fileConfig.myLife?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('scratchpad.')) {
+        const subKey = key.slice('scratchpad.'.length) as keyof NonNullable<CLIConfig['scratchpad']>;
+        return fileConfig.scratchpad?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

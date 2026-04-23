@@ -61,6 +61,9 @@ export interface CLIConfig {
     myLife?: {
         enabled?: boolean;
     };
+    scratchpad?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

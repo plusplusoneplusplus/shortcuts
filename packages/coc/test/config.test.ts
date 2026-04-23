@@ -59,6 +59,7 @@ describe('Config', () => {
                 askUser: { enabled: false },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false });
         });
     });
 
@@ -338,6 +339,7 @@ timeout: 300
                 notes: { enabled: false },
                 myWork: { enabled: false },
                 myLife: { enabled: false },
+                scratchpad: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -424,6 +426,16 @@ timeout: 300
         it('should override notes.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { notes: { enabled: true } });
             expect(result.notes.enabled).toBe(true);
+        });
+
+        it('should preserve scratchpad.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.scratchpad.enabled).toBe(false);
+        });
+
+        it('should override scratchpad.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { enabled: true } });
+            expect(result.scratchpad.enabled).toBe(true);
         });
 
         it('should override store.backend from file', () => {
@@ -648,6 +660,8 @@ timeout: 300
                 'myWork:',
                 '  enabled: true',
                 'myLife:',
+                '  enabled: true',
+                'scratchpad:',
                 '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);

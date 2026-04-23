@@ -19,6 +19,8 @@ export interface DashboardOptions {
     myWorkEnabled?: boolean;
     /** Whether the My Life feature is enabled in server config. */
     myLifeEnabled?: boolean;
+    /** Whether the scratchpad feature is enabled in server config. */
+    scratchpadEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */
