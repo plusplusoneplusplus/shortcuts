@@ -564,4 +564,10 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).not.toContain('🐛');
         expect(result.suffix).not.toContain('Refine');
     });
+
+    it('suffix instructs auto-creation of work items for new implementation work', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(result.suffix).toContain('create a work item automatically');
+        expect(result.suffix).toContain('do not ask the user whether to create a plan first');
+    });
 });

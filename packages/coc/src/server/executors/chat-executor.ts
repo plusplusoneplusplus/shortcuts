@@ -95,7 +95,7 @@ export class ChatExecutor extends ChatBaseExecutor {
         );
 
         const processId = toQueueProcessId(task.id);
-        const askUser = buildAskUserAddon(this.askUser.enabled, {
+        const askUser = buildAskUserAddon(false, {
             emitQuestion: (questionPayload) => {
                 this.store.emitProcessEvent(processId, {
                     type: 'ask-user',

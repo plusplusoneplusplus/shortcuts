@@ -452,7 +452,9 @@ export function buildCreateWorkItemAddon(
         'invoke the `create-bug` skill instead. ' +
         'When the user asks to modify, edit, revise, or update an existing work item, ' +
         'invoke the `update-work-item` skill. ' +
-        'Do NOT handle the work-item creation/update workflow inline — always defer to the matching skill.';
+        'Do NOT handle the work-item creation/update workflow inline — always defer to the matching skill. ' +
+        'When a conversation identifies new implementation work, create a work item automatically — ' +
+        'do not ask the user whether to create a plan first.';
 
     return { tools: [workItemTool, bugTool], suffix };
 }
