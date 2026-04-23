@@ -279,8 +279,8 @@ describe('Git Commit Edge Cases', () => {
             expect(data.resolvedRef).toBe('abc1234ef:added.ts');
         });
 
-        it('returns 400 when file content exceeds 4MB', async () => {
-            const largeContent = 'x'.repeat(4 * 1024 * 1024 + 1);
+        it('returns 400 when file content exceeds 10MB', async () => {
+            const largeContent = 'x'.repeat(10 * 1024 * 1024 + 1);
             mockExecFileSync.mockReturnValue(largeContent);
 
             const res = await request(
@@ -292,8 +292,8 @@ describe('Git Commit Edge Cases', () => {
             expect(data.error).toContain('too large');
         });
 
-        it('returns 200 when file content is just under 4MB', async () => {
-            const justUnderContent = 'x'.repeat(4 * 1024 * 1024 - 1);
+        it('returns 200 when file content is just under 10MB', async () => {
+            const justUnderContent = 'x'.repeat(10 * 1024 * 1024 - 1);
             mockExecFileSync.mockReturnValue(justUnderContent);
 
             const res = await request(
