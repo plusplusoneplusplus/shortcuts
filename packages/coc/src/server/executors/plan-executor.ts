@@ -19,6 +19,7 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
+import type { ProcessWebSocketServer } from '../websocket';
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
@@ -29,6 +30,7 @@ import {
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildAskUserAddon,
+    buildCreateWorkItemAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -38,11 +40,16 @@ import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 // PlanExecutor
 // ============================================================================
 
-export type PlanExecutorOptions = ChatModeExecutorOptions;
+export interface PlanExecutorOptions extends ChatModeExecutorOptions {
+    getWsServer?: () => ProcessWebSocketServer | undefined;
+}
 
 export class PlanExecutor extends ChatBaseExecutor {
+    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
+
     constructor(store: ProcessStore, options: PlanExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
+        this.getWsServerFn = options.getWsServer;
     }
 
     protected async buildModeOptions(
@@ -80,6 +87,13 @@ export class PlanExecutor extends ChatBaseExecutor {
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
+        const createWorkItem = buildCreateWorkItemAddon(
+            this.dataDir,
+            payload.workspaceId,
+            this.getWsServerFn
+                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                : undefined,
+        );
 
         const processId = toQueueProcessId(task.id);
         const askUser = buildAskUserAddon(this.askUser.enabled, {
@@ -102,8 +116,8 @@ export class PlanExecutor extends ChatBaseExecutor {
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...boundedMemory.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + boundedMemory.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...createWorkItem.tools, ...boundedMemory.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + createWorkItem.suffix + boundedMemory.suffix,
         };
     }
 }

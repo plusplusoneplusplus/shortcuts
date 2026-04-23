@@ -489,3 +489,99 @@ describe('ChatBaseExecutor selected skills', () => {
     });
 });
 
+// ============================================================================
+// All three executors include create_work_item + create_bug tools
+// ============================================================================
+
+describe('create_work_item / create_bug tool wiring', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+    });
+
+    function makeTaskWithWorkspace(mode: 'ask' | 'plan' | 'autopilot', id: string): QueuedTask {
+        return {
+            id,
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode,
+                prompt: 'Hello',
+                workspaceId: 'ws-123',
+            },
+            config: {},
+            displayName: 'Hello',
+        };
+    }
+
+    it('ChatExecutor includes create_work_item and create_bug tools', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store), '/tmp/coc');
+        const task = makeTaskWithWorkspace('ask', 'task-wi-ask');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('create_work_item');
+        expect(toolNames).toContain('create_bug');
+    });
+
+    it('AutopilotExecutor includes create_work_item and create_bug tools', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store), '/tmp/coc');
+        const task = makeTaskWithWorkspace('autopilot', 'task-wi-auto');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('create_work_item');
+        expect(toolNames).toContain('create_bug');
+    });
+
+    it('PlanExecutor includes create_work_item and create_bug tools', async () => {
+        const executor = new PlanExecutor(store, makeOptions(store), '/tmp/coc');
+        const task = makeTaskWithWorkspace('plan', 'task-wi-plan');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('create_work_item');
+        expect(toolNames).toContain('create_bug');
+    });
+
+    it('all three executors include the skill-first prompt suffix', async () => {
+        for (const { mode, Ctor, id } of [
+            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
+            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
+            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'sfx-plan' },
+        ]) {
+            sdkMocks.resetAll();
+            sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+            sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
+
+            const executor = new Ctor(store, makeOptions(store), '/tmp/coc');
+            const task = makeTaskWithWorkspace(mode, id);
+
+            await executor.execute(task, 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain('create-work-item');
+            expect(call.prompt).toContain('create-bug');
+            expect(call.prompt).toContain('update-work-item');
+        }
+    });
+});
+

@@ -95,8 +95,8 @@ export class ExecutorRegistry {
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
         this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded, onMemoryCaptured: options.onMemoryCaptured }, options.dataDir);
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
-        this.planExecutor = new PlanExecutor(store, chatOpts, options.dataDir);
-        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir);
+        this.planExecutor = new PlanExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
+        this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);

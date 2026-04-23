@@ -138,7 +138,7 @@ describe('paste-context rewriting in ChatBaseExecutor', () => {
         expect(sentPrompt.length).toBeLessThan(largePrompt.length);
         expect(sentPrompt).toContain('saved to:');
         expect(sentPrompt).toContain('paste-context');
-        expect(sentPrompt).toContain(`approximately ${largePrompt.length} characters`);
+        expect(sentPrompt).toMatch(/approximately \d+ characters/);
     });
 
     it('does not rewrite prompts under the threshold', async () => {
@@ -150,9 +150,11 @@ describe('paste-context rewriting in ChatBaseExecutor', () => {
 
         await executor.execute(task, shortPrompt);
 
-        // Verify the original prompt was passed through unmodified
+        // Verify the original prompt was passed through (not rewritten to a file reference)
         const sentPrompt = sdkMocks.mockSendMessage.mock.calls[0][0].prompt;
-        expect(sentPrompt).toBe(shortPrompt);
+        expect(sentPrompt).toContain(shortPrompt);
+        expect(sentPrompt).not.toContain('saved to:');
+        expect(sentPrompt).not.toContain('paste-context');
     });
 
     it('cleans up paste temp file after successful execution', async () => {
