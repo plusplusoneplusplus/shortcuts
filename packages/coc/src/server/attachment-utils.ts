@@ -84,6 +84,12 @@ const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 
 /**
+ * Minimum character count before text attachment content is externalized
+ * to a file-path reference instead of being inlined in the prompt.
+ */
+export const TEXT_EXTERNALIZE_THRESHOLD = 200;
+
+/**
  * Validate and extract attachment payloads from a request body.
  * Returns validated payloads (capped at MAX_ATTACHMENTS) and extracted metadata.
  */
@@ -123,9 +129,9 @@ export function validateAttachments(
 export function saveAttachmentsToTempFiles(
     payloads: AttachmentPayload[],
     tempDir: string,
-): { attachments: Attachment[]; textContents: Array<{ name: string; content: string }> } {
+): { attachments: Attachment[]; textContents: Array<{ name: string; content: string; filePath: string }> } {
     const attachments: Attachment[] = [];
-    const textContents: Array<{ name: string; content: string }> = [];
+    const textContents: Array<{ name: string; content: string; filePath: string }> = [];
 
     fs.mkdirSync(tempDir, { recursive: true });
 
@@ -155,7 +161,7 @@ export function saveAttachmentsToTempFiles(
 
         if (category === 'text') {
             const content = parsed.buffer.toString('utf-8');
-            textContents.push({ name: payload.name, content });
+            textContents.push({ name: payload.name, content, filePath });
         }
 
         attachments.push({ type: 'file', path: filePath });
@@ -166,14 +172,24 @@ export function saveAttachmentsToTempFiles(
 
 /**
  * Build prompt context for text file attachments.
- * Injects file contents into the prompt so the AI can read them.
+ * Small text (≤ TEXT_EXTERNALIZE_THRESHOLD) is inlined in the prompt.
+ * Large text (> TEXT_EXTERNALIZE_THRESHOLD) is referenced by file path
+ * so the AI can read the file on demand without bloating the context.
  */
 export function buildTextAttachmentContext(
-    textContents: Array<{ name: string; content: string }>,
+    textContents: Array<{ name: string; content: string; filePath?: string }>,
 ): string {
     if (textContents.length === 0) return '';
 
-    const sections = textContents.map(({ name, content }) => {
+    const sections = textContents.map(({ name, content, filePath }) => {
+        if (content.length > TEXT_EXTERNALIZE_THRESHOLD && filePath) {
+            return [
+                `<attached_file name="${name}" path="${filePath}">`,
+                `This file contains approximately ${content.length} characters.`,
+                `Read it at the path above to examine its contents.`,
+                `</attached_file>`,
+            ].join('\n');
+        }
         const truncated = content.length > 50_000
             ? content.slice(0, 50_000) + '\n... (truncated)'
             : content;
