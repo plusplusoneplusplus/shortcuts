@@ -33,7 +33,7 @@ export interface NotesSidebarProps {
 }
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted }: NotesSidebarProps) {
-    const { tree, notesRoot, loading, error, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
+    const { tree, notesRoot, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
@@ -231,8 +231,19 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     return (
         <div className="flex flex-col h-full" data-testid="notes-sidebar">
             {/* Toolbar */}
-            <div className="h-10 flex items-center px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className="h-10 flex items-center gap-1 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">Notes</span>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={refresh}
+                    disabled={loading}
+                    data-testid="refresh-notes-btn"
+                    aria-label="Refresh Notes"
+                    title="Refresh Notes"
+                >
+                    ↻
+                </Button>
                 <Button
                     variant="ghost"
                     size="sm"

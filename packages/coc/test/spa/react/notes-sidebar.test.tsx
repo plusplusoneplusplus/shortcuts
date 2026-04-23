@@ -529,4 +529,38 @@ describe('NotesSidebar', () => {
             expect(dialog!.textContent).toContain('Create Notebook');
         });
     });
+
+    it('Refresh button re-fetches the tree', async () => {
+        const { findByTestId } = renderSidebar();
+        // Wait for the initial fetch to settle (tree renders)
+        await findByTestId('notes-tree');
+        const initialCalls = mockGetTree.mock.calls.length;
+        expect(initialCalls).toBeGreaterThanOrEqual(1);
+
+        const btn = await findByTestId('refresh-notes-btn');
+        await act(async () => {
+            fireEvent.click(btn);
+        });
+
+        await waitFor(() => {
+            expect(mockGetTree.mock.calls.length).toBeGreaterThan(initialCalls);
+        });
+    });
+
+    it('Refresh button is disabled while loading', async () => {
+        // Hold the initial fetch unresolved so the button is rendered in loading state
+        let resolve!: (v: { tree: NoteTreeNode[]; notesRoot: string }) => void;
+        mockGetTree.mockReturnValue(new Promise(r => { resolve = r; }));
+
+        const { findByTestId } = renderSidebar();
+        const btn = await findByTestId('refresh-notes-btn') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+
+        await act(async () => resolve({ tree: SAMPLE_TREE, notesRoot: '/mock/notes' }));
+
+        await waitFor(() => {
+            const refreshed = screen.getByTestId('refresh-notes-btn') as HTMLButtonElement;
+            expect(refreshed.disabled).toBe(false);
+        });
+    });
 });
