@@ -48,6 +48,8 @@ export interface NoteEditorProps {
     onFlushSave?: (flush: () => Promise<void>) => void;
     /** Called when the note file is not found (404). Allows the parent to hide the editor silently. */
     onNotFound?: () => void;
+    /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
+    toolbarRight?: React.ReactNode;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -139,6 +141,7 @@ export function NoteEditor({
     commentCount,
     onFlushSave,
     onNotFound,
+    toolbarRight,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -775,6 +778,7 @@ export function NoteEditor({
                     aiEditsVisible={aiEditsVisible}
                     onDismissAiEdits={handleAiEditDismiss}
                     onToggleAiEdits={handleAiEditToggle}
+                    toolbarRight={toolbarRight}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
                             {NOTE_MODE_OPTIONS.map((m) => {

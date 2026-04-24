@@ -19,6 +19,8 @@ export interface NoteEditorToolbarProps {
     onToggleAiEdits?: () => void;
     /** Whether AI edit decorations are currently shown. */
     aiEditsVisible?: boolean;
+    /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
+    toolbarRight?: ReactNode;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -239,7 +241,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight }: NoteEditorToolbarProps) {
     if (!editor) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -309,7 +311,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || modeToggle || toolbarRight || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -348,6 +350,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                             )}
                         </button>
                     )}
+                    {toolbarRight}
                     {modeToggle}
                 </>
             )}
