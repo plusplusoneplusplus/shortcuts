@@ -46,6 +46,7 @@ import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { extractLastWrittenNotePath } from './scratchpad/scratchpadUtils';
+import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -536,11 +537,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     // Sync mode selector with the loaded task's mode
     useEffect(() => {
-        if (!task) return;
+        if (!task) {
+            return;
+        }
         const draft = getDraft(taskId);
-        if (draft?.mode === 'ask' || draft?.mode === 'plan' || draft?.mode === 'autopilot') return;
-        const taskMode = (task as any).payload?.mode as string | undefined;
-        if (taskMode === 'ask' || taskMode === 'plan' || taskMode === 'autopilot') {
+        if (isChatMode(draft?.mode)) {
+            return;
+        }
+        const taskMode = resolveLoadedTaskMode(task);
+        if (taskMode) {
             setSelectedMode(taskMode);
         }
     }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
