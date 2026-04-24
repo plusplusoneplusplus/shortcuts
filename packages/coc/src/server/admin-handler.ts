@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -307,6 +307,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('scratchpad.enabled' in body) {
                 if (typeof body['scratchpad.enabled'] !== 'boolean') {
                     errors.push('scratchpad.enabled must be a boolean');
+                }
+            }
+            if ('scratchpad.layout' in body) {
+                if (body['scratchpad.layout'] !== 'horizontal' && body['scratchpad.layout'] !== 'vertical') {
+                    errors.push('scratchpad.layout must be "horizontal" or "vertical"');
                 }
             }
 
@@ -407,10 +412,14 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 existing.myLife.enabled = body['myLife.enabled'] as boolean;
             }
 
-            // Handle nested scratchpad.enabled field
+            // Handle nested scratchpad fields
             if ('scratchpad.enabled' in body) {
                 if (!existing.scratchpad) { existing.scratchpad = {}; }
                 existing.scratchpad.enabled = body['scratchpad.enabled'] as boolean;
+            }
+            if ('scratchpad.layout' in body) {
+                if (!existing.scratchpad) { existing.scratchpad = {}; }
+                existing.scratchpad.layout = body['scratchpad.layout'] as 'horizontal' | 'vertical';
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

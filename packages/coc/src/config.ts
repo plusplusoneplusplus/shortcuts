@@ -94,6 +94,7 @@ export interface CLIConfig {
     /** Scratchpad configuration */
     scratchpad?: {
         enabled?: boolean;
+        layout?: 'horizontal' | 'vertical';
     };
     /** Process store configuration */
     store?: {
@@ -212,6 +213,7 @@ export interface ResolvedCLIConfig {
     /** Scratchpad configuration */
     scratchpad: {
         enabled: boolean;
+        layout: 'horizontal' | 'vertical';
     };
     /** Process store configuration */
     store: {
@@ -282,6 +284,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     scratchpad: {
         enabled: false,
+        layout: 'horizontal',
     },
     store: {
         backend: 'sqlite',
@@ -318,6 +321,7 @@ export const CONFIG_SOURCE_KEYS = [
     'myWork.enabled',
     'myLife.enabled',
     'scratchpad.enabled',
+    'scratchpad.layout',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -469,6 +473,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         scratchpad: {
             enabled: override.scratchpad?.enabled ?? base.scratchpad.enabled,
+            layout: override.scratchpad?.layout ?? base.scratchpad.layout,
         },
         store: {
             backend: override.store?.backend ?? base.store.backend,

@@ -179,4 +179,66 @@ describe('AdminPanel — Scratchpad toggle', () => {
             expect(body['scratchpad.enabled']).toBe(false);
         });
     });
+
+    it('shows layout selector when scratchpad is enabled', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true } }));
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
+        });
+    });
+
+    it('does not show layout selector when scratchpad is disabled', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: false } }));
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('toggle-scratchpad-enabled')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('select-scratchpad-layout')).toBeNull();
+    });
+
+    it('sends scratchpad.layout in PATCH payload when changed and saved', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                return Promise.resolve({ ok: true, json: async () => ({}) });
+            }
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true, layout: 'horizontal' } }));
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
+        });
+
+        // Change layout to vertical
+        const select = screen.getByTestId('select-scratchpad-layout') as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: 'vertical' } });
+
+        // Save
+        const saveButtons = screen.getAllByText('Save');
+        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
+        expect(featuresSave).toBeTruthy();
+        fireEvent.click(featuresSave!);
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config')
+            );
+            expect(putCalls.length).toBeGreaterThan(0);
+            const body = JSON.parse(putCalls[0][1].body);
+            expect(body['scratchpad.layout']).toBe('vertical');
+        });
+    });
 });

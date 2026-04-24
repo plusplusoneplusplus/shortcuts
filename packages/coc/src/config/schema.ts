@@ -83,6 +83,7 @@ export const CLIConfigSchema = z.object({
     }).passthrough().optional(),
     scratchpad: z.object({
         enabled: z.boolean().optional(),
+        layout: z.enum(['horizontal', 'vertical']).optional(),
     }).passthrough().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),

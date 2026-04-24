@@ -341,4 +341,77 @@ describe('useScratchpadState', () => {
         act(() => { result.current.registerFiles([]); });
         expect(result.current.knownFiles).toEqual([]);
     });
+
+    // --- Layout support ---
+
+    it('defaults layout to horizontal when not specified', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef()));
+        expect(result.current.layout).toBe('horizontal');
+    });
+
+    it('returns vertical layout when specified', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        expect(result.current.layout).toBe('vertical');
+    });
+
+    it('uses separate localStorage key for vertical layout', () => {
+        localStorage.setItem('coc.scratchpad.leftWidthPct', '40');
+        localStorage.setItem('coc.scratchpad.topHeightPct', '70');
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        expect(result.current.topHeightPct).toBe(40);
+    });
+
+    it('uses horizontal localStorage key for horizontal layout', () => {
+        localStorage.setItem('coc.scratchpad.topHeightPct', '70');
+        localStorage.setItem('coc.scratchpad.leftWidthPct', '40');
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'horizontal'));
+        expect(result.current.topHeightPct).toBe(70);
+    });
+
+    it('vertical drag uses clientX instead of clientY', () => {
+        const containerRef = { current: { clientWidth: 1000, clientHeight: 800 } as HTMLElement };
+        const { result } = renderHook(() => useScratchpadState(containerRef, 'vertical'));
+
+        // Start drag at clientX=600
+        act(() => {
+            result.current.handleDividerMouseDown({
+                preventDefault: vi.fn(),
+                clientX: 600,
+                clientY: 0,
+            } as unknown as React.MouseEvent);
+        });
+        expect(result.current.isDragging).toBe(true);
+
+        // Move mouse to clientX=700 (+100px = +10% of 1000px container width)
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: 700, clientY: 0 }));
+        });
+
+        // Default 60% + 10% delta = 70%
+        expect(result.current.topHeightPct).toBe(70);
+    });
+
+    it('vertical drag persists to leftWidthPct localStorage key', () => {
+        const containerRef = { current: { clientWidth: 1000, clientHeight: 800 } as HTMLElement };
+        const { result } = renderHook(() => useScratchpadState(containerRef, 'vertical'));
+
+        act(() => {
+            result.current.handleDividerMouseDown({
+                preventDefault: vi.fn(),
+                clientX: 600,
+                clientY: 0,
+            } as unknown as React.MouseEvent);
+        });
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: 700, clientY: 0 }));
+        });
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mouseup'));
+        });
+
+        expect(localStorage.getItem('coc.scratchpad.leftWidthPct')).toBe('70');
+        expect(localStorage.getItem('coc.scratchpad.topHeightPct')).toBeNull();
+    });
 });

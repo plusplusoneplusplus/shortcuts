@@ -42,6 +42,7 @@ import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { copyHtmlToClipboard } from '../../utils/format';
 import { useScratchpadEnabled } from '../../hooks/feature-flags/useScratchpadEnabled';
+import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
@@ -145,7 +146,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const slashCommands = useSlashCommands(augmentedSkills);
 
     const scratchpadEnabled = useScratchpadEnabled();
-    const scratchpad = useScratchpadState(scratchpadContainerRef);
+    const { scratchpadLayout } = useDisplaySettings();
+    const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -798,12 +800,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 isSelecting={selection.isSelecting}
                 onToggleSelecting={selection.toggleSelecting}
             />
-            <div ref={scratchpadContainerRef} className="relative flex-1 min-h-0 flex flex-col overflow-x-hidden min-w-0">
-                {/* Conversation row: shrinks to topHeightPct when scratchpad is open */}
+            <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical' ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
+                {/* Conversation pane: shrinks to topHeightPct when scratchpad is open */}
                 <div
-                    className="relative flex min-w-0 overflow-hidden"
+                    className={`relative flex min-w-0 overflow-hidden ${scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical' ? 'min-h-0' : ''}`}
                     style={scratchpadEnabled && scratchpad.isOpen
-                        ? { flex: `0 0 ${scratchpad.topHeightPct}%`, minHeight: 0 }
+                        ? { flex: `0 0 ${scratchpad.topHeightPct}%`, ...(scratchpadLayout === 'vertical' ? { minWidth: 0 } : { minHeight: 0 }) }
                         : { flex: '1 1 auto', minHeight: 0 }
                     }
                 >
@@ -864,6 +866,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onClose={scratchpad.close}
                             files={scratchpad.knownFiles}
                             onSelectFile={scratchpad.setLinkedNotePath}
+                            layout={scratchpadLayout}
                         />
                         <ScratchpadPanel
                             notePath={scratchpad.linkedNotePath}

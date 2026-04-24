@@ -59,7 +59,7 @@ describe('Config', () => {
                 askUser: { enabled: false },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'horizontal' });
         });
     });
 
@@ -339,7 +339,7 @@ timeout: 300
                 notes: { enabled: false },
                 myWork: { enabled: false },
                 myLife: { enabled: false },
-                scratchpad: { enabled: false },
+                scratchpad: { enabled: false, layout: 'horizontal' },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -436,6 +436,22 @@ timeout: 300
         it('should override scratchpad.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { enabled: true } });
             expect(result.scratchpad.enabled).toBe(true);
+        });
+
+        it('should preserve scratchpad.layout default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.scratchpad.layout).toBe('horizontal');
+        });
+
+        it('should override scratchpad.layout from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { layout: 'vertical' } });
+            expect(result.scratchpad.layout).toBe('vertical');
+        });
+
+        it('should merge scratchpad fields independently', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { enabled: true } });
+            expect(result.scratchpad.enabled).toBe(true);
+            expect(result.scratchpad.layout).toBe('horizontal');
         });
 
         it('should override store.backend from file', () => {
@@ -663,6 +679,7 @@ timeout: 300
                 '  enabled: true',
                 'scratchpad:',
                 '  enabled: true',
+                '  layout: vertical',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 

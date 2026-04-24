@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled } from '../../utils/config';
+import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout } from '../../utils/config';
 
 interface DisplaySettings {
     showReportIntent: boolean;
@@ -17,13 +17,14 @@ interface DisplaySettings {
     myWorkEnabled: boolean;
     myLifeEnabled: boolean;
     scratchpadEnabled: boolean;
+    scratchpadLayout: 'horizontal' | 'vertical';
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'horizontal' };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
-    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled(), myLifeEnabled: isMyLifeEnabled(), scratchpadEnabled: isScratchpadEnabled() };
+    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled(), myLifeEnabled: isMyLifeEnabled(), scratchpadEnabled: isScratchpadEnabled(), scratchpadLayout: getScratchpadLayout() };
 }
 
 let cachedSettings: DisplaySettings | null = null;
@@ -45,6 +46,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             myWorkEnabled: data?.resolved?.myWork?.enabled ?? false,
             myLifeEnabled: data?.resolved?.myLife?.enabled ?? false,
             scratchpadEnabled: data?.resolved?.scratchpad?.enabled ?? false,
+            scratchpadLayout: (data?.resolved?.scratchpad?.layout === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical',
         };
     } catch {
         return DEFAULT_SETTINGS;

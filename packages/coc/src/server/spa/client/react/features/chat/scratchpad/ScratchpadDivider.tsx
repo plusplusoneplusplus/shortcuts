@@ -1,4 +1,4 @@
-import type { ScratchpadExpandMode } from './useScratchpadState';
+import type { ScratchpadExpandMode, ScratchpadLayout } from './useScratchpadState';
 
 export interface ScratchpadDividerProps {
     linkedNotePath: string | null;
@@ -14,23 +14,38 @@ export interface ScratchpadDividerProps {
     files?: string[];
     /** Called when a file tab is clicked; receives the file path. */
     onSelectFile?: (path: string) => void;
+    /** Layout direction: horizontal (top/bottom) or vertical (left/right). */
+    layout?: ScratchpadLayout;
 }
 
 export function ScratchpadDivider({
     linkedNotePath, expandMode, isDragging,
     onMouseDown, onOpenFilePicker,
     onExpandTop, onExpandBottom, onSplitReset, onClose,
-    files = [], onSelectFile,
+    files = [], onSelectFile, layout = 'horizontal',
 }: ScratchpadDividerProps) {
+    const isVertical = layout === 'vertical';
     const displayName = linkedNotePath
         ? linkedNotePath.split('/').pop()?.replace(/\.md$/, '') ?? 'Scratchpad'
         : 'Scratchpad';
 
     const showTabs = files.length >= 2;
 
+    // Vertical: use a dropdown instead of a tab strip (divider is too narrow for tabs)
+    const activeFileName = linkedNotePath
+        ? linkedNotePath.split('/').pop()?.replace(/\.md$/, '') ?? 'Scratchpad'
+        : 'Scratchpad';
+
     return (
         <div
-            className={[
+            className={isVertical ? [
+                'w-7 flex flex-col items-center gap-0.5 py-2',
+                'border-l border-[#e0e0e0] dark:border-[#3c3c3c]',
+                'bg-[#f3f3f3] dark:bg-[#252526]',
+                'cursor-col-resize select-none flex-shrink-0',
+                'transition-colors',
+                isDragging ? 'bg-[#e8f4fd] dark:bg-[#1a3a5c]' : '',
+            ].join(' ') : [
                 'h-7 flex items-center gap-0.5 px-2',
                 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'bg-[#f3f3f3] dark:bg-[#252526]',
@@ -41,19 +56,34 @@ export function ScratchpadDivider({
             onMouseDown={onMouseDown}
             data-testid="scratchpad-divider"
             role="separator"
-            aria-orientation="horizontal"
+            aria-orientation={isVertical ? 'vertical' : 'horizontal'}
             aria-label="Resize scratchpad"
         >
             {/* Drag grip indicator */}
             <span
-                className="text-[#c0c0c0] dark:text-[#555] text-[10px] mr-1 pointer-events-none"
+                className={[
+                    'text-[#c0c0c0] dark:text-[#555] text-[10px] pointer-events-none',
+                    isVertical ? 'mb-1' : 'mr-1',
+                ].join(' ')}
                 aria-hidden="true"
             >
-                ⋮⋮
+                {isVertical ? '⋯⋯' : '⋮⋮'}
             </span>
 
-            {showTabs ? (
-                /* File tab strip — shown when 2+ files are known */
+            {isVertical ? (
+                /* Vertical layout: show active file name vertically or a compact indicator */
+                <button
+                    className="text-[10px] text-[#0078d4] hover:underline writing-mode-vertical truncate max-h-[120px]"
+                    style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+                    onClick={(e) => { e.stopPropagation(); showTabs && onSelectFile ? onSelectFile(files[0]) : onOpenFilePicker(); }}
+                    title={linkedNotePath ?? 'Select note file'}
+                    data-testid="scratchpad-file-btn"
+                    type="button"
+                >
+                    📝 {activeFileName}
+                </button>
+            ) : showTabs ? (
+                /* Horizontal tab strip — shown when 2+ files are known */
                 <div
                     className="flex-1 flex items-stretch overflow-x-auto min-w-0 gap-0"
                     data-testid="scratchpad-file-tabs"
@@ -100,7 +130,9 @@ export function ScratchpadDivider({
                 </>
             )}
 
-            {/* Expand top: maximize conversation, collapse scratchpad */}
+            {isVertical && <div className="flex-1" />}
+
+            {/* Expand primary: maximize conversation, collapse scratchpad */}
             <button
                 className={[
                     'text-[11px] w-6 h-5 flex items-center justify-center rounded',
@@ -110,12 +142,12 @@ export function ScratchpadDivider({
                         : 'text-[#848484] dark:text-[#888]',
                 ].join(' ')}
                 onClick={(e) => { e.stopPropagation(); onExpandTop(); }}
-                title="Expand conversation (collapse scratchpad to bar)"
+                title={isVertical ? 'Expand conversation (collapse scratchpad)' : 'Expand conversation (collapse scratchpad to bar)'}
                 data-testid="scratchpad-expand-top-btn"
                 type="button"
-            >⬆</button>
+            >{isVertical ? '⬅' : '⬆'}</button>
 
-            {/* Expand bottom: maximize scratchpad, collapse conversation */}
+            {/* Expand secondary: maximize scratchpad, collapse conversation */}
             <button
                 className={[
                     'text-[11px] w-6 h-5 flex items-center justify-center rounded',
@@ -125,10 +157,10 @@ export function ScratchpadDivider({
                         : 'text-[#848484] dark:text-[#888]',
                 ].join(' ')}
                 onClick={(e) => { e.stopPropagation(); onExpandBottom(); }}
-                title="Expand scratchpad (collapse conversation to bar)"
+                title={isVertical ? 'Expand scratchpad (collapse conversation)' : 'Expand scratchpad (collapse conversation to bar)'}
                 data-testid="scratchpad-expand-bottom-btn"
                 type="button"
-            >⬇</button>
+            >{isVertical ? '➡' : '⬇'}</button>
 
             {/* Split 50/50 reset */}
             <button

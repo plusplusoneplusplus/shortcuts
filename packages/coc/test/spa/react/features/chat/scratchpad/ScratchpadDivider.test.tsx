@@ -222,3 +222,71 @@ describe('ScratchpadDivider — shared controls', () => {
         expect(divider.getAttribute('aria-orientation')).toBe('horizontal');
     });
 });
+
+describe('ScratchpadDivider — vertical layout', () => {
+    it('renders with vertical orientation when layout="vertical"', () => {
+        renderDivider({ layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('uses cursor-col-resize in vertical mode', () => {
+        renderDivider({ layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('cursor-col-resize');
+        expect(divider.className).not.toContain('cursor-row-resize');
+    });
+
+    it('uses w-7 class in vertical mode instead of h-7', () => {
+        renderDivider({ layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('w-7');
+        expect(divider.className).not.toContain('h-7');
+    });
+
+    it('uses border-l in vertical mode instead of border-t', () => {
+        renderDivider({ layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('border-l');
+        expect(divider.className).not.toContain('border-t');
+    });
+
+    it('shows left arrow for expand-top button in vertical mode', () => {
+        renderDivider({ layout: 'vertical' });
+        const btn = screen.getByTestId('scratchpad-expand-top-btn');
+        expect(btn.textContent).toBe('⬅');
+    });
+
+    it('shows right arrow for expand-bottom button in vertical mode', () => {
+        renderDivider({ layout: 'vertical' });
+        const btn = screen.getByTestId('scratchpad-expand-bottom-btn');
+        expect(btn.textContent).toBe('➡');
+    });
+
+    it('shows horizontal grip (⋯⋯) in vertical mode', () => {
+        renderDivider({ layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        const grips = divider.querySelectorAll('[aria-hidden="true"]');
+        expect(grips.length).toBeGreaterThan(0);
+        expect(grips[0].textContent).toBe('⋯⋯');
+    });
+
+    it('shows vertical grip (⋮⋮) in horizontal mode', () => {
+        renderDivider({ layout: 'horizontal' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        const grips = divider.querySelectorAll('[aria-hidden="true"]');
+        expect(grips.length).toBeGreaterThan(0);
+        expect(grips[0].textContent).toBe('⋮⋮');
+    });
+
+    it('renders file button in vertical mode', () => {
+        renderDivider({ layout: 'vertical', linkedNotePath: 'tasks/note.md' });
+        expect(screen.getByTestId('scratchpad-file-btn')).toBeTruthy();
+    });
+
+    it('isDragging=true applies active-drag bg in vertical mode', () => {
+        renderDivider({ layout: 'vertical', isDragging: true });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('bg-[#e8f4fd]');
+    });
+});

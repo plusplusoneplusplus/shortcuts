@@ -21,6 +21,8 @@ export interface DashboardOptions {
     myLifeEnabled?: boolean;
     /** Whether the scratchpad feature is enabled in server config. */
     scratchpadEnabled?: boolean;
+    /** Scratchpad split layout direction. */
+    scratchpadLayout?: 'horizontal' | 'vertical';
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

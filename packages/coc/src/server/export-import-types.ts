@@ -63,6 +63,7 @@ export interface CLIConfig {
     };
     scratchpad?: {
         enabled?: boolean;
+        layout?: 'horizontal' | 'vertical';
     };
     store?: {
         backend?: 'file' | 'sqlite';

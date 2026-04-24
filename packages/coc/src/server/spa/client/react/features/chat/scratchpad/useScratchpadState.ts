@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 export type ScratchpadExpandMode = 'split' | 'top' | 'bottom';
+export type ScratchpadLayout = 'horizontal' | 'vertical';
 
 export interface ScratchpadState {
     isOpen: boolean;
@@ -10,6 +11,8 @@ export interface ScratchpadState {
     isDragging: boolean;
     /** Ordered list of all .md file paths registered for display in scratchpad tabs. */
     knownFiles: string[];
+    /** Active layout direction for the scratchpad split. */
+    layout: ScratchpadLayout;
 }
 
 export interface UseScratchpadStateReturn extends ScratchpadState {
@@ -26,7 +29,8 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
     registerFiles: (paths: string[]) => void;
 }
 
-const STORAGE_KEY = 'coc.scratchpad.topHeightPct';
+const STORAGE_KEY_HORIZONTAL = 'coc.scratchpad.topHeightPct';
+const STORAGE_KEY_VERTICAL = 'coc.scratchpad.leftWidthPct';
 const DEFAULT_PCT = 60;
 const MIN_PCT = 15;
 const MAX_PCT = 85;
@@ -35,8 +39,13 @@ const PCT_EXPAND_TOP = MAX_PCT;     // 85 — conversation maximized
 const PCT_EXPAND_BOTTOM = MIN_PCT;  // 15 — scratchpad maximized
 const PCT_SPLIT = 50;
 
+function getStorageKey(layout: ScratchpadLayout): string {
+    return layout === 'vertical' ? STORAGE_KEY_VERTICAL : STORAGE_KEY_HORIZONTAL;
+}
+
 export function useScratchpadState(
-    containerRef: React.RefObject<HTMLElement>
+    containerRef: React.RefObject<HTMLElement>,
+    layout: ScratchpadLayout = 'horizontal',
 ): UseScratchpadStateReturn {
     const [isOpen, setIsOpen] = useState(false);
     const [linkedNotePath, setLinkedNotePath] = useState<string | null>(null);
@@ -46,7 +55,7 @@ export function useScratchpadState(
 
     const [topHeightPct, setTopHeightPctRaw] = useState<number>(() => {
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
+            const stored = localStorage.getItem(getStorageKey(layout));
             if (stored !== null) {
                 const parsed = Number(stored);
                 if (Number.isFinite(parsed)) {
@@ -56,6 +65,21 @@ export function useScratchpadState(
         } catch { /* ignore */ }
         return DEFAULT_PCT;
     });
+
+    // Re-read persisted pct when layout changes
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem(getStorageKey(layout));
+            if (stored !== null) {
+                const parsed = Number(stored);
+                if (Number.isFinite(parsed)) {
+                    setTopHeightPctRaw(Math.min(Math.max(parsed, MIN_PCT), MAX_PCT));
+                    return;
+                }
+            }
+        } catch { /* ignore */ }
+        setTopHeightPctRaw(DEFAULT_PCT);
+    }, [layout]);
 
     const setTopHeightPct = useCallback((pct: number) => {
         setTopHeightPctRaw(Math.min(Math.max(pct, MIN_PCT), MAX_PCT));
@@ -98,25 +122,32 @@ export function useScratchpadState(
         });
     }, []);
 
-    // Drag mechanism
-    const startYRef = useRef(0);
+    // Drag mechanism — layout-aware
+    const startPosRef = useRef(0);
     const startPctRef = useRef(0);
+    const layoutRef = useRef(layout);
+    layoutRef.current = layout;
 
     const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
-        startYRef.current = e.clientY;
+        startPosRef.current = layout === 'vertical' ? e.clientX : e.clientY;
         startPctRef.current = topHeightPct;
         setIsDragging(true);
-    }, [topHeightPct]);
+    }, [topHeightPct, layout]);
 
     useEffect(() => {
         if (!isDragging) return;
         const onMouseMove = (e: MouseEvent) => {
             e.preventDefault();
-            const containerH = containerRef.current?.clientHeight ?? 0;
-            if (containerH <= 0) return;
-            const deltaY = e.clientY - startYRef.current;
-            const deltaPct = (deltaY / containerH) * 100;
+            const isVertical = layoutRef.current === 'vertical';
+            const containerSize = isVertical
+                ? (containerRef.current?.clientWidth ?? 0)
+                : (containerRef.current?.clientHeight ?? 0);
+            if (containerSize <= 0) return;
+            const delta = isVertical
+                ? (e.clientX - startPosRef.current)
+                : (e.clientY - startPosRef.current);
+            const deltaPct = (delta / containerSize) * 100;
             setTopHeightPct(startPctRef.current + deltaPct);
         };
         const onMouseUp = () => {
@@ -134,9 +165,9 @@ export function useScratchpadState(
     // Persist to localStorage when drag ends
     useEffect(() => {
         if (!isDragging) {
-            try { localStorage.setItem(STORAGE_KEY, String(topHeightPct)); } catch { /* ignore */ }
+            try { localStorage.setItem(getStorageKey(layout), String(topHeightPct)); } catch { /* ignore */ }
         }
-    }, [isDragging, topHeightPct]);
+    }, [isDragging, topHeightPct, layout]);
 
     return {
         isOpen,
@@ -145,6 +176,7 @@ export function useScratchpadState(
         linkedNotePath,
         isDragging,
         knownFiles,
+        layout,
         open,
         close,
         setLinkedNotePath,

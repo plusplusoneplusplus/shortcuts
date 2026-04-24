@@ -1356,7 +1356,51 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
-    // GET /api/admin/import-token
+    // PUT /api/admin/config — scratchpad.layout
+    // ========================================================================
+
+    describe('scratchpad.layout', () => {
+        it('should accept scratchpad.layout=horizontal', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.layout': 'horizontal' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.scratchpad.layout).toBe('horizontal');
+            expect(body.sources['scratchpad.layout']).toBe('file');
+        });
+
+        it('should accept scratchpad.layout=vertical', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.layout': 'vertical' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.scratchpad.layout).toBe('vertical');
+        });
+
+        it('should reject invalid scratchpad.layout value', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'scratchpad.layout': 'diagonal' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('scratchpad.layout');
+        });
+    });
+
     // ========================================================================
 
     describe('serve.serverName', () => {

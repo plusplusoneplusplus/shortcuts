@@ -79,6 +79,7 @@ export function AdminPanel() {
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
     const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
+    const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -95,7 +96,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical' });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -184,7 +185,9 @@ export function AdminPanel() {
             setMyLifeEnabled(mle);
             const se = resolved.scratchpad?.enabled ?? false;
             setScratchpadEnabled(se);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se });
+            const sl = (resolved.scratchpad?.layout === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical';
+            setScratchpadLayout(sl);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -239,7 +242,8 @@ export function AdminPanel() {
         notesEnabled !== featuresSnapshot.notes ||
         myWorkEnabled !== featuresSnapshot.myWork ||
         myLifeEnabled !== featuresSnapshot.myLife ||
-        scratchpadEnabled !== featuresSnapshot.scratchpad;
+        scratchpadEnabled !== featuresSnapshot.scratchpad ||
+        scratchpadLayout !== featuresSnapshot.scratchpadLayout;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -392,6 +396,7 @@ export function AdminPanel() {
                     'myWork.enabled': myWorkEnabled,
                     'myLife.enabled': myLifeEnabled,
                     'scratchpad.enabled': scratchpadEnabled,
+                    'scratchpad.layout': scratchpadLayout,
                 }),
             });
             if (!res.ok) {
@@ -400,13 +405,13 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -414,6 +419,7 @@ export function AdminPanel() {
         setMyWorkEnabled(featuresSnapshot.myWork);
         setMyLifeEnabled(featuresSnapshot.myLife);
         setScratchpadEnabled(featuresSnapshot.scratchpad);
+        setScratchpadLayout(featuresSnapshot.scratchpadLayout);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1109,6 +1115,26 @@ export function AdminPanel() {
                                             </label>
                                         </div>
                                     </div>
+                                    {scratchpadEnabled && (
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Layout</div>
+                                                <div className="text-xs text-[#616161] dark:text-[#999]">Split direction for conversation and scratchpad.</div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <SourceBadge source={sources['scratchpad.layout']} />
+                                                <select
+                                                    className="text-xs border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded px-2 py-1"
+                                                    value={scratchpadLayout}
+                                                    onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
+                                                    data-testid="select-scratchpad-layout"
+                                                >
+                                                    <option value="horizontal">Horizontal (top/bottom)</option>
+                                                    <option value="vertical">Vertical (left/right)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
                                 </SettingsCard>
                                 <SettingsCard
                                     title="Advanced & Recovery"
