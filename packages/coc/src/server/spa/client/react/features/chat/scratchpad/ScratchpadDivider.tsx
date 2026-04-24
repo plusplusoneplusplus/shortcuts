@@ -10,16 +10,23 @@ export interface ScratchpadDividerProps {
     onExpandBottom: () => void;
     onSplitReset: () => void;
     onClose: () => void;
+    /** All .md files known to the scratchpad — rendered as tabs when 2 or more. */
+    files?: string[];
+    /** Called when a file tab is clicked; receives the file path. */
+    onSelectFile?: (path: string) => void;
 }
 
 export function ScratchpadDivider({
     linkedNotePath, expandMode, isDragging,
     onMouseDown, onOpenFilePicker,
     onExpandTop, onExpandBottom, onSplitReset, onClose,
+    files = [], onSelectFile,
 }: ScratchpadDividerProps) {
     const displayName = linkedNotePath
         ? linkedNotePath.split('/').pop()?.replace(/\.md$/, '') ?? 'Scratchpad'
         : 'Scratchpad';
+
+    const showTabs = files.length >= 2;
 
     return (
         <div
@@ -45,19 +52,53 @@ export function ScratchpadDivider({
                 ⋮⋮
             </span>
 
-            {/* Filename — clickable to open note file picker */}
-            <button
-                className="text-xs text-[#0078d4] hover:underline truncate max-w-[180px]"
-                onClick={(e) => { e.stopPropagation(); onOpenFilePicker(); }}
-                title={linkedNotePath ?? 'Select note file'}
-                data-testid="scratchpad-file-btn"
-                type="button"
-            >
-                📝 {displayName}
-            </button>
+            {showTabs ? (
+                /* File tab strip — shown when 2+ files are known */
+                <div
+                    className="flex-1 flex items-stretch overflow-x-auto min-w-0 gap-0"
+                    data-testid="scratchpad-file-tabs"
+                >
+                    {files.map(f => {
+                        const name = f.split('/').pop()?.replace(/\.md$/, '') ?? f;
+                        const isActive = linkedNotePath !== null &&
+                            f.toLowerCase() === linkedNotePath.toLowerCase();
+                        return (
+                            <button
+                                key={f}
+                                className={[
+                                    'text-xs px-2 whitespace-nowrap border-b-2 cursor-pointer',
+                                    isActive
+                                        ? 'text-[#0078d4] border-[#0078d4]'
+                                        : 'text-[#848484] dark:text-[#888] border-transparent hover:text-[#0078d4]',
+                                ].join(' ')}
+                                onClick={(e) => { e.stopPropagation(); onSelectFile?.(f); }}
+                                title={f}
+                                type="button"
+                                data-testid={`scratchpad-tab-${name}`}
+                                aria-current={isActive ? 'page' : undefined}
+                            >
+                                {name}
+                            </button>
+                        );
+                    })}
+                </div>
+            ) : (
+                /* Single-file button (existing UI) */
+                <>
+                    <button
+                        className="text-xs text-[#0078d4] hover:underline truncate max-w-[180px]"
+                        onClick={(e) => { e.stopPropagation(); onOpenFilePicker(); }}
+                        title={linkedNotePath ?? 'Select note file'}
+                        data-testid="scratchpad-file-btn"
+                        type="button"
+                    >
+                        📝 {displayName}
+                    </button>
 
-            {/* Spacer */}
-            <div className="flex-1" />
+                    {/* Spacer */}
+                    <div className="flex-1" />
+                </>
+            )}
 
             {/* Expand top: maximize conversation, collapse scratchpad */}
             <button

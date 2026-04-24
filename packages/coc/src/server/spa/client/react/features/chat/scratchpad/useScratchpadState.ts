@@ -8,6 +8,8 @@ export interface ScratchpadState {
     expandMode: ScratchpadExpandMode;
     linkedNotePath: string | null;
     isDragging: boolean;
+    /** Ordered list of all .md file paths registered for display in scratchpad tabs. */
+    knownFiles: string[];
 }
 
 export interface UseScratchpadStateReturn extends ScratchpadState {
@@ -17,6 +19,11 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
     setTopHeightPct: (pct: number) => void;
     setExpandMode: (mode: ScratchpadExpandMode) => void;
     handleDividerMouseDown: (e: React.MouseEvent) => void;
+    /**
+     * Adds any paths not already in knownFiles (case-insensitive dedup).
+     * Preserves insertion order. Does not change the active linkedNotePath.
+     */
+    registerFiles: (paths: string[]) => void;
 }
 
 const STORAGE_KEY = 'coc.scratchpad.topHeightPct';
@@ -35,6 +42,7 @@ export function useScratchpadState(
     const [linkedNotePath, setLinkedNotePath] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [expandMode, setExpandModeRaw] = useState<ScratchpadExpandMode>('split');
+    const [knownFiles, setKnownFiles] = useState<string[]>([]);
 
     const [topHeightPct, setTopHeightPctRaw] = useState<number>(() => {
         try {
@@ -67,11 +75,27 @@ export function useScratchpadState(
             if (!prev) setExpandModeRaw('split');
             return true;
         });
-        if (notePath !== undefined) setLinkedNotePath(notePath);
+        if (notePath !== undefined) {
+            setLinkedNotePath(notePath);
+            setKnownFiles(prev => {
+                const lc = notePath.toLowerCase();
+                if (prev.some(p => p.toLowerCase() === lc)) return prev;
+                return [...prev, notePath];
+            });
+        }
     }, []);
 
     const close = useCallback(() => {
         setIsOpen(false);
+    }, []);
+
+    const registerFiles = useCallback((paths: string[]) => {
+        setKnownFiles(prev => {
+            const existing = new Set(prev.map(p => p.toLowerCase()));
+            const toAdd = paths.filter(p => !existing.has(p.toLowerCase()));
+            if (toAdd.length === 0) return prev;
+            return [...prev, ...toAdd];
+        });
     }, []);
 
     // Drag mechanism
@@ -120,11 +144,13 @@ export function useScratchpadState(
         expandMode,
         linkedNotePath,
         isDragging,
+        knownFiles,
         open,
         close,
         setLinkedNotePath,
         setTopHeightPct,
         setExpandMode,
         handleDividerMouseDown,
+        registerFiles,
     };
 }

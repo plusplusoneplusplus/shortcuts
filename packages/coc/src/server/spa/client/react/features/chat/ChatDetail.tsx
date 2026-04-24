@@ -184,11 +184,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [selection]);
 
-    // Deduplicate:remove the detected plan file from the regular files list
-    const displayFiles = useMemo(
-        () => effectivePlanPath ? createdFiles.filter(f => f.filePath !== effectivePlanPath) : createdFiles,
-        [createdFiles, effectivePlanPath],
-    );
+    // Deduplicate: remove the detected plan file from the regular files list;
+    // also remove .md files already tracked in the scratchpad tabs so they
+    // don't appear in both the References dropdown AND the scratchpad divider.
+    const displayFiles = useMemo(() => {
+        let files = effectivePlanPath
+            ? createdFiles.filter(f => f.filePath !== effectivePlanPath)
+            : createdFiles;
+        if (scratchpadEnabled && scratchpad.knownFiles.length > 0) {
+            const tabPaths = new Set(scratchpad.knownFiles.map(p => p.toLowerCase()));
+            files = files.filter(f => !tabPaths.has(f.filePath.toLowerCase()));
+        }
+        return files;
+    }, [createdFiles, effectivePlanPath, scratchpadEnabled, scratchpad.knownFiles]);
 
     // Persist detected plan path to process metadata (fire at most once per load)
     const planPatchedRef = useRef(false);
@@ -621,6 +629,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // scratchpad.open is stable (never re-created).
     }, [turns, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Register all .md files from created files into the scratchpad tab list.
+    // The plan file is excluded — it has its own dedicated display in the header.
+    useEffect(() => {
+        if (!scratchpadEnabled) return;
+        const mdPaths = createdFiles
+            .map(f => f.filePath)
+            .filter(p => p.endsWith('.md') && p !== effectivePlanPath);
+        if (mdPaths.length > 0) {
+            scratchpad.registerFiles(mdPaths);
+        }
+    }, [createdFiles, effectivePlanPath, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Track scroll position
     useEffect(() => {
         const el = conversationContainerRef.current;
@@ -832,11 +852,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             expandMode={scratchpad.expandMode}
                             isDragging={scratchpad.isDragging}
                             onMouseDown={scratchpad.handleDividerMouseDown}
-                            onOpenFilePicker={() => { /* TODO: file picker integration */ }}
+                            onOpenFilePicker={() => { /* no-op: files are discovered from conversation */ }}
                             onExpandTop={() => scratchpad.setExpandMode('top')}
                             onExpandBottom={() => scratchpad.setExpandMode('bottom')}
                             onSplitReset={() => scratchpad.setExpandMode('split')}
                             onClose={scratchpad.close}
+                            files={scratchpad.knownFiles}
+                            onSelectFile={scratchpad.setLinkedNotePath}
                         />
                         <ScratchpadPanel
                             notePath={scratchpad.linkedNotePath}
