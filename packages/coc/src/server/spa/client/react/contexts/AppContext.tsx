@@ -224,12 +224,13 @@ export type AppAction =
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
-    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { statusFilter?: string; workspace?: string; typeFilter?: string; myWorkExcludedTypes?: string[] } } }
+    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { workspace?: string; myWorkExcludedTypes?: string[] } } }
     | { type: 'DISMISS_WELCOME' }
     | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
     | { type: 'DISMISS_TIP'; payload: { tipId: string } }
     | { type: 'COMPLETE_TOUR' }
-    | { type: 'SET_MY_WORK_EXCLUDED_TYPES'; value: string[] };
+    | { type: 'SET_MY_WORK_EXCLUDED_TYPES'; value: string[] }
+    | { type: 'SET_REPO_FILTERS'; statusFilter: string; typeFilter: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -276,6 +277,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, typeFilter: action.value };
         case 'SET_MY_WORK_EXCLUDED_TYPES':
             return { ...state, myWorkExcludedTypes: action.value };
+        case 'SET_REPO_FILTERS':
+            return { ...state, statusFilter: action.statusFilter, typeFilter: action.typeFilter };
         case 'SET_SEARCH_QUERY': {
             const next: AppContextState = { ...state, searchQuery: action.value };
             // Clear search results when query is emptied
@@ -503,9 +506,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                     ? { ...state.onboardingProgress, ...onboardingProgress }
                     : state.onboardingProgress,
                 dismissedTips: dismissedTips ?? state.dismissedTips,
-                statusFilter: activityFilters?.statusFilter ?? state.statusFilter,
                 workspace: activityFilters?.workspace ?? state.workspace,
-                typeFilter: activityFilters?.typeFilter ?? state.typeFilter,
                 myWorkExcludedTypes: activityFilters?.myWorkExcludedTypes ?? state.myWorkExcludedTypes,
                 preferencesLoaded: true,
             };
@@ -560,30 +561,80 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Debounced save of activity filters to server preferences
     const filterSaveRef = useRef<ReturnType<typeof setTimeout>>();
-    const prevFiltersRef = useRef({ statusFilter: state.statusFilter, workspace: state.workspace, typeFilter: state.typeFilter });
+    const prevRepoFiltersRef = useRef({ workspace: state.workspace, statusFilter: state.statusFilter, typeFilter: state.typeFilter });
+    // Tracks the last filter values loaded from the server for a given workspace (to avoid write-back loop)
+    const justLoadedFiltersRef = useRef<{ workspace: string; statusFilter: string; typeFilter: string } | null>(null);
 
+    // Load per-repo statusFilter/typeFilter when workspace changes
     useEffect(() => {
-        // Skip saving until preferences have been loaded from the server
         if (!state.preferencesLoaded) return;
+        if (state.workspace === '__all') {
+            // Reset to defaults; no persistent state for cross-repo view
+            const defaults = { workspace: '__all', statusFilter: '__all', typeFilter: '__all' };
+            justLoadedFiltersRef.current = defaults;
+            dispatch({ type: 'SET_REPO_FILTERS', statusFilter: '__all', typeFilter: '__all' });
+            return;
+        }
+        const wsId = state.workspace;
+        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences')
+            .then(r => r.ok ? r.json() as Promise<any> : {})
+            .then((prefs: any) => {
+                const sf: string = prefs.activityFilters?.statusFilter ?? '__all';
+                const tf: string = prefs.activityFilters?.typeFilter ?? '__all';
+                justLoadedFiltersRef.current = { workspace: wsId, statusFilter: sf, typeFilter: tf };
+                dispatch({ type: 'SET_REPO_FILTERS', statusFilter: sf, typeFilter: tf });
+            })
+            .catch(() => {});
+    }, [state.workspace, state.preferencesLoaded]);
 
-        const prev = prevFiltersRef.current;
-        const cur = { statusFilter: state.statusFilter, workspace: state.workspace, typeFilter: state.typeFilter };
+    // Debounced save of statusFilter/typeFilter to per-repo preferences
+    useEffect(() => {
+        if (!state.preferencesLoaded) return;
+        if (state.workspace === '__all') return; // Not persisted for cross-repo view
 
-        // Only save when a filter actually changed
-        if (prev.statusFilter === cur.statusFilter && prev.workspace === cur.workspace && prev.typeFilter === cur.typeFilter) return;
-        prevFiltersRef.current = cur;
+        // Don't write back values that were just loaded from the server
+        const loaded = justLoadedFiltersRef.current;
+        if (loaded && loaded.workspace === state.workspace && loaded.statusFilter === state.statusFilter && loaded.typeFilter === state.typeFilter) {
+            prevRepoFiltersRef.current = { workspace: state.workspace, statusFilter: state.statusFilter, typeFilter: state.typeFilter };
+            return;
+        }
+
+        const prev = prevRepoFiltersRef.current;
+        const cur = { workspace: state.workspace, statusFilter: state.statusFilter, typeFilter: state.typeFilter };
+        if (prev.workspace === cur.workspace && prev.statusFilter === cur.statusFilter && prev.typeFilter === cur.typeFilter) return;
+        prevRepoFiltersRef.current = cur;
 
         if (filterSaveRef.current) clearTimeout(filterSaveRef.current);
         filterSaveRef.current = setTimeout(() => {
-            fetch(getApiBase() + '/preferences', {
+            fetch(getApiBase() + '/workspaces/' + encodeURIComponent(state.workspace) + '/preferences', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ activityFilters: cur }),
+                body: JSON.stringify({ activityFilters: { statusFilter: state.statusFilter, typeFilter: state.typeFilter } }),
             }).catch(() => {});
         }, 500);
 
         return () => { if (filterSaveRef.current) clearTimeout(filterSaveRef.current); };
-    }, [state.statusFilter, state.workspace, state.typeFilter, state.preferencesLoaded]);
+    }, [state.statusFilter, state.typeFilter, state.workspace, state.preferencesLoaded]);
+
+    // Debounced save of selected workspace to global preferences
+    const workspaceSaveRef = useRef<ReturnType<typeof setTimeout>>();
+    const prevWorkspaceRef = useRef(state.workspace);
+    useEffect(() => {
+        if (!state.preferencesLoaded) return;
+        if (prevWorkspaceRef.current === state.workspace) return;
+        prevWorkspaceRef.current = state.workspace;
+
+        if (workspaceSaveRef.current) clearTimeout(workspaceSaveRef.current);
+        workspaceSaveRef.current = setTimeout(() => {
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activityFilters: { workspace: state.workspace } }),
+            }).catch(() => {});
+        }, 500);
+
+        return () => { if (workspaceSaveRef.current) clearTimeout(workspaceSaveRef.current); };
+    }, [state.workspace, state.preferencesLoaded]);
 
     // Debounced save of myWorkExcludedTypes to server preferences
     const myWorkFilterSaveRef = useRef<ReturnType<typeof setTimeout>>();

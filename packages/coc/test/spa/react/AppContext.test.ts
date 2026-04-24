@@ -1060,17 +1060,29 @@ describe('AppContext reducer', () => {
     });
 
     describe('SET_WELCOME_PREFERENCES with activityFilters', () => {
-        it('restores saved activity filters', () => {
+        it('restores workspace from global activityFilters', () => {
             const state = makeState({ preferencesLoaded: false } as any);
             const result = appReducer(state, {
                 type: 'SET_WELCOME_PREFERENCES',
                 payload: {
-                    activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' },
+                    activityFilters: { workspace: 'ws-1' },
                 },
             });
-            expect(result.statusFilter).toBe('running');
             expect(result.workspace).toBe('ws-1');
-            expect(result.typeFilter).toBe('chat');
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('statusFilter and typeFilter are NOT restored from global activityFilters', () => {
+            const state = makeState({ preferencesLoaded: false } as any);
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    activityFilters: { workspace: 'ws-1' },
+                },
+            });
+            // statusFilter and typeFilter now come from per-repo prefs, not global
+            expect(result.statusFilter).toBe('__all');
+            expect(result.typeFilter).toBe('__all');
             expect(result.preferencesLoaded).toBe(true);
         });
 
@@ -1086,17 +1098,18 @@ describe('AppContext reducer', () => {
             expect(result.preferencesLoaded).toBe(true);
         });
 
-        it('restores partial activityFilters without overwriting unset fields', () => {
+        it('restores workspace from partial activityFilters', () => {
             const state = makeState({ statusFilter: 'failed', workspace: 'ws-2', typeFilter: 'run-script', preferencesLoaded: false } as any);
             const result = appReducer(state, {
                 type: 'SET_WELCOME_PREFERENCES',
                 payload: {
-                    activityFilters: { typeFilter: 'chat' },
+                    activityFilters: { workspace: 'ws-new' },
                 },
             });
+            expect(result.workspace).toBe('ws-new');
+            // statusFilter and typeFilter are not touched by global prefs
             expect(result.statusFilter).toBe('failed');
-            expect(result.workspace).toBe('ws-2');
-            expect(result.typeFilter).toBe('chat');
+            expect(result.typeFilter).toBe('run-script');
         });
     });
 });

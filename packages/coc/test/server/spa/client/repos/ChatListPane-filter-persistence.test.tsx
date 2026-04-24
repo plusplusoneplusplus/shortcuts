@@ -320,11 +320,12 @@ describe('appReducer – myWorkExcludedTypes', () => {
         const result = appReducer(baseState as any, {
             type: 'SET_WELCOME_PREFERENCES',
             payload: {
-                activityFilters: { statusFilter: 'running' },
+                activityFilters: { workspace: 'ws-1' },
             },
         });
         expect(result.myWorkExcludedTypes).toEqual([]);
-        expect(result.statusFilter).toBe('running');
+        // statusFilter is no longer stored in global prefs; stays at default
+        expect(result.statusFilter).toBe('__all');
     });
 
     it('SET_WELCOME_PREFERENCES without activityFilters preserves default', () => {

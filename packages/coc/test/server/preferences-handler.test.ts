@@ -154,22 +154,22 @@ describe('readPreferences / writePreferences', () => {
         expect(result.global?.dismissedTips).toEqual(['tip-a', 'tip-b']);
     });
 
-    it('round-trips activityFilters', () => {
-        writePreferences(tmpDir, { global: { activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } } });
+    it('round-trips activityFilters with workspace', () => {
+        writePreferences(tmpDir, { global: { activityFilters: { workspace: 'ws-1' } } });
         const result = readPreferences(tmpDir);
-        expect(result.global?.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+        expect(result.global?.activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
-    it('round-trips partial activityFilters', () => {
-        writePreferences(tmpDir, { global: { activityFilters: { typeFilter: 'run-workflow' } } });
+    it('silently drops statusFilter and typeFilter from global activityFilters on round-trip', () => {
+        writePreferences(tmpDir, { global: { activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } } });
         const result = readPreferences(tmpDir);
-        expect(result.global?.activityFilters).toEqual({ typeFilter: 'run-workflow' });
+        expect(result.global?.activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
     it('round-trips activityFilters with myWorkExcludedTypes', () => {
-        writePreferences(tmpDir, { global: { activityFilters: { statusFilter: 'running', myWorkExcludedTypes: ['ask', 'plan'] } } });
+        writePreferences(tmpDir, { global: { activityFilters: { myWorkExcludedTypes: ['ask', 'plan'] } } });
         const result = readPreferences(tmpDir);
-        expect(result.global?.activityFilters).toEqual({ statusFilter: 'running', myWorkExcludedTypes: ['ask', 'plan'] });
+        expect(result.global?.activityFilters).toEqual({ myWorkExcludedTypes: ['ask', 'plan'] });
     });
 
     it('creates data directory if needed', () => {
@@ -620,6 +620,46 @@ describe('validatePreferences', () => {
         expect(validatePerRepoPreferences({ skillTemplates: 'not-array' }).skillTemplates).toBeUndefined();
         expect(validatePerRepoPreferences({ skillTemplates: { id: 's1' } }).skillTemplates).toBeUndefined();
     });
+
+    // -- activityFilters --
+
+    it('accepts valid activityFilters', () => {
+        const result = validatePerRepoPreferences({ activityFilters: { statusFilter: 'running', typeFilter: 'chat' } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'running', typeFilter: 'chat' });
+    });
+
+    it('accepts partial activityFilters with only statusFilter', () => {
+        const result = validatePerRepoPreferences({ activityFilters: { statusFilter: 'completed' } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'completed' });
+    });
+
+    it('accepts partial activityFilters with only typeFilter', () => {
+        const result = validatePerRepoPreferences({ activityFilters: { typeFilter: 'run-workflow' } });
+        expect(result.activityFilters).toEqual({ typeFilter: 'run-workflow' });
+    });
+
+    it('returns undefined activityFilters when fields are invalid types', () => {
+        const result = validatePerRepoPreferences({ activityFilters: { statusFilter: 123, typeFilter: null } });
+        expect(result.activityFilters).toBeUndefined();
+    });
+
+    it('strips invalid fields but keeps valid ones', () => {
+        const result = validatePerRepoPreferences({ activityFilters: { statusFilter: 'running', typeFilter: 42 } });
+        expect(result.activityFilters).toEqual({ statusFilter: 'running' });
+    });
+
+    it('rejects non-object activityFilters', () => {
+        expect(validatePerRepoPreferences({ activityFilters: 'bad' }).activityFilters).toBeUndefined();
+        expect(validatePerRepoPreferences({ activityFilters: 42 }).activityFilters).toBeUndefined();
+        expect(validatePerRepoPreferences({ activityFilters: null }).activityFilters).toBeUndefined();
+        expect(validatePerRepoPreferences({ activityFilters: ['chat'] }).activityFilters).toBeUndefined();
+    });
+
+    it('activityFilters coexists with other per-repo fields', () => {
+        const result = validatePerRepoPreferences({ lastDepth: 'deep', activityFilters: { statusFilter: 'running' } });
+        expect(result.lastDepth).toBe('deep');
+        expect(result.activityFilters).toEqual({ statusFilter: 'running' });
+    });
 });
 
 // ============================================================================
@@ -800,14 +840,19 @@ describe('validateGlobalPreferences', () => {
 
     // -- activityFilters field --
 
-    it('accepts valid activityFilters', () => {
-        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } });
-        expect(result.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+    it('accepts valid activityFilters with workspace', () => {
+        const result = validateGlobalPreferences({ activityFilters: { workspace: 'ws-1' } });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
-    it('accepts partial activityFilters', () => {
+    it('silently drops statusFilter and typeFilter from global activityFilters', () => {
+        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' } });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
+    });
+
+    it('returns undefined activityFilters when only statusFilter or typeFilter provided', () => {
         const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'completed' } });
-        expect(result.activityFilters).toEqual({ statusFilter: 'completed' });
+        expect(result.activityFilters).toBeUndefined();
     });
 
     it('rejects non-object activityFilters', () => {
@@ -820,9 +865,9 @@ describe('validateGlobalPreferences', () => {
         expect(validateGlobalPreferences({ activityFilters: ['a'] })).toEqual({});
     });
 
-    it('strips non-string fields inside activityFilters', () => {
-        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 42, workspace: 'ws-1' } });
-        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
+    it('strips non-string workspace inside activityFilters', () => {
+        const result = validateGlobalPreferences({ activityFilters: { workspace: 42 } });
+        expect(result.activityFilters).toBeUndefined();
     });
 
     it('omits activityFilters when all sub-fields are invalid', () => {
@@ -831,9 +876,9 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('accepts activityFilters alongside other global fields', () => {
-        const result = validateGlobalPreferences({ theme: 'dark', activityFilters: { typeFilter: 'run-script' } });
+        const result = validateGlobalPreferences({ theme: 'dark', activityFilters: { workspace: 'ws-1' } });
         expect(result.theme).toBe('dark');
-        expect(result.activityFilters).toEqual({ typeFilter: 'run-script' });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
     // -- activityFilters.myWorkExcludedTypes --
@@ -854,14 +899,14 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('ignores myWorkExcludedTypes when not an array', () => {
-        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: 'bad', statusFilter: 'running' } });
-        expect(result.activityFilters).toEqual({ statusFilter: 'running' });
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: 'bad', workspace: 'ws-1' } });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-1' });
         expect(result.activityFilters!.myWorkExcludedTypes).toBeUndefined();
     });
 
     it('preserves myWorkExcludedTypes alongside other activityFilters fields', () => {
-        const result = validateGlobalPreferences({ activityFilters: { statusFilter: 'running', myWorkExcludedTypes: ['ask'] } });
-        expect(result.activityFilters).toEqual({ statusFilter: 'running', myWorkExcludedTypes: ['ask'] });
+        const result = validateGlobalPreferences({ activityFilters: { workspace: 'ws-2', myWorkExcludedTypes: ['ask'] } });
+        expect(result.activityFilters).toEqual({ workspace: 'ws-2', myWorkExcludedTypes: ['ask'] });
     });
 
     it('accepts uiLayoutMode classic', () => {
@@ -1190,39 +1235,39 @@ describe('Preferences REST API', () => {
 
     // -- activityFilters persistence via API --
 
-    it('PATCH persists activityFilters', async () => {
-        const filters = { statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' };
+    it('PATCH persists activityFilters with workspace', async () => {
+        const filters = { workspace: 'ws-1' };
         const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
     });
 
     it('GET returns persisted activityFilters', async () => {
-        const filters = { statusFilter: 'completed', typeFilter: 'run-script' };
+        const filters = { workspace: 'ws-1' };
         await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
     });
 
     it('PATCH deep-merges activityFilters fields', async () => {
-        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'running', workspace: 'ws-1' } });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { typeFilter: 'chat' } });
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { workspace: 'ws-1' } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['chat'] } });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.activityFilters).toEqual({ statusFilter: 'running', workspace: 'ws-1', typeFilter: 'chat' });
+        expect(body.activityFilters).toEqual({ workspace: 'ws-1', myWorkExcludedTypes: ['chat'] });
     });
 
     it('PATCH activityFilters does not affect other global fields', async () => {
         await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'failed' } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { workspace: 'ws-1' } });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.theme).toBe('dark');
-        expect(body.activityFilters).toEqual({ statusFilter: 'failed' });
+        expect(body.activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
     it('activityFilters survives server restart', async () => {
-        const filters = { statusFilter: 'queued', typeFilter: 'run-workflow' };
+        const filters = { workspace: 'ws-queued', myWorkExcludedTypes: ['run-workflow'] };
         await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: filters });
         await server.close();
 
@@ -1231,6 +1276,12 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
+    });
+
+    it('statusFilter and typeFilter in global activityFilters payload are silently dropped', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'running', typeFilter: 'chat', workspace: 'ws-1' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters).toEqual({ workspace: 'ws-1' });
     });
 
     // -- myWorkExcludedTypes persistence via API --
@@ -1242,10 +1293,10 @@ describe('Preferences REST API', () => {
     });
 
     it('PATCH deep-merges myWorkExcludedTypes with existing activityFilters', async () => {
-        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { statusFilter: 'running' } });
+        await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { workspace: 'ws-1' } });
         const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['plan'] } });
         const body = JSON.parse(res.body);
-        expect(body.activityFilters!.statusFilter).toBe('running');
+        expect(body.activityFilters!.workspace).toBe('ws-1');
         expect(body.activityFilters!.myWorkExcludedTypes).toEqual(['plan']);
     });
 
@@ -1669,5 +1720,58 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { skillTemplates: [] });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).skillTemplates).toEqual([]);
+    });
+
+    // -- activityFilters --
+
+    it('PATCH persists activityFilters', async () => {
+        const res = await patchJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'running', typeFilter: 'chat' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'running', typeFilter: 'chat' });
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).activityFilters).toEqual({ statusFilter: 'running', typeFilter: 'chat' });
+    });
+
+    it('PATCH deep-merges activityFilters preserving existing fields', async () => {
+        await patchJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'running' } });
+        const res = await patchJSON(repoUrl(repoId), { activityFilters: { typeFilter: 'chat' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'running', typeFilter: 'chat' });
+    });
+
+    it('PATCH activityFilters does not affect other per-repo fields', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'completed' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-4');
+        expect(body.activityFilters).toEqual({ statusFilter: 'completed' });
+    });
+
+    it('activityFilters are independent per-repo', async () => {
+        await patchJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'running' } });
+        await patchJSON(repoUrl(repoId2), { activityFilters: { statusFilter: 'completed' } });
+
+        const res1 = await getJSON(repoUrl(repoId));
+        const res2 = await getJSON(repoUrl(repoId2));
+        expect(JSON.parse(res1.body).activityFilters!.statusFilter).toBe('running');
+        expect(JSON.parse(res2.body).activityFilters!.statusFilter).toBe('completed');
+    });
+
+    it('activityFilters survive server restart', async () => {
+        await patchJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'queued', typeFilter: 'run-workflow' } });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'queued', typeFilter: 'run-workflow' });
+    });
+
+    it('PUT activityFilters round-trips', async () => {
+        const res = await putJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'failed', typeFilter: 'ask' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'failed', typeFilter: 'ask' });
     });
 });

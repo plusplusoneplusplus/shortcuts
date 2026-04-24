@@ -16,6 +16,11 @@ export interface PerRepoPrefsClient {
   };
   /** Notes directory git tracking settings. */
   notesGit?: NotesGitConfig;
+  /** Per-repo activity filter selections (status and type filters). */
+  activityFilters?: {
+    statusFilter?: string;
+    typeFilter?: string;
+  };
 }
 
 /**

@@ -83,11 +83,10 @@ export interface GlobalPreferences {
     /** IDs of contextual tips the user has permanently dismissed. */
     dismissedTips?: string[];
 
-    /** Persisted activity page filter selections (status, workspace, type). */
+    /** Persisted activity page filter selections (workspace selection and My Work exclusions).
+     * statusFilter and typeFilter have moved to PerRepoPreferences.activityFilters. */
     activityFilters?: {
-        statusFilter?: string;
         workspace?: string;
-        typeFilter?: string;
         /** Persisted My Work Activity exclusion set (e.g. ['run-workflow', 'ask']). */
         myWorkExcludedTypes?: string[];
     };
@@ -126,6 +125,11 @@ export interface PerRepoPreferences {
     };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
+    /** Per-repo activity filter selections (status and type filters). */
+    activityFilters?: {
+        statusFilter?: string;
+        typeFilter?: string;
+    };
 }
 
 /** backward-compat alias */
@@ -201,9 +205,7 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     if (typeof obj.activityFilters === 'object' && obj.activityFilters !== null && !Array.isArray(obj.activityFilters)) {
         const raw = obj.activityFilters as Record<string, unknown>;
         const validated: NonNullable<GlobalPreferences['activityFilters']> = {};
-        if (typeof raw.statusFilter === 'string') validated.statusFilter = raw.statusFilter;
         if (typeof raw.workspace === 'string') validated.workspace = raw.workspace;
-        if (typeof raw.typeFilter === 'string') validated.typeFilter = raw.typeFilter;
         if (Array.isArray(raw.myWorkExcludedTypes)) {
             const arr = (raw.myWorkExcludedTypes as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 0);
             validated.myWorkExcludedTypes = arr;
@@ -372,6 +374,16 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 }
             }
             result.notesGit = validated;
+        }
+    }
+
+    if (typeof obj.activityFilters === 'object' && obj.activityFilters !== null && !Array.isArray(obj.activityFilters)) {
+        const raw = obj.activityFilters as Record<string, unknown>;
+        const validated: NonNullable<PerRepoPreferences['activityFilters']> = {};
+        if (typeof raw.statusFilter === 'string') validated.statusFilter = raw.statusFilter;
+        if (typeof raw.typeFilter === 'string') validated.typeFilter = raw.typeFilter;
+        if (Object.keys(validated).length > 0) {
+            result.activityFilters = validated;
         }
     }
 
@@ -595,6 +607,12 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing task/plan values.
             if (patch.lastModels && existingRepo.lastModels) {
                 merged.lastModels = { ...existingRepo.lastModels, ...patch.lastModels };
+            }
+
+            // Deep-merge activityFilters so that patching { activityFilters: { statusFilter: 'x' } }
+            // preserves existing typeFilter value.
+            if (patch.activityFilters && existingRepo.activityFilters) {
+                merged.activityFilters = { ...existingRepo.activityFilters, ...patch.activityFilters };
             }
 
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear
