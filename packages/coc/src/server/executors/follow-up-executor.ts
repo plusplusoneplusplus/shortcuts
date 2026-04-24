@@ -44,6 +44,7 @@ import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';
+import { isValidTaskFolder } from './auto-folder-utils';
 // ============================================================================
 // Types
 // ============================================================================
@@ -191,7 +192,9 @@ export class FollowUpExecutor extends BaseExecutor {
         if (workingDirectory) {
             const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
             const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-            const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+            const existingFolders = entries
+                .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
+                .map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);

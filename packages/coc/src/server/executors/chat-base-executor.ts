@@ -46,6 +46,7 @@ import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from '
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
 import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';
+import { isValidTaskFolder } from './auto-folder-utils';
 
 // ============================================================================
 // Types
@@ -157,7 +158,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const entries = await fs.promises
             .readdir(tasksRoot, { withFileTypes: true })
             .catch(() => [] as fs.Dirent[]);
-        const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+        const existingFolders = entries
+            .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
+            .map(e => e.name);
         return { tasksRoot, existingFolders };
     }
 

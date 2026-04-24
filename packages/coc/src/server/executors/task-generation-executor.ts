@@ -40,6 +40,7 @@ import type { ChatPayload } from '../task-types';
 import { resolveTaskRoot } from '../task-root-resolver';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { isValidTaskFolder } from './auto-folder-utils';
 
 // ============================================================================
 // TaskGenerationExecutor
@@ -87,13 +88,15 @@ export class TaskGenerationExecutor extends ChatBaseExecutor {
         if (isAutoFolder) {
             const entries = await fs.promises.readdir(tasksBase, { withFileTypes: true })
                 .catch(() => [] as fs.Dirent[]);
-            const subfolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+            const subfolders = entries
+                .filter(e => e.isDirectory() && isValidTaskFolder(e.name) && e.name !== 'archive')
+                .map(e => e.name);
             const deepFolders: string[] = [];
             for (const sub of subfolders) {
                 const nested = await fs.promises.readdir(path.join(tasksBase, sub), { withFileTypes: true })
                     .catch(() => [] as fs.Dirent[]);
                 for (const n of nested) {
-                    if (n.isDirectory()) deepFolders.push(`${sub}/${n.name}`);
+                    if (n.isDirectory() && isValidTaskFolder(n.name)) deepFolders.push(`${sub}/${n.name}`);
                 }
             }
             autoFolderContext = { tasksRoot: tasksBase, existingFolders: [...subfolders, ...deepFolders] };

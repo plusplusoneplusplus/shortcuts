@@ -38,6 +38,7 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-util
 import type { Route } from './types';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { resolveTaskRoot } from './task-root-resolver';
+import { isValidTaskFolder } from './executors/auto-folder-utils';
 
 // ============================================================================
 // SSE Helpers
@@ -107,7 +108,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             if (isAutoFolder) {
                 const entries = await fs.promises.readdir(tasksBase, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
                 const subfolders = entries
-                    .filter(e => e.isDirectory() && e.name !== 'archive')
+                    .filter(e => e.isDirectory() && e.name !== 'archive' && isValidTaskFolder(e.name))
                     .map(e => e.name);
                 autoFolderContext = { tasksRoot: tasksBase, existingFolders: subfolders };
             }
