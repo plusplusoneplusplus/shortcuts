@@ -864,6 +864,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             notePath={scratchpad.linkedNotePath}
                             workspaceId={workspaceId ?? ''}
                             onClose={scratchpad.close}
+                            onNotFound={scratchpad.close}
                             height="auto"
                         />
                     </>

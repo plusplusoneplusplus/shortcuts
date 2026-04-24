@@ -5,9 +5,11 @@ export interface ScratchpadPanelProps {
     notePath: string | null;
     onClose: () => void;
     height: number | string;
+    /** Called when the note file is not found (404); closes the panel silently. */
+    onNotFound?: () => void;
 }
 
-export function ScratchpadPanel({ workspaceId, notePath, height }: ScratchpadPanelProps) {
+export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound }: ScratchpadPanelProps) {
     const style: React.CSSProperties = height === 'auto'
         ? { flex: '1 1 auto', minHeight: 0 }
         : { height, minHeight: 0 };
@@ -21,6 +23,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height }: ScratchpadPan
             <NoteEditor
                 workspaceId={workspaceId}
                 notePath={notePath}
+                onNotFound={onNotFound}
             />
         </div>
     );

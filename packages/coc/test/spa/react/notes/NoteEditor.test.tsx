@@ -911,6 +911,59 @@ describe('NoteEditor', () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // onNotFound callback
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('onNotFound', () => {
+        it('calls onNotFound instead of showing error when load fails with 404', async () => {
+            mockLoadContent.mockRejectedValue(new Error('API error: 404 Not Found'));
+            const onNotFound = vi.fn();
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onNotFound={onNotFound} />);
+            });
+
+            await waitFor(() => expect(onNotFound).toHaveBeenCalledOnce());
+            expect(screen.queryByTestId('note-editor-error')).toBeNull();
+        });
+
+        it('does not call onNotFound for non-404 errors', async () => {
+            mockLoadContent.mockRejectedValue(new Error('Network error'));
+            const onNotFound = vi.fn();
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onNotFound={onNotFound} />);
+            });
+
+            await waitFor(() => expect(screen.getByTestId('note-editor-error')).toBeDefined());
+            expect(onNotFound).not.toHaveBeenCalled();
+        });
+
+        it('still shows error box for non-404 errors when onNotFound is provided', async () => {
+            mockLoadContent.mockRejectedValue(new Error('API error: 500 Internal Server Error'));
+            const onNotFound = vi.fn();
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onNotFound={onNotFound} />);
+            });
+
+            await waitFor(() => expect(screen.getByTestId('note-editor-error')).toBeDefined());
+            expect(onNotFound).not.toHaveBeenCalled();
+        });
+
+        it('calls onNotFound when onNotFound is undefined and load fails with 404 — shows error fallback', async () => {
+            mockLoadContent.mockRejectedValue(new Error('API error: 404 Not Found'));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            // No onNotFound callback: the 404 is silently swallowed (no error box, no crash)
+            await waitFor(() => expect(screen.queryByTestId('note-editor-error')).toBeNull());
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
     // onFlushSave callback
     // ══════════════════════════════════════════════════════════════════════
 

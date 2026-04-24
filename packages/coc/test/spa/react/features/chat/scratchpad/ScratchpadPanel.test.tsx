@@ -3,8 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { ScratchpadPanel } from '../../../../../../src/server/spa/client/react/features/chat/scratchpad/ScratchpadPanel';
 
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
-    NoteEditor: (props: { workspaceId: string; notePath: string | null }) => (
-        <div data-testid="mock-note-editor" data-workspace-id={props.workspaceId} data-note-path={props.notePath ?? ''} />
+    NoteEditor: (props: { workspaceId: string; notePath: string | null; onNotFound?: () => void }) => (
+        <div
+            data-testid="mock-note-editor"
+            data-workspace-id={props.workspaceId}
+            data-note-path={props.notePath ?? ''}
+            data-has-not-found={props.onNotFound !== undefined ? 'true' : 'false'}
+        />
     ),
 }));
 
@@ -49,5 +54,18 @@ describe('ScratchpadPanel', () => {
         render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="40%" />);
         const panel = screen.getByTestId('scratchpad-panel');
         expect(panel.className).toContain('overflow-hidden');
+    });
+
+    it('forwards onNotFound to NoteEditor when provided', () => {
+        const onNotFound = vi.fn();
+        render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" onNotFound={onNotFound} />);
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-has-not-found')).toBe('true');
+    });
+
+    it('passes undefined onNotFound to NoteEditor when not provided', () => {
+        render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-has-not-found')).toBe('false');
     });
 });

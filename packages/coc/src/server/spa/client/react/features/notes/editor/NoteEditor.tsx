@@ -46,6 +46,8 @@ export interface NoteEditorProps {
     commentCount?: number;
     /** Called with the flushSave function so the parent can trigger a save before sending chat messages. */
     onFlushSave?: (flush: () => Promise<void>) => void;
+    /** Called when the note file is not found (404). Allows the parent to hide the editor silently. */
+    onNotFound?: () => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -136,6 +138,7 @@ export function NoteEditor({
     onToggleCommentsPanel,
     commentCount,
     onFlushSave,
+    onNotFound,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -547,6 +550,10 @@ export function NoteEditor({
             })
             .catch((err) => {
                 if (cancelled) return;
+                if (err?.message?.includes('404')) {
+                    onNotFound?.();
+                    return;
+                }
                 setLoadError(err?.message ?? 'Failed to load note');
             })
             .finally(() => {
@@ -557,7 +564,7 @@ export function NoteEditor({
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [notePath, workspaceId]);
+    }, [notePath, workspaceId, onNotFound]);
 
     // ── Flush on unmount ────────────────────────────────────────────────────
 
