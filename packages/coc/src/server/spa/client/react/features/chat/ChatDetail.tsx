@@ -72,9 +72,15 @@ export interface ChatDetailProps {
     hideModeSelector?: boolean;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
+    /**
+     * When true, forces the scratchpad off regardless of the global display setting.
+     * Use in embedded chat contexts (e.g. NoteChatPanel) where the scratchpad is
+     * redundant or would conflict with the host UI.
+     */
+    disableScratchpad?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false, disableScratchpad = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -145,7 +151,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     );
     const slashCommands = useSlashCommands(augmentedSkills);
 
-    const scratchpadEnabled = useScratchpadEnabled();
+    const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout);
 

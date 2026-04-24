@@ -108,6 +108,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         standalone
                         title="Notes Chat"
                         hideModeSelector
+                        disableScratchpad
                         onBack={onClose}
                     />
                 </ChatPreferencesProvider>

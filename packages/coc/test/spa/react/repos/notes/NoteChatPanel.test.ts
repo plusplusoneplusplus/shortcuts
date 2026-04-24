@@ -108,6 +108,10 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('note-chat-new-btn');
             expect(source).toContain('New Chat');
         });
+
+        it('passes disableScratchpad to ChatDetail', () => {
+            expect(source).toContain('disableScratchpad');
+        });
     });
 
     describe('note context banner', () => {
