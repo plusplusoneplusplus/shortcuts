@@ -116,7 +116,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
                 timeoutMs,
                 availableTools: ANALYSIS_TOOLS,
                 onPermissionRequest: (req) =>
-                    req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules', rules: [] },
+                    req.kind === 'read' ? { kind: 'approve-once' } : { kind: 'reject' },
                 loadDefaultMcpConfig: false, // Don't load user's MCP config
             };
 

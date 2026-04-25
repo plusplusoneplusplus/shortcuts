@@ -98,15 +98,15 @@ describe('AI Invoker Factory', () => {
 
             // Test read permission
             const readResult = callArgs.onPermissionRequest({ kind: 'read' });
-            expect(readResult.kind).toBe('approved');
+            expect(readResult.kind).toBe('approve-once');
 
             // Test write permission
             const writeResult = callArgs.onPermissionRequest({ kind: 'write' });
-            expect(writeResult.kind).toBe('denied-by-rules');
+            expect(writeResult.kind).toBe('reject');
 
             // Test shell permission
             const shellResult = callArgs.onPermissionRequest({ kind: 'shell' });
-            expect(shellResult.kind).toBe('denied-by-rules');
+            expect(shellResult.kind).toBe('reject');
         });
 
         it('should pass model through', async () => {

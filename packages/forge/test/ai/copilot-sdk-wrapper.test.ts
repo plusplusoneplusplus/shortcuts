@@ -146,7 +146,7 @@ describe('Copilot SDK Wrapper Module', () => {
                 { kind: 'shell' },
                 { sessionId: 'test' }
             );
-            expect(result).toEqual({ kind: 'approved' });
+            expect(result).toEqual({ kind: 'approve-once' });
         });
 
         it('denyAllPermissions should return denied-by-rules', () => {
@@ -154,7 +154,7 @@ describe('Copilot SDK Wrapper Module', () => {
                 { kind: 'write' },
                 { sessionId: 'test' }
             );
-            expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
+            expect(result).toEqual({ kind: 'reject' });
         });
     });
 

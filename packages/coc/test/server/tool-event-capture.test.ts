@@ -202,12 +202,12 @@ describe('Tool Event Capture', () => {
             permissionResult: {
                 approved: false,
                 timestamp: new Date(),
-                reason: 'denied-by-rules',
+                reason: 'reject',
             },
         });
 
         expect(tc.permissionResult!.approved).toBe(false);
-        expect(tc.permissionResult!.reason).toBe('denied-by-rules');
+        expect(tc.permissionResult!.reason).toBe('reject');
     });
 
     // ========================================================================

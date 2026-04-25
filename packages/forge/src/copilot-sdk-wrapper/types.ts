@@ -53,7 +53,7 @@ export function defineTool<T = unknown>(
  * Local implementation of the SDK's `approveAll` permission handler.
  * The SDK version is `const approveAll = () => ({ kind: "approved" })`.
  */
-export const approveAll: _PermissionHandler = () => ({ kind: 'approved' });
+export const approveAll: _PermissionHandler = () => ({ kind: 'approve-once' });
 
 export { loadCopilotSdk } from './sdk-esm-loader';
 
@@ -554,7 +554,7 @@ You are in read-only mode. You MUST NOT use any tools that create, edit, delete,
  * Only use this in trusted environments or for testing purposes.
  */
 export const approveAllPermissions: import('@github/copilot-sdk').PermissionHandler = () => {
-    return { kind: 'approved' };
+    return { kind: 'approve-once' };
 };
 
 /**
@@ -562,8 +562,16 @@ export const approveAllPermissions: import('@github/copilot-sdk').PermissionHand
  * This is the default behavior when no handler is provided.
  */
 export const denyAllPermissions: import('@github/copilot-sdk').PermissionHandler = () => {
-    return { kind: 'denied-by-rules', rules: [] };
+    return { kind: 'reject' };
 };
+
+/**
+ * Check whether a permission result represents an approval.
+ * v0.3.0 of the SDK has three approval kinds: approve-once, approve-for-session, approve-for-location.
+ */
+export function isPermissionApproved(result: { kind: string }): boolean {
+    return result.kind === 'approve-once' || result.kind === 'approve-for-session' || result.kind === 'approve-for-location';
+}
 
 // ============================================================================
 // SDK Result Types

@@ -2377,7 +2377,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const permissionHandler = (req: any) =>
-            req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules', rules: [] };
+            req.kind === 'read' ? { kind: 'approve-once' } : { kind: 'reject' };
 
         const resultPromise = service.sendMessage({
             prompt: 'Test',
@@ -2404,13 +2404,13 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
             { kind: 'read', toolCallId: 'tc-1' },
             { sessionId: sessions[0].session.sessionId }
         );
-        expect(readResult.kind).toBe('approved');
+        expect(readResult.kind).toBe('approve-once');
 
         const writeResult = sessionOptions.onPermissionRequest(
             { kind: 'write', toolCallId: 'tc-2' },
             { sessionId: sessions[0].session.sessionId }
         );
-        expect(writeResult.kind).toBe('denied-by-rules');
+        expect(writeResult.kind).toBe('reject');
 
         // Verify logs
         const permReqLogs = capLogger.matching('Permission request');
@@ -2420,8 +2420,8 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
 
         const permResultLogs = capLogger.matching('Permission result');
         expect(permResultLogs.length).toBe(2);
-        expect(permResultLogs[0].message).toContain('approved');
-        expect(permResultLogs[1].message).toContain('denied-by-rules');
+        expect(permResultLogs[0].message).toContain('approve-once');
+        expect(permResultLogs[1].message).toContain('reject');
 
         // Settle the session properly
         const { dispatchEvent } = sessions[0];
@@ -2437,7 +2437,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const asyncPermHandler = async (req: any) => {
-            return req.kind === 'read' ? { kind: 'approved' as const } : { kind: 'denied-by-rules' as const, rules: [] as unknown[] };
+            return req.kind === 'read' ? { kind: 'approve-once' as const } : { kind: 'reject' as const };
         };
 
         const resultPromise = service.sendMessage({
@@ -2461,12 +2461,12 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
             { kind: 'read', toolCallId: 'tc-async' },
             { sessionId: sessions[0].session.sessionId }
         );
-        expect(result.kind).toBe('approved');
+        expect(result.kind).toBe('approve-once');
 
         // Verify async path logs
         const permResultLogs = capLogger.matching('Permission result');
         expect(permResultLogs.length).toBe(1);
-        expect(permResultLogs[0].message).toContain('approved');
+        expect(permResultLogs[0].message).toContain('approve-once');
 
         // Settle the session properly
         const { dispatchEvent } = sessions[0];

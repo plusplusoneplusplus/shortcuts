@@ -28,6 +28,7 @@ export {
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
+    isPermissionApproved,
     // Read-only mode constants
     READ_ONLY_MARKER,
     READ_ONLY_SYSTEM_MESSAGE,

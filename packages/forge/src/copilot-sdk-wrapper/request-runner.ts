@@ -23,6 +23,7 @@ import {
     PermissionRequestResult,
     ExtendedSdkRequest,
     denyAllPermissions,
+    isPermissionApproved,
     Attachment,
     DeliveryMode,
     ToolEvent,
@@ -94,10 +95,11 @@ export class RequestRunner {
                                     resource: (request as ExtendedSdkRequest).resource,
                                     operation: (request as ExtendedSdkRequest).operation,
                                 };
+                                const approved = isPermissionApproved(permResult);
                                 tc.permissionResult = {
-                                    approved: permResult.kind === 'approved',
+                                    approved,
                                     timestamp: new Date(),
-                                    reason: permResult.kind !== 'approved' ? permResult.kind : undefined,
+                                    reason: !approved ? permResult.kind : undefined,
                                 };
                             }
                         }

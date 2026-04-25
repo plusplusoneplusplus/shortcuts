@@ -10,21 +10,21 @@ import { readOnlyPermissions } from '../../src/utils/read-only-permissions';
 describe('readOnlyPermissions', () => {
     it('approves read requests', () => {
         const result = readOnlyPermissions({ kind: 'read' } as any);
-        expect(result).toEqual({ kind: 'approved' });
+        expect(result).toEqual({ kind: 'approve-once' });
     });
 
     it('denies write requests', () => {
         const result = readOnlyPermissions({ kind: 'write' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
+        expect(result).toEqual({ kind: 'reject' });
     });
 
     it('denies shell requests', () => {
         const result = readOnlyPermissions({ kind: 'shell' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
+        expect(result).toEqual({ kind: 'reject' });
     });
 
     it('denies unknown request kinds', () => {
         const result = readOnlyPermissions({ kind: 'unknown' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
+        expect(result).toEqual({ kind: 'reject' });
     });
 });

@@ -6,7 +6,7 @@ import type { PermissionRequest, PermissionRequestResult } from '@plusplusoneplu
  */
 export function readOnlyPermissions(request: PermissionRequest): PermissionRequestResult {
     if (request.kind === 'read') {
-        return { kind: 'approved' };
+        return { kind: 'approve-once' };
     }
-    return { kind: 'denied-by-rules', rules: [] };
+    return { kind: 'reject' };
 }
