@@ -23,6 +23,7 @@ import type {
     Attachment,
     AutoFolderContext,
     CopilotSDKService,
+    MemoryToolCaptureContext,
     ProcessStore,
     QueuedTask,
     SystemMessageConfig,
@@ -93,6 +94,8 @@ export interface ChatModeAIOptions {
     tools: Tool<unknown>[];
     /** Prompt with any mode-specific suffix already appended. */
     effectivePrompt: string;
+    /** Clean up resources (e.g. raw memory DB handles) after execution. */
+    dispose?: () => void;
 }
 
 // ============================================================================
@@ -138,6 +141,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         prompt: string,
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions>;
+
+    // ========================================================================
+    // Shared helper — capture context for bounded memory addon
+    // ========================================================================
+
+    /**
+     * Build a MemoryToolCaptureContext from a queued task.
+     * Used by all chat-mode executors to activate capture mode.
+     */
+    protected buildCaptureContext(task: QueuedTask): MemoryToolCaptureContext {
+        return {
+            processId: toQueueProcessId(task.id),
+            turnIndex: 0,
+        };
+    }
 
     // ========================================================================
     // Shared helper — auto-folder context (used by ask and plan modes)
@@ -188,7 +206,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 
-        let { agentMode, systemMessage, tools, effectivePrompt } = await this.buildModeOptions(task, prompt, workingDirectory);
+        let { agentMode, systemMessage, tools, effectivePrompt, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
 
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
@@ -319,6 +337,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
             if (pasteCleanup) { pasteCleanup(); }
+            modeDispose?.();
             // Cancel any pending ask-user questions before cleanup
             this.sessions.get(processId)?.pendingAskUser?.cancelAll();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';

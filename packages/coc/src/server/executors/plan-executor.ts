@@ -70,7 +70,7 @@ export class PlanExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
         const systemMessage = appendAutoFolderBlock(
             appendBoundedMemoryContext(
                 await withRepoInstructions(
@@ -131,6 +131,7 @@ export class PlanExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt + suffix,
+            dispose: boundedMemory.dispose,
         };
     }
 }

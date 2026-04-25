@@ -52,6 +52,7 @@ export class MemoryAggregateExecutor {
         const { rawDbPath, boundedPath } = this.resolvePaths(workspaceId, target);
 
         let rawStore: RawMemoryRecordStore | undefined;
+        let claimedBatchId: string | undefined;
         try {
             rawStore = new RawMemoryRecordStore({ dbPath: rawDbPath });
 
@@ -61,6 +62,7 @@ export class MemoryAggregateExecutor {
                 logger.debug(LogCategory.AI, `[MemoryAggregate] No pending records for ${target}@${workspaceId}`);
                 return { success: true, result: 'No pending records', durationMs: Date.now() - startTime };
             }
+            claimedBatchId = batch.batchId;
 
             logger.debug(LogCategory.AI, `[MemoryAggregate] Claimed ${batch.records.length} records (batch ${batch.batchId}) for ${target}@${workspaceId}`);
 
@@ -134,12 +136,8 @@ export class MemoryAggregateExecutor {
             // 7. Finalize raw record statuses
             if (plan.aggregatedRecordIds.length > 0) {
                 await rawStore.markAggregated(batch.batchId);
-            }
-            if (plan.droppedRecordIds.length > 0) {
-                // For simplicity, the batch-based API marks all claimed records.
-                // Records not in aggregatedRecordIds are implicitly dropped by
-                // the aggregated call above. If there's a mix, we rely on the
-                // batch-level markAggregated having already handled it.
+            } else if (plan.droppedRecordIds.length > 0) {
+                await rawStore.markDropped(batch.batchId);
             }
 
             logger.debug(
@@ -156,6 +154,10 @@ export class MemoryAggregateExecutor {
                 durationMs: Date.now() - startTime,
             };
         } catch (error) {
+            // Release claimed batch for retry on unexpected errors
+            if (claimedBatchId && rawStore) {
+                try { await rawStore.releaseClaim(claimedBatchId); } catch { /* best effort */ }
+            }
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.debug(LogCategory.AI, `[MemoryAggregate] Executor error: ${errorMsg}`);
             return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: Date.now() - startTime };

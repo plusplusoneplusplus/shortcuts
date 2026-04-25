@@ -73,7 +73,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         );
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
 
         const disabledLlmTools = this.dataDir && payload.workspaceId
             ? readRepoPreferences(this.dataDir, payload.workspaceId).disabledLlmTools
@@ -89,6 +89,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             systemMessage: appendBoundedMemoryContext(undefined, boundedMemory),
             tools,
             effectivePrompt: prompt + suffix,
+            dispose: boundedMemory.dispose,
         };
     }
 }

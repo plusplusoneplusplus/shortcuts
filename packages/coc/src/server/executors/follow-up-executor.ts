@@ -197,7 +197,10 @@ export class FollowUpExecutor extends BaseExecutor {
                 .map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, {
+            processId,
+            turnIndex: process.conversationTurns?.length ?? 0,
+        });
         let systemMessage = appendAutoFolderBlock(
             appendBoundedMemoryContext(
                 await withRepoInstructions(
@@ -467,6 +470,7 @@ export class FollowUpExecutor extends BaseExecutor {
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
+            boundedMemory.dispose?.();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

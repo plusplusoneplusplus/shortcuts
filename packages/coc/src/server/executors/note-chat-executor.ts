@@ -147,7 +147,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
         let systemMessage = appendAutoFolderBlock(
             appendBoundedMemoryContext(
                 undefined,
@@ -192,6 +192,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt + toolSuffix,
+            dispose: boundedMemory.dispose,
         };
     }
 
