@@ -94,22 +94,23 @@ vi.mock('@tiptap/react', () => ({
         editor ? <div data-testid="editor-content" /> : null,
 }));
 
-vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-task-list', () => ({ default: {} }));
-vi.mock('@tiptap/extension-task-item', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-link', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-table', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-table-row', () => ({ default: {} }));
-vi.mock('@tiptap/extension-table-cell', () => ({ default: {} }));
-vi.mock('@tiptap/extension-table-header', () => ({ default: {} }));
-vi.mock('@tiptap/extension-highlight', () => ({ default: { configure: () => ({}) } }));
+vi.mock('@tiptap/starter-kit', () => ({ StarterKit: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
+vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-link', () => ({ Link: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-table', () => ({ Table: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
+vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: {} }));
+vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: {} }));
+vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
-vi.mock('@sereneinserenade/tiptap-comment-extension', () => ({
-    CommentExtension: { configure: () => ({}) },
-}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
+    () => ({ CommentExtension: { configure: () => ({}) } }),
+);
 
 import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 

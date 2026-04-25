@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
+import { StarterKit } from '@tiptap/starter-kit';
+import { CommentExtension } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension';
 import { BlockCommentExtension, blockCommentPluginKey } from
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/blockComment';
 

@@ -9,19 +9,19 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor, EditorEvents } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import Highlight from '@tiptap/extension-highlight';
+import { StarterKit } from '@tiptap/starter-kit';
+import { TaskList } from '@tiptap/extension-task-list';
+import { TaskItem } from '@tiptap/extension-task-item';
+import { Link } from '@tiptap/extension-link';
+import { Placeholder } from '@tiptap/extension-placeholder';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { Highlight } from '@tiptap/extension-highlight';
 import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
-import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
+import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -69,10 +69,12 @@ export function RichEditorCore({
     }, []);
 
     const editor = useEditor({
+        shouldRerenderOnTransaction: true,
         extensions: [
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
+                link: false,
             }),
             TaskList,
             TaskItem.configure({ nested: true }),

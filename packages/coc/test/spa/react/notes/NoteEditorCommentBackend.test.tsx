@@ -62,11 +62,11 @@ vi.mock('@tiptap/react', () => ({
         editor ? <div data-testid="editor-content" /> : null,
 }));
 
-vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-task-list', () => ({ default: {} }));
-vi.mock('@tiptap/extension-task-item', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-link', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }));
+vi.mock('@tiptap/starter-kit', () => ({ StarterKit: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
+vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-link', () => ({ Link: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
 
 import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 import type { NoteEditorCommentBackend } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorCommentBackend';

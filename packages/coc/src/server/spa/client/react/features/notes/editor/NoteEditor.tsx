@@ -493,7 +493,7 @@ export function NoteEditor({
         setAiEditsVisible(false);
 
         if (!notePath) {
-            editorRef.current?.commands.clearContent();
+            editorRef.current?.commands.clearContent({ emitUpdate: false });
             setLoadError(null);
             setLoading(false);
             return;
@@ -651,7 +651,7 @@ export function NoteEditor({
 
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
-                ed.commands.setContent(html, false);
+                ed.commands.setContent(html, { emitUpdate: false });
                 setDirty(false);
                 setRawMarkdown(content);
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
+import { StarterKit } from '@tiptap/starter-kit';
 import {
     textOffsetToPos,
     posToTextOffset,
@@ -10,7 +10,7 @@ import {
     applyCommentMark,
     buildAnchorFromMark,
 } from '../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring';
-import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
+import { CommentExtension } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension';
 
 function createEditor(content = '<p>Hello world</p>') {
     return new Editor({

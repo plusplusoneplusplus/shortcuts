@@ -279,7 +279,7 @@
 
 /* ── Comment highlights ─────────────────────────────────────────────────── */
 
-/* Inline comment marks (rendered by @sereneinserenade/tiptap-comment-extension) */
+/* Inline comment marks (rendered by CommentExtension) */
 .note-editor .ProseMirror span[data-comment-id] {
     background-color: rgba(255, 212, 0, 0.2);
     border-bottom: 2px solid rgba(255, 212, 0, 0.6);
