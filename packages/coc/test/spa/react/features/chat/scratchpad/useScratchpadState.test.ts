@@ -368,6 +368,65 @@ describe('useScratchpadState', () => {
         expect(result.current.topHeightPct).toBe(70);
     });
 
+    // --- Vertical layout: MIN_PCT_VERTICAL = 5 ---
+
+    it('clamps stored value below MIN_PCT_VERTICAL to 5 in vertical layout', () => {
+        localStorage.setItem('coc.scratchpad.leftWidthPct', '3');
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        expect(result.current.topHeightPct).toBe(5);
+    });
+
+    it('setTopHeightPct(3) clamps to 5 in vertical layout', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        act(() => { result.current.setTopHeightPct(3); });
+        expect(result.current.topHeightPct).toBe(5);
+    });
+
+    it('setTopHeightPct(10) stays at 10 in vertical layout (above MIN_PCT_VERTICAL=5)', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        act(() => { result.current.setTopHeightPct(10); });
+        expect(result.current.topHeightPct).toBe(10);
+    });
+
+    it('setTopHeightPct(10) clamps to MIN_PCT_HORIZONTAL=15 in horizontal layout', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'horizontal'));
+        act(() => { result.current.setTopHeightPct(10); });
+        expect(result.current.topHeightPct).toBe(15);
+    });
+
+    it('setExpandMode("bottom") sets topHeightPct to 5 in vertical layout', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'vertical'));
+        act(() => { result.current.setExpandMode('bottom'); });
+        expect(result.current.topHeightPct).toBe(5);
+        expect(result.current.expandMode).toBe('bottom');
+    });
+
+    it('setExpandMode("bottom") still sets topHeightPct to 15 in horizontal layout', () => {
+        const { result } = renderHook(() => useScratchpadState(createContainerRef(), 'horizontal'));
+        act(() => { result.current.setExpandMode('bottom'); });
+        expect(result.current.topHeightPct).toBe(15);
+        expect(result.current.expandMode).toBe('bottom');
+    });
+
+    it('vertical drag clamps to MIN_PCT_VERTICAL=5 at lower bound', () => {
+        const containerRef = { current: { clientWidth: 1000, clientHeight: 800 } as HTMLElement };
+        const { result } = renderHook(() => useScratchpadState(containerRef, 'vertical'));
+
+        act(() => {
+            result.current.handleDividerMouseDown({
+                preventDefault: vi.fn(),
+                clientX: 600,
+                clientY: 0,
+            } as unknown as React.MouseEvent);
+        });
+
+        // Move far left — would go well below 5%
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: -500, clientY: 0 }));
+        });
+        expect(result.current.topHeightPct).toBe(5);
+    });
+
     it('vertical drag uses clientX instead of clientY', () => {
         const containerRef = { current: { clientWidth: 1000, clientHeight: 800 } as HTMLElement };
         const { result } = renderHook(() => useScratchpadState(containerRef, 'vertical'));

@@ -935,6 +935,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             files={scratchpad.knownFiles}
                             onSelectFile={scratchpad.setLinkedNotePath}
                             layout={scratchpadLayout}
+                            renderMode={isVerticalScratchpad ? 'drag-handle' : 'header-bar'}
                         />
                         <ScratchpadPanel
                             notePath={scratchpad.linkedNotePath}
@@ -942,6 +943,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onClose={scratchpad.close}
                             onNotFound={scratchpad.close}
                             height="auto"
+                            headerBar={isVerticalScratchpad ? {
+                                expandMode: scratchpad.expandMode,
+                                isDragging: scratchpad.isDragging,
+                                onExpandTop: () => scratchpad.setExpandMode('top'),
+                                onExpandBottom: () => scratchpad.setExpandMode('bottom'),
+                                onSplitReset: () => scratchpad.setExpandMode('split'),
+                                files: scratchpad.knownFiles,
+                                onSelectFile: scratchpad.setLinkedNotePath,
+                            } : undefined}
                         />
                     </>
                 )}

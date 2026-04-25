@@ -32,12 +32,16 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
 const STORAGE_KEY_HORIZONTAL = 'coc.scratchpad.topHeightPct';
 const STORAGE_KEY_VERTICAL = 'coc.scratchpad.leftWidthPct';
 const DEFAULT_PCT = 60;
-const MIN_PCT = 15;
+const MIN_PCT_HORIZONTAL = 15;
+const MIN_PCT_VERTICAL = 5;
 const MAX_PCT = 85;
 
-const PCT_EXPAND_TOP = MAX_PCT;     // 85 — conversation maximized
-const PCT_EXPAND_BOTTOM = MIN_PCT;  // 15 — scratchpad maximized
+const PCT_EXPAND_TOP = MAX_PCT;   // 85 — conversation maximized
 const PCT_SPLIT = 50;
+
+function getMinPct(layout: ScratchpadLayout): number {
+    return layout === 'vertical' ? MIN_PCT_VERTICAL : MIN_PCT_HORIZONTAL;
+}
 
 function getStorageKey(layout: ScratchpadLayout): string {
     return layout === 'vertical' ? STORAGE_KEY_VERTICAL : STORAGE_KEY_HORIZONTAL;
@@ -59,7 +63,7 @@ export function useScratchpadState(
             if (stored !== null) {
                 const parsed = Number(stored);
                 if (Number.isFinite(parsed)) {
-                    return Math.min(Math.max(parsed, MIN_PCT), MAX_PCT);
+                    return Math.min(Math.max(parsed, getMinPct(layout)), MAX_PCT);
                 }
             }
         } catch { /* ignore */ }
@@ -73,7 +77,7 @@ export function useScratchpadState(
             if (stored !== null) {
                 const parsed = Number(stored);
                 if (Number.isFinite(parsed)) {
-                    setTopHeightPctRaw(Math.min(Math.max(parsed, MIN_PCT), MAX_PCT));
+                    setTopHeightPctRaw(Math.min(Math.max(parsed, getMinPct(layout)), MAX_PCT));
                     return;
                 }
             }
@@ -82,17 +86,17 @@ export function useScratchpadState(
     }, [layout]);
 
     const setTopHeightPct = useCallback((pct: number) => {
-        setTopHeightPctRaw(Math.min(Math.max(pct, MIN_PCT), MAX_PCT));
-    }, []);
+        setTopHeightPctRaw(Math.min(Math.max(pct, getMinPct(layout)), MAX_PCT));
+    }, [layout]);
 
     const setExpandMode = useCallback((mode: ScratchpadExpandMode) => {
         setExpandModeRaw(mode);
         switch (mode) {
-            case 'top':    setTopHeightPct(PCT_EXPAND_TOP);    break;
-            case 'bottom': setTopHeightPct(PCT_EXPAND_BOTTOM); break;
-            case 'split':  setTopHeightPct(PCT_SPLIT);         break;
+            case 'top':    setTopHeightPct(PCT_EXPAND_TOP);         break;
+            case 'bottom': setTopHeightPct(getMinPct(layout));      break;
+            case 'split':  setTopHeightPct(PCT_SPLIT);              break;
         }
-    }, [setTopHeightPct]);
+    }, [layout, setTopHeightPct]);
 
     const open = useCallback((notePath?: string) => {
         setIsOpen(prev => {

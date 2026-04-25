@@ -352,6 +352,115 @@ describe('ScratchpadDivider — SVG icons', () => {
     });
 });
 
+describe('ScratchpadDivider — drag-handle mode', () => {
+    it('renders thin w-2 strip when renderMode="drag-handle"', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('w-2');
+        expect(divider.className).not.toContain('w-8');
+    });
+
+    it('has cursor-col-resize in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('cursor-col-resize');
+    });
+
+    it('has border-l in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('border-l');
+    });
+
+    it('renders only the grip indicator — no icon buttons in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        expect(screen.getByTestId('scratchpad-grip')).toBeTruthy();
+        expect(screen.queryByTestId('scratchpad-expand-top-btn')).toBeNull();
+        expect(screen.queryByTestId('scratchpad-expand-bottom-btn')).toBeNull();
+        expect(screen.queryByTestId('scratchpad-split-btn')).toBeNull();
+        expect(screen.queryByTestId('scratchpad-close-btn')).toBeNull();
+        expect(screen.queryByTestId('scratchpad-file-btn')).toBeNull();
+        expect(screen.queryByTestId('scratchpad-file-tabs')).toBeNull();
+    });
+
+    it('has aria-orientation="vertical" in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        expect(screen.getByTestId('scratchpad-divider').getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('applies drag-active background when isDragging=true in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical', isDragging: true });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('bg-[#e8f4fd]');
+    });
+
+    it('does NOT apply drag-active background when isDragging=false in drag-handle mode', () => {
+        renderDivider({ renderMode: 'drag-handle', layout: 'vertical', isDragging: false });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).not.toContain('bg-[#e8f4fd]');
+    });
+
+    it('calls onMouseDown when clicking the drag-handle strip', () => {
+        const { props } = renderDivider({ renderMode: 'drag-handle', layout: 'vertical' });
+        fireEvent.mouseDown(screen.getByTestId('scratchpad-divider'));
+        expect(props.onMouseDown).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('ScratchpadDivider — panelHeader mode', () => {
+    it('uses border-b instead of border-t when panelHeader=true', () => {
+        renderDivider({ panelHeader: true });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('border-b');
+        expect(divider.className).not.toContain('border-t');
+    });
+
+    it('uses cursor-default instead of cursor-row-resize when panelHeader=true', () => {
+        renderDivider({ panelHeader: true });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('cursor-default');
+        expect(divider.className).not.toContain('cursor-row-resize');
+    });
+
+    it('does NOT register onMouseDown on outer div when panelHeader=true', () => {
+        const { props } = renderDivider({ panelHeader: true });
+        fireEvent.mouseDown(screen.getByTestId('scratchpad-divider'));
+        expect(props.onMouseDown).not.toHaveBeenCalled();
+    });
+
+    it('still renders icon buttons when panelHeader=true', () => {
+        renderDivider({ panelHeader: true });
+        expect(screen.getByTestId('scratchpad-expand-top-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-expand-bottom-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-split-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-close-btn')).toBeTruthy();
+    });
+
+    it('still renders tab strip when panelHeader=true and files.length >= 2', () => {
+        renderDivider({
+            panelHeader: true,
+            files: ['a.md', 'b.md'],
+            linkedNotePath: 'a.md',
+            onSelectFile: vi.fn(),
+        });
+        expect(screen.getByTestId('scratchpad-file-tabs')).toBeTruthy();
+    });
+
+    it('icon button clicks still fire their callbacks when panelHeader=true', () => {
+        const { props } = renderDivider({ panelHeader: true });
+        fireEvent.click(screen.getByTestId('scratchpad-close-btn'));
+        expect(props.onClose).toHaveBeenCalledTimes(1);
+        expect(props.onMouseDown).not.toHaveBeenCalled();
+    });
+
+    it('uses border-t (default) when panelHeader is false', () => {
+        renderDivider({ panelHeader: false });
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('border-t');
+        expect(divider.className).not.toContain('border-b');
+    });
+});
+
 describe('ScratchpadDivider — tab strip overflow fade', () => {
     it('renders right-edge fade overlay in tab mode', () => {
         renderDivider({

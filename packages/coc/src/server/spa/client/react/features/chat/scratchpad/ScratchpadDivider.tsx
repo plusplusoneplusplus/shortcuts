@@ -13,7 +13,7 @@ export interface ScratchpadDividerProps {
     linkedNotePath: string | null;
     expandMode: ScratchpadExpandMode;
     isDragging: boolean;
-    onMouseDown: (e: React.MouseEvent) => void;
+    onMouseDown?: (e: React.MouseEvent) => void;
     onOpenFilePicker: () => void;
     onExpandTop: () => void;
     onExpandBottom: () => void;
@@ -25,6 +25,18 @@ export interface ScratchpadDividerProps {
     onSelectFile?: (path: string) => void;
     /** Layout direction: horizontal (top/bottom) or vertical (left/right). */
     layout?: ScratchpadLayout;
+    /**
+     * 'header-bar' (default): full bar with tabs and control icons.
+     * 'drag-handle': thin vertical drag strip with only the grip indicator (no icons/tabs).
+     *   Used in vertical mode as the resize handle between panels.
+     */
+    renderMode?: 'header-bar' | 'drag-handle';
+    /**
+     * When true, the header-bar is rendered as a panel-top header (placed above editor content,
+     * not as a resize divider). Effects: uses border-b instead of border-t, cursor-default
+     * instead of cursor-row-resize, and does not register onMouseDown on the outer div.
+     */
+    panelHeader?: boolean;
 }
 
 export function ScratchpadDivider({
@@ -32,6 +44,7 @@ export function ScratchpadDivider({
     onMouseDown, onOpenFilePicker,
     onExpandTop, onExpandBottom, onSplitReset, onClose,
     files = [], onSelectFile, layout = 'horizontal',
+    renderMode = 'header-bar', panelHeader = false,
 }: ScratchpadDividerProps) {
     const isVertical = layout === 'vertical';
     const displayName = linkedNotePath ? fileBaseName(linkedNotePath) : 'Scratchpad';
@@ -39,6 +52,37 @@ export function ScratchpadDivider({
     const showTabs = files.length >= 2;
 
     const activeFileName = linkedNotePath ? fileBaseName(linkedNotePath) : 'Scratchpad';
+
+    // Thin vertical drag-handle: grip only, no icons or tabs
+    if (renderMode === 'drag-handle') {
+        return (
+            <div
+                className={[
+                    'w-2 flex flex-col items-center justify-center',
+                    'border-l border-[#e0e0e0] dark:border-[#3c3c3c]',
+                    'bg-[#f3f3f3] dark:bg-[#252526]',
+                    'cursor-col-resize select-none flex-shrink-0',
+                    'transition-colors',
+                    isDragging
+                        ? 'bg-[#e8f4fd] dark:bg-[#1a3a5c]'
+                        : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]',
+                ].join(' ')}
+                onMouseDown={onMouseDown}
+                data-testid="scratchpad-divider"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize scratchpad"
+            >
+                <span
+                    className="text-[#999] dark:text-[#666] pointer-events-none"
+                    aria-hidden="true"
+                    data-testid="scratchpad-grip"
+                >
+                    <GripDotsHorizontalIcon />
+                </span>
+            </div>
+        );
+    }
 
     // Active-mode button styling helper
     const modeBtn = (mode: ScratchpadExpandMode) => [
@@ -60,13 +104,15 @@ export function ScratchpadDivider({
                 isDragging ? 'bg-[#e8f4fd] dark:bg-[#1a3a5c]' : '',
             ].join(' ') : [
                 'h-8 flex items-center gap-0.5 px-2',
-                'border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
+                panelHeader ? 'border-b' : 'border-t',
+                'border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'bg-[#f3f3f3] dark:bg-[#252526]',
-                'cursor-row-resize select-none flex-shrink-0',
+                panelHeader ? 'cursor-default' : 'cursor-row-resize',
+                'select-none flex-shrink-0',
                 'transition-colors',
                 isDragging ? 'bg-[#e8f4fd] dark:bg-[#1a3a5c]' : '',
             ].join(' ')}
-            onMouseDown={onMouseDown}
+            onMouseDown={!panelHeader ? onMouseDown : undefined}
             data-testid="scratchpad-divider"
             role="separator"
             aria-orientation={isVertical ? 'vertical' : 'horizontal'}

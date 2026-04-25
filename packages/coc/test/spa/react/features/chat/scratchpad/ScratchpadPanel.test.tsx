@@ -56,6 +56,119 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/Com
     CommentsSidebar: () => <div data-testid="mock-comments-sidebar" />,
 }));
 
+describe('ScratchpadPanel — headerBar prop', () => {
+    it('does NOT render scratchpad-divider when headerBar is not provided', () => {
+        render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
+        expect(screen.queryByTestId('scratchpad-divider')).toBeNull();
+    });
+
+    it('renders scratchpad-divider when headerBar is provided', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-1"
+                notePath="note.md"
+                onClose={vi.fn()}
+                height="50%"
+                headerBar={{
+                    expandMode: 'split',
+                    isDragging: false,
+                    onExpandTop: vi.fn(),
+                    onExpandBottom: vi.fn(),
+                    onSplitReset: vi.fn(),
+                }}
+            />,
+        );
+        expect(screen.getByTestId('scratchpad-divider')).toBeTruthy();
+    });
+
+    it('renders expand, split and close buttons inside the header bar', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-1"
+                notePath="note.md"
+                onClose={vi.fn()}
+                height="50%"
+                headerBar={{
+                    expandMode: 'split',
+                    isDragging: false,
+                    onExpandTop: vi.fn(),
+                    onExpandBottom: vi.fn(),
+                    onSplitReset: vi.fn(),
+                }}
+            />,
+        );
+        expect(screen.getByTestId('scratchpad-expand-top-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-expand-bottom-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-split-btn')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-close-btn')).toBeTruthy();
+    });
+
+    it('header bar uses border-b (panelHeader styling)', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-1"
+                notePath="note.md"
+                onClose={vi.fn()}
+                height="50%"
+                headerBar={{
+                    expandMode: 'split',
+                    isDragging: false,
+                    onExpandTop: vi.fn(),
+                    onExpandBottom: vi.fn(),
+                    onSplitReset: vi.fn(),
+                }}
+            />,
+        );
+        const divider = screen.getByTestId('scratchpad-divider');
+        expect(divider.className).toContain('border-b');
+        expect(divider.className).not.toContain('border-t');
+    });
+
+    it('renders tab strip in header bar when files are provided', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-1"
+                notePath="a.md"
+                onClose={vi.fn()}
+                height="50%"
+                headerBar={{
+                    expandMode: 'split',
+                    isDragging: false,
+                    onExpandTop: vi.fn(),
+                    onExpandBottom: vi.fn(),
+                    onSplitReset: vi.fn(),
+                    files: ['a.md', 'b.md'],
+                    onSelectFile: vi.fn(),
+                }}
+            />,
+        );
+        expect(screen.getByTestId('scratchpad-file-tabs')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-tab-a')).toBeTruthy();
+        expect(screen.getByTestId('scratchpad-tab-b')).toBeTruthy();
+    });
+
+    it('still renders NoteEditor when headerBar is provided', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-abc"
+                notePath="tasks/plan.md"
+                onClose={vi.fn()}
+                height="50%"
+                headerBar={{
+                    expandMode: 'split',
+                    isDragging: false,
+                    onExpandTop: vi.fn(),
+                    onExpandBottom: vi.fn(),
+                    onSplitReset: vi.fn(),
+                }}
+            />,
+        );
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-workspace-id')).toBe('ws-abc');
+        expect(editor.getAttribute('data-note-path')).toBe('tasks/plan.md');
+    });
+});
+
 describe('ScratchpadPanel', () => {
     it('renders with data-testid="scratchpad-panel"', () => {
         render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="40%" />);

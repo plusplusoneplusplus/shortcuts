@@ -5,6 +5,19 @@ import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { useComments } from '../../notes/editor/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
 import { useQueue } from '../../../contexts/QueueContext';
+import { ScratchpadDivider } from './ScratchpadDivider';
+import type { ScratchpadExpandMode } from './useScratchpadState';
+
+/** Props passed when the panel should render a horizontal header bar at its top (vertical layout). */
+export interface ScratchpadHeaderBarProps {
+    expandMode: ScratchpadExpandMode;
+    isDragging: boolean;
+    onExpandTop: () => void;
+    onExpandBottom: () => void;
+    onSplitReset: () => void;
+    files?: string[];
+    onSelectFile?: (path: string) => void;
+}
 
 export interface ScratchpadPanelProps {
     workspaceId: string;
@@ -13,6 +26,12 @@ export interface ScratchpadPanelProps {
     height: number | string;
     /** Called when the note file is not found (404); closes the panel silently. */
     onNotFound?: () => void;
+    /**
+     * When provided, renders a horizontal header bar at the top of the panel containing
+     * file tabs and control icons. Used in vertical (side-by-side) layout where the divider
+     * is a thin drag-only strip and the chrome lives here instead.
+     */
+    headerBar?: ScratchpadHeaderBarProps;
 }
 
 function isPlanFile(notePath: string | null): boolean {
@@ -21,7 +40,7 @@ function isPlanFile(notePath: string | null): boolean {
     return name === 'plan.md' || name.endsWith('.plan.md');
 }
 
-export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound }: ScratchpadPanelProps) {
+export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, headerBar }: ScratchpadPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
     // ── Comments state (ephemeral — not persisted) ──────────────────────────
@@ -149,6 +168,22 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound }: S
             style={style}
             data-testid="scratchpad-panel"
         >
+            {headerBar && (
+                <ScratchpadDivider
+                    linkedNotePath={notePath}
+                    expandMode={headerBar.expandMode}
+                    isDragging={headerBar.isDragging}
+                    onOpenFilePicker={() => { /* files are discovered from conversation */ }}
+                    onExpandTop={headerBar.onExpandTop}
+                    onExpandBottom={headerBar.onExpandBottom}
+                    onSplitReset={headerBar.onSplitReset}
+                    onClose={onClose}
+                    files={headerBar.files}
+                    onSelectFile={headerBar.onSelectFile}
+                    layout="horizontal"
+                    panelHeader
+                />
+            )}
             <div className="flex-1 min-h-0 flex flex-col">
                 <NoteEditor
                     workspaceId={workspaceId}
