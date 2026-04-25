@@ -467,4 +467,115 @@ describe('Notes Comments Handler', () => {
         expect(sidecar.threads[thread.id]).toBeUndefined();
         expect(sidecar.threads['custom-id'].anchor.quotedText).toBe('replaced');
     });
+
+    // ========================================================================
+    // 14. Absolute paths — creates sidecar next to file
+    // ========================================================================
+    it('absolute path creates sidecar next to file inside wsDataDir', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create a file inside the workspace data dir (wsDataDir = dataDir/repos/wsId)
+        const wsDataDir = path.join(dataDir, 'repos', wsId);
+        const tasksDir = path.join(wsDataDir, 'tasks');
+        fs.mkdirSync(tasksDir, { recursive: true });
+        const absNotePath = path.join(tasksDir, 'my-task.plan.md');
+        fs.writeFileSync(absNotePath, '# Task\nhello world', 'utf-8');
+
+        // Create a thread using the absolute path
+        const thread = await createThread(srv, absNotePath);
+        expect(thread.id).toBeDefined();
+        expect(thread.status).toBe('open');
+
+        // Verify sidecar file was created next to the note
+        const expectedSidecar = absNotePath + '.comments.json';
+        expect(fs.existsSync(expectedSidecar)).toBe(true);
+
+        // GET should return the thread
+        const getRes = await request(commentsUrl(srv, '', `path=${encodeURIComponent(absNotePath)}`));
+        expect(getRes.status).toBe(200);
+        const sidecar = JSON.parse(getRes.body);
+        expect(sidecar.threads[thread.id]).toBeDefined();
+    });
+
+    // ========================================================================
+    // 15. Absolute paths — full CRUD cycle
+    // ========================================================================
+    it('absolute path supports full CRUD (create, resolve, add comment, delete)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const wsDataDir = path.join(dataDir, 'repos', wsId);
+        const notesDir = path.join(wsDataDir, 'notes');
+        fs.mkdirSync(notesDir, { recursive: true });
+        const absPath = path.join(notesDir, 'scratch.md');
+        fs.writeFileSync(absPath, 'some content', 'utf-8');
+
+        // Create thread
+        const thread = await createThread(srv, absPath);
+
+        // Add comment
+        const addRes = await postJSON(commentsUrl(srv, `thread/${thread.id}/comment`), {
+            path: absPath,
+            content: 'Reply via absolute path',
+        });
+        expect(addRes.status).toBe(201);
+
+        // Resolve
+        const resolveRes = await patchJSON(commentsUrl(srv, `thread/${thread.id}`), {
+            path: absPath,
+            status: 'resolved',
+        });
+        expect(resolveRes.status).toBe(200);
+        expect(JSON.parse(resolveRes.body).thread.status).toBe('resolved');
+
+        // Delete thread
+        const delRes = await deleteRequest(
+            commentsUrl(srv, `thread/${thread.id}`, `path=${encodeURIComponent(absPath)}`),
+        );
+        expect(delRes.status).toBe(204);
+
+        // Verify empty
+        const getRes = await request(commentsUrl(srv, '', `path=${encodeURIComponent(absPath)}`));
+        expect(JSON.parse(getRes.body).threads).toEqual({});
+    });
+
+    // ========================================================================
+    // 16. Absolute paths outside allowed dirs return 403
+    // ========================================================================
+    it('absolute path outside allowed dirs returns 403', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Use an absolute path outside both wsDataDir and ~/.copilot
+        const outsidePath = path.join(os.tmpdir(), 'evil-notes', 'secret.md');
+
+        const getRes = await request(
+            commentsUrl(srv, '', `path=${encodeURIComponent(outsidePath)}`),
+        );
+        expect(getRes.status).toBe(403);
+
+        const postRes = await postJSON(commentsUrl(srv, 'thread'), {
+            path: outsidePath,
+            thread: { anchor: { quotedText: 'x', prefix: '', suffix: '' }, comments: [{ content: 'x' }] },
+        });
+        expect(postRes.status).toBe(403);
+    });
+
+    // ========================================================================
+    // 17. Relative paths still resolve under notesRoot
+    // ========================================================================
+    it('relative paths still resolve under notesRoot', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create via relative path (existing behavior)
+        const thread = await createThread(srv, 'subfolder/note.md');
+        expect(thread.id).toBeDefined();
+
+        // Verify sidecar is under notesRoot
+        const notesRoot = path.join(dataDir, 'repos', wsId, 'notes');
+        const expectedSidecar = path.join(notesRoot, 'subfolder', 'note.md.comments.json');
+        expect(fs.existsSync(expectedSidecar)).toBe(true);
+    });
 });

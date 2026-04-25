@@ -2,15 +2,58 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ScratchpadPanel } from '../../../../../../src/server/spa/client/react/features/chat/scratchpad/ScratchpadPanel';
 
+vi.mock('../../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({
+        state: {},
+        dispatch: vi.fn(),
+    }),
+}));
+
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
-    NoteEditor: (props: { workspaceId: string; notePath: string | null; onNotFound?: () => void }) => (
+    NoteEditor: (props: { workspaceId: string; notePath: string | null; onNotFound?: () => void; commentsEnabled?: boolean; onCommentCreate?: () => void }) => (
         <div
             data-testid="mock-note-editor"
             data-workspace-id={props.workspaceId}
             data-note-path={props.notePath ?? ''}
             data-has-not-found={props.onNotFound !== undefined ? 'true' : 'false'}
+            data-comments-enabled={String(props.commentsEnabled ?? false)}
+            data-has-comment-create={props.onCommentCreate !== undefined ? 'true' : 'false'}
         />
     ),
+}));
+
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/useComments', () => ({
+    useComments: () => ({
+        threads: [],
+        allThreads: [],
+        selectedThreadId: null,
+        filter: 'all',
+        loading: false,
+        error: null,
+        totalCount: 0,
+        openCount: 0,
+        resolvedCount: 0,
+        setFilter: vi.fn(),
+        selectThread: vi.fn(),
+        createThread: vi.fn().mockResolvedValue({ id: 't1' }),
+        resolveThread: vi.fn(),
+        reopenThread: vi.fn(),
+        deleteThread: vi.fn(),
+        addComment: vi.fn(),
+        editComment: vi.fn(),
+        deleteComment: vi.fn(),
+        reload: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+    createTextAnchorFromSelection: vi.fn(),
+    findAnchorInDoc: vi.fn(),
+    applyCommentMark: vi.fn(),
+}));
+
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar', () => ({
+    CommentsSidebar: () => <div data-testid="mock-comments-sidebar" />,
 }));
 
 describe('ScratchpadPanel', () => {
@@ -67,5 +110,17 @@ describe('ScratchpadPanel', () => {
         render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
         const editor = screen.getByTestId('mock-note-editor');
         expect(editor.getAttribute('data-has-not-found')).toBe('false');
+    });
+
+    it('passes commentsEnabled=true to NoteEditor', () => {
+        render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-comments-enabled')).toBe('true');
+    });
+
+    it('passes onCommentCreate to NoteEditor', () => {
+        render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-has-comment-create')).toBe('true');
     });
 });

@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * Unit tests for ScratchpadPanel — Run Skill button visibility and dispatch.
+ * Unit tests for ScratchpadPanel — Run Skill button visibility, dispatch,
+ * and comment integration.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -18,13 +19,60 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () =
     }),
 }));
 
-// Stub NoteEditor to avoid Tiptap heavy dependencies.
-// Renders toolbarRight if provided so we can assert on it.
+// Mock useComments to provide controllable comment state.
+const mockCreateThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+const mockDeleteThread = vi.fn().mockResolvedValue(undefined);
+const mockResolveThread = vi.fn().mockResolvedValue(undefined);
+const mockReopenThread = vi.fn().mockResolvedValue(undefined);
+const mockUseComments = vi.fn().mockReturnValue({
+    threads: [],
+    allThreads: [],
+    selectedThreadId: null,
+    filter: 'all',
+    loading: false,
+    error: null,
+    totalCount: 0,
+    openCount: 0,
+    resolvedCount: 0,
+    setFilter: vi.fn(),
+    selectThread: vi.fn(),
+    createThread: mockCreateThread,
+    resolveThread: mockResolveThread,
+    reopenThread: mockReopenThread,
+    deleteThread: mockDeleteThread,
+    addComment: vi.fn(),
+    editComment: vi.fn(),
+    deleteComment: vi.fn(),
+    reload: vi.fn(),
+});
+
+vi.mock('../../../../../src/server/spa/client/react/features/notes/editor/useComments', () => ({
+    useComments: (...args: unknown[]) => mockUseComments(...args),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
+    createTextAnchorFromSelection: vi.fn(),
+    findAnchorInDoc: vi.fn(),
+    applyCommentMark: vi.fn(),
+}));
+
+// Stub NoteEditor to expose comment props for assertion.
+let capturedNoteEditorProps: Record<string, unknown> = {};
 vi.mock('../../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
-    NoteEditor: ({ toolbarRight }: { toolbarRight?: React.ReactNode }) => (
-        <div data-testid="note-editor">
-            {toolbarRight}
-        </div>
+    NoteEditor: (props: Record<string, unknown>) => {
+        capturedNoteEditorProps = props;
+        return (
+            <div data-testid="note-editor">
+                {props.toolbarRight as React.ReactNode}
+            </div>
+        );
+    },
+}));
+
+// Stub CommentsSidebar
+vi.mock('../../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar', () => ({
+    CommentsSidebar: (props: Record<string, unknown>) => (
+        <div data-testid="comments-sidebar" data-workspace-id={props.workspaceId as string} />
     ),
 }));
 
@@ -35,6 +83,7 @@ import { ScratchpadPanel } from '../../../../../src/server/spa/client/react/feat
 describe('ScratchpadPanel — Run Skill button', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        capturedNoteEditorProps = {};
     });
 
     afterEach(() => {
@@ -163,5 +212,174 @@ describe('ScratchpadPanel — Run Skill button', () => {
         // The Run Skill button should be rendered inside the (mocked) NoteEditor
         const editor = screen.getByTestId('note-editor');
         expect(editor.querySelector('[data-testid="scratchpad-run-skill"]')).toBeTruthy();
+    });
+});
+
+describe('ScratchpadPanel — Comment integration', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        capturedNoteEditorProps = {};
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('calls useComments with workspaceId and notePath', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-42"
+                notePath="/some/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(mockUseComments).toHaveBeenCalledWith({
+            workspaceId: 'ws-42',
+            notePath: '/some/note.md',
+        });
+    });
+
+    it('passes commentsEnabled=true to NoteEditor', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(capturedNoteEditorProps.commentsEnabled).toBe(true);
+    });
+
+    it('passes onCommentCreate callback to NoteEditor', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(typeof capturedNoteEditorProps.onCommentCreate).toBe('function');
+    });
+
+    it('passes onEditorReady callback to NoteEditor', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(typeof capturedNoteEditorProps.onEditorReady).toBe('function');
+    });
+
+    it('passes threads from useComments to NoteEditor', () => {
+        const threads = [{ id: 't1', status: 'open', anchor: {}, comments: [] }];
+        mockUseComments.mockReturnValueOnce({
+            ...mockUseComments(),
+            allThreads: threads,
+        });
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(capturedNoteEditorProps.threads).toBe(threads);
+    });
+
+    it('passes commentCount to NoteEditor', () => {
+        mockUseComments.mockReturnValueOnce({
+            ...mockUseComments(),
+            totalCount: 5,
+        });
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(capturedNoteEditorProps.commentCount).toBe(5);
+    });
+
+    it('does not render comments panel by default', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        expect(screen.queryByTestId('scratchpad-comments-panel')).toBeNull();
+    });
+
+    it('opens comments panel when onToggleCommentsPanel is invoked', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        // Invoke the toggle callback that was passed to NoteEditor
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        expect(typeof toggleFn).toBe('function');
+
+        // Use act to trigger state update
+        const { act } = await import('@testing-library/react');
+        await act(() => { toggleFn(); });
+
+        expect(screen.getByTestId('scratchpad-comments-panel')).toBeTruthy();
+        expect(screen.getByTestId('comments-sidebar')).toBeTruthy();
+    });
+
+    it('closes comments panel when close button is clicked', async () => {
+        const user = userEvent.setup();
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        // Open panel first
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        expect(screen.getByTestId('scratchpad-comments-panel')).toBeTruthy();
+
+        // Click close button
+        await user.click(screen.getByTestId('scratchpad-comments-close'));
+        expect(screen.queryByTestId('scratchpad-comments-panel')).toBeNull();
+    });
+
+    it('does not render comments panel when notePath is null even if toggled', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath={null}
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        expect(screen.queryByTestId('scratchpad-comments-panel')).toBeNull();
     });
 });

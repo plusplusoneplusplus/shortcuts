@@ -15,6 +15,7 @@ import * as crypto from 'crypto';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
@@ -32,8 +33,24 @@ function getNotesRoot(dataDir: string, workspaceId: string): string {
     return getRepoDataPath(dataDir, workspaceId, 'notes');
 }
 
+function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
+    return path.join(dataDir, 'repos', workspaceId);
+}
+
+function getCopilotDir(): string {
+    return path.join(os.homedir(), '.copilot');
+}
+
+function isAllowedPath(resolved: string, wsDataDir: string): boolean {
+    return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
+}
+
+// Absolute paths are used as-is (scratchpad / session-state files).
+// Relative paths are resolved against notesRoot (notes tree entries).
 function sidecarPath(notesRoot: string, notePath: string): string {
-    return path.resolve(notesRoot, notePath + '.comments.json');
+    return path.isAbsolute(notePath)
+        ? path.resolve(notePath + '.comments.json')
+        : path.resolve(notesRoot, notePath + '.comments.json');
 }
 
 async function loadSidecar(filePath: string): Promise<NoteSidecar> {
@@ -80,9 +97,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -110,9 +128,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar: NoteSidecar = { version: 1, threads: body.threads };
@@ -147,9 +166,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const now = new Date().toISOString();
@@ -193,9 +213,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -232,9 +253,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -270,9 +292,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -314,9 +337,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -354,9 +378,10 @@ export function registerNotesCommentsRoutes(
             }
 
             const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
             const resolved = sidecarPath(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
