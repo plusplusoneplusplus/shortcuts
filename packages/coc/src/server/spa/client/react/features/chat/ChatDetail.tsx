@@ -777,6 +777,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
 
+    const showScratchpadButton = scratchpadEnabled
+        && !scratchpad.isOpen
+        && (scratchpad.knownFiles.length > 0 || !!effectivePlanPath);
+
+    const handleOpenScratchpad = useCallback(() => {
+        scratchpad.open(
+            scratchpad.linkedNotePath
+            ?? scratchpad.knownFiles[0]
+            ?? effectivePlanPath
+            ?? undefined,
+        );
+    }, [scratchpad, effectivePlanPath]);
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             <ChatHeader
@@ -807,6 +820,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 turnsContainerRef={turnsContainerRef}
                 isSelecting={selection.isSelecting}
                 onToggleSelecting={selection.toggleSelecting}
+                showScratchpadButton={showScratchpadButton}
+                onOpenScratchpad={handleOpenScratchpad}
             />
             <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}

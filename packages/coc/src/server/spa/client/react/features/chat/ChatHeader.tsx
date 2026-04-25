@@ -48,6 +48,10 @@ export interface ChatHeaderProps {
     isSelecting?: boolean;
     /** Toggle selection mode on/off */
     onToggleSelecting?: () => void;
+    /** Whether to show the "Open Scratchpad" button */
+    showScratchpadButton?: boolean;
+    /** Called when the user clicks the "Open Scratchpad" button */
+    onOpenScratchpad?: () => void;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -81,6 +85,8 @@ function buildOverflowItems(
         onOpenRefs?: () => void;
         onToggleSelecting?: () => void;
         isSelecting?: boolean;
+        showScratchpadButton?: boolean;
+        onOpenScratchpad?: () => void;
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -186,6 +192,16 @@ function buildOverflowItems(
         });
     }
 
+    // Open Scratchpad — in overflow at non-wide tiers
+    if (props.showScratchpadButton && props.onOpenScratchpad) {
+        items.push({
+            key: 'open-scratchpad',
+            label: 'Open scratchpad',
+            icon: <span className="text-[10px]">📄</span>,
+            onClick: props.onOpenScratchpad,
+        });
+    }
+
     // Float / Pop-out — only in overflow at narrow (< 500px)
     if (tier === 'narrow') {
         if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
@@ -235,6 +251,8 @@ export function ChatHeader({
     turnsContainerRef,
     isSelecting,
     onToggleSelecting,
+    showScratchpadButton,
+    onOpenScratchpad,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -314,7 +332,9 @@ export function ChatHeader({
         onOpenRefs: () => setRefsSheetOpen(true),
         onToggleSelecting,
         isSelecting,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting]); // eslint-disable-line react-hooks/exhaustive-deps
+        showScratchpadButton,
+        onOpenScratchpad,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -378,6 +398,20 @@ export function ChatHeader({
 
             {/* Right side */}
             <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Open Scratchpad — inline in wide tier, overflow in narrower tiers */}
+                {isWide && showScratchpadButton && onOpenScratchpad && (
+                    <button
+                        title="Open scratchpad"
+                        data-testid="open-scratchpad-btn"
+                        onClick={onOpenScratchpad}
+                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M9 2H4.5A1.5 1.5 0 0 0 3 3.5v9A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5V6L9 2Z" />
+                            <polyline points="9 2 9 6 13 6" />
+                        </svg>
+                    </button>
+                )}
                 {/* Float / Popout buttons — shown in wide + medium, hidden in narrow (moved to overflow) */}
                 {showFloatPopout && variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
                     <button

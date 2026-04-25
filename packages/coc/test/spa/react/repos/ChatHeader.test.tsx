@@ -364,4 +364,88 @@ describe('ChatHeader', () => {
             expect(count).toBe(2);
         });
     });
+
+    describe('scratchpad button', () => {
+        it('renders inline scratchpad button in wide tier when showScratchpadButton is true', () => {
+            setTier('wide');
+            const onOpenScratchpad = vi.fn();
+            render(<ChatHeader {...defaultProps({ showScratchpadButton: true, onOpenScratchpad })} />);
+            const btn = screen.getByTestId('open-scratchpad-btn');
+            expect(btn).toBeTruthy();
+            expect(btn.getAttribute('title')).toBe('Open scratchpad');
+        });
+
+        it('calls onOpenScratchpad when scratchpad button is clicked', async () => {
+            setTier('wide');
+            const onOpenScratchpad = vi.fn();
+            render(<ChatHeader {...defaultProps({ showScratchpadButton: true, onOpenScratchpad })} />);
+            const btn = screen.getByTestId('open-scratchpad-btn');
+            btn.click();
+            expect(onOpenScratchpad).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not render inline scratchpad button when showScratchpadButton is false', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps({ showScratchpadButton: false })} />);
+            expect(screen.queryByTestId('open-scratchpad-btn')).toBeNull();
+        });
+
+        it('does not render inline scratchpad button when showScratchpadButton is undefined', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('open-scratchpad-btn')).toBeNull();
+        });
+
+        it('does not render inline scratchpad button in medium tier (moves to overflow)', () => {
+            setTier('medium');
+            const onOpenScratchpad = vi.fn();
+            render(<ChatHeader {...defaultProps({ showScratchpadButton: true, onOpenScratchpad })} />);
+            expect(screen.queryByTestId('open-scratchpad-btn')).toBeNull();
+        });
+
+        it('does not render inline scratchpad button in narrow tier (moves to overflow)', () => {
+            setTier('narrow');
+            const onOpenScratchpad = vi.fn();
+            render(<ChatHeader {...defaultProps({ showScratchpadButton: true, onOpenScratchpad })} />);
+            expect(screen.queryByTestId('open-scratchpad-btn')).toBeNull();
+        });
+
+        it('includes scratchpad in overflow menu at medium tier', () => {
+            setTier('medium');
+            const onOpenScratchpad = vi.fn();
+            // Start with the minimal props to count overflow items precisely
+            render(<ChatHeader {...defaultProps({
+                task: null,
+                metadataProcess: null,
+                planPath: '',
+                createdFiles: [],
+                resumeSessionId: null,
+                isPending: true,
+                sessionTokenLimit: undefined,
+                showScratchpadButton: true,
+                onOpenScratchpad,
+            })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            // copy-html + export-pdf + open-scratchpad = 3
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            expect(count).toBe(3);
+        });
+
+        it('does not include scratchpad in overflow when showScratchpadButton is false', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps({
+                task: null,
+                metadataProcess: null,
+                planPath: '',
+                createdFiles: [],
+                resumeSessionId: null,
+                isPending: true,
+                sessionTokenLimit: undefined,
+                showScratchpadButton: false,
+            })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            expect(count).toBe(2);
+        });
+    });
 });
