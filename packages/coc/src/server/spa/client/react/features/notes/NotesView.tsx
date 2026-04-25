@@ -8,6 +8,8 @@ import { CommentsSidebar } from './editor/CommentsSidebar';
 import { NoteChatPanel } from './editor/NoteChatPanel';
 import { useComments } from './editor/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
+import type { TextAnchor } from './editor/textAnchor';
+import { AddCommentDialog } from './editor/NotesDialogs';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../contexts/AppContext';
@@ -62,6 +64,13 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
     const editorRef = useRef<Editor | null>(null);
     const flushSaveRef = useRef<(() => Promise<void>) | null>(null);
+
+    // Pending state for the "Add Comment" dialog
+    const [pendingComment, setPendingComment] = useState<{
+        anchor: TextAnchor;
+        from: number;
+        to: number;
+    } | null>(null);
 
     useEffect(() => {
         try { localStorage.setItem('coc-notes-comments-panel-open', String(commentsPanelOpen)); }
@@ -119,26 +128,30 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
         const anchor = createTextAnchorFromSelection(editor);
         if (!anchor) return;
 
-        // Capture selection range for mark application after server responds
         const { from, to } = editor.state.selection;
+        setPendingComment({ anchor, from, to });
+        // Panel opens only after the user confirms the dialog
+    }, [selectedPath]);
 
-        // Create the thread on the server, then apply the mark
-        comments.createThread(anchor, '').then((created) => {
-            const currentEditor = editorRef.current;
-            if (!currentEditor) return;
+    const handleCommentDialogConfirm = useCallback(async (text: string) => {
+        if (!pendingComment) return;
+        const { anchor, from, to } = pendingComment;
+        setPendingComment(null);
 
-            // Apply comment mark at the original range
-            const saved = { from: currentEditor.state.selection.from, to: currentEditor.state.selection.to };
-            currentEditor.chain()
-                .setTextSelection({ from, to })
-                .setComment(created.id)
-                .setTextSelection(saved)
-                .run();
-        }).catch(() => { /* thread creation failed — sidebar shows error */ });
+        const created = await comments.createThread(anchor, text).catch(() => null);
+        if (!created) return;
 
-        // Open comments panel immediately
+        const ed = editorRef.current;
+        if (!ed) return;
+        const saved = { from: ed.state.selection.from, to: ed.state.selection.to };
+        ed.chain()
+            .setTextSelection({ from, to })
+            .setComment(created.id)
+            .setTextSelection(saved)
+            .run();
+
         setCommentsPanelOpen(true);
-    }, [selectedPath, comments]);
+    }, [pendingComment, comments]);
 
     // ── Sidebar → Editor selection handler ──────────────────────────────────
 
@@ -373,6 +386,14 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                     </div>
                 </>
             )}
+
+            {/* Add Comment dialog */}
+            <AddCommentDialog
+                open={pendingComment !== null}
+                quotedText={pendingComment?.anchor.quotedText ?? ''}
+                onConfirm={handleCommentDialogConfirm}
+                onClose={() => setPendingComment(null)}
+            />
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Dialog } from '../../../ui/Dialog';
 import { Button } from '../../../ui/Button';
 import type { NoteDialog } from './useNotesContextMenu';
@@ -226,6 +226,98 @@ function DeleteDialog({ nodeName, submitting, onClose, onConfirm }: DeleteDialog
             }
         >
             Are you sure you want to delete <strong>{nodeName}</strong>? This cannot be undone.
+        </Dialog>
+    );
+}
+
+/* ── Add Comment Dialog ──────────────────────────────────────────────── */
+
+const MAX_QUOTE_DISPLAY = 120;
+
+export interface AddCommentDialogProps {
+    open: boolean;
+    quotedText: string;
+    onConfirm: (text: string) => void;
+    onClose: () => void;
+}
+
+export function AddCommentDialog({ open, quotedText, onConfirm, onClose }: AddCommentDialogProps) {
+    const [text, setText] = useState('');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Reset text whenever the dialog opens
+    useEffect(() => {
+        if (open) {
+            setText('');
+            // Defer focus so the dialog is fully mounted in the DOM
+            setTimeout(() => textareaRef.current?.focus(), 0);
+        }
+    }, [open]);
+
+    const trimmed = text.trim();
+    const isValid = trimmed.length > 0;
+
+    const handleConfirm = useCallback(() => {
+        if (isValid) onConfirm(trimmed);
+    }, [isValid, trimmed, onConfirm]);
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleConfirm();
+            }
+        },
+        [handleConfirm],
+    );
+
+    const displayQuote =
+        quotedText.length > MAX_QUOTE_DISPLAY
+            ? quotedText.slice(0, MAX_QUOTE_DISPLAY) + '…'
+            : quotedText;
+
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            title="Add Comment"
+            footer={
+                <>
+                    <Button variant="secondary" onClick={onClose} data-testid="add-comment-dialog-cancel">
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        disabled={!isValid}
+                        onClick={handleConfirm}
+                        data-testid="add-comment-dialog-confirm"
+                    >
+                        Add
+                    </Button>
+                </>
+            }
+        >
+            <div className="flex flex-col gap-3">
+                {displayQuote && (
+                    <div
+                        className="text-xs italic text-[#666] dark:text-[#999] border-l-2 border-[#0078d4] pl-2 py-0.5 truncate"
+                        data-testid="add-comment-dialog-quote"
+                        title={quotedText}
+                    >
+                        {displayQuote}
+                    </div>
+                )}
+                <textarea
+                    ref={textareaRef}
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-none"
+                    rows={4}
+                    placeholder="Add a comment…"
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    data-testid="add-comment-dialog-textarea"
+                />
+            </div>
         </Dialog>
     );
 }
