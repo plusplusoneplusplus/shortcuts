@@ -183,6 +183,21 @@ export const notesApi = {
         );
     },
 
+    /**
+     * Enqueue a batch-resolve task for all open comment threads on a note.
+     * Returns the queue task ID on success (202).
+     */
+    batchResolve(wsId: string, notePath: string, documentContent: string, userContext?: string): Promise<{ taskId: string }> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/batch-resolve?path=${encodeURIComponent(notePath)}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ documentContent, ...(userContext ? { userContext } : {}) }),
+            },
+        );
+    },
+
     // ── Auto-commit schedule endpoints ──────────────────────────────────
 
     getAutoCommitStatus(wsId: string): Promise<{

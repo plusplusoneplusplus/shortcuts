@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { NoteEditor } from '../../notes/editor/NoteEditor';
 import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { useComments } from '../../notes/editor/useComments';
+import { notesApi } from '../../notes/notesApi';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
 import { useQueue } from '../../../contexts/QueueContext';
 import { ScratchpadDivider } from './ScratchpadDivider';
@@ -26,6 +27,8 @@ export interface ScratchpadPanelProps {
     height: number | string;
     /** Called when the note file is not found (404); closes the panel silently. */
     onNotFound?: () => void;
+    /** processId of the parent chat — when set, resolve-with-AI sends a follow-up instead of a new task. */
+    parentProcessId?: string;
     /**
      * When provided, renders a horizontal header bar at the top of the panel containing
      * file tabs and control icons. Used in vertical (side-by-side) layout where the divider
@@ -40,7 +43,7 @@ function isPlanFile(notePath: string | null): boolean {
     return name === 'plan.md' || name.endsWith('.plan.md');
 }
 
-export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, headerBar }: ScratchpadPanelProps) {
+export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, parentProcessId, headerBar }: ScratchpadPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
     // ── Comments state (ephemeral — not persisted) ──────────────────────────
@@ -51,6 +54,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
     const comments = useComments({
         workspaceId,
         notePath,
+        parentProcessId,
     });
 
     // ── Wrapped delete/resolve/reopen that sync editor marks ────────────────
@@ -136,6 +140,14 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                 .run();
         }
     }, []);
+
+    // ── Resolve with AI handler ─────────────────────────────────────────────
+
+    const handleResolveWithAI = useCallback(async () => {
+        if (!notePath) return;
+        const { content } = await notesApi.getContent(workspaceId, notePath);
+        await comments.resolveWithAI(content);
+    }, [notePath, workspaceId, comments]);
 
     // ── Layout ──────────────────────────────────────────────────────────────
 
@@ -228,6 +240,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                                 selectedThreadId={activeCommentId}
                                 onThreadSelect={handleThreadSelect}
                                 comments={wrappedComments}
+                                onResolveWithAI={handleResolveWithAI}
                             />
                         </div>
                     </div>

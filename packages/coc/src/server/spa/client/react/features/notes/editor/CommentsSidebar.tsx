@@ -9,6 +9,8 @@ export interface CommentsSidebarProps {
     selectedThreadId: string | null;
     onThreadSelect: (threadId: string | null) => void;
     comments: UseCommentsReturn;
+    /** Callback to trigger AI batch-resolve for all open comments. */
+    onResolveWithAI?: () => Promise<void>;
 }
 
 const FILTER_TABS: Array<{ name: CommentFilter; label: string }> = [
@@ -25,7 +27,7 @@ function getCountForFilter(comments: UseCommentsReturn, name: CommentFilter): nu
     }
 }
 
-export function CommentsSidebar({ comments, selectedThreadId }: CommentsSidebarProps) {
+export function CommentsSidebar({ comments, selectedThreadId, onResolveWithAI }: CommentsSidebarProps) {
     return (
         <div className="flex flex-col h-full" data-testid="comments-sidebar">
             {/* Header */}
@@ -44,6 +46,19 @@ export function CommentsSidebar({ comments, selectedThreadId }: CommentsSidebarP
                         {comments.totalCount}
                     </span>
                 </div>
+                {onResolveWithAI && comments.openCount > 0 && (
+                    <button
+                        data-testid="resolve-with-ai-btn"
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={comments.resolveWithAILoading}
+                        onMouseDown={e => {
+                            e.preventDefault();
+                            onResolveWithAI();
+                        }}
+                    >
+                        {comments.resolveWithAILoading ? '⏳ Resolving…' : '✨ Resolve all with AI'}
+                    </button>
+                )}
             </div>
 
             {/* Filter tabs */}

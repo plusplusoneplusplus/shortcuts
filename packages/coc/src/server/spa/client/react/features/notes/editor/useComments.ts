@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { fetchApi } from '../../../hooks/useApi';
 import { notesApi, type CommentThread, type Comment } from '../notesApi';
 import type { TextAnchor } from './textAnchor';
 
@@ -7,6 +8,8 @@ export type CommentFilter = 'all' | 'open' | 'resolved';
 export interface UseCommentsOptions {
     workspaceId: string;
     notePath: string | null;
+    /** When set, resolve-with-AI sends a follow-up to this chat instead of a new task. */
+    parentProcessId?: string;
     onThreadSelect?: (threadId: string | null) => void;
 }
 
@@ -32,6 +35,11 @@ export interface UseCommentsReturn {
     editComment: (threadId: string, commentId: string, content: string) => Promise<void>;
     deleteComment: (threadId: string, commentId: string) => Promise<void>;
     reload: () => Promise<void>;
+
+    /** Enqueue or follow-up an AI batch-resolve for all open comment threads. */
+    resolveWithAI: (documentContent: string, userContext?: string) => Promise<{ taskId?: string } | void>;
+    /** True while the resolveWithAI request is in flight. */
+    resolveWithAILoading: boolean;
 }
 
 function sortThreads(threads: CommentThread[]): CommentThread[] {
@@ -51,23 +59,26 @@ function filterThreads(threads: CommentThread[], filter: CommentFilter): Comment
 }
 
 export function useComments(options: UseCommentsOptions): UseCommentsReturn {
-    const { workspaceId, notePath, onThreadSelect } = options;
+    const { workspaceId, notePath, parentProcessId, onThreadSelect } = options;
 
     const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
     const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
     const [filter, setFilter] = useState<CommentFilter>('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [resolveWithAILoading, setResolveWithAILoading] = useState(false);
 
     // Refs for stale-closure prevention
     const workspaceIdRef = useRef(workspaceId);
     const notePathRef = useRef(notePath);
+    const parentProcessIdRef = useRef(parentProcessId);
     const onThreadSelectRef = useRef(onThreadSelect);
     const threadsRef = useRef(allThreads);
     const lastFetchedPathRef = useRef<string | null>(null);
 
     workspaceIdRef.current = workspaceId;
     notePathRef.current = notePath;
+    parentProcessIdRef.current = parentProcessId;
     onThreadSelectRef.current = onThreadSelect;
     threadsRef.current = allThreads;
 
@@ -233,6 +244,59 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         await fetchThreads(path);
     }, [fetchThreads]);
 
+    const resolveWithAI = useCallback(async (documentContent: string, userContext?: string): Promise<{ taskId?: string } | void> => {
+        const wsId = workspaceIdRef.current;
+        const path = notePathRef.current;
+        const ppId = parentProcessIdRef.current;
+        if (!path) throw new Error('No note path');
+
+        setResolveWithAILoading(true);
+        setError(null);
+        try {
+            if (ppId) {
+                // Follow-up path: send a message to the existing chat
+                const openThreads = threadsRef.current.filter(t => t.status === 'open');
+                if (openThreads.length === 0) throw new Error('No open comments to resolve');
+
+                let message = `Please resolve the following open comments in ${path}:\n\n`;
+                openThreads.forEach((thread, i) => {
+                    message += `**Comment ${i + 1}:** "${thread.anchor.quotedText}"\n`;
+                    const first = thread.comments[0];
+                    if (first) message += `> ${first.content}\n`;
+                    message += '\n';
+                });
+                message += `\nThe current document content is provided. Please address each comment and make the necessary changes.`;
+
+                await fetchApi(`/processes/${encodeURIComponent(ppId)}/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        context: {
+                            noteContent: documentContent,
+                            resolveComments: {
+                                documentUri: path,
+                                commentIds: openThreads.map(t => t.id),
+                                documentContent,
+                                wsId,
+                            },
+                        },
+                    }),
+                });
+                return;
+            }
+
+            // New task path: enqueue via server endpoint
+            const result = await notesApi.batchResolve(wsId, path, documentContent, userContext);
+            return { taskId: result.taskId };
+        } catch (e: any) {
+            setError(e.message ?? 'Failed to resolve with AI');
+            throw e;
+        } finally {
+            setResolveWithAILoading(false);
+        }
+    }, []);
+
     return {
         threads: filteredAndSorted,
         allThreads,
@@ -253,5 +317,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         editComment,
         deleteComment,
         reload,
+        resolveWithAI,
+        resolveWithAILoading,
     };
 }

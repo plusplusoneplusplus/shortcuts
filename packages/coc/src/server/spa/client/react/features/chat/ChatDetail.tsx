@@ -973,6 +973,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onClose={scratchpad.close}
                             onNotFound={scratchpad.close}
                             height="auto"
+                            parentProcessId={processId ?? undefined}
                             headerBar={isVerticalScratchpad ? {
                                 expandMode: scratchpad.expandMode,
                                 isDragging: scratchpad.isDragging,

@@ -16,14 +16,16 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { getRepoDataPath } from './paths';
 import type { NoteSidecar, CommentThread, Comment } from './notes-comments-types';
 import { createEmptySidecar } from './notes-comments-types';
+import { buildNotesBatchResolvePrompt } from './notes-comments-ai';
 
 // ============================================================================
 // Helpers
@@ -80,6 +82,7 @@ export function registerNotesCommentsRoutes(
     routes: Route[],
     store: ProcessStore,
     dataDir: string,
+    bridge?: MultiRepoQueueExecutorBridge,
 ): void {
 
     // GET /api/workspaces/:id/notes/comments?path=...
@@ -399,6 +402,86 @@ export function registerNotesCommentsRoutes(
             await saveSidecar(resolved, sidecar);
             res.writeHead(204);
             res.end();
+        },
+    });
+
+    // POST /api/workspaces/:id/notes/batch-resolve?path=...
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/batch-resolve$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url!, true);
+            const notePath = parsed.query.path;
+            if (!notePath || typeof notePath !== 'string') {
+                return sendError(res, 400, 'Missing required query parameter: path');
+            }
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const documentContent: string | undefined = body.documentContent;
+            if (!documentContent || typeof documentContent !== 'string') {
+                return sendError(res, 400, 'Missing required field: documentContent');
+            }
+
+            const userContext: string | undefined = body.userContext;
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
+            const resolved = sidecarPath(notesRoot, notePath);
+            if (!isAllowedPath(resolved, wsDataDir)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
+            }
+
+            const sidecar = await loadSidecar(resolved);
+            const openThreads = Object.values(sidecar.threads).filter(t => t.status === 'open');
+            if (openThreads.length === 0) {
+                return sendError(res, 400, 'No open comments to resolve');
+            }
+
+            if (!bridge) {
+                return sendError(res, 503, 'Queue unavailable: bridge not configured');
+            }
+
+            const prompt = buildNotesBatchResolvePrompt(openThreads, notePath, documentContent, userContext);
+            const threadIds = openThreads.map(t => t.id);
+
+            try {
+                const wsRootPath = ws.rootPath || process.cwd();
+                bridge.getOrCreateBridge(wsRootPath);
+                const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
+                const input: CreateTaskInput = {
+                    type: 'chat',
+                    priority: 'normal',
+                    payload: {
+                        kind: 'chat',
+                        mode: 'ask',
+                        prompt,
+                        tools: ['resolve-comments'],
+                        workingDirectory: wsRootPath,
+                        context: {
+                            resolveComments: {
+                                documentUri: notePath,
+                                commentIds: threadIds,
+                                documentContent,
+                                wsId: ws.id,
+                            },
+                        },
+                    },
+                    config: {},
+                    displayName: `Resolve note comments: ${notePath}`,
+                };
+                const taskId = await queueManager.enqueue(input);
+                if (taskId) {
+                    return sendJSON(res, 202, { taskId });
+                }
+            } catch {
+                // Fall through to error response
+            }
+            return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
         },
     });
 }

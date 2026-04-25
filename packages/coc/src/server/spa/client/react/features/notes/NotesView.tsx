@@ -7,6 +7,7 @@ import type { NoteViewMode } from './editor/NoteEditor';
 import { CommentsSidebar } from './editor/CommentsSidebar';
 import { NoteChatPanel } from './editor/NoteChatPanel';
 import { useComments } from './editor/useComments';
+import { notesApi } from './notesApi';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
 import type { TextAnchor } from './editor/textAnchor';
 import { AddCommentDialog } from './editor/NotesDialogs';
@@ -183,6 +184,14 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
         }
     }, []);
 
+    // ── Resolve with AI handler (new task path — no parent chat) ────────────
+
+    const handleResolveWithAI = useCallback(async () => {
+        if (!selectedPath) return;
+        const { content } = await notesApi.getContent(workspaceId, selectedPath);
+        await comments.resolveWithAI(content);
+    }, [selectedPath, workspaceId, comments]);
+
     // ── Navigation ──────────────────────────────────────────────────────────
 
     // Sync from external deep-link changes (e.g. back/forward navigation)
@@ -353,6 +362,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                             selectedThreadId={activeCommentId}
                             onThreadSelect={handleThreadSelect}
                             comments={wrappedComments}
+                            onResolveWithAI={handleResolveWithAI}
                         />
                     </div>
                 </>

@@ -39,6 +39,7 @@ const THREAD_RESOLVED: CommentThread = {
 function makeMockComments(overrides: Partial<UseCommentsReturn> = {}): UseCommentsReturn {
     return {
         threads: [],
+        allThreads: [],
         selectedThreadId: null,
         filter: 'all' as CommentFilter,
         loading: false,
@@ -56,6 +57,8 @@ function makeMockComments(overrides: Partial<UseCommentsReturn> = {}): UseCommen
         editComment: vi.fn(),
         deleteComment: vi.fn(),
         reload: vi.fn(),
+        resolveWithAI: vi.fn(),
+        resolveWithAILoading: false,
         ...overrides,
     };
 }
@@ -425,6 +428,105 @@ describe('CommentsSidebar', () => {
 
             const card = screen.getByTestId('comment-thread-thread-2');
             expect(card.className).toContain('opacity-60');
+        });
+    });
+
+    describe('resolve with AI button', () => {
+        it('shows button when onResolveWithAI is provided and openCount > 0', () => {
+            const onResolve = vi.fn();
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 2, totalCount: 2 })}
+                    onResolveWithAI={onResolve}
+                />,
+            );
+
+            expect(screen.getByTestId('resolve-with-ai-btn')).toBeInTheDocument();
+            expect(screen.getByTestId('resolve-with-ai-btn').textContent).toContain('Resolve all with AI');
+        });
+
+        it('hides button when openCount === 0', () => {
+            const onResolve = vi.fn();
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 0, totalCount: 1, resolvedCount: 1 })}
+                    onResolveWithAI={onResolve}
+                />,
+            );
+
+            expect(screen.queryByTestId('resolve-with-ai-btn')).not.toBeInTheDocument();
+        });
+
+        it('hides button when onResolveWithAI is not provided', () => {
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 3, totalCount: 3 })}
+                />,
+            );
+
+            expect(screen.queryByTestId('resolve-with-ai-btn')).not.toBeInTheDocument();
+        });
+
+        it('calls onResolveWithAI on mousedown', () => {
+            const onResolve = vi.fn();
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 1, totalCount: 1 })}
+                    onResolveWithAI={onResolve}
+                />,
+            );
+
+            fireEvent.mouseDown(screen.getByTestId('resolve-with-ai-btn'));
+            expect(onResolve).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows loading state when resolveWithAILoading is true', () => {
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 1, totalCount: 1, resolveWithAILoading: true })}
+                    onResolveWithAI={vi.fn()}
+                />,
+            );
+
+            const btn = screen.getByTestId('resolve-with-ai-btn');
+            expect(btn.textContent).toContain('Resolving…');
+            expect(btn).toBeDisabled();
+        });
+
+        it('disables button during loading', () => {
+            render(
+                <CommentsSidebar
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    selectedThreadId={null}
+                    onThreadSelect={vi.fn()}
+                    comments={makeMockComments({ openCount: 2, totalCount: 2, resolveWithAILoading: true })}
+                    onResolveWithAI={vi.fn()}
+                />,
+            );
+
+            const btn = screen.getByTestId('resolve-with-ai-btn');
+            expect(btn).toBeDisabled();
         });
     });
 });

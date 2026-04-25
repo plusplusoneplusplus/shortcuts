@@ -133,7 +133,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerTaskWriteRoutes(routes, store, dataDir);
     registerNotesRoutes(routes, store, dataDir, opts.resolvedConfig);
     registerNotesWriteRoutes(routes, store, dataDir);
-    registerNotesCommentsRoutes(routes, store, dataDir);
+    registerNotesCommentsRoutes(routes, store, dataDir, bridge);
     registerNotesImageRoutes(routes, store, dataDir);
     registerNotesGitRoutes(routes, store, dataDir);
     registerNotesGitAutoCommitRoutes(routes, store, dataDir, scheduleManager);
