@@ -271,7 +271,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        message,
+                        content: message,
                         context: {
                             noteContent: documentContent,
                             resolveComments: {

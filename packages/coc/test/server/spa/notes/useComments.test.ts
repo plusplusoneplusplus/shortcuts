@@ -3,6 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { CommentThread, NoteSidecar, Comment } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
+// ── Mock fetchApi ──────────────────────────────────────────────────────────
+const mockFetchApi = vi.fn<any[], Promise<any>>();
+vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
 // ── Mock notesApi ──────────────────────────────────────────────────────────
 
 const mockGetComments = vi.fn<any[], Promise<NoteSidecar>>();
@@ -79,6 +85,7 @@ function makeSidecar(threads: CommentThread[]): NoteSidecar {
 describe('useComments', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockFetchApi.mockResolvedValue({});
         mockGetComments.mockResolvedValue(SAMPLE_SIDECAR);
         mockCreateThread.mockImplementation(async (_wsId, _path, thread) => ({
             thread: { ...thread, id: 'thread-new' },
@@ -703,6 +710,51 @@ describe('useComments', () => {
             await act(async () => { await result.current.reload(); });
 
             expect(result.current.error).toBe(null);
+        });
+    });
+
+    // ── resolveWithAI (follow-up path) ─────────────────────────────────────
+
+    describe('resolveWithAI follow-up path', () => {
+        it('sends content (not message) key when posting to /processes/:id/message', async () => {
+            mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+
+            const { result } = renderHook(() =>
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+            );
+
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            await act(async () => {
+                await result.current.resolveWithAI('document body');
+            });
+
+            expect(mockFetchApi).toHaveBeenCalledOnce();
+            const [url, opts] = mockFetchApi.mock.calls[0];
+            expect(url).toContain('/processes/proc-42/message');
+            const body = JSON.parse(opts.body);
+            expect(body).toHaveProperty('content');
+            expect(body).not.toHaveProperty('message');
+            expect(typeof body.content).toBe('string');
+            expect(body.content.length).toBeGreaterThan(0);
+        });
+
+        it('includes open thread quote and comment in the content', async () => {
+            mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+
+            const { result } = renderHook(() =>
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+            );
+
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            await act(async () => {
+                await result.current.resolveWithAI('document body');
+            });
+
+            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            expect(body.content).toContain('highlighted text here');
+            expect(body.content).toContain('This needs review');
         });
     });
 });
