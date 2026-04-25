@@ -775,6 +775,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     };
 
+    const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             <ChatHeader
@@ -806,15 +808,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 isSelecting={selection.isSelecting}
                 onToggleSelecting={selection.toggleSelecting}
             />
-            <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical' ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
-                {/* Conversation pane: shrinks to topHeightPct when scratchpad is open */}
+            <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
+                {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
-                    className={`relative flex min-w-0 overflow-hidden ${scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical' ? 'min-h-0' : ''}`}
+                    className={`relative flex flex-col min-w-0 overflow-hidden ${isVerticalScratchpad ? 'min-h-0' : ''}`}
                     style={scratchpadEnabled && scratchpad.isOpen
-                        ? { flex: `0 0 ${scratchpad.topHeightPct}%`, ...(scratchpadLayout === 'vertical' ? { minWidth: 0 } : { minHeight: 0 }) }
+                        ? { flex: `0 0 ${scratchpad.topHeightPct}%`, ...(isVerticalScratchpad ? { minWidth: 0 } : { minHeight: 0 }) }
                         : { flex: '1 1 auto', minHeight: 0 }
                     }
                 >
+                    {/* Inner row: ConversationArea + MiniMap side by side */}
+                    <div className="relative flex flex-1 min-h-0 overflow-hidden min-w-0">
                     <ConversationArea
                         loading={loading}
                         error={error}
@@ -857,6 +861,49 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isStreaming={task?.status === 'running'}
                         />
                     )}
+                    </div>
+                    {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
+                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                            <div className="text-[#848484] text-sm text-center">
+                                Follow-up chat is not available for this process type.
+                            </div>
+                        </div>
+                    )}
+                    {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (
+                        <FollowUpInputArea
+                            richTextRef={richTextRef}
+                            inputDisabled={inputDisabled}
+                            sending={sending}
+                            error={error}
+                            resumeFeedback={resumeFeedback}
+                            suggestions={suggestions}
+                            followUpInput={followUpInput}
+                            setFollowUpInput={setFollowUpInput}
+                            selectedMode={selectedMode}
+                            setSelectedMode={setSelectedMode}
+                            onSend={sendFollowUp}
+                            onRetry={retryLastMessage}
+                            skills={skills}
+                            attachments={attachments}
+                            onAttachmentPaste={addFromPaste}
+                            onAttachmentRemove={removeAttachment}
+                            onAttachmentFiles={addFromFileInput}
+                            attachmentError={attachmentError}
+                            pastePreview={{
+                                charCount: textPaste.charCount,
+                                previewLines: textPaste.previewLines,
+                                onTextPaste: textPaste.addFromPaste,
+                                clearPaste: textPaste.clearPaste,
+                            }}
+                            attachedContext={attachedContext.items}
+                            onRemoveAttachedContext={attachedContext.remove}
+                            task={task}
+                            slashCommands={slashCommands}
+                            modelCommand={modelCommand}
+                            sessionModel={sessionModel}
+                            hideModeSelector={hideModeSelector}
+                        />
+                    )}
                 </div>
                 {scratchpadEnabled && scratchpad.isOpen && (
                     <>
@@ -884,14 +931,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     </>
                 )}
             </div>
-            {!isPending && noSessionForFollowUp && !readOnly && (
+            {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
                         Follow-up chat is not available for this process type.
                     </div>
                 </div>
             )}
-            {!isPending && !noSessionForFollowUp && !readOnly && (
+            {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
