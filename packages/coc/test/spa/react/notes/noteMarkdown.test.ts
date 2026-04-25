@@ -47,6 +47,21 @@ describe('noteMarkdown', () => {
             expect(html).toContain('data-checked="false"');
         });
 
+        it('does not tag regular bullet list as taskList when followed by a task list', () => {
+            // Regression: the old cross-boundary regex would incorrectly tag the
+            // first <ul> (bullets) as taskList when both lists appear together.
+            const md = '- bullet one\n- bullet two\n\n---\n\n- [x] done\n- [ ] todo';
+            const html = markdownToHtml(md);
+            // The task-list <ul> must be tagged
+            expect(html).toContain('<ul data-type="taskList">');
+            // The regular bullet <ul> must NOT be tagged as taskList
+            // There should be exactly one taskList tag, not two
+            const taskListMatches = (html.match(/data-type="taskList"/g) ?? []).length;
+            expect(taskListMatches).toBe(1);
+            // Regular bullets must still appear as a plain <ul>
+            expect(html).toContain('<ul>');
+        });
+
         it('converts blockquotes', () => {
             const html = markdownToHtml('> quoted text');
             expect(html).toContain('<blockquote>');

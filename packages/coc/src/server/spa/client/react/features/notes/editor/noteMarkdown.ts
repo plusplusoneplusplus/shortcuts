@@ -377,11 +377,14 @@ function postProcessTaskLists(html: string): string {
     });
 
     if (hasTaskItems) {
-        // Wrap parent <ul> of task items with data-type="taskList"
-        // We find <ul> elements that directly contain taskItem <li> elements
+        // Wrap parent <ul> of task items with data-type="taskList".
+        // Use a lookahead so we only tag <ul> whose immediate first child is a
+        // taskItem — this avoids cross-boundary matches that would incorrectly
+        // tag a preceding regular bullet list when both lists appear in the
+        // same HTML fragment.
         result = result.replace(
-            /<ul>([\s\S]*?<li data-type="taskItem"[\s\S]*?)<\/ul>/gi,
-            '<ul data-type="taskList">$1</ul>',
+            /<ul>\s*(?=<li data-type="taskItem")/gi,
+            '<ul data-type="taskList">',
         );
     }
 
