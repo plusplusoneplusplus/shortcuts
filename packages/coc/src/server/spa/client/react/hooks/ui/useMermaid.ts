@@ -24,7 +24,7 @@ function isDarkTheme(): boolean {
 
 let mermaidLoadPromise: Promise<void> | null = null;
 
-function ensureMermaid(): Promise<void> {
+export function ensureMermaid(): Promise<void> {
     if (typeof mermaid !== 'undefined' && mermaid?.initialize) {
         return Promise.resolve();
     }
