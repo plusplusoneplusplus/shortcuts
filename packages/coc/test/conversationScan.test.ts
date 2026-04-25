@@ -652,4 +652,53 @@ describe('scanTurnsForCreatedFiles', () => {
             expect(results[0].filePath).toBe('/tmp/sse.md');
         });
     });
+
+    // ==================================================================
+    // Unified tool set: edit-tool names now recognised
+    // ==================================================================
+
+    describe('edit-tool names (unified FILE_WRITE_TOOLS)', () => {
+        it('detects edit_file tool call with path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'edit_file', args: { path: '/tmp/notes.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/notes.md');
+        });
+
+        it('detects edit tool call with path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'edit', args: { path: '/tmp/plan.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('detects str_replace_editor with path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'str_replace_editor', args: { path: '/tmp/spec.yaml' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/spec.yaml');
+        });
+
+        it('detects str_replace_based_edit_tool with path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'str_replace_based_edit_tool', args: { path: '/tmp/design.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/design.md');
+        });
+
+        it('still ignores read_file and other non-write tools', () => {
+            const turns = [
+                makeTurn([{ toolName: 'read_file', args: { path: '/tmp/notes.md' } }]),
+            ];
+            expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
+        });
+    });
 });

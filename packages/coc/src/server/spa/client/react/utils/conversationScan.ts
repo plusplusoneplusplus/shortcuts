@@ -1,6 +1,5 @@
 import type { ClientConversationTurn, ClientToolCall } from '../types/dashboard';
-
-const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply_patch']);
+import { FILE_WRITE_TOOLS } from './fileWriteTools';
 
 /** File extensions considered "plan/doc" files worth pinning */
 export const PINNED_EXTENSIONS = ['.md', '.txt', '.yaml', '.yml', '.json'];
@@ -161,7 +160,7 @@ export function scanTurnsForCreatedFiles(
                 ? resolveToolName(tc)
                 : (tc.id && toolStartNames.get(tc.id)) || resolveToolName(tc);
 
-            if (!CREATE_TOOL_NAMES.has(effectiveName)) continue;
+            if (!FILE_WRITE_TOOLS.has(effectiveName)) continue;
 
             // Special handling for apply_patch: may create multiple files
             if (effectiveName === 'apply_patch') {

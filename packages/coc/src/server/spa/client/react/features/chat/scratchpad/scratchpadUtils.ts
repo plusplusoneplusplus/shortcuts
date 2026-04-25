@@ -1,14 +1,5 @@
 import type { ClientConversationTurn } from '../../../types/dashboard';
-
-/** Tool names whose arguments may reference a file path being written. */
-const NOTE_WRITE_TOOLS = new Set([
-    'edit_file',
-    'str_replace_editor',
-    'str_replace_based_edit_tool',
-    'create',
-    'edit',
-    'apply_patch',
-]);
+import { FILE_WRITE_TOOLS } from '../../../utils/fileWriteTools';
 
 function parseArgs(args: unknown): Record<string, unknown> | null {
     if (!args) return null;
@@ -39,11 +30,12 @@ function extractMdPath(args: unknown): string | null {
 }
 
 /**
- * Scans the last assistant turn for note-writing tool calls that target a .md file.
- * Returns the first matching path found, or null.
+ * Scans all assistant turns (newest first) for note-writing tool calls that target
+ * a .md file. Returns the first matching path found, or null if none exists.
  *
  * Prefers `turn.timeline` (most complete, chronological) over `turn.toolCalls`.
- * Only the last assistant turn is examined — earlier turns do not re-trigger.
+ * All assistant turns are examined so that a .md file written in an earlier turn
+ * still auto-opens the scratchpad when a completed task is loaded.
  */
 export function extractLastWrittenNotePath(turns: ClientConversationTurn[]): string | null {
     for (let i = turns.length - 1; i >= 0; i--) {
@@ -59,12 +51,10 @@ export function extractLastWrittenNotePath(turns: ClientConversationTurn[]): str
         for (const tc of calls) {
             // toolName may be on `toolName` or `name` depending on serialisation path
             const name: string = tc.toolName || (tc as any).name || '';
-            if (!NOTE_WRITE_TOOLS.has(name)) continue;
+            if (!FILE_WRITE_TOOLS.has(name)) continue;
             const mdPath = extractMdPath(tc.args);
             if (mdPath) return mdPath;
         }
-
-        break; // Only check the last assistant turn
     }
     return null;
 }

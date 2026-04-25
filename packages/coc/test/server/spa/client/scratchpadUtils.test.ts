@@ -83,7 +83,8 @@ describe('extractLastWrittenNotePath', () => {
         const later = makeTurn('assistant', {
             toolCalls: [makeToolCall('edit_file', { path: 'src/index.ts' })],
         });
-        expect(extractLastWrittenNotePath([earlier, later])).toBeNull();
+        // The last assistant turn has no .md write, so we fall back to the earlier turn
+        expect(extractLastWrittenNotePath([earlier, later])).toBe('old.md');
     });
 
     it('prefers timeline tool calls over toolCalls', () => {
@@ -156,5 +157,44 @@ describe('extractLastWrittenNotePath', () => {
         delete tc.toolName;
         const turns = [makeTurn('assistant', { toolCalls: [tc] })];
         expect(extractLastWrittenNotePath(turns)).toBe('via-name.md');
+    });
+
+    it('returns path for write_file tool call', () => {
+        const tc = makeToolCall('write_file', { path: 'written.md' });
+        const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+        expect(extractLastWrittenNotePath(turns)).toBe('written.md');
+    });
+
+    it('returns path for create_file tool call', () => {
+        const tc = makeToolCall('create_file', { path: 'created.md' });
+        const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+        expect(extractLastWrittenNotePath(turns)).toBe('created.md');
+    });
+
+    it('finds .md path written in an earlier turn when the last assistant turn has no .md write', () => {
+        const earlier = makeTurn('assistant', {
+            toolCalls: [makeToolCall('edit_file', { path: 'earlier-notes.md' })],
+        });
+        const laterNoMd = makeTurn('assistant', {
+            toolCalls: [makeToolCall('edit_file', { path: 'src/util.ts' })],
+        });
+        expect(extractLastWrittenNotePath([earlier, laterNoMd])).toBe('earlier-notes.md');
+    });
+
+    it('returns the most recent .md path across multiple turns with .md writes', () => {
+        const turn1 = makeTurn('assistant', {
+            toolCalls: [makeToolCall('edit_file', { path: 'first.md' })],
+        });
+        const turn2 = makeTurn('assistant', {
+            toolCalls: [makeToolCall('edit_file', { path: 'second.md' })],
+        });
+        // turn2 is examined first (newest); its .md path wins
+        expect(extractLastWrittenNotePath([turn1, turn2])).toBe('second.md');
+    });
+
+    it('still returns null when no assistant turn across all turns has a .md write', () => {
+        const t1 = makeTurn('assistant', { toolCalls: [makeToolCall('edit_file', { path: 'a.ts' })] });
+        const t2 = makeTurn('assistant', { toolCalls: [makeToolCall('create', { path: 'b.json' })] });
+        expect(extractLastWrittenNotePath([t1, t2])).toBeNull();
     });
 });
