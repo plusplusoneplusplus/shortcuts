@@ -112,6 +112,8 @@ export function FollowUpInputArea({
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
+    // Global (unscoped) detection so chips show the "send" state even when input isn't focused.
+    const chipsCtrlHeld = useModifierKey();
 
     // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
@@ -158,14 +160,15 @@ export function FollowUpInputArea({
                     suggestions={suggestions}
                     onSelect={(text, e) => {
                         if (e.ctrlKey || e.metaKey) {
+                            void onSend(text);
+                        } else {
                             setFollowUpInput(text);
                             richTextRef.current?.setValue(text);
                             richTextRef.current?.focus();
-                        } else {
-                            void onSend(text);
                         }
                     }}
                     disabled={inputDisabled}
+                    ctrlHeld={chipsCtrlHeld}
                 />
             )}
             {attachedContext && onRemoveAttachedContext && (

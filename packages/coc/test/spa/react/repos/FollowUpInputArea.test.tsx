@@ -153,18 +153,24 @@ describe('FollowUpInputArea — cursor regression', () => {
         expect(tracker.calls).toHaveLength(0);
     });
 
-    it('normal click on suggestion chip calls onSend', () => {
+    it('normal click on suggestion chip populates input instead of sending', () => {
         const onSend = vi.fn().mockResolvedValue(undefined);
+        const setFollowUpInput = vi.fn();
+        const richTextRef = createRef<RichTextInputHandle>();
         const props = makeProps({
+            richTextRef,
             suggestions: ['Run tests'],
             onSend,
+            setFollowUpInput,
         });
         render(<FollowUpInputArea {...props} />);
         fireEvent.click(screen.getByTestId('suggestion-chip'));
-        expect(onSend).toHaveBeenCalledWith('Run tests');
+        expect(onSend).not.toHaveBeenCalled();
+        expect(setFollowUpInput).toHaveBeenCalledWith('Run tests');
+        expect(tracker.calls).toContainEqual(['Run tests', undefined]);
     });
 
-    it('Ctrl+click on suggestion chip populates input instead of sending', () => {
+    it('Ctrl+click on suggestion chip sends instead of populating', () => {
         const onSend = vi.fn().mockResolvedValue(undefined);
         const setFollowUpInput = vi.fn();
         const richTextRef = createRef<RichTextInputHandle>();
@@ -176,12 +182,11 @@ describe('FollowUpInputArea — cursor regression', () => {
         });
         render(<FollowUpInputArea {...props} />);
         fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
-        expect(onSend).not.toHaveBeenCalled();
-        expect(setFollowUpInput).toHaveBeenCalledWith('Run tests');
-        expect(tracker.calls).toContainEqual(['Run tests', undefined]);
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+        expect(setFollowUpInput).not.toHaveBeenCalled();
     });
 
-    it('Meta+click on suggestion chip populates input (macOS parity)', () => {
+    it('Meta+click on suggestion chip sends (macOS parity)', () => {
         const onSend = vi.fn().mockResolvedValue(undefined);
         const setFollowUpInput = vi.fn();
         const richTextRef = createRef<RichTextInputHandle>();
@@ -193,8 +198,8 @@ describe('FollowUpInputArea — cursor regression', () => {
         });
         render(<FollowUpInputArea {...props} />);
         fireEvent.click(screen.getByTestId('suggestion-chip'), { metaKey: true });
-        expect(onSend).not.toHaveBeenCalled();
-        expect(setFollowUpInput).toHaveBeenCalledWith('Run tests');
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+        expect(setFollowUpInput).not.toHaveBeenCalled();
     });
 
     it('useEffect DOES sync DOM when followUpInput changes externally (no Tab/skill)', async () => {

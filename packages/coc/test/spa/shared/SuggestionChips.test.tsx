@@ -32,6 +32,14 @@ describe('SuggestionChips', () => {
         expect(button.textContent).toContain('→');
     });
 
+    it('shows "Click to edit" title by default', () => {
+        render(
+            <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} />
+        );
+        const button = screen.getByTestId('suggestion-chip');
+        expect(button.getAttribute('title')).toBe('Click to edit · Ctrl+Click to send');
+    });
+
     it('calls onSelect with correct text on click', () => {
         const onSelect = vi.fn();
         render(
@@ -100,5 +108,41 @@ describe('SuggestionChips', () => {
         const container = screen.getByTestId('suggestion-chips');
         expect(container.className).toContain('flex-wrap');
         expect(container.className).not.toContain('flex-col');
+    });
+
+    describe('ctrlHeld visual state', () => {
+        it('shows send arrow (↵) when ctrlHeld is true', () => {
+            render(
+                <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} ctrlHeld />
+            );
+            const button = screen.getByTestId('suggestion-chip');
+            expect(button.textContent).toContain('↵');
+            expect(button.textContent).not.toContain('→');
+        });
+
+        it('shows "Click to send" title when ctrlHeld is true', () => {
+            render(
+                <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} ctrlHeld />
+            );
+            const button = screen.getByTestId('suggestion-chip');
+            expect(button.getAttribute('title')).toBe('Click to send');
+        });
+
+        it('applies blue send-mode styling when ctrlHeld is true', () => {
+            render(
+                <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} ctrlHeld />
+            );
+            const button = screen.getByTestId('suggestion-chip');
+            expect(button.className).toContain('border-[#0078d4]');
+        });
+
+        it('uses default styling when ctrlHeld is false', () => {
+            render(
+                <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} ctrlHeld={false} />
+            );
+            const button = screen.getByTestId('suggestion-chip');
+            expect(button.className).not.toContain('border-[#0078d4]');
+            expect(button.className).toContain('border-[#e0e0e0]');
+        });
     });
 });
