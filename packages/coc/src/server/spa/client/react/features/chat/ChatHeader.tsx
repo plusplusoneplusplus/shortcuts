@@ -406,9 +406,10 @@ export function ChatHeader({
                         onClick={onOpenScratchpad}
                         className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
                     >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M9 2H4.5A1.5 1.5 0 0 0 3 3.5v9A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5V6L9 2Z" />
-                            <polyline points="9 2 9 6 13 6" />
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                            <line x1="3" y1="4" x2="13" y2="4" />
+                            <line x1="3" y1="8" x2="13" y2="8" />
+                            <line x1="3" y1="12" x2="9" y2="12" />
                         </svg>
                     </button>
                 )}
