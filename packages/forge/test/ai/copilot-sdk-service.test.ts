@@ -112,6 +112,66 @@ describe('CopilotSDKService - Client Initialization', () => {
 });
 
 // ============================================================================
+// forkSession Tests
+// ============================================================================
+
+describe('CopilotSDKService - forkSession', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('should call client.rpc.sessions.fork and return the new session ID', async () => {
+        const mockFork = vi.fn().mockResolvedValue({ sessionId: 'forked-session-id' });
+        const mockStop = vi.fn().mockResolvedValue(undefined);
+
+        createSdkClientMock.mockResolvedValue({
+            start: vi.fn().mockResolvedValue(undefined),
+            stop: mockStop,
+            rpc: { sessions: { fork: mockFork } },
+        });
+
+        const serviceAny = service as any;
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.forkSession('original-session-id');
+
+        expect(result).toBe('forked-session-id');
+        expect(mockFork).toHaveBeenCalledWith({ sessionId: 'original-session-id' });
+        expect(mockStop).toHaveBeenCalled();
+    });
+
+    it('should stop the client even if fork fails', async () => {
+        const mockStop = vi.fn().mockResolvedValue(undefined);
+
+        createSdkClientMock.mockResolvedValue({
+            start: vi.fn().mockResolvedValue(undefined),
+            stop: mockStop,
+            rpc: { sessions: { fork: vi.fn().mockRejectedValue(new Error('Fork failed')) } },
+        });
+
+        const serviceAny = service as any;
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await expect(service.forkSession('bad-session')).rejects.toThrow('Fork failed');
+        expect(mockStop).toHaveBeenCalled();
+    });
+
+    it('should throw when service is disposed', async () => {
+        service.dispose();
+        await expect(service.forkSession('any-session')).rejects.toThrow('disposed');
+    });
+});
+
+// ============================================================================
 // onSessionCreated Callback Tests
 // ============================================================================
 

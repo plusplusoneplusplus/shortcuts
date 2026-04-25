@@ -651,6 +651,93 @@ export class SqliteProcessStore implements ProcessStore {
         return rowToProcess(row, turnRows.map(rowToTurn));
     }
 
+    async forkProcess(
+        sourceId: string,
+        newId: string,
+        newSdkSessionId: string,
+        upToTurnIndex?: number,
+    ): Promise<AIProcess> {
+        const forkTxn = this.db.transaction(() => {
+            const sourceRow = this.getProcessStmt.get(sourceId) as ProcessRow | undefined;
+            if (!sourceRow) throw new Error(`Source process not found: ${sourceId}`);
+
+            const sourceProcess = rowToProcess(sourceRow);
+            const sourceTitle = sourceProcess.title || sourceProcess.promptPreview || '';
+            const forkTitle = `[Fork] ${sourceTitle}`;
+
+            const metadata: Record<string, unknown> = {
+                ...(jsonParse<Record<string, unknown>>(sourceRow.metadata) ?? {}),
+                forkSourceId: sourceId,
+            };
+
+            const now = new Date();
+            const newRow: Record<string, unknown> = {
+                id: newId,
+                workspace_id: sourceRow.workspace_id,
+                type: sourceRow.type,
+                prompt_preview: sourceRow.prompt_preview
+                    ? `[Fork] ${sourceRow.prompt_preview}` : null,
+                full_prompt: sourceRow.full_prompt,
+                status: 'completed',
+                start_time: now.toISOString(),
+                end_time: now.toISOString(),
+                error: null,
+                result: null,
+                result_file_path: null,
+                raw_stdout_file_path: null,
+                metadata: JSON.stringify(metadata),
+                group_metadata: null,
+                structured_result: null,
+                parent_process_id: null,
+                sdk_session_id: newSdkSessionId,
+                backend: sourceRow.backend,
+                working_directory: sourceRow.working_directory,
+                title: forkTitle,
+                token_limit: null,
+                current_tokens: null,
+                cumulative_token_usage: null,
+                stale: 0,
+                data_file_path: null,
+                archived: 0,
+                pinned_at: null,
+                last_event_at: now.toISOString(),
+            };
+            this.insertProcessStmt.run(newRow);
+
+            // Copy conversation turns from source
+            const turnFilter = upToTurnIndex != null
+                ? ' AND turn_index <= ?'
+                : '';
+            const copyTurnsSQL = `
+                INSERT INTO conversation_turns
+                  (process_id, turn_index, role, content, timestamp, streaming,
+                   tool_calls, timeline, images, historical, suggestions,
+                   token_usage, paste_externalized, model)
+                SELECT
+                  ?, turn_index, role, content, timestamp, 0,
+                  tool_calls, timeline, images, 1, suggestions,
+                  token_usage, paste_externalized, model
+                FROM conversation_turns
+                WHERE process_id = ?
+                  AND deleted_at IS NULL
+                  ${turnFilter}
+                ORDER BY turn_index
+            `;
+            const copyParams: unknown[] = [newId, sourceId];
+            if (upToTurnIndex != null) copyParams.push(upToTurnIndex);
+            this.db.prepare(copyTurnsSQL).run(...copyParams);
+
+            // Read back the new process
+            const newProcessRow = this.getProcessStmt.get(newId) as ProcessRow;
+            const newTurnRows = this.getTurnsStmt.all(newId) as TurnRow[];
+            return rowToProcess(newProcessRow, newTurnRows.map(rowToTurn));
+        });
+
+        const forked = forkTxn();
+        this.onProcessChange?.({ type: 'process-added', process: forked });
+        return forked;
+    }
+
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
         const query = `SELECT * FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +

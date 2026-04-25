@@ -79,6 +79,7 @@ export function ProcessDetail() {
     const [wasRenamed, setWasRenamed] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
     const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+    const [forking, setForking] = useState(false);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -366,6 +367,25 @@ export function ProcessDetail() {
         });
     }, [selectedId]);
 
+    const handleFork = useCallback(async () => {
+        if (!selectedId || forking) return;
+        setForking(true);
+        try {
+            const data = await fetchApi(`/processes/${encodeURIComponent(selectedId)}/fork`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            if (data?.process?.id) {
+                dispatch({ type: 'SELECT_PROCESS', processId: data.process.id });
+            }
+        } catch (err: any) {
+            console.error('Fork failed:', err);
+        } finally {
+            setForking(false);
+        }
+    }, [selectedId, forking, dispatch]);
+
     if (!selectedId || !process) {
         return (
             <div id="detail-empty" className="flex-1 flex flex-col items-center justify-center text-[#848484]">
@@ -473,6 +493,18 @@ export function ProcessDetail() {
                                     title="View logs for this session"
                                 >
                                     🔍 Logs
+                                </Button>
+                            )}
+                            {metadataProcess?.sdkSessionId && process.status === 'completed' && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    data-testid="fork-process-btn"
+                                    loading={forking}
+                                    onClick={() => { void handleFork(); }}
+                                    title="Fork this conversation into a new independent chat"
+                                >
+                                    🍴 Fork
                                 </Button>
                             )}
                             <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />

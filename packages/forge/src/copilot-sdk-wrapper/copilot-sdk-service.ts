@@ -129,6 +129,22 @@ export class CopilotSDKService {
         return createSdkClient({ cwd });
     }
 
+    /**
+     * Fork an existing SDK session, creating a new session pre-loaded with
+     * the full conversation history of the source.
+     * @returns The new forked session ID.
+     */
+    public async forkSession(sdkSessionId: string): Promise<string> {
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        const client = await this.createClient();
+        try {
+            const result = await (client as any).rpc.sessions.fork({ sessionId: sdkSessionId });
+            return result.sessionId;
+        } finally {
+            await client.stop();
+        }
+    }
+
     public async listModels(): Promise<ModelInfo[]> {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
         const availability = await this.isAvailable();

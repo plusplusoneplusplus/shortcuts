@@ -59,7 +59,7 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
 }
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
-    const { routes, store, bridge, dataDir } = ctx;
+    const { routes, store, bridge, dataDir, getWsServer } = ctx;
 
     // GET /api/processes/summaries — Lightweight index-only process list (no file I/O per process)
     routes.push({
@@ -413,6 +413,59 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             const updated = await store.getProcess(id, wsId);
             sendJSON(res, 200, { process: updated });
+        },
+    });
+
+    // POST /api/processes/:id/fork — Fork a completed process
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/fork$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await store.getProcess(id, wsId);
+            if (!proc) {
+                return handleAPIError(res, notFound('Process'));
+            }
+            if (!proc.sdkSessionId) {
+                return handleAPIError(res, badRequest('Process has no SDK session to fork'));
+            }
+            if (!store.forkProcess) {
+                return handleAPIError(res, badRequest('Fork not supported by this store'));
+            }
+
+            const newId = crypto.randomUUID();
+            let newSdkSessionId: string;
+            try {
+                const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
+                const sdkService = getCopilotSDKService();
+                newSdkSessionId = await sdkService.forkSession(proc.sdkSessionId);
+            } catch (err: any) {
+                return handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));
+            }
+
+            try {
+                const forked = await store.forkProcess(id, newId, newSdkSessionId);
+                const wsServer = getWsServer?.();
+                if (wsServer && forked.metadata?.workspaceId) {
+                    wsServer.broadcastProcessEvent({
+                        type: 'process-added',
+                        process: {
+                            id: forked.id,
+                            status: forked.status,
+                            type: forked.type ?? 'chat',
+                            promptPreview: forked.promptPreview,
+                            startTime: forked.startTime.toISOString(),
+                            endTime: forked.endTime?.toISOString(),
+                            title: forked.title,
+                            workspaceId: forked.metadata?.workspaceId as string,
+                        },
+                    });
+                }
+                sendJSON(res, 201, { process: forked });
+            } catch (err: any) {
+                return handleAPIError(res, internalError(`Failed to fork process: ${err?.message || err}`));
+            }
         },
     });
 
