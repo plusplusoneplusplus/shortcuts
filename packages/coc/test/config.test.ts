@@ -59,7 +59,7 @@ describe('Config', () => {
                 askUser: { enabled: false },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'horizontal' });
+            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'vertical' });
         });
     });
 
@@ -339,7 +339,7 @@ timeout: 300
                 notes: { enabled: false },
                 myWork: { enabled: false },
                 myLife: { enabled: false },
-                scratchpad: { enabled: false, layout: 'horizontal' },
+                scratchpad: { enabled: false, layout: 'vertical' },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -440,7 +440,7 @@ timeout: 300
 
         it('should preserve scratchpad.layout default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.scratchpad.layout).toBe('horizontal');
+            expect(result.scratchpad.layout).toBe('vertical');
         });
 
         it('should override scratchpad.layout from file', () => {
@@ -451,7 +451,7 @@ timeout: 300
         it('should merge scratchpad fields independently', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { enabled: true } });
             expect(result.scratchpad.enabled).toBe(true);
-            expect(result.scratchpad.layout).toBe('horizontal');
+            expect(result.scratchpad.layout).toBe('vertical');
         });
 
         it('should override store.backend from file', () => {

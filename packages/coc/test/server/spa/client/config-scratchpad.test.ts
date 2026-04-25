@@ -51,14 +51,14 @@ describe('getScratchpadLayout', () => {
         delete (window as any).__DASHBOARD_CONFIG__;
     });
 
-    it('returns horizontal when __DASHBOARD_CONFIG__ is absent', () => {
+    it('returns vertical when __DASHBOARD_CONFIG__ is absent', () => {
         delete (window as any).__DASHBOARD_CONFIG__;
-        expect(getScratchpadLayout()).toBe('horizontal');
+        expect(getScratchpadLayout()).toBe('vertical');
     });
 
-    it('returns horizontal when scratchpadLayout is not set', () => {
+    it('returns vertical when scratchpadLayout is not set', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
-        expect(getScratchpadLayout()).toBe('horizontal');
+        expect(getScratchpadLayout()).toBe('vertical');
     });
 
     it('returns horizontal when scratchpadLayout is horizontal', () => {

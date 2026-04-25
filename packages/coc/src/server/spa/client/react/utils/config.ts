@@ -56,5 +56,5 @@ export function isScratchpadEnabled(): boolean {
 }
 
 export function getScratchpadLayout(): 'horizontal' | 'vertical' {
-    return getConfig().scratchpadLayout === 'vertical' ? 'vertical' : 'horizontal';
+    return getConfig().scratchpadLayout === 'horizontal' ? 'horizontal' : 'vertical';
 }

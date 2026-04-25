@@ -284,7 +284,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     scratchpad: {
         enabled: false,
-        layout: 'horizontal',
+        layout: 'vertical',
     },
     store: {
         backend: 'sqlite',

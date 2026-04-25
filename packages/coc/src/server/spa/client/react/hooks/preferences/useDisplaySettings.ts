@@ -20,7 +20,7 @@ interface DisplaySettings {
     scratchpadLayout: 'horizontal' | 'vertical';
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'horizontal' };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical' };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
@@ -46,7 +46,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             myWorkEnabled: data?.resolved?.myWork?.enabled ?? false,
             myLifeEnabled: data?.resolved?.myLife?.enabled ?? false,
             scratchpadEnabled: data?.resolved?.scratchpad?.enabled ?? false,
-            scratchpadLayout: (data?.resolved?.scratchpad?.layout === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical',
+            scratchpadLayout: (data?.resolved?.scratchpad?.layout === 'horizontal' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
         };
     } catch {
         return DEFAULT_SETTINGS;
