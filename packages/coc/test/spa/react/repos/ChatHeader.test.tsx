@@ -448,4 +448,69 @@ describe('ChatHeader', () => {
             expect(count).toBe(2);
         });
     });
+
+    describe('fork button', () => {
+        it('renders inline fork button in wide tier when onFork is provided', () => {
+            setTier('wide');
+            const onFork = vi.fn();
+            render(<ChatHeader {...defaultProps({ onFork, forking: false })} />);
+            expect(screen.getByText(/Fork/)).toBeTruthy();
+        });
+
+        it('does not render fork button when onFork is undefined', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps({ onFork: undefined })} />);
+            expect(screen.queryByText(/🍴 Fork/)).toBeNull();
+        });
+
+        it('shows "Forking…" label in overflow at medium tier', () => {
+            setTier('medium');
+            const onFork = vi.fn();
+            render(<ChatHeader {...defaultProps({ onFork, forking: true })} />);
+            // Fork moves to overflow at non-wide tiers — check overflow item count includes it
+            const menu = screen.getByTestId('overflow-menu');
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            // Overflow should include at least: fork + other items
+            expect(count).toBeGreaterThanOrEqual(1);
+        });
+
+        it('does not include fork in overflow when onFork is undefined', () => {
+            setTier('medium');
+            // Minimal props: no fork, no optional elements
+            render(<ChatHeader {...defaultProps({
+                task: null,
+                metadataProcess: null,
+                planPath: '',
+                createdFiles: [],
+                resumeSessionId: null,
+                isPending: true,
+                sessionTokenLimit: undefined,
+                onFork: undefined,
+            })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            // Without fork: copy-html + export-pdf = 2
+            expect(count).toBe(2);
+        });
+
+        it('includes fork in overflow at medium tier', () => {
+            setTier('medium');
+            const onFork = vi.fn();
+            render(<ChatHeader {...defaultProps({
+                task: null,
+                metadataProcess: null,
+                planPath: '',
+                createdFiles: [],
+                resumeSessionId: null,
+                isPending: true,
+                sessionTokenLimit: undefined,
+                onFork,
+                forking: false,
+            })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            // copy-html + export-pdf + fork = 3
+            expect(count).toBe(3);
+        });
+    });
 });

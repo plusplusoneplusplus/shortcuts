@@ -52,6 +52,10 @@ export interface ChatHeaderProps {
     showScratchpadButton?: boolean;
     /** Called when the user clicks the "Open Scratchpad" button */
     onOpenScratchpad?: () => void;
+    /** Called when the user clicks the Fork button */
+    onFork?: () => void;
+    /** Whether a fork operation is in progress */
+    forking?: boolean;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -87,6 +91,8 @@ function buildOverflowItems(
         isSelecting?: boolean;
         showScratchpadButton?: boolean;
         onOpenScratchpad?: () => void;
+        onFork?: () => void;
+        forking?: boolean;
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -202,6 +208,16 @@ function buildOverflowItems(
         });
     }
 
+    // Fork — in overflow at non-wide tiers
+    if (props.onFork) {
+        items.push({
+            key: 'fork',
+            label: props.forking ? 'Forking…' : 'Fork conversation',
+            icon: <span className="text-[10px]">🍴</span>,
+            onClick: props.forking ? () => {} : props.onFork,
+        });
+    }
+
     // Float / Pop-out — only in overflow at narrow (< 500px)
     if (tier === 'narrow') {
         if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
@@ -253,6 +269,8 @@ export function ChatHeader({
     onToggleSelecting,
     showScratchpadButton,
     onOpenScratchpad,
+    onFork,
+    forking,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -334,7 +352,9 @@ export function ChatHeader({
         isSelecting,
         showScratchpadButton,
         onOpenScratchpad,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad]); // eslint-disable-line react-hooks/exhaustive-deps
+        onFork,
+        forking,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -504,6 +524,18 @@ export function ChatHeader({
                         )}
                         {!isPending && metadataProcess && (
                             <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                        )}
+                        {onFork && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                data-testid="fork-chat-btn"
+                                loading={forking}
+                                onClick={onFork}
+                                title="Fork this conversation into a new independent chat"
+                            >
+                                🍴 Fork
+                            </Button>
                         )}
                     </>
                 )}

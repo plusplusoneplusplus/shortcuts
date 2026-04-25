@@ -106,6 +106,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [followUpInput, setFollowUpInput] = useState('');
     const [resumeLaunching, setResumeLaunching] = useState(false);
+    const [forking, setForking] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
@@ -776,6 +777,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     };
 
+    const handleFork = useCallback(async () => {
+        if (!processId || forking) return;
+        setForking(true);
+        try {
+            const data = await fetchApi(`/processes/${encodeURIComponent(processId)}/fork`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            if (data?.process?.id && workspaceId) {
+                location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(data.process.id);
+            }
+        } catch (err: any) {
+            console.error('Fork failed:', err);
+        } finally {
+            setForking(false);
+        }
+    }, [processId, forking, workspaceId]);
+
     const scrollToBottom = () => {
         if (conversationContainerRef.current) {
             conversationContainerRef.current.scrollTop = conversationContainerRef.current.scrollHeight;
@@ -829,6 +849,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onToggleSelecting={selection.toggleSelecting}
                 showScratchpadButton={showScratchpadButton}
                 onOpenScratchpad={handleOpenScratchpad}
+                onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
+                forking={forking}
             />
             <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
