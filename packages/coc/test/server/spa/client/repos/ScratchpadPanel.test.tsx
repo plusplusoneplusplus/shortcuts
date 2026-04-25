@@ -399,3 +399,124 @@ describe('ScratchpadPanel — Comment integration', () => {
         expect(screen.queryByTestId('scratchpad-comments-panel')).toBeNull();
     });
 });
+
+describe('ScratchpadPanel — right-side comments layout', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        capturedNoteEditorProps = {};
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('body container uses flex-row when comments panel is open', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        const panel = screen.getByTestId('scratchpad-comments-panel');
+        // The body container is the grandparent of note-editor (parent of editor wrapper)
+        const editorWrapper = screen.getByTestId('note-editor').parentElement!;
+        const bodyContainer = editorWrapper.parentElement!;
+        expect(bodyContainer.className).toContain('flex-row');
+        expect(bodyContainer.className).not.toContain('flex-col');
+        // The sidebar is a sibling of the editor wrapper inside the body
+        expect(panel.parentElement).toBe(bodyContainer);
+    });
+
+    it('body container uses flex-col when comments panel is closed', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const editorWrapper = screen.getByTestId('note-editor').parentElement!;
+        const bodyContainer = editorWrapper.parentElement!;
+        expect(bodyContainer.className).toContain('flex-col');
+        expect(bodyContainer.className).not.toContain('flex-row');
+    });
+
+    it('comments panel has border-l (right-side separator), not border-t', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        const panel = screen.getByTestId('scratchpad-comments-panel');
+        expect(panel.className).toContain('border-l');
+        expect(panel.className).not.toContain('border-t');
+    });
+
+    it('comments panel has fixed width w-64', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        const panel = screen.getByTestId('scratchpad-comments-panel');
+        expect(panel.className).toContain('w-64');
+    });
+
+    it('comments panel has no maxHeight inline style', async () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const { act } = await import('@testing-library/react');
+        const toggleFn = capturedNoteEditorProps.onToggleCommentsPanel as () => void;
+        await act(() => { toggleFn(); });
+
+        const panel = screen.getByTestId('scratchpad-comments-panel');
+        expect(panel.style.maxHeight).toBe('');
+    });
+
+    it('editor wrapper has flex-1 and min-w-0 to yield space to sidebar', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+
+        const editorWrapper = screen.getByTestId('note-editor').parentElement!;
+        expect(editorWrapper.className).toContain('flex-1');
+        expect(editorWrapper.className).toContain('min-w-0');
+    });
+});

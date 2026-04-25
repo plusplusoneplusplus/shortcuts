@@ -184,52 +184,55 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                     panelHeader
                 />
             )}
-            <div className="flex-1 min-h-0 flex flex-col">
-                <NoteEditor
-                    workspaceId={workspaceId}
-                    notePath={notePath}
-                    onNotFound={onNotFound}
-                    toolbarRight={runSkillButton}
-                    threads={comments.allThreads}
-                    onCommentActivated={setActiveCommentId}
-                    onEditorReady={(ed) => { editorRef.current = ed; }}
-                    onCommentCreate={handleCommentCreate}
-                    commentsEnabled={true}
-                    commentsPanelOpen={commentsPanelOpen}
-                    onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
-                    commentCount={wrappedComments.totalCount}
-                />
-            </div>
-
-            {/* Collapsible bottom comments drawer */}
-            {commentsVisible && (
-                <div
-                    className="flex-shrink-0 border-t border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
-                    style={{ maxHeight: '40%' }}
-                    data-testid="scratchpad-comments-panel"
-                >
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <span className="text-xs font-semibold text-[#616161] dark:text-[#ccc] uppercase tracking-wide">
-                            Comments
-                        </span>
-                        <button
-                            className="text-xs text-[#888] hover:text-[#333] dark:hover:text-white"
-                            onClick={() => setCommentsPanelOpen(false)}
-                            data-testid="scratchpad-comments-close"
-                            aria-label="Close comments panel"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                    <CommentsSidebar
+            <div className={`flex-1 min-h-0 flex ${commentsVisible ? 'flex-row' : 'flex-col'}`}>
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+                    <NoteEditor
                         workspaceId={workspaceId}
                         notePath={notePath}
-                        selectedThreadId={activeCommentId}
-                        onThreadSelect={handleThreadSelect}
-                        comments={wrappedComments}
+                        onNotFound={onNotFound}
+                        toolbarRight={runSkillButton}
+                        threads={comments.allThreads}
+                        onCommentActivated={setActiveCommentId}
+                        onEditorReady={(ed) => { editorRef.current = ed; }}
+                        onCommentCreate={handleCommentCreate}
+                        commentsEnabled={true}
+                        commentsPanelOpen={commentsPanelOpen}
+                        onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
+                        commentCount={wrappedComments.totalCount}
                     />
                 </div>
-            )}
+
+                {/* Right-side comments sidebar */}
+                {commentsVisible && (
+                    <div
+                        className="w-64 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
+                        data-testid="scratchpad-comments-panel"
+                    >
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0">
+                            <span className="text-xs font-semibold text-[#616161] dark:text-[#ccc] uppercase tracking-wide">
+                                Comments
+                            </span>
+                            <button
+                                className="text-xs text-[#888] hover:text-[#333] dark:hover:text-white"
+                                onClick={() => setCommentsPanelOpen(false)}
+                                data-testid="scratchpad-comments-close"
+                                aria-label="Close comments panel"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto flex-1">
+                            <CommentsSidebar
+                                workspaceId={workspaceId}
+                                notePath={notePath}
+                                selectedThreadId={activeCommentId}
+                                onThreadSelect={handleThreadSelect}
+                                comments={wrappedComments}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
