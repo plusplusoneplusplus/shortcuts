@@ -21,7 +21,7 @@ function escapeHtmlForMermaid(str: string): string {
 
 // ── React NodeView Component ────────────────────────────────────────────────
 
-function MermaidBlockView({ node, selected }: NodeViewProps) {
+function MermaidBlockView({ node }: NodeViewProps) {
     const [mode, setMode] = useState<'preview' | 'source'>('preview');
     const [error, setError] = useState<string | null>(null);
     const preRef = useRef<HTMLPreElement>(null);
@@ -42,21 +42,23 @@ function MermaidBlockView({ node, selected }: NodeViewProps) {
 
     return (
         <NodeViewWrapper
-            className={`mermaid-block-wrapper${selected ? ' mermaid-block-selected' : ''}`}
+            className="mermaid-node-view"
             data-drag-handle=""
         >
-            <div className="mermaid-block-toolbar">
+            <div className="mermaid-node-view-toolbar">
                 <button onClick={() => setMode((m) => (m === 'preview' ? 'source' : 'preview'))}>
-                    {mode === 'preview' ? 'Source' : 'Preview'}
+                    {mode === 'preview' ? '</> Source' : '▶ Preview'}
                 </button>
             </div>
 
-            {error && <div className="mermaid-block-error">{error}</div>}
+            {error && <div className="mermaid-node-view-error">{error}</div>}
 
             {mode === 'preview' ? (
-                <pre ref={preRef} className="mermaid" />
+                <div className="mermaid-node-view-preview">
+                    <pre ref={preRef} className="mermaid" />
+                </div>
             ) : (
-                <pre className="mermaid-block-source">
+                <pre className="mermaid-node-view-source">
                     <code>{node.attrs.code}</code>
                 </pre>
             )}

@@ -454,17 +454,18 @@
 
 .mermaid-node-view-toolbar button {
     padding: 2px 8px;
-    border-radius: 3px;
-    border: 1px solid transparent;
-    background: transparent;
+    border-radius: 4px;
+    border: 1px solid #c0c0c0;
+    background: #f5f5f5;
+    color: inherit;
     cursor: pointer;
     font-size: 11px;
     line-height: 1.4;
 }
 
 .mermaid-node-view-toolbar button:hover {
-    background: rgba(0, 0, 0, 0.06);
-    border-color: rgba(0, 0, 0, 0.12);
+    background: #e8e8e8;
+    border-color: #aaa;
 }
 
 .mermaid-node-view-preview {
@@ -518,9 +519,15 @@
     border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
+.dark .mermaid-node-view-toolbar button {
+    border-color: #555;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
 .dark .mermaid-node-view-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: #3c3c3c;
+    border-color: #666;
 }
 
 .dark .mermaid-node-view-source {

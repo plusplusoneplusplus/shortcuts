@@ -73,4 +73,31 @@ describe('noteEditor.css theme consistency', () => {
         expect(preCode![0]).toContain('background: none');
         expect(preCode![0]).toContain('color: inherit');
     });
+
+    // --- Mermaid block toolbar button ---
+
+    it('mermaid toolbar button has a visible border at rest', () => {
+        const btnBlock = css.match(
+            /\.mermaid-node-view-toolbar\s+button\s*\{[^}]+\}/,
+        );
+        expect(btnBlock).not.toBeNull();
+        expect(btnBlock![0]).toMatch(/border:\s*1px solid #c0c0c0/);
+    });
+
+    it('mermaid toolbar button has a visible background at rest', () => {
+        const btnBlock = css.match(
+            /\.mermaid-node-view-toolbar\s+button\s*\{[^}]+\}/,
+        );
+        expect(btnBlock).not.toBeNull();
+        expect(btnBlock![0]).toContain('background: #f5f5f5');
+    });
+
+    it('dark mode mermaid toolbar button has dark border and background', () => {
+        const darkBtn = css.match(
+            /\.dark\s+\.mermaid-node-view-toolbar\s+button\s*\{[^}]+\}/,
+        );
+        expect(darkBtn).not.toBeNull();
+        expect(darkBtn![0]).toContain('border-color: #555');
+        expect(darkBtn![0]).toContain('background: #2d2d2d');
+    });
 });

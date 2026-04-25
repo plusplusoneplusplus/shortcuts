@@ -121,7 +121,7 @@ describe('MermaidBlockView', () => {
     it('renders in preview mode by default', () => {
         render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
         expect(document.querySelector('pre.mermaid')).not.toBeNull();
-        expect(document.querySelector('pre.mermaid-block-source')).toBeNull();
+        expect(document.querySelector('pre.mermaid-node-view-source')).toBeNull();
     });
 
     it('calls ensureMermaid on mount', async () => {
@@ -143,14 +143,14 @@ describe('MermaidBlockView', () => {
             render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
         });
 
-        const btn = screen.getByRole('button', { name: 'Source' });
+        const btn = screen.getByRole('button', { name: /Source/ });
         await act(async () => {
             btn.click();
         });
 
-        expect(document.querySelector('pre.mermaid-block-source')).not.toBeNull();
+        expect(document.querySelector('pre.mermaid-node-view-source')).not.toBeNull();
         expect(document.querySelector('pre.mermaid')).toBeNull();
-        expect(screen.getByRole('button', { name: 'Preview' })).not.toBeNull();
+        expect(screen.getByRole('button', { name: /Preview/ })).not.toBeNull();
     });
 
     it('toggle button switches back from source to preview mode', async () => {
@@ -158,18 +158,18 @@ describe('MermaidBlockView', () => {
             render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
         });
 
-        const sourceBtn = screen.getByRole('button', { name: 'Source' });
+        const sourceBtn = screen.getByRole('button', { name: /Source/ });
         await act(async () => {
             sourceBtn.click();
         });
 
-        const previewBtn = screen.getByRole('button', { name: 'Preview' });
+        const previewBtn = screen.getByRole('button', { name: /Preview/ });
         await act(async () => {
             previewBtn.click();
         });
 
         expect(document.querySelector('pre.mermaid')).not.toBeNull();
-        expect(document.querySelector('pre.mermaid-block-source')).toBeNull();
+        expect(document.querySelector('pre.mermaid-node-view-source')).toBeNull();
     });
 
     it('shows error state when ensureMermaid rejects', async () => {
@@ -179,27 +179,9 @@ describe('MermaidBlockView', () => {
             render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
         });
 
-        const errorDiv = document.querySelector('.mermaid-block-error');
+        const errorDiv = document.querySelector('.mermaid-node-view-error');
         expect(errorDiv).not.toBeNull();
         expect(errorDiv?.textContent).toBe('CDN load failed');
-    });
-
-    it('applies mermaid-block-selected class when selected is true', async () => {
-        await act(async () => {
-            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B', true)} />);
-        });
-
-        const wrapper = document.querySelector('.mermaid-block-wrapper');
-        expect(wrapper?.classList.contains('mermaid-block-selected')).toBe(true);
-    });
-
-    it('does not apply mermaid-block-selected class when selected is false', async () => {
-        await act(async () => {
-            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B', false)} />);
-        });
-
-        const wrapper = document.querySelector('.mermaid-block-wrapper');
-        expect(wrapper?.classList.contains('mermaid-block-selected')).toBe(false);
     });
 
     it('has data-drag-handle on the root wrapper', async () => {
@@ -207,7 +189,7 @@ describe('MermaidBlockView', () => {
             render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
         });
 
-        const wrapper = document.querySelector('.mermaid-block-wrapper');
+        const wrapper = document.querySelector('.mermaid-node-view');
         expect(wrapper?.hasAttribute('data-drag-handle')).toBe(true);
     });
 
@@ -235,10 +217,42 @@ describe('MermaidBlockView', () => {
         });
 
         await act(async () => {
-            screen.getByRole('button', { name: 'Source' }).click();
+            screen.getByRole('button', { name: /Source/ }).click();
         });
 
-        const codeEl = document.querySelector('pre.mermaid-block-source code');
+        const codeEl = document.querySelector('pre.mermaid-node-view-source code');
         expect(codeEl?.textContent).toBe('graph TD\n  A-->B');
+    });
+
+    it('wraps preview in mermaid-node-view-preview div', async () => {
+        await act(async () => {
+            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
+        });
+
+        const previewWrapper = document.querySelector('.mermaid-node-view-preview');
+        expect(previewWrapper).not.toBeNull();
+        expect(previewWrapper?.querySelector('pre.mermaid')).not.toBeNull();
+    });
+
+    it('button label includes icon prefix in preview mode', async () => {
+        await act(async () => {
+            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
+        });
+
+        const btn = screen.getByRole('button', { name: /Source/ });
+        expect(btn.textContent).toContain('</>');
+    });
+
+    it('button label includes icon prefix in source mode', async () => {
+        await act(async () => {
+            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
+        });
+
+        await act(async () => {
+            screen.getByRole('button', { name: /Source/ }).click();
+        });
+
+        const btn = screen.getByRole('button', { name: /Preview/ });
+        expect(btn.textContent).toContain('▶');
     });
 });
