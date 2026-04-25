@@ -2,7 +2,7 @@
  * ProcessLifecycleRunner — selected-skills directive tests.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
@@ -654,5 +654,106 @@ describe('ProcessLifecycleRunner — metadata.notePath from context.noteChat', (
         const proc = await store.getProcess(processId);
         expect(proc?.metadata?.notePath).toBeUndefined();
         expect(proc?.metadata?.noteTitle).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// Title generation gating by task type
+// ============================================================================
+
+describe('ProcessLifecycleRunner — title generation gating', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let onGenerateTitle: ReturnType<typeof vi.fn>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useFakeTimers();
+        store = createMockProcessStore();
+        onGenerateTitle = vi.fn();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', onGenerateTitle);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('does NOT call onGenerateTitle for run-script tasks', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            displayName: undefined as any,
+            payload: { kind: 'run-script', script: 'npm test' } as any,
+        });
+        await runner.run(task, makeOpts());
+        vi.runAllTimers();
+        expect(onGenerateTitle).not.toHaveBeenCalled();
+    });
+
+    it('calls onGenerateTitle for chat tasks', async () => {
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+        expect(onGenerateTitle).not.toHaveBeenCalled(); // not yet — still in setTimeout
+        vi.runAllTimers();
+        expect(onGenerateTitle).toHaveBeenCalledOnce();
+    });
+
+    it('sets deterministic title from first script line for run-script tasks', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            displayName: undefined as any,
+            payload: { kind: 'run-script', script: '# comment\nnpm install\nnpm test' } as any,
+        });
+        await runner.run(task, makeOpts());
+        vi.runAllTimers();
+        // Flush async IIFE microtasks
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.title).toBe('npm install');
+    });
+
+    it('uses task.displayName as title when set for run-script tasks', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            displayName: 'Nightly build',
+            payload: { kind: 'run-script', script: 'npm run build' } as any,
+        });
+        await runner.run(task, makeOpts());
+        vi.runAllTimers();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.title).toBe('Nightly build');
+    });
+
+    it('does not overwrite an existing title for run-script tasks', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            displayName: undefined as any,
+            payload: { kind: 'run-script', script: 'echo hello' } as any,
+        });
+        const processId = `queue_${task.id}`;
+        // Intercept addProcess to inject an existing title, simulating a re-run
+        // after the title was already set by a previous execution.
+        const origAddProcess = store.addProcess as ReturnType<typeof vi.fn>;
+        store.addProcess = vi.fn(async (proc: any) => {
+            await origAddProcess(proc);
+            const created = store.processes.get(proc.id);
+            if (created) {
+                store.processes.set(proc.id, { ...created, title: 'existing title' });
+            }
+        }) as any;
+
+        await runner.run(task, makeOpts());
+        vi.runAllTimers();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.title).toBe('existing title');
     });
 });

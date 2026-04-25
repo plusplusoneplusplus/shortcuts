@@ -47,8 +47,10 @@ import {
     isChatFollowUp,
     isChatPayload,
     isRunWorkflowPayload,
+    isRunScriptPayload,
     hasNoteChatContext,
 } from '../task-types';
+import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
 
 // ============================================================================
@@ -391,7 +393,25 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     }
                 }
 
-                setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
+                if (isRunScriptPayload(task.payload as Record<string, unknown>)) {
+                    // Deterministic title for script tasks — no AI call needed.
+                    const scriptPayload = task.payload as Record<string, unknown>;
+                    const titleText = task.displayName
+                        ?? deriveScriptTitle((scriptPayload.script as string | undefined) ?? '');
+                    void (async () => {
+                        try {
+                            const existing = await this.store.getProcess(processId);
+                            if (!existing?.title) {
+                                await this.store.updateProcess(processId, { title: titleText });
+                            }
+                        } catch (err) {
+                            const errMsg = err instanceof Error ? err.message : String(err);
+                            logger.warn(LogCategory.AI, `Script title persistence failed for ${processId}: ${errMsg}`);
+                        }
+                    })();
+                } else {
+                    setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
+                }
 
                 // Queue background memory review if conversation was substantial
                 if (this.onBackgroundReview) {

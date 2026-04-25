@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { deriveScriptTitle } from '../../src/server/executors/title-generator';
 
 const TITLE_GEN_PATH = path.join(
     __dirname, '..', '..', 'src', 'server', 'executors', 'title-generator.ts'
@@ -66,5 +67,53 @@ describe('title-generator idempotency', () => {
 
     it('returns early if no user content is found', () => {
         expect(source).toContain('if (!firstUserContent) return');
+    });
+});
+
+// ============================================================================
+// deriveScriptTitle
+// ============================================================================
+
+describe('deriveScriptTitle', () => {
+    it('returns the first non-empty line for a simple command', () => {
+        expect(deriveScriptTitle('npm install')).toBe('npm install');
+    });
+
+    it('skips comment lines and returns first meaningful line', () => {
+        const script = `# install deps\nnpm install\nnpm run build`;
+        expect(deriveScriptTitle(script)).toBe('npm install');
+    });
+
+    it('skips blank lines before the first meaningful line', () => {
+        const script = `\n\nnpm test`;
+        expect(deriveScriptTitle(script)).toBe('npm test');
+    });
+
+    it('handles multi-line script with mixed comments and blanks', () => {
+        const script = `# Step 1\n# Step 2\n\ngit status`;
+        expect(deriveScriptTitle(script)).toBe('git status');
+    });
+
+    it('truncates long first lines to 60 characters', () => {
+        const longLine = 'a'.repeat(80);
+        expect(deriveScriptTitle(longLine)).toBe('a'.repeat(60));
+        expect(deriveScriptTitle(longLine).length).toBe(60);
+    });
+
+    it('returns "Script" for an empty string', () => {
+        expect(deriveScriptTitle('')).toBe('Script');
+    });
+
+    it('returns "Script" for a comment-only script', () => {
+        expect(deriveScriptTitle('# just a comment\n# another comment')).toBe('Script');
+    });
+
+    it('returns "Script" for a whitespace-only script', () => {
+        expect(deriveScriptTitle('   \n  \n')).toBe('Script');
+    });
+
+    it('returns the line as-is when exactly 60 characters', () => {
+        const line = 'x'.repeat(60);
+        expect(deriveScriptTitle(line)).toBe(line);
     });
 });

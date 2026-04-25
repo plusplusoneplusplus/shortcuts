@@ -11,6 +11,27 @@
 import type { ConversationTurn, CopilotSDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 
+const SCRIPT_TITLE_MAX_LEN = 60;
+
+/**
+ * Derive a short, human-readable title from a shell script without any AI call.
+ *
+ * Takes the first non-empty, non-comment line and truncates it to
+ * SCRIPT_TITLE_MAX_LEN characters. Falls back to "Script" for empty/comment-only input.
+ */
+export function deriveScriptTitle(script: string): string {
+    const lines = script.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+            return trimmed.length > SCRIPT_TITLE_MAX_LEN
+                ? trimmed.substring(0, SCRIPT_TITLE_MAX_LEN)
+                : trimmed;
+        }
+    }
+    return 'Script';
+}
+
 export function generateTitleIfNeeded(
     processId: string,
     turns: ConversationTurn[],
