@@ -45,6 +45,10 @@ vi.mock('@tiptap/extension-highlight', () => ({ default: { configure: () => ({})
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
 }));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock',
+    () => ({ MermaidBlock: {} }),
+);
 vi.mock('@sereneinserenade/tiptap-comment-extension', () => ({
     CommentExtension: { configure: () => ({}) },
 }));

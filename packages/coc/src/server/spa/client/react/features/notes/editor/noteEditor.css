@@ -424,3 +424,112 @@
     border-left-color: rgba(255, 212, 0, 0.7);
     background-color: rgba(255, 212, 0, 0.08);
 }
+
+
+/* ── Mermaid block node view ─────────────────────────────────────────────── */
+
+.mermaid-node-view {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 0.75rem 0;
+}
+
+/* ProseMirror sets this class on the selected node */
+.mermaid-node-view.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
+.mermaid-node-view-toolbar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.mermaid-node-view-toolbar button {
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.mermaid-node-view-toolbar button:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+.mermaid-node-view-preview {
+    min-height: 60px;
+    padding: 12px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+}
+
+/* SVG rendered by mermaid is display:block by default; center it */
+.mermaid-node-view-preview svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mermaid-node-view-source {
+    font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.03);
+    white-space: pre-wrap;
+    overflow: auto;
+    margin: 0;
+    border: none;
+    resize: vertical;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mermaid-node-view-error {
+    color: #b91c1c;
+    font-size: 12px;
+    padding: 6px 10px;
+    background: rgba(185, 28, 28, 0.05);
+    border-top: 1px solid rgba(185, 28, 28, 0.15);
+}
+
+/* Dark mode — Mermaid block node view */
+.dark .mermaid-node-view {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.dark .mermaid-node-view.ProseMirror-selectednode {
+    outline-color: #4fc3f7;
+}
+
+.dark .mermaid-node-view-toolbar {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .mermaid-node-view-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark .mermaid-node-view-source {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d4d4d4;
+}
+
+.dark .mermaid-node-view-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+    border-top-color: rgba(248, 113, 113, 0.2);
+}

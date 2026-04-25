@@ -20,6 +20,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import { ResizableImage } from './extensions/resizableImage';
+import { MermaidBlock } from './extensions/mermaidBlock';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 
@@ -69,6 +70,7 @@ export function RichEditorCore({
 
     const editor = useEditor({
         extensions: [
+            MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
             }),
