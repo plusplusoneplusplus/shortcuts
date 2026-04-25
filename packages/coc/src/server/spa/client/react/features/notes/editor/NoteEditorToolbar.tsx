@@ -45,9 +45,21 @@ interface TBProps {
     command: () => void;
     activeName?: string;
     activeAttrs?: Record<string, unknown>;
+    /** Extra classes (e.g. wider width for heading buttons). */
+    className?: string;
 }
 
-function TB({ editor, label, icon, command, activeName, activeAttrs }: TBProps) {
+/** Render text-mark icons with appropriate HTML formatting. */
+function renderIcon(icon: string): ReactNode {
+    switch (icon) {
+        case 'B': return <strong className="font-bold">B</strong>;
+        case 'I': return <em className="italic">I</em>;
+        case 'S̶': return <s>S</s>;
+        default: return icon;
+    }
+}
+
+function TB({ editor, label, icon, command, activeName, activeAttrs, className }: TBProps) {
     const isActive = activeName ? editor.isActive(activeName, activeAttrs) : false;
     return (
         <button
@@ -56,14 +68,15 @@ function TB({ editor, label, icon, command, activeName, activeAttrs }: TBProps) 
             aria-label={label}
             className={
                 'h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
-                (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '')
+                (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '') +
+                (className ? ' ' + className : '')
             }
             onMouseDown={(e) => {
                 e.preventDefault(); // keep editor focus
                 command();
             }}
         >
-            {icon}
+            {renderIcon(icon)}
         </button>
     );
 }
@@ -191,51 +204,54 @@ function TableControls({ editor }: TableControlsProps) {
     if (!editor.isActive('table')) return null;
 
     const tc = () => editor.chain().focus();
+    const btnCls = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
 
     return (
-        <>
-            <Sep />
+        <div
+            className="flex items-center gap-0.5 px-2 py-0.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a] text-xs"
+            data-testid="table-controls-row"
+        >
             {/* Column operations */}
             <button type="button" title="Add column before" aria-label="Add column before"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().addColumnBefore().run(); }}>
-                ◀+
+                Add Col ←
             </button>
             <button type="button" title="Add column after" aria-label="Add column after"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().addColumnAfter().run(); }}>
-                +▶
+                Add Col →
             </button>
             <button type="button" title="Delete column" aria-label="Delete column"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteColumn().run(); }}>
-                ✕col
+                Del Col
             </button>
             <Sep />
             {/* Row operations */}
             <button type="button" title="Add row before" aria-label="Add row before"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().addRowBefore().run(); }}>
-                ▲+
+                Add Row ↑
             </button>
             <button type="button" title="Add row after" aria-label="Add row after"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().addRowAfter().run(); }}>
-                +▼
+                Add Row ↓
             </button>
             <button type="button" title="Delete row" aria-label="Delete row"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteRow().run(); }}>
-                ✕row
+                Del Row
             </button>
             <Sep />
             {/* Table-level */}
             <button type="button" title="Delete table" aria-label="Delete table"
-                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteTable().run(); }}>
-                ✕tbl
+                Del Table
             </button>
-        </>
+        </div>
     );
 }
 
@@ -258,6 +274,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
     }
 
     return (
+        <>
         <div
             className="flex items-center gap-0.5 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap"
             role="toolbar"
@@ -275,9 +292,9 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                     <Sep />
 
                     {/* Headings */}
-                    <TB editor={editor} label="Heading 1" icon="H1" command={() => c().toggleHeading({ level: 1 }).run()} activeName="heading" activeAttrs={{ level: 1 }} />
-                    <TB editor={editor} label="Heading 2" icon="H2" command={() => c().toggleHeading({ level: 2 }).run()} activeName="heading" activeAttrs={{ level: 2 }} />
-                    <TB editor={editor} label="Heading 3" icon="H3" command={() => c().toggleHeading({ level: 3 }).run()} activeName="heading" activeAttrs={{ level: 3 }} />
+                    <TB editor={editor} label="Heading 1" icon="H1" command={() => c().toggleHeading({ level: 1 }).run()} activeName="heading" activeAttrs={{ level: 1 }} className="w-8 text-sm" />
+                    <TB editor={editor} label="Heading 2" icon="H2" command={() => c().toggleHeading({ level: 2 }).run()} activeName="heading" activeAttrs={{ level: 2 }} className="w-8 text-xs font-semibold" />
+                    <TB editor={editor} label="Heading 3" icon="H3" command={() => c().toggleHeading({ level: 3 }).run()} activeName="heading" activeAttrs={{ level: 3 }} className="w-8 text-xs" />
                     <Sep />
 
                     {/* Lists */}
@@ -304,9 +321,6 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                         icon="⊞"
                         command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
                     />
-
-                    {/* Table — contextual operations (visible only inside a table) */}
-                    <TableControls editor={editor} />
                 </>
             )}
 
@@ -355,5 +369,8 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                 </>
             )}
         </div>
+        {/* Table controls — secondary row, visible only when inside a table */}
+        {!hidden && <TableControls editor={editor} />}
+        </>
     );
 }

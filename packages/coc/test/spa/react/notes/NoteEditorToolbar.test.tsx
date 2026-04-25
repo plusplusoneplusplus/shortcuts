@@ -223,3 +223,69 @@ describe('NoteEditorToolbar — highlight controls', () => {
         expect(screen.queryByTestId('chat-panel-toggle')).toBeNull();
     });
 });
+
+describe('NoteEditorToolbar — table controls secondary row', () => {
+    it('renders table controls in a separate secondary row below the toolbar', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const secondaryRow = screen.getByTestId('table-controls-row');
+        expect(secondaryRow).toBeDefined();
+        expect(secondaryRow.className).toContain('border-b');
+    });
+
+    it('does not render secondary row when not in a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('table-controls-row')).toBeNull();
+    });
+
+    it('table buttons use clear labels instead of cryptic symbols', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Add column before').textContent).toContain('Add Col');
+        expect(screen.getByLabelText('Add column after').textContent).toContain('Add Col');
+        expect(screen.getByLabelText('Delete column').textContent).toContain('Del Col');
+        expect(screen.getByLabelText('Add row before').textContent).toContain('Add Row');
+        expect(screen.getByLabelText('Add row after').textContent).toContain('Add Row');
+        expect(screen.getByLabelText('Delete row').textContent).toContain('Del Row');
+        expect(screen.getByLabelText('Delete table').textContent).toContain('Del Table');
+    });
+});
+
+describe('NoteEditorToolbar — styled text-mark buttons', () => {
+    it('Bold button renders with <strong> tag', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const boldBtn = screen.getByLabelText('Bold');
+        expect(boldBtn.querySelector('strong')).not.toBeNull();
+    });
+
+    it('Italic button renders with <em> tag', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const italicBtn = screen.getByLabelText('Italic');
+        expect(italicBtn.querySelector('em')).not.toBeNull();
+    });
+
+    it('Strikethrough button renders with <s> tag', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const strikeBtn = screen.getByLabelText('Strikethrough');
+        expect(strikeBtn.querySelector('s')).not.toBeNull();
+    });
+
+    it('Heading 1 button is wider (w-8) than standard buttons', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const h1Btn = screen.getByLabelText('Heading 1');
+        expect(h1Btn.className).toContain('w-8');
+        expect(h1Btn.className).toContain('text-sm');
+    });
+
+    it('Heading 2 button has semibold weight', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const h2Btn = screen.getByLabelText('Heading 2');
+        expect(h2Btn.className).toContain('font-semibold');
+    });
+});

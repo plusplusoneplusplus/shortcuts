@@ -146,7 +146,7 @@ describe('ScratchpadDivider — tab strip mode (files.length >= 2)', () => {
             onSelectFile: vi.fn(),
         });
         const outputTab = screen.getByTestId('scratchpad-tab-Output');
-        expect(outputTab.className).toContain('text-[#0078d4]');
+        expect(outputTab.className).toContain('border-[#0078d4]');
     });
 });
 
@@ -237,11 +237,11 @@ describe('ScratchpadDivider — vertical layout', () => {
         expect(divider.className).not.toContain('cursor-row-resize');
     });
 
-    it('uses w-7 class in vertical mode instead of h-7', () => {
+    it('uses w-8 class in vertical mode instead of h-8', () => {
         renderDivider({ layout: 'vertical' });
         const divider = screen.getByTestId('scratchpad-divider');
-        expect(divider.className).toContain('w-7');
-        expect(divider.className).not.toContain('h-7');
+        expect(divider.className).toContain('w-8');
+        expect(divider.className).not.toContain('h-8');
     });
 
     it('uses border-l in vertical mode instead of border-t', () => {
@@ -251,32 +251,28 @@ describe('ScratchpadDivider — vertical layout', () => {
         expect(divider.className).not.toContain('border-t');
     });
 
-    it('shows left arrow for expand-top button in vertical mode', () => {
+    it('renders SVG chevron-left icon for expand-top button in vertical mode', () => {
         renderDivider({ layout: 'vertical' });
         const btn = screen.getByTestId('scratchpad-expand-top-btn');
-        expect(btn.textContent).toBe('⬅');
+        expect(btn.querySelector('svg')).not.toBeNull();
     });
 
-    it('shows right arrow for expand-bottom button in vertical mode', () => {
+    it('renders SVG chevron-right icon for expand-bottom button in vertical mode', () => {
         renderDivider({ layout: 'vertical' });
         const btn = screen.getByTestId('scratchpad-expand-bottom-btn');
-        expect(btn.textContent).toBe('➡');
+        expect(btn.querySelector('svg')).not.toBeNull();
     });
 
-    it('shows horizontal grip (⋯⋯) in vertical mode', () => {
+    it('renders SVG grip icon in vertical mode', () => {
         renderDivider({ layout: 'vertical' });
-        const divider = screen.getByTestId('scratchpad-divider');
-        const grips = divider.querySelectorAll('[aria-hidden="true"]');
-        expect(grips.length).toBeGreaterThan(0);
-        expect(grips[0].textContent).toBe('⋯⋯');
+        const grip = screen.getByTestId('scratchpad-grip');
+        expect(grip.querySelector('svg')).not.toBeNull();
     });
 
-    it('shows vertical grip (⋮⋮) in horizontal mode', () => {
+    it('renders SVG grip icon in horizontal mode', () => {
         renderDivider({ layout: 'horizontal' });
-        const divider = screen.getByTestId('scratchpad-divider');
-        const grips = divider.querySelectorAll('[aria-hidden="true"]');
-        expect(grips.length).toBeGreaterThan(0);
-        expect(grips[0].textContent).toBe('⋮⋮');
+        const grip = screen.getByTestId('scratchpad-grip');
+        expect(grip.querySelector('svg')).not.toBeNull();
     });
 
     it('renders file button in vertical mode', () => {
@@ -288,5 +284,92 @@ describe('ScratchpadDivider — vertical layout', () => {
         renderDivider({ layout: 'vertical', isDragging: true });
         const divider = screen.getByTestId('scratchpad-divider');
         expect(divider.className).toContain('bg-[#e8f4fd]');
+    });
+});
+
+describe('ScratchpadDivider — Windows path handling', () => {
+    it('displays only filename from a Windows backslash path', () => {
+        renderDivider({ linkedNotePath: 'C:\\Users\\user\\tasks\\my-notes.md' });
+        const btn = screen.getByTestId('scratchpad-file-btn');
+        expect(btn.textContent).toContain('my-notes');
+        expect(btn.textContent).not.toContain('C:\\');
+        expect(btn.textContent).not.toContain('.md');
+    });
+
+    it('tab names show only filename from Windows paths', () => {
+        renderDivider({
+            files: ['C:\\Users\\user\\tasks\\output.md', 'C:\\Users\\user\\tasks\\notes.md'],
+            linkedNotePath: 'C:\\Users\\user\\tasks\\output.md',
+            onSelectFile: vi.fn(),
+        });
+        expect(screen.getByTestId('scratchpad-tab-output').textContent).toBe('output');
+        expect(screen.getByTestId('scratchpad-tab-notes').textContent).toBe('notes');
+    });
+
+    it('handles mixed separators in paths', () => {
+        renderDivider({ linkedNotePath: 'C:\\Users/tasks\\plan.md' });
+        const btn = screen.getByTestId('scratchpad-file-btn');
+        expect(btn.textContent).toContain('plan');
+        expect(btn.textContent).not.toContain('C:\\');
+    });
+});
+
+describe('ScratchpadDivider — SVG icons', () => {
+    it('expand-top button renders SVG icon in horizontal mode', () => {
+        renderDivider({ layout: 'horizontal' });
+        const btn = screen.getByTestId('scratchpad-expand-top-btn');
+        expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('expand-bottom button renders SVG icon in horizontal mode', () => {
+        renderDivider({ layout: 'horizontal' });
+        const btn = screen.getByTestId('scratchpad-expand-bottom-btn');
+        expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('split button renders SVG icon', () => {
+        renderDivider();
+        const btn = screen.getByTestId('scratchpad-split-btn');
+        expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('close button renders SVG icon', () => {
+        renderDivider();
+        const btn = screen.getByTestId('scratchpad-close-btn');
+        expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('file button contains SVG file icon', () => {
+        renderDivider({ linkedNotePath: 'notes.md' });
+        const btn = screen.getByTestId('scratchpad-file-btn');
+        expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('active-mode button has highlighted background', () => {
+        renderDivider({ expandMode: 'top' });
+        const btn = screen.getByTestId('scratchpad-expand-top-btn');
+        expect(btn.className).toContain('bg-[#dbeeff]');
+    });
+});
+
+describe('ScratchpadDivider — tab strip overflow fade', () => {
+    it('renders right-edge fade overlay in tab mode', () => {
+        renderDivider({
+            files: ['a.md', 'b.md'],
+            linkedNotePath: 'a.md',
+            onSelectFile: vi.fn(),
+        });
+        expect(screen.getByTestId('scratchpad-tab-fade')).toBeTruthy();
+    });
+
+    it('active tab has elevated background', () => {
+        renderDivider({
+            files: ['a.md', 'b.md'],
+            linkedNotePath: 'a.md',
+            onSelectFile: vi.fn(),
+        });
+        const activeTab = screen.getByTestId('scratchpad-tab-a');
+        expect(activeTab.className).toContain('bg-white');
+        expect(activeTab.className).toContain('font-medium');
     });
 });
