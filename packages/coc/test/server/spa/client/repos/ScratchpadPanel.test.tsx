@@ -366,6 +366,22 @@ describe('ScratchpadPanel — Comment integration', () => {
         expect(screen.queryByTestId('scratchpad-comments-panel')).toBeNull();
     });
 
+    it('NoteEditor wrapper does not have overflow-hidden (scroll regression guard)', () => {
+        render(
+            <ScratchpadPanel
+                workspaceId="ws1"
+                notePath="/note.md"
+                onClose={vi.fn()}
+                height="auto"
+            />
+        );
+        const noteEditor = screen.getByTestId('note-editor');
+        const wrapper = noteEditor.parentElement!;
+        expect(wrapper.className).not.toContain('overflow-hidden');
+        expect(wrapper.className).toContain('flex');
+        expect(wrapper.className).toContain('flex-col');
+    });
+
     it('does not render comments panel when notePath is null even if toggled', async () => {
         render(
             <ScratchpadPanel
