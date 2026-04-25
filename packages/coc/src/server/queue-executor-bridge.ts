@@ -208,7 +208,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
         try {
             const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) { await this.aiService.abortSession(proc.sdkSessionId); }
+            if (proc?.sdkSessionId) { await this.aiService.softAbortSession(proc.sdkSessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }

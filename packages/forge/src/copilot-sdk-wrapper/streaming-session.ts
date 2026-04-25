@@ -55,6 +55,8 @@ export interface IStreamableSession {
         attachments?: Attachment[];
         mode?: DeliveryMode;
     }) => Promise<string | void>;
+    /** Soft-abort: signals the SDK to stop in-flight work without destroying the session. */
+    abort?(): Promise<void>;
     destroy(): Promise<void>;
 }
 
@@ -329,8 +331,8 @@ export class StreamingSession {
                 this.sessionLog.debug({ infoType: event.data?.infoType, message: event.data?.message }, 'Session info');
                 break;
             case 'abort':
-                this.sessionLog.debug({ reason: event.data?.reason }, 'Session aborted');
-                this.settleError(new Error('Session aborted'));
+                this.sessionLog.debug({ reason: event.data?.reason }, 'Session aborted — settling with partial result');
+                this.settleWithResult();
                 break;
         }
     }

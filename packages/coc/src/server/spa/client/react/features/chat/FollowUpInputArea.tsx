@@ -29,6 +29,7 @@ export interface FollowUpInputAreaProps {
     setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
+    onStop?: () => void;
     skills: SkillItem[];
     attachments: ChatAttachment[];
     onAttachmentPaste: (e: React.ClipboardEvent) => void;
@@ -92,6 +93,7 @@ export function FollowUpInputArea({
     setSelectedMode,
     onSend,
     onRetry,
+    onStop,
     skills,
     attachments,
     onAttachmentPaste,
@@ -360,7 +362,7 @@ export function FollowUpInputArea({
                     <button
                         type="button"
                         className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
-                        onClick={() => { void onSend(undefined, 'immediate'); }}
+                        onClick={() => onStop?.()}
                         data-testid="activity-chat-stop-btn"
                     >
                         Stop

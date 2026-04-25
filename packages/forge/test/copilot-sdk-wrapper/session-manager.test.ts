@@ -221,6 +221,64 @@ describe('SessionManager', () => {
         expect(manager.count()).toBe(1);
     });
 
+    // ── softAbort ─────────────────────────────────────────────────────────────
+
+    it('softAbort returns false for unknown session', async () => {
+        const result = await manager.softAbort('ghost');
+        expect(result).toBe(false);
+    });
+
+    it('softAbort calls session.abort() when available', async () => {
+        const abortFn = vi.fn().mockResolvedValue(undefined);
+        const s = {
+            sessionId: 'soft1',
+            destroy: vi.fn().mockResolvedValue(undefined),
+            abort: abortFn,
+        };
+        manager.track(s);
+        const result = await manager.softAbort('soft1');
+        expect(result).toBe(true);
+        expect(abortFn).toHaveBeenCalledOnce();
+        // Does NOT call destroy — request-runner finally block handles that
+        expect(s.destroy).not.toHaveBeenCalled();
+        // Does NOT untrack — request-runner finally block handles that
+        expect(manager.has('soft1')).toBe(true);
+    });
+
+    it('softAbort falls back to destroy when abort() is not available', async () => {
+        const s = makeSession('no-abort');
+        manager.track(s);
+        const result = await manager.softAbort('no-abort');
+        expect(result).toBe(true);
+        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(manager.has('no-abort')).toBe(false);
+    });
+
+    it('softAbort falls back to destroy when abort() throws', async () => {
+        const s = {
+            sessionId: 'bad-abort',
+            destroy: vi.fn().mockResolvedValue(undefined),
+            abort: vi.fn().mockRejectedValue(new Error('abort failed')),
+        };
+        manager.track(s);
+        const result = await manager.softAbort('bad-abort');
+        expect(result).toBe(false);
+        expect(s.destroy).toHaveBeenCalledOnce();
+        expect(manager.has('bad-abort')).toBe(false);
+    });
+
+    it('softAbort handles both abort() and destroy() failing', async () => {
+        const s = {
+            sessionId: 'double-fail',
+            destroy: vi.fn().mockRejectedValue(new Error('destroy failed')),
+            abort: vi.fn().mockRejectedValue(new Error('abort failed')),
+        };
+        manager.track(s);
+        const result = await manager.softAbort('double-fail');
+        expect(result).toBe(false);
+        expect(manager.has('double-fail')).toBe(false);
+    });
+
     // ── stale session (destroy already resolved) ─────────────────────────────
 
     it('abortAll handles a session whose destroy was already resolved gracefully', async () => {

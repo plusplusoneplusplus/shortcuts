@@ -2262,8 +2262,8 @@ describe('CLITaskExecutor', () => {
         });
 
         it('cancelProcess should abort SDK session and mark task cancelled', async () => {
-            const mockAbortSession = vi.fn().mockResolvedValue(true);
-            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const mockSoftAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, softAbortSession: mockSoftAbortSession };
             const executor = new CLITaskExecutor(store, { aiService: aiService as any });
 
             // Seed the store with a process that has an sdkSessionId
@@ -2279,13 +2279,13 @@ describe('CLITaskExecutor', () => {
             await executor.cancelProcess('queue_task-cp-1');
 
             // Should add task-cp-1 to cancelledTasks (via replace('queue_', ''))
-            // and should call abortSession with the sdkSessionId
-            expect(mockAbortSession).toHaveBeenCalledWith('sdk-session-abc');
+            // and should call softAbortSession with the sdkSessionId
+            expect(mockSoftAbortSession).toHaveBeenCalledWith('sdk-session-abc');
         });
 
         it('cancelProcess should be a no-op when process has no sdkSessionId', async () => {
-            const mockAbortSession = vi.fn().mockResolvedValue(true);
-            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const mockSoftAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, softAbortSession: mockSoftAbortSession };
             const executor = new CLITaskExecutor(store, { aiService: aiService as any });
 
             store.getProcess.mockResolvedValue({
@@ -2298,12 +2298,12 @@ describe('CLITaskExecutor', () => {
 
             await executor.cancelProcess('queue_task-cp-2');
 
-            expect(mockAbortSession).not.toHaveBeenCalled();
+            expect(mockSoftAbortSession).not.toHaveBeenCalled();
         });
 
         it('cancelProcess routes through QueueExecutor.cancelTask when executor is set', async () => {
-            const mockAbortSession = vi.fn().mockResolvedValue(true);
-            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const mockSoftAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, softAbortSession: mockSoftAbortSession };
             const executor = new CLITaskExecutor(store, { aiService: aiService as any });
 
             const mockCancelTask = vi.fn();
@@ -2323,12 +2323,12 @@ describe('CLITaskExecutor', () => {
             // Should route through QueueExecutor.cancelTask with the task ID (queue_ stripped)
             expect(mockCancelTask).toHaveBeenCalledWith('task-qe-1');
             // Should still abort the SDK session
-            expect(mockAbortSession).toHaveBeenCalledWith('sdk-session-qe1');
+            expect(mockSoftAbortSession).toHaveBeenCalledWith('sdk-session-qe1');
         });
 
         it('cancelProcess falls back to cancelledTasks.add when no QueueExecutor', async () => {
-            const mockAbortSession = vi.fn().mockResolvedValue(true);
-            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const mockSoftAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, softAbortSession: mockSoftAbortSession };
             const executor = new CLITaskExecutor(store, { aiService: aiService as any });
             // Do NOT call setQueueExecutor
 

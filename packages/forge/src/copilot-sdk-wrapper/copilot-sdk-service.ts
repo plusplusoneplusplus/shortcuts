@@ -145,6 +145,15 @@ export class CopilotSDKService {
     }
 
     /**
+     * Soft-abort a running session (Esc+Esc equivalent).
+     * Calls session.abort() to stop in-flight work, then the streaming promise
+     * settles with a partial result. The session stays alive for potential reuse.
+     */
+    public async softAbortSession(sessionId: string): Promise<boolean> {
+        return this.sessionManager.softAbort(sessionId);
+    }
+
+    /**
      * Steer a running session by injecting an immediate message.
      * Returns true if the session was found and the message was sent.
      */

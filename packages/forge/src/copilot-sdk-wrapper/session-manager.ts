@@ -55,6 +55,49 @@ export class SessionManager {
     }
 
     /**
+     * Soft-abort an active session by calling the SDK's abort() method.
+     * This signals the CLI to stop in-flight work without destroying the session.
+     * The streaming promise settles with a partial result; the request-runner
+     * finally block handles destroy() and untrack().
+     *
+     * Falls back to hard destroy if abort() is unavailable or fails.
+     *
+     * @returns `true` if the session was found and soft-aborted, `false` otherwise.
+     */
+    async softAbort(sessionId: string): Promise<boolean> {
+        const sessionLog = createSessionLogger(sessionId);
+
+        const session = this.activeSessions.get(sessionId);
+        if (!session) {
+            sessionLog.debug('Session not found for soft abort');
+            return false;
+        }
+
+        sessionLog.debug('Soft-aborting session');
+
+        try {
+            if ('abort' in session && typeof (session as any).abort === 'function') {
+                await (session as any).abort();
+                sessionLog.debug('Session soft-aborted successfully');
+                return true;
+            }
+            // No abort method — fall back to hard destroy
+            sessionLog.debug('Session has no abort() — falling back to hard destroy');
+            await session.destroy();
+            this.activeSessions.delete(sessionId);
+            return true;
+        } catch (error) {
+            sessionLog.error(
+                { err: error instanceof Error ? error : undefined },
+                'Error soft-aborting session — falling back to hard destroy',
+            );
+            try { await session.destroy(); } catch { /* best effort */ }
+            this.activeSessions.delete(sessionId);
+            return false;
+        }
+    }
+
+    /**
      * Abort an active session by its ID.
      * Destroys the session and removes it from tracking.
      *

@@ -185,15 +185,45 @@ describe('StreamingSession — cancellation', () => {
         expect(result.response).toBe('ping');
     });
 
-    it('abort event: Streaming → Cancelled promptly', async () => {
+    it('abort event: Streaming → Settled with partial result (soft abort)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        // Emit some content, then abort
+        emit({ type: 'assistant.message', data: { content: 'partial response' } });
+        emit({ type: 'abort', data: { reason: 'user cancelled' } });
+
+        const result = await promise;
+        expect(result.response).toBe('partial response');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('abort event with no content: Streaming → Settled with empty result', async () => {
         const { session, emit } = makeMockSession();
         const ss = new StreamingSession();
         const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
 
         emit({ type: 'abort', data: { reason: 'user cancelled' } });
 
-        await expect(promise).rejects.toThrow('Session aborted');
-        expect((ss as any).state).toBe(StreamingState.Cancelled);
+        const result = await promise;
+        expect(result.response).toBe('');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('abort followed by session.idle does not double-resolve', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'data' } });
+        emit({ type: 'abort', data: { reason: 'user cancelled' } });
+        // session.idle fires right after abort — should be no-op
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.response).toBe('data');
+        expect((ss as any).state).toBe(StreamingState.Settled);
     });
 });
 

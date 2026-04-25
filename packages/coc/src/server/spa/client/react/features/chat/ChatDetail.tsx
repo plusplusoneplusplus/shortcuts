@@ -685,6 +685,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         void sendFollowUp(lastFailedMessageRef.current);
     };
 
+    const handleStop = useCallback(async () => {
+        if (!processId) return;
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
+        } catch { /* best-effort: SSE will reflect the actual state */ }
+    }, [processId]);
+
     // ── Per-turn actions: delete, pin, archive ──
     const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
 
@@ -898,6 +905,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             setSelectedMode={setSelectedMode}
                             onSend={sendFollowUp}
                             onRetry={retryLastMessage}
+                            onStop={handleStop}
                             skills={skills}
                             attachments={attachments}
                             onAttachmentPaste={addFromPaste}
@@ -977,6 +985,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
+                    onStop={handleStop}
                     skills={skills}
                     attachments={attachments}
                     onAttachmentPaste={addFromPaste}

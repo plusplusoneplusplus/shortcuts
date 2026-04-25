@@ -1137,10 +1137,10 @@ describe('ChatDetail', () => {
             expect(cancelBlock).toContain("method: 'DELETE'");
         });
 
-        it('stop button in FollowUpInputArea sends immediate delivery on click', () => {
+        it('stop button in FollowUpInputArea calls onStop on click', () => {
             const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
             const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
-            expect(stopBtnBlock).toContain("void onSend(undefined, 'immediate')");
+            expect(stopBtnBlock).toContain('onStop?.()');
         });
 
         it('stop button is shown when sending', () => {
@@ -1185,15 +1185,14 @@ describe('ChatDetail', () => {
             expect(stopBtnBlock).toContain('f14c4c');
         });
 
-        it('stop button invokes onSend with immediate mode on click', () => {
+        it('stop button invokes onStop callback on click', () => {
             const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
             const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
-            expect(stopBtnBlock).toContain('onSend');
+            expect(stopBtnBlock).toContain('onStop');
         });
 
-        it('FollowUpInputArea does not declare onStop prop (stop uses onSend)', () => {
-            // The stop button now calls onSend(undefined, 'immediate') instead of a separate onStop
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('onStop?:');
+        it('FollowUpInputArea declares onStop prop for cancel API', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onStop?:');
         });
 
         it('send button text is "Send" (no longer shows "...")', () => {
@@ -1201,6 +1200,20 @@ describe('ChatDetail', () => {
             const sendBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(sendBtnIdx - 10, sendBtnIdx + 100);
             expect(sendBtnBlock).toContain('Send');
             expect(sendBtnBlock).not.toContain('...');
+        });
+    });
+
+    describe('handleStop calls cancel API', () => {
+        it('ChatDetail defines handleStop that POSTs to cancel endpoint', () => {
+            const handleStopIdx = source.indexOf('handleStop');
+            expect(handleStopIdx).toBeGreaterThan(-1);
+            const handleStopBlock = source.substring(handleStopIdx, handleStopIdx + 300);
+            expect(handleStopBlock).toContain('/cancel');
+            expect(handleStopBlock).toContain("method: 'POST'");
+        });
+
+        it('ChatDetail passes onStop={handleStop} to FollowUpInputArea', () => {
+            expect(source).toContain('onStop={handleStop}');
         });
     });
 
