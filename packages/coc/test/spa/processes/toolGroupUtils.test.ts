@@ -6,6 +6,8 @@ import {
     groupConsecutiveToolChunks,
     isSingleLineHtml,
     filterWhisperChunks,
+    extractDeletedPathsFromCommand,
+    isDeletePathMatch,
 } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
@@ -1829,5 +1831,257 @@ describe('filterWhisperChunks', () => {
         const wg = result[0] as WhisperGroupChunk;
         expect(wg.summary.fileEditCount).toBeUndefined();
         expect(wg.summary.fileEdits).toBeUndefined();
+    });
+
+    // ── File deletion detection ────────────────────────────────────────────
+
+    it('marks file as isDeleted when a shell rm command targets a tracked file', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/temp.ts', file_text: 'a\nb\nc' } }],
+            ['t2', { toolName: 'bash', status: 'completed', args: { command: 'rm src/temp.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        expect(wg.summary.deletedFileCount).toBe(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.isDeleted).toBe(true);
+        expect(fe.isCreate).toBe(true);
+    });
+
+    it('marks file as isDeleted with rm -f flag', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'edit', status: 'completed', args: { path: 'src/utils.ts', old_str: 'a', new_str: 'b' } }],
+            ['t2', { toolName: 'shell', status: 'completed', args: { command: 'rm -f src/utils.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBe(1);
+        expect(wg.summary.fileEdits![0].isDeleted).toBe(true);
+    });
+
+    it('marks file as isDeleted when git rm is used', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/file.ts', file_text: 'code' } }],
+            ['t2', { toolName: 'bash', status: 'completed', args: { command: 'git rm src/file.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBe(1);
+        expect(wg.summary.fileEdits![0].isDeleted).toBe(true);
+    });
+
+    it('detects deletion in chained command (&&)', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/temp.ts', file_text: 'x' } }],
+            ['t2', { toolName: 'powershell', status: 'completed', args: { command: 'npm run build && rm src/temp.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBe(1);
+    });
+
+    it('does not mark non-matching files as deleted', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/keep.ts', file_text: 'keep' } }],
+            ['t2', { toolName: 'bash', status: 'completed', args: { command: 'rm src/other.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBeUndefined();
+        expect(wg.summary.fileEdits![0].isDeleted).toBe(false);
+    });
+
+    it('deletedFileCount is undefined when no deletions detected', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/file.ts', file_text: 'code' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBeUndefined();
+        expect(wg.summary.fileEdits![0].isDeleted).toBe(false);
+    });
+
+    it('detects Remove-Item deletion (PowerShell)', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/temp.ts', file_text: 'x' } }],
+            ['t2', { toolName: 'powershell', status: 'completed', args: { command: 'Remove-Item -Force src/temp.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.deletedFileCount).toBe(1);
+    });
+
+    it('handles multiple files where only some are deleted', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/a.ts', file_text: 'a' } }],
+            ['t2', { toolName: 'create', status: 'completed', args: { path: 'src/b.ts', file_text: 'b' } }],
+            ['t3', { toolName: 'bash', status: 'completed', args: { command: 'rm src/a.ts' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(2);
+        expect(wg.summary.deletedFileCount).toBe(1);
+        const deleted = wg.summary.fileEdits!.find(f => f.path === 'src/a.ts');
+        const kept = wg.summary.fileEdits!.find(f => f.path === 'src/b.ts');
+        expect(deleted!.isDeleted).toBe(true);
+        expect(kept!.isDeleted).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// extractDeletedPathsFromCommand
+// ---------------------------------------------------------------------------
+
+describe('extractDeletedPathsFromCommand', () => {
+    it('extracts path from simple rm command', () => {
+        expect(extractDeletedPathsFromCommand('rm src/temp.ts')).toEqual(['src/temp.ts']);
+    });
+
+    it('extracts path from rm -f', () => {
+        expect(extractDeletedPathsFromCommand('rm -f src/file.ts')).toEqual(['src/file.ts']);
+    });
+
+    it('extracts path from rm -rf', () => {
+        expect(extractDeletedPathsFromCommand('rm -rf build/')).toEqual(['build/']);
+    });
+
+    it('extracts path from git rm', () => {
+        expect(extractDeletedPathsFromCommand('git rm src/old.ts')).toEqual(['src/old.ts']);
+    });
+
+    it('extracts path from git rm --cached', () => {
+        expect(extractDeletedPathsFromCommand('git rm --cached src/old.ts')).toEqual(['src/old.ts']);
+    });
+
+    it('extracts path from del (Windows)', () => {
+        expect(extractDeletedPathsFromCommand('del /f src\\temp.ts')).toEqual(['src/temp.ts']);
+    });
+
+    it('extracts path from Remove-Item (PowerShell)', () => {
+        expect(extractDeletedPathsFromCommand('Remove-Item -Force src/temp.ts')).toEqual(['src/temp.ts']);
+    });
+
+    it('extracts path from unlink', () => {
+        expect(extractDeletedPathsFromCommand('unlink src/link.ts')).toEqual(['src/link.ts']);
+    });
+
+    it('handles chained commands with &&', () => {
+        const result = extractDeletedPathsFromCommand('npm run build && rm src/temp.ts');
+        expect(result).toEqual(['src/temp.ts']);
+    });
+
+    it('handles chained commands with ;', () => {
+        const result = extractDeletedPathsFromCommand('echo done; rm -f src/temp.ts');
+        expect(result).toEqual(['src/temp.ts']);
+    });
+
+    it('strips leading ./ from paths', () => {
+        expect(extractDeletedPathsFromCommand('rm ./src/temp.ts')).toEqual(['src/temp.ts']);
+    });
+
+    it('handles quoted paths', () => {
+        expect(extractDeletedPathsFromCommand('rm "src/my file.ts"')).toEqual(['src/my file.ts']);
+    });
+
+    it('returns empty array for non-delete commands', () => {
+        expect(extractDeletedPathsFromCommand('npm run build')).toEqual([]);
+        expect(extractDeletedPathsFromCommand('echo hello')).toEqual([]);
+    });
+
+    it('handles sudo prefix', () => {
+        expect(extractDeletedPathsFromCommand('sudo rm /tmp/file.txt')).toEqual(['/tmp/file.txt']);
+    });
+
+    it('extracts multiple paths from one rm command', () => {
+        const result = extractDeletedPathsFromCommand('rm src/a.ts src/b.ts');
+        expect(result).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// isDeletePathMatch
+// ---------------------------------------------------------------------------
+
+describe('isDeletePathMatch', () => {
+    it('matches exact paths', () => {
+        expect(isDeletePathMatch('src/file.ts', 'src/file.ts')).toBe(true);
+    });
+
+    it('matches with suffix (relative vs absolute)', () => {
+        expect(isDeletePathMatch('file.ts', 'src/file.ts')).toBe(true);
+    });
+
+    it('matches when deleted path is longer', () => {
+        expect(isDeletePathMatch('packages/coc/src/file.ts', 'src/file.ts')).toBe(true);
+    });
+
+    it('normalizes backslashes', () => {
+        expect(isDeletePathMatch('src\\file.ts', 'src/file.ts')).toBe(true);
+    });
+
+    it('strips leading ./', () => {
+        expect(isDeletePathMatch('./src/file.ts', 'src/file.ts')).toBe(true);
+    });
+
+    it('does not match different files', () => {
+        expect(isDeletePathMatch('src/other.ts', 'src/file.ts')).toBe(false);
+    });
+
+    it('does not match partial filename overlap', () => {
+        expect(isDeletePathMatch('file.ts', 'src/myfile.ts')).toBe(false);
+    });
+
+    it('returns false for empty paths', () => {
+        expect(isDeletePathMatch('', 'src/file.ts')).toBe(false);
+        expect(isDeletePathMatch('src/file.ts', '')).toBe(false);
     });
 });

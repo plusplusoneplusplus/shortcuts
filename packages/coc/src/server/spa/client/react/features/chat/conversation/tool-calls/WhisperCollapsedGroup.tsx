@@ -147,11 +147,25 @@ interface DiffBarProps {
     insertions: number;
     deletions: number;
     isCreate: boolean;
+    isDeleted?: boolean;
 }
 
-function DiffBar({ insertions, deletions, isCreate }: DiffBarProps) {
+function DiffBar({ insertions, deletions, isCreate, isDeleted }: DiffBarProps) {
     const total = insertions + deletions;
     if (total === 0) return null;
+
+    if (isDeleted) {
+        return (
+            <span
+                className="inline-flex shrink-0 h-[8px] w-[60px] rounded-sm overflow-hidden bg-[#e8e8e8] dark:bg-[#333]"
+                data-testid="diff-bar"
+                title="removed"
+            >
+                <span className="h-full bg-[#999] dark:bg-[#666] w-full" />
+            </span>
+        );
+    }
+
     const greenPct = isCreate ? 100 : (insertions / total) * 100;
 
     return (
@@ -590,7 +604,8 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
     const footerHeight = files.length > 1 ? 36 : 0;
     const estimatedHeight = files.length * rowHeight + footerHeight + 8;
     const pos = clampPopoverPosition(rect, 460, estimatedHeight);
-    const totals = computeFileEditTotals(files);
+    const activeFiles = files.filter(f => !f.isDeleted);
+    const totals = computeFileEditTotals(activeFiles);
 
     return ReactDOM.createPortal(
         <div
@@ -605,23 +620,38 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
                 const display = shortenPath(file.path);
                 const ins = file.netInsertions ?? file.insertions;
                 const del = file.netDeletions ?? file.deletions;
+                const icon = file.isDeleted ? '🗑️' : file.isCreate ? '📄' : '✏️';
                 return (
                     <div
                         key={file.path}
-                        className="flex items-center gap-2 px-2.5 py-1 text-xs"
-                        data-testid="file-popover-row"
-                        title={file.path}
+                        className={cn(
+                            'flex items-center gap-2 px-2.5 py-1 text-xs',
+                            file.isDeleted && 'opacity-50',
+                        )}
+                        data-testid={file.isDeleted ? 'file-popover-row-deleted' : 'file-popover-row'}
+                        title={file.isDeleted ? `${file.path} (removed)` : file.path}
                     >
-                        <span className="shrink-0">{file.isCreate ? '📄' : '✏️'}</span>
-                        <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                        <span className="shrink-0">{icon}</span>
+                        <span className={cn(
+                            'truncate min-w-0 flex-1',
+                            file.isDeleted
+                                ? 'line-through text-[#999] dark:text-[#666]'
+                                : 'text-[#1e1e1e] dark:text-[#ccc]',
+                        )}>
                             {display}
                         </span>
-                        <DiffBar insertions={ins} deletions={del} isCreate={file.isCreate} />
-                        {ins > 0 && (
-                            <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{ins}</span>
-                        )}
-                        {del > 0 && (
-                            <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{del}</span>
+                        {file.isDeleted ? (
+                            <span className="shrink-0 text-[#999] dark:text-[#666] italic">removed</span>
+                        ) : (
+                            <>
+                                <DiffBar insertions={ins} deletions={del} isCreate={file.isCreate} />
+                                {ins > 0 && (
+                                    <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{ins}</span>
+                                )}
+                                {del > 0 && (
+                                    <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{del}</span>
+                                )}
+                            </>
                         )}
                     </div>
                 );
@@ -655,9 +685,11 @@ interface FileHoverSpanProps {
     text: string;
     files: FileEdit[];
     testId?: string;
+    /** When false, suppresses the inline (+N −M) totals after the text. */
+    showInlineTotals?: boolean;
 }
 
-function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
+function FileHoverSpan({ text, files, testId, showInlineTotals = true }: FileHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -681,7 +713,8 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
 
     useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
-    const totals = useMemo(() => computeFileEditTotals(files), [files]);
+    const activeFiles = useMemo(() => files.filter(f => !f.isDeleted), [files]);
+    const totals = useMemo(() => computeFileEditTotals(activeFiles), [activeFiles]);
     const hasTotals = totals.totalInsertions > 0 || totals.totalDeletions > 0;
 
     return (
@@ -693,7 +726,7 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
             data-testid={testId}
         >
             {text}
-            {hasTotals && (
+            {showInlineTotals && hasTotals && (
                 <span className="text-[#848484] ml-0.5 no-underline" data-testid="file-total-inline">
                     ({totals.totalInsertions > 0 && <span className="text-[#22863a] dark:text-[#85e89d]">+{totals.totalInsertions}</span>}
                     {totals.totalInsertions > 0 && totals.totalDeletions > 0 && ' '}
@@ -784,7 +817,7 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' | 'skill' | 'memory' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -792,7 +825,13 @@ export function WhisperCollapsedGroup({
         headerParts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
     }
     if (summary.fileEditCount && summary.fileEditCount > 0) {
-        headerParts.push({ text: `${summary.fileEditCount} file${summary.fileEditCount !== 1 ? 's' : ''}`, kind: 'file' });
+        const activeCount = summary.fileEditCount - (summary.deletedFileCount ?? 0);
+        if (activeCount > 0) {
+            headerParts.push({ text: `${activeCount} file${activeCount !== 1 ? 's' : ''}`, kind: 'file' });
+        }
+        if (summary.deletedFileCount && summary.deletedFileCount > 0) {
+            headerParts.push({ text: `${summary.deletedFileCount} removed`, kind: 'removed-file' });
+        }
     }
     if (summary.commitCount && summary.commitCount > 0) {
         headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`, kind: 'commit' });
@@ -829,6 +868,10 @@ export function WhisperCollapsedGroup({
         } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(
                 <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" />,
+            );
+        } else if (part.kind === 'removed-file' && summary.fileEdits && summary.fileEdits.length > 0) {
+            headerElements.push(
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-removed-hover" showInlineTotals={false} />,
             );
         } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
             headerElements.push(

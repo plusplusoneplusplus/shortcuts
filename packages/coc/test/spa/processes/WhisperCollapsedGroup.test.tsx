@@ -361,4 +361,110 @@ describe('WhisperCollapsedGroup', () => {
             expect(name).toBe('coc-git-review-abc1234');
         });
     });
+
+    // ── File deletion display ──────────────────────────────────────────────
+
+    describe('deleted file display', () => {
+        function makeFileEdit(overrides: Partial<import('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils').FileEdit> = {}): import('../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils').FileEdit {
+            return {
+                path: 'src/file.ts',
+                insertions: 10,
+                deletions: 0,
+                netInsertions: 10,
+                netDeletions: 0,
+                isCreate: true,
+                isDeleted: false,
+                ...overrides,
+            };
+        }
+
+        it('shows "N removed" in header when deletedFileCount > 0', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    summary={makeSummary({
+                        fileEditCount: 2,
+                        deletedFileCount: 1,
+                        fileEdits: [
+                            makeFileEdit({ path: 'src/keep.ts' }),
+                            makeFileEdit({ path: 'src/removed.ts', isDeleted: true }),
+                        ],
+                    })}
+                />,
+            );
+            const header = screen.getByTestId('whisper-header-text').textContent!;
+            expect(header).toContain('1 file');
+            expect(header).toContain('1 removed');
+        });
+
+        it('shows only "N removed" when all files are deleted', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    summary={makeSummary({
+                        fileEditCount: 1,
+                        deletedFileCount: 1,
+                        fileEdits: [
+                            makeFileEdit({ path: 'src/gone.ts', isDeleted: true }),
+                        ],
+                    })}
+                />,
+            );
+            const header = screen.getByTestId('whisper-header-text').textContent!;
+            expect(header).toContain('1 removed');
+            // Should not show "0 files"
+            expect(header).not.toContain('0 file');
+        });
+
+        it('shows deleted file with trash icon and strikethrough in popover', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    summary={makeSummary({
+                        fileEditCount: 2,
+                        deletedFileCount: 1,
+                        fileEdits: [
+                            makeFileEdit({ path: 'src/keep.ts' }),
+                            makeFileEdit({ path: 'src/removed.ts', isDeleted: true }),
+                        ],
+                    })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-file-hover');
+            fireEvent.mouseEnter(hoverTarget);
+
+            // Should have one regular row and one deleted row
+            const regularRows = screen.getAllByTestId('file-popover-row');
+            const deletedRows = screen.getAllByTestId('file-popover-row-deleted');
+            expect(regularRows).toHaveLength(1);
+            expect(deletedRows).toHaveLength(1);
+
+            // Deleted row should show "removed" text
+            expect(deletedRows[0].textContent).toContain('removed');
+        });
+
+        it('excludes deleted files from inline totals', () => {
+            render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    summary={makeSummary({
+                        fileEditCount: 2,
+                        deletedFileCount: 1,
+                        fileEdits: [
+                            makeFileEdit({ path: 'src/keep.ts', netInsertions: 5, netDeletions: 2 }),
+                            makeFileEdit({ path: 'src/removed.ts', netInsertions: 100, netDeletions: 0, isDeleted: true }),
+                        ],
+                    })}
+                />,
+            );
+            const hoverTarget = screen.getByTestId('whisper-file-hover');
+            fireEvent.mouseEnter(hoverTarget);
+
+            // Inline totals should only count the non-deleted file
+            const inline = screen.getByTestId('file-total-inline');
+            expect(inline.textContent).toContain('+5');
+            expect(inline.textContent).toContain('−2');
+            expect(inline.textContent).not.toContain('+105');
+        });
+    });
 });

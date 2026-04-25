@@ -377,6 +377,58 @@ export function computeFileEditTotals(
     return { totalInsertions, totalDeletions };
 }
 
+// ---------------------------------------------------------------------------
+// Shell-command file-deletion detection
+// ---------------------------------------------------------------------------
+
+/** Normalize a path for matching: strip quotes, leading ./, convert backslashes. */
+function normalizeForMatch(p: string): string {
+    return p.replace(/^['"]|['"]$/g, '').replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+/**
+ * Extracts file paths targeted by common deletion commands in a shell command string.
+ * Handles chained commands (&&, ||, ;) and skips flags.
+ */
+export function extractDeletedPathsFromCommand(command: string): string[] {
+    const paths: string[] = [];
+    // Split on common shell operators to handle chained commands
+    const segments = command.split(/\s*(?:&&|\|\||[;|])\s*/);
+
+    for (const seg of segments) {
+        const trimmed = seg.trim();
+        // Match common delete commands
+        const match = trimmed.match(
+            /^\s*(?:sudo\s+)?(?:rm|git\s+rm|del|Remove-Item|unlink)\s+(.*)/i,
+        );
+        if (!match) continue;
+
+        // Tokenize the argument string, respecting quotes
+        const argStr = match[1];
+        const tokens = argStr.match(/(?:"[^"]*"|'[^']*'|\S)+/g) ?? [];
+        for (const token of tokens) {
+            const clean = token.replace(/^['"]|['"]$/g, '').trim();
+            if (!clean) continue;
+            // Skip flags: -f, --force, -rf, /f, /q, -Force, -Recurse, etc.
+            if (/^-/.test(clean)) continue;
+            if (/^\/[a-zA-Z]$/.test(clean)) continue;
+            paths.push(normalizeForMatch(clean));
+        }
+    }
+    return paths;
+}
+
+/**
+ * Checks whether a path extracted from a delete command matches a tracked file path.
+ * Uses suffix matching to handle relative vs absolute differences.
+ */
+export function isDeletePathMatch(deletedPath: string, trackedPath: string): boolean {
+    const d = normalizeForMatch(deletedPath);
+    const t = normalizeForMatch(trackedPath);
+    if (!d || !t) return false;
+    return t === d || t.endsWith('/' + d) || d.endsWith('/' + t);
+}
+
 /** Per-file edit/create statistics collected from tool calls. */
 export interface FileEdit {
     path: string;
@@ -389,6 +441,8 @@ export interface FileEdit {
     /** Net changed lines (excluding unchanged context) — deletions. */
     netDeletions: number;
     isCreate: boolean;
+    /** True when a subsequent shell command likely deleted this file. */
+    isDeleted: boolean;
 }
 
 interface FileEditStats {
@@ -443,6 +497,8 @@ export interface WhisperSummary {
     fileEditCount?: number;
     /** Per-file edit/create statistics. */
     fileEdits?: FileEdit[];
+    /** Number of files that were created/edited but later deleted. */
+    deletedFileCount?: number;
     /** Epoch ms — earliest startTime among all tool calls. */
     startTime?: number;
     /** Epoch ms — latest endTime among all tool calls (undefined if any still running). */
@@ -643,6 +699,27 @@ export function filterWhisperChunks(
             }
         }
     }
+
+    // Detect file deletions from shell commands
+    const deletedPaths = new Set<string>();
+    if (fileMap.size > 0) {
+        const trackedPaths = [...fileMap.keys()];
+        for (const tc of allToolCalls) {
+            if ((tc.toolName === 'powershell' || tc.toolName === 'shell' || tc.toolName === 'bash') && tc.args) {
+                const cmd = (tc.args.command || tc.args.cmd || '') as string;
+                if (!cmd) continue;
+                const extracted = extractDeletedPathsFromCommand(cmd);
+                for (const dp of extracted) {
+                    for (const tp of trackedPaths) {
+                        if (isDeletePathMatch(dp, tp)) {
+                            deletedPaths.add(tp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     const fileEdits: FileEdit[] = [...fileMap.entries()]
         .map(([path, e]) => ({
             path,
@@ -651,8 +728,11 @@ export function filterWhisperChunks(
             netInsertions: e.netInsertions,
             netDeletions: e.netDeletions,
             isCreate: e.hasCreate && !e.hasEdit,
+            isDeleted: deletedPaths.has(path),
         }))
         .sort((a, b) => a.path.localeCompare(b.path));
+
+    const deletedFileCount = fileEdits.filter(f => f.isDeleted).length;
 
     const summary: WhisperSummary = {
         toolCallCount,
@@ -662,6 +742,7 @@ export function filterWhisperChunks(
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         ...(memoryActions.length > 0 ? { memoryCount: memoryActions.length, memoryActions } : {}),
         ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
+        ...(deletedFileCount > 0 ? { deletedFileCount } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
     };
