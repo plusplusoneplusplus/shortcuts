@@ -188,17 +188,17 @@ describe('FollowUpInputArea — compact input bar layout', () => {
         const setSelectedMode = vi.fn();
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
         fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        // cycleMode('ask') → 'autopilot'
-        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
+        // cycleMode('ask') → 'plan'
+        expect(setSelectedMode).toHaveBeenCalledWith('plan');
     });
 
     it('tapping mode-cycle-btn cycles through modes correctly', () => {
         const setSelectedMode = vi.fn();
 
-        // ask → autopilot
+        // ask → plan
         const { unmount: u1 } = render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
         fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
+        expect(setSelectedMode).toHaveBeenCalledWith('plan');
         u1();
 
         setSelectedMode.mockClear();
@@ -292,11 +292,11 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(inputWrapper).toBeTruthy();
     });
 
-    it('children (file-input, attach, input, send) are direct children of the flex-row container', () => {
+    it('children (file-input, attach, mode-selector, input, send) are direct children of the flex-row container', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
         const children = Array.from(bar.children);
-        expect(children.length).toBe(4);
+        expect(children.length).toBe(5);
     });
 });
 

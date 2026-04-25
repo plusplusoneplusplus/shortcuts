@@ -470,10 +470,10 @@ describe('NewChatArea', () => {
         it('cycle button advances mode', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const cycleBtn = screen.getByTestId('mode-cycle-btn');
-            // Default is ask, cycling should go to autopilot
+            // Default is ask, cycling should go to plan
             expect(cycleBtn.textContent).toBe('💡');
             fireEvent.click(cycleBtn);
-            expect(cycleBtn.textContent).toBe('🤖');
+            expect(cycleBtn.textContent).toBe('📋');
         });
 
         it('sends selected mode in payload via dropdown', async () => {
@@ -504,7 +504,7 @@ describe('NewChatArea', () => {
             expect(dropdown.value).toBe('ask');
 
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
-            expect(dropdown.value).toBe('autopilot');
+            expect(dropdown.value).toBe('plan');
         });
     });
 });

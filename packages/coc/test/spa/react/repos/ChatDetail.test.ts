@@ -161,7 +161,7 @@ describe('ChatDetail', () => {
 
         it('Shift+Tab cycles modes via NEXT_MODE map', () => {
             expect(MODE_CONFIG_SOURCE).toContain('NEXT_MODE');
-            expect(MODE_CONFIG_SOURCE).toContain("ask: 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain("ask: 'plan'");
             expect(MODE_CONFIG_SOURCE).toContain("plan: 'autopilot'");
             expect(MODE_CONFIG_SOURCE).toContain("autopilot: 'ask'");
         });
