@@ -201,6 +201,21 @@ turndown.addRule('table', {
     },
 });
 
+// Mermaid fenced code block: <pre><code class="language-mermaid">…</code></pre> → ```mermaid\n…\n```
+// Registered last so it wins over turndown's built-in fenced-code rule for mermaid blocks.
+turndown.addRule('mermaidCode', {
+    filter(node) {
+        if (node.nodeName !== 'PRE') return false;
+        const code = (node as Element).querySelector('code.language-mermaid');
+        return code !== null;
+    },
+    replacement(_content, node) {
+        const code = (node as Element).querySelector('code.language-mermaid');
+        const text = code?.textContent ?? '';
+        return `\`\`\`mermaid\n${text}\n\`\`\``;
+    },
+});
+
 // ── Pre-processing helpers ──────────────────────────────────────────────────
 
 /**

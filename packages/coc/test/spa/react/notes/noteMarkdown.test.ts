@@ -80,6 +80,14 @@ describe('noteMarkdown', () => {
             expect(html).toContain('const x = 1;');
         });
 
+        it('converts mermaid fenced block to language-mermaid code element', () => {
+            const html = markdownToHtml('```mermaid\ngraph TD\nA --> B\n```');
+            expect(html).toContain('<code class="language-mermaid">');
+            expect(html).toContain('graph TD');
+            // marked HTML-encodes > inside code blocks
+            expect(html).toContain('A --&gt; B');
+        });
+
         it('converts links', () => {
             const html = markdownToHtml('[text](https://example.com)');
             expect(html).toContain('<a');
@@ -170,6 +178,16 @@ describe('noteMarkdown', () => {
             const md = htmlToMarkdown('<p><mark data-color="#ffc8dd" style="background-color: #ffc8dd">pink</mark></p>');
             expect(md).toContain('==pink==');
         });
+
+        it('converts <pre><code class="language-mermaid"> back to mermaid fenced block', () => {
+            const md = htmlToMarkdown(
+                '<pre><code class="language-mermaid">graph TD\nA --> B</code></pre>'
+            );
+            expect(norm(md)).toContain('```mermaid');
+            expect(norm(md)).toContain('graph TD');
+            expect(norm(md)).toContain('A --> B');
+            expect(norm(md)).toContain('```');
+        });
     });
 
     // ── Round-trip ──────────────────────────────────────────────────────
@@ -248,6 +266,14 @@ describe('noteMarkdown', () => {
             const rt = norm(roundTrip(md));
             expect(rt).toContain('```');
             expect(rt).toContain('const x = 1;');
+        });
+
+        it('mermaid fenced block', () => {
+            const md = '```mermaid\ngraph TD\nA --> B\n```';
+            const rt = norm(roundTrip(md));
+            expect(rt).toContain('```mermaid');
+            expect(rt).toContain('graph TD');
+            expect(rt).toContain('A --> B');
         });
 
         it('link', () => {
