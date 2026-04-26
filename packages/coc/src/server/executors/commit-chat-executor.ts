@@ -34,7 +34,10 @@ import {
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
+    buildTavilyWebSearchAddon,
+    applyLlmToolPreferences,
 } from './prompt-builder';
+import { readRepoPreferences } from '../preferences-handler';
 import type { ProcessWebSocketServer } from '../websocket';
 
 // ============================================================================
@@ -115,9 +118,19 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
+        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        tools.push(...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools);
-        toolSuffix += followUp.suffix + searchConversations.suffix + boundedMemory.suffix;
+        const disabledLlmTools = this.dataDir && wsId
+            ? readRepoPreferences(this.dataDir, wsId).disabledLlmTools
+            : undefined;
+
+        const { tools: filteredTools, suffix: filteredSuffix } = applyLlmToolPreferences(
+            [followUp, searchConversations, tavilySearch, boundedMemory],
+            disabledLlmTools,
+        );
+
+        tools.push(...filteredTools);
+        toolSuffix += filteredSuffix;
 
         return {
             agentMode: 'interactive' as AgentMode,

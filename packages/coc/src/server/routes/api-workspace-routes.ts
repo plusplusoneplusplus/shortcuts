@@ -17,6 +17,8 @@ import { gitCache } from '../git-cache';
 import { gitInfoCache, type GitInfoResult } from '../git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { readRepoPreferences, writeRepoPreferences, validatePerRepoPreferences } from '../preferences-handler';
+import { LLM_TOOL_REGISTRY, DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -378,6 +380,60 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Workspace'));
             }
             sendJSON(res, 200, { workspace: updated });
+        },
+    });
+
+    // GET /api/workspaces/:id/llm-tools-config — Get LLM tool registry and disabled state
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/llm-tools-config$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            if (!ctx.dataDir) {
+                sendJSON(res, 200, { tools: LLM_TOOL_REGISTRY, disabledLlmTools: DEFAULT_DISABLED_LLM_TOOLS });
+                return;
+            }
+            const prefs = readRepoPreferences(ctx.dataDir, ws.id);
+            const disabledLlmTools: string[] = prefs.disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS;
+            sendJSON(res, 200, {
+                tools: LLM_TOOL_REGISTRY,
+                disabledLlmTools,
+            });
+        },
+    });
+
+    // PUT /api/workspaces/:id/llm-tools-config — Save disabled LLM tools list
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/llm-tools-config$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            if (!ctx.dataDir) {
+                return handleAPIError(res, badRequest('dataDir not configured'));
+            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            if (!Object.prototype.hasOwnProperty.call(body, 'disabledLlmTools')) {
+                return handleAPIError(res, missingFields(['disabledLlmTools']));
+            }
+            if (!Array.isArray(body.disabledLlmTools)) {
+                return handleAPIError(res, badRequest('`disabledLlmTools` must be an array of strings'));
+            }
+            if (body.disabledLlmTools.some((e: any) => typeof e !== 'string')) {
+                return handleAPIError(res, badRequest('`disabledLlmTools` items must be strings'));
+            }
+            const existing = readRepoPreferences(ctx.dataDir, ws.id);
+            const merged = validatePerRepoPreferences({
+                ...existing,
+                disabledLlmTools: body.disabledLlmTools,
+            });
+            writeRepoPreferences(ctx.dataDir, ws.id, merged);
+            sendJSON(res, 200, {
+                tools: LLM_TOOL_REGISTRY,
+                disabledLlmTools: merged.disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS,
+            });
         },
     });
 }

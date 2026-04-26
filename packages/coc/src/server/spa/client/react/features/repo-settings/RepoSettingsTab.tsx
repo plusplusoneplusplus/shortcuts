@@ -21,6 +21,7 @@ import { RepoMemorySection } from '../memory/RepoMemorySection';
 import { useRepos } from '../../contexts/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
+import { LlmToolsPanel } from './LlmToolsPanel';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -34,6 +35,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'preferences', label: 'Preferences', icon: '⚙️' },
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
+    { id: 'llm-tools', label: 'LLM Tools', icon: '🔧' },
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
     { id: 'tasks', label: 'Plans Folder', icon: '📁' },
@@ -520,6 +522,9 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         onLinkedRepoIdsChange={handleLinkedRepoIdsChange}
                         allRepos={allRepos}
                     />
+                )}
+                {activeSection === 'llm-tools' && (
+                    <LlmToolsPanel workspaceId={workspaceId} />
                 )}
                 {activeSection === 'instructions' && (
                     <CustomInstructionsPanel

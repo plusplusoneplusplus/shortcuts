@@ -29,3 +29,10 @@ export {
     type DiffLineMapping,
     type ParsedDiffLine,
 } from './diff-line-mapper';
+export {
+    LLM_TOOL_REGISTRY,
+    DEFAULT_DISABLED_LLM_TOOLS,
+    isLlmToolEnabled,
+    filterDisabledLlmTools,
+    type LlmToolMeta,
+} from './llm-tool-registry';

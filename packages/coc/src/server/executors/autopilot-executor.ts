@@ -26,7 +26,10 @@ import {
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildCreateWorkItemAddon,
+    buildTavilyWebSearchAddon,
+    applyLlmToolPreferences,
 } from './prompt-builder';
+import { readRepoPreferences } from '../preferences-handler';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -68,14 +71,24 @@ export class AutopilotExecutor extends ChatBaseExecutor {
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
         );
+        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
+
+        const disabledLlmTools = this.dataDir && payload.workspaceId
+            ? readRepoPreferences(this.dataDir, payload.workspaceId).disabledLlmTools
+            : undefined;
+
+        const { tools, suffix } = applyLlmToolPreferences(
+            [followUp, updateStatus, searchConversations, createWorkItem, tavilySearch, boundedMemory],
+            disabledLlmTools,
+        );
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage: appendBoundedMemoryContext(undefined, boundedMemory),
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...createWorkItem.tools, ...boundedMemory.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + createWorkItem.suffix + boundedMemory.suffix,
+            tools,
+            effectivePrompt: prompt + suffix,
         };
     }
 }

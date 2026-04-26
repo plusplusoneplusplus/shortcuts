@@ -44,6 +44,8 @@ import {
     isRunWorkflowPayload,
 } from '../task-types';
 import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
+import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
+import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 
 
 // ============================================================================
@@ -491,3 +493,63 @@ export function assertNoAskUserConflict(options: Pick<SendMessageOptions, 'tools
         );
     }
 }
+
+// ============================================================================
+// Tavily Web Search
+// ============================================================================
+
+/**
+ * Builds the tools array and prompt suffix for the `tavily_web_search` tool.
+ * The tool is always created; filtering by disabled state is done later via
+ * {@link applyLlmToolPreferences}.
+ *
+ * @param dataDir - Base data directory for resolving providers.json / API key.
+ */
+export function buildTavilyWebSearchAddon(
+    dataDir: string | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createTavilyWebSearchTool({ dataDir });
+    const suffix =
+        '\n\nYou have access to the `tavily_web_search` tool. ' +
+        'Use it proactively when the user asks about recent events, version-specific behavior, ' +
+        'newly released libraries/APIs, ongoing incidents, or anything likely past your knowledge cutoff.';
+
+    return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// LLM Tool Preferences
+// ============================================================================
+
+/**
+ * Filters the assembled tools + suffixes by the per-repo disabled LLM tools list.
+ * Call this as the final step before returning from `buildModeOptions`.
+ *
+ * Each entry in `toolsWithSuffix` is a named tool paired with the prompt suffix
+ * that describes it. When a tool is disabled, both the tool and its suffix are
+ * removed from the output.
+ */
+export function applyLlmToolPreferences(
+    toolsWithSuffix: Array<{ tools: Tool<any>[]; suffix: string }>,
+    disabledLlmTools: string[] | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    const allTools: Tool<any>[] = [];
+    let combinedSuffix = '';
+
+    for (const entry of toolsWithSuffix) {
+        const filtered = filterDisabledLlmTools(entry.tools, disabledLlmTools);
+        if (filtered.length > 0) {
+            allTools.push(...filtered);
+            combinedSuffix += entry.suffix;
+        }
+    }
+
+    return { tools: allTools, suffix: combinedSuffix };
+}
+
+// Re-export for convenience
+export { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';

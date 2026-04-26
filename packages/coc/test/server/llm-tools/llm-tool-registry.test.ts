@@ -1,0 +1,136 @@
+/**
+ * LLM Tool Registry Tests
+ *
+ * Tests for the LLM tool registry, default disabled tools, and filtering utilities.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+    LLM_TOOL_REGISTRY,
+    DEFAULT_DISABLED_LLM_TOOLS,
+    isLlmToolEnabled,
+    filterDisabledLlmTools,
+} from '../../../src/server/llm-tools/llm-tool-registry';
+
+describe('LLM_TOOL_REGISTRY', () => {
+    it('contains all expected tools', () => {
+        const names = LLM_TOOL_REGISTRY.map(t => t.name);
+        expect(names).toContain('suggest_follow_ups');
+        expect(names).toContain('search_conversations');
+        expect(names).toContain('get_conversation');
+        expect(names).toContain('ask_user');
+        expect(names).toContain('create_work_item');
+        expect(names).toContain('create_bug');
+        expect(names).toContain('update_task_status');
+        expect(names).toContain('memory');
+        expect(names).toContain('tavily_web_search');
+    });
+
+    it('has unique tool names', () => {
+        const names = LLM_TOOL_REGISTRY.map(t => t.name);
+        expect(new Set(names).size).toBe(names.length);
+    });
+
+    it('each tool has required metadata fields', () => {
+        for (const tool of LLM_TOOL_REGISTRY) {
+            expect(tool.name).toBeTruthy();
+            expect(tool.label).toBeTruthy();
+            expect(tool.description).toBeTruthy();
+            expect(typeof tool.enabledByDefault).toBe('boolean');
+        }
+    });
+
+    it('tavily_web_search is disabled by default', () => {
+        const tavily = LLM_TOOL_REGISTRY.find(t => t.name === 'tavily_web_search');
+        expect(tavily).toBeDefined();
+        expect(tavily!.enabledByDefault).toBe(false);
+    });
+
+    it('all other tools are enabled by default', () => {
+        const nonTavily = LLM_TOOL_REGISTRY.filter(t => t.name !== 'tavily_web_search');
+        for (const tool of nonTavily) {
+            expect(tool.enabledByDefault).toBe(true);
+        }
+    });
+});
+
+describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
+    it('contains tavily_web_search', () => {
+        expect(DEFAULT_DISABLED_LLM_TOOLS).toContain('tavily_web_search');
+    });
+
+    it('does not contain enabled-by-default tools', () => {
+        for (const tool of LLM_TOOL_REGISTRY.filter(t => t.enabledByDefault)) {
+            expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain(tool.name);
+        }
+    });
+});
+
+describe('isLlmToolEnabled', () => {
+    it('returns true for enabled tools when disabledList is undefined (default)', () => {
+        expect(isLlmToolEnabled('suggest_follow_ups', undefined)).toBe(true);
+        expect(isLlmToolEnabled('search_conversations', undefined)).toBe(true);
+    });
+
+    it('returns false for tavily_web_search when disabledList is undefined (default)', () => {
+        expect(isLlmToolEnabled('tavily_web_search', undefined)).toBe(false);
+    });
+
+    it('returns true for tavily_web_search when explicitly enabled (empty disabled list)', () => {
+        expect(isLlmToolEnabled('tavily_web_search', [])).toBe(true);
+    });
+
+    it('returns false for tools in the disabled list', () => {
+        expect(isLlmToolEnabled('suggest_follow_ups', ['suggest_follow_ups', 'memory'])).toBe(false);
+        expect(isLlmToolEnabled('memory', ['suggest_follow_ups', 'memory'])).toBe(false);
+    });
+
+    it('returns true for tools not in the disabled list', () => {
+        expect(isLlmToolEnabled('ask_user', ['suggest_follow_ups'])).toBe(true);
+    });
+
+    it('handles unknown tool names gracefully', () => {
+        expect(isLlmToolEnabled('unknown_tool', undefined)).toBe(true);
+        expect(isLlmToolEnabled('unknown_tool', ['unknown_tool'])).toBe(false);
+    });
+});
+
+describe('filterDisabledLlmTools', () => {
+    const mockTools = [
+        { name: 'suggest_follow_ups', handler: () => {} },
+        { name: 'tavily_web_search', handler: () => {} },
+        { name: 'memory', handler: () => {} },
+    ];
+
+    it('filters out disabled-by-default tools when disabledList is undefined', () => {
+        const filtered = filterDisabledLlmTools(mockTools, undefined);
+        const names = filtered.map(t => t.name);
+        expect(names).toContain('suggest_follow_ups');
+        expect(names).toContain('memory');
+        expect(names).not.toContain('tavily_web_search');
+    });
+
+    it('keeps all tools when disabled list is empty', () => {
+        const filtered = filterDisabledLlmTools(mockTools, []);
+        expect(filtered).toHaveLength(3);
+    });
+
+    it('removes only explicitly disabled tools', () => {
+        const filtered = filterDisabledLlmTools(mockTools, ['memory']);
+        const names = filtered.map(t => t.name);
+        expect(names).toContain('suggest_follow_ups');
+        expect(names).toContain('tavily_web_search');
+        expect(names).not.toContain('memory');
+    });
+
+    it('handles empty tools array', () => {
+        const filtered = filterDisabledLlmTools([], ['memory']);
+        expect(filtered).toHaveLength(0);
+    });
+
+    it('preserves tool objects by reference', () => {
+        const filtered = filterDisabledLlmTools(mockTools, ['tavily_web_search']);
+        expect(filtered[0]).toBe(mockTools[0]);
+        expect(filtered[1]).toBe(mockTools[2]);
+    });
+});

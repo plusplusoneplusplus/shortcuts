@@ -26,7 +26,10 @@ import {
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
+    buildTavilyWebSearchAddon,
+    applyLlmToolPreferences,
 } from './prompt-builder';
+import { readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
 
 // ============================================================================
@@ -173,9 +176,16 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
+        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        const tools = [...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools];
-        const toolSuffix = followUp.suffix + searchConversations.suffix + boundedMemory.suffix;
+        const disabledLlmTools = this.dataDir && wsId
+            ? readRepoPreferences(this.dataDir, wsId).disabledLlmTools
+            : undefined;
+
+        const { tools, suffix: toolSuffix } = applyLlmToolPreferences(
+            [followUp, searchConversations, tavilySearch, boundedMemory],
+            disabledLlmTools,
+        );
 
         return {
             agentMode: 'autopilot' as AgentMode,

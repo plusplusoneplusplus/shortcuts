@@ -130,6 +130,12 @@ export interface PerRepoPreferences {
         statusFilter?: string;
         typeFilter?: string;
     };
+    /**
+     * Per-workspace LLM tool deny-list.
+     * - `undefined` — use defaults (all enabled except tavily_web_search).
+     * - `string[]` — tools whose name matches an entry are disabled.
+     */
+    disabledLlmTools?: string[];
 }
 
 /** backward-compat alias */
@@ -385,6 +391,13 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         if (Object.keys(validated).length > 0) {
             result.activityFilters = validated;
         }
+    }
+
+    if (Array.isArray(obj.disabledLlmTools)) {
+        const tools = (obj.disabledLlmTools as unknown[]).filter(
+            (t): t is string => typeof t === 'string' && t.length > 0
+        );
+        result.disabledLlmTools = tools;
     }
 
     return result;

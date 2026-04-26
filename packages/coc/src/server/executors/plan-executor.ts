@@ -31,7 +31,10 @@ import {
     buildSearchConversationsAddon,
     buildAskUserAddon,
     buildCreateWorkItemAddon,
+    buildTavilyWebSearchAddon,
+    applyLlmToolPreferences,
 } from './prompt-builder';
+import { readRepoPreferences } from '../preferences-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
@@ -94,6 +97,7 @@ export class PlanExecutor extends ChatBaseExecutor {
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
         );
+        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
         const processId = toQueueProcessId(task.id);
         const askUser = buildAskUserAddon(this.askUser.enabled, {
@@ -113,11 +117,20 @@ export class PlanExecutor extends ChatBaseExecutor {
             hasPending: askUser.hasPending,
         };
 
+        const disabledLlmTools = this.dataDir && payload.workspaceId
+            ? readRepoPreferences(this.dataDir, payload.workspaceId).disabledLlmTools
+            : undefined;
+
+        const { tools, suffix } = applyLlmToolPreferences(
+            [followUp, updateStatus, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
+            disabledLlmTools,
+        );
+
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...createWorkItem.tools, ...boundedMemory.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + createWorkItem.suffix + boundedMemory.suffix,
+            tools,
+            effectivePrompt: prompt + suffix,
         };
     }
 }

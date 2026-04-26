@@ -20,4 +20,5 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 | File | Description |
 |------|-------------|
 | `diff-line-mapper.ts` | Parses unified diff output and maps source-file line numbers to rendered diff-line indices used by the SPA's `UnifiedDiffViewer`. |
-| `index.ts` | Barrel re-exports for all tool factories and mapper utilities. |
+| `llm-tool-registry.ts` | Central registry of user-toggleable LLM tools (`LLM_TOOL_REGISTRY`). Each entry has `name`, `label`, `description`, `enabledByDefault`. Exports `DEFAULT_DISABLED_LLM_TOOLS` (tools disabled by default — currently just `tavily_web_search`), `isLlmToolEnabled()`, and `filterDisabledLlmTools()`. Per-repo disabled list stored in `PerRepoPreferences.disabledLlmTools`. |
+| `index.ts` | Barrel re-exports for all tool factories, mapper utilities, and the LLM tool registry. |
