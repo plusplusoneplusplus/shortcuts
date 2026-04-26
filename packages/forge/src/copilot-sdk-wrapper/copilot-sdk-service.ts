@@ -138,6 +138,7 @@ export class CopilotSDKService {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
         const client = await this.createClient();
         try {
+            await client.start();
             const result = await (client as any).rpc.sessions.fork({ sessionId: sdkSessionId });
             return result.sessionId;
         } finally {

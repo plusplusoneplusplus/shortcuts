@@ -131,10 +131,11 @@ describe('CopilotSDKService - forkSession', () => {
 
     it('should call client.rpc.sessions.fork and return the new session ID', async () => {
         const mockFork = vi.fn().mockResolvedValue({ sessionId: 'forked-session-id' });
+        const mockStart = vi.fn().mockResolvedValue(undefined);
         const mockStop = vi.fn().mockResolvedValue(undefined);
 
         createSdkClientMock.mockResolvedValue({
-            start: vi.fn().mockResolvedValue(undefined),
+            start: mockStart,
             stop: mockStop,
             rpc: { sessions: { fork: mockFork } },
         });
@@ -145,8 +146,26 @@ describe('CopilotSDKService - forkSession', () => {
         const result = await service.forkSession('original-session-id');
 
         expect(result).toBe('forked-session-id');
+        expect(mockStart).toHaveBeenCalled();
         expect(mockFork).toHaveBeenCalledWith({ sessionId: 'original-session-id' });
         expect(mockStop).toHaveBeenCalled();
+    });
+
+    it('should call client.start() before rpc.sessions.fork', async () => {
+        const callOrder: string[] = [];
+        const mockStart = vi.fn().mockImplementation(async () => { callOrder.push('start'); });
+        const mockFork = vi.fn().mockImplementation(async () => { callOrder.push('fork'); return { sessionId: 'new-id' }; });
+
+        createSdkClientMock.mockResolvedValue({
+            start: mockStart,
+            stop: vi.fn().mockResolvedValue(undefined),
+            rpc: { sessions: { fork: mockFork } },
+        });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await service.forkSession('original-id');
+
+        expect(callOrder).toEqual(['start', 'fork']);
     });
 
     it('should stop the client even if fork fails', async () => {
