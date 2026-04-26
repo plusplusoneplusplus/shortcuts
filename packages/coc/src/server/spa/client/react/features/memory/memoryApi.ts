@@ -50,6 +50,30 @@ export interface BoundedMemorySaveResponse {
     lastModified: string;
 }
 
+// ── Raw DB browser types ────────────────────────────────────────────────────
+
+export interface RawDbTableInfo {
+    name: string;
+    rowCount: number;
+}
+
+export interface RawDbColumnInfo {
+    name: string;
+    type: string;
+    notnull: boolean;
+    pk: boolean;
+}
+
+export interface RawDbTableData {
+    table: string;
+    columns: RawDbColumnInfo[];
+    rows: Record<string, unknown>[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+}
+
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const memoryApi = {
@@ -100,5 +124,29 @@ export const memoryApi = {
             throw new Error(data.error ?? `HTTP ${res.status}`);
         }
         return data;
+    },
+
+    // ── Raw DB browser ───────────────────────────────────────────────────────
+
+    /** List tables in the repo's raw-memory.db with row counts. */
+    getRawDbTables(repoId: string): Promise<{ tables: RawDbTableInfo[] }> {
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/raw-db/tables`);
+    },
+
+    /** Read paginated rows from a specific table in the repo's raw-memory.db. */
+    getRawDbTable(
+        repoId: string,
+        tableName: string,
+        page = 1,
+        pageSize = 50,
+        sort?: string,
+        order?: 'asc' | 'desc',
+    ): Promise<RawDbTableData> {
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+        if (sort && order) {
+            params.set('sort', sort);
+            params.set('order', order);
+        }
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/raw-db/tables/${encodeURIComponent(tableName)}?${params}`);
     },
 };

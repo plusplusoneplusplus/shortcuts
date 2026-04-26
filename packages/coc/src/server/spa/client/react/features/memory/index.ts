@@ -1,7 +1,8 @@
 export { RepoMemorySection } from './RepoMemorySection';
 export { BoundedMemoryTab } from './BoundedMemoryTab';
+export { RawMemoryViewer } from './RawMemoryViewer';
 export { memoryApi } from './memoryApi';
-export type { MemoryStats, FeedItem } from './memoryApi';
+export type { MemoryStats, FeedItem, RawDbTableInfo, RawDbColumnInfo, RawDbTableData } from './memoryApi';
 export { AggregatePanel } from './AggregatePanel';
 export { ConsolidatedPanel } from './ConsolidatedPanel';
 export { AddNoteForm } from './AddNoteForm';

@@ -5,6 +5,8 @@
  *   GET  /api/repos/:repoId/memory/overview   — bounded MEMORY.md stats
  *   GET  /api/repos/:repoId/memory/bounded    — read MEMORY.md content
  *   PUT  /api/repos/:repoId/memory/bounded    — write MEMORY.md content
+ *   GET  /api/repos/:repoId/memory/raw-db/tables       — raw DB table list
+ *   GET  /api/repos/:repoId/memory/raw-db/tables/:name  — raw DB table data
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -275,5 +277,115 @@ describe('PUT /api/repos/:repoId/memory/bounded', () => {
         );
         expect(status).toBe(413);
         expect(body.error).toBe('Content exceeds character limit');
+    });
+});
+
+// ── GET /api/repos/:repoId/memory/raw-db/tables ──────────────────────────────
+
+describe('GET /api/repos/:repoId/memory/raw-db/tables', () => {
+    it('returns empty tables array when raw-memory.db does not exist', async () => {
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables`);
+        expect(status).toBe(200);
+        expect(body.tables).toEqual([]);
+    });
+
+    it('returns table list with row counts when DB exists', async () => {
+        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const dbPath = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'raw-memory.db'));
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        await rawStore.append({
+            target: 'memory',
+            content: 'test fact',
+            source: 'test',
+            workspaceId: WORKSPACE_ID,
+        });
+        rawStore.close();
+
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables`);
+        expect(status).toBe(200);
+        expect(body.tables.length).toBeGreaterThan(0);
+        const mainTable = body.tables.find((t: any) => t.name === 'raw_memory_records');
+        expect(mainTable).toBeDefined();
+        expect(mainTable.rowCount).toBe(1);
+    });
+});
+
+// ── GET /api/repos/:repoId/memory/raw-db/tables/:name ────────────────────────
+
+describe('GET /api/repos/:repoId/memory/raw-db/tables/:name', () => {
+    it('returns 404 when raw-memory.db does not exist', async () => {
+        const { status } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/raw_memory_records`);
+        expect(status).toBe(404);
+    });
+
+    it('returns 400 for nonexistent table name', async () => {
+        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const dbPath = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'raw-memory.db'));
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        rawStore.close();
+
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/nonexistent_table`);
+        expect(status).toBe(400);
+        expect(body.error).toContain('Table not found');
+    });
+
+    it('returns paginated data with column metadata', async () => {
+        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const dbPath = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'raw-memory.db'));
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        await rawStore.append({ target: 'memory', content: 'fact-1', source: 'test', workspaceId: WORKSPACE_ID });
+        await rawStore.append({ target: 'memory', content: 'fact-2', source: 'test', workspaceId: WORKSPACE_ID });
+        rawStore.close();
+
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/raw_memory_records`);
+        expect(status).toBe(200);
+        expect(body.table).toBe('raw_memory_records');
+        expect(body.columns.length).toBeGreaterThan(0);
+        expect(body.columns[0]).toHaveProperty('name');
+        expect(body.columns[0]).toHaveProperty('type');
+        expect(body.columns[0]).toHaveProperty('pk');
+        expect(body.rows).toHaveLength(2);
+        expect(body.total).toBe(2);
+        expect(body.page).toBe(1);
+        expect(body.pageSize).toBe(50);
+        expect(body.totalPages).toBe(1);
+    });
+
+    it('supports pagination params', async () => {
+        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const dbPath = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'raw-memory.db'));
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        for (let i = 0; i < 5; i++) {
+            await rawStore.append({ target: 'memory', content: `fact-${i}`, source: 'test', workspaceId: WORKSPACE_ID });
+        }
+        rawStore.close();
+
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/raw_memory_records?page=1&pageSize=2`);
+        expect(status).toBe(200);
+        expect(body.rows).toHaveLength(2);
+        expect(body.total).toBe(5);
+        expect(body.totalPages).toBe(3);
+        expect(body.page).toBe(1);
+    });
+
+    it('supports sort params', async () => {
+        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const dbPath = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'raw-memory.db'));
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        await rawStore.append({ target: 'memory', content: 'alpha', source: 'test', workspaceId: WORKSPACE_ID });
+        await rawStore.append({ target: 'memory', content: 'zeta', source: 'test', workspaceId: WORKSPACE_ID });
+        rawStore.close();
+
+        const { status, body } = await apiGet(
+            `${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/raw_memory_records?sort=content&order=asc`,
+        );
+        expect(status).toBe(200);
+        expect(body.rows[0].content).toBe('alpha');
+        expect(body.rows[1].content).toBe('zeta');
+    });
+
+    it('rejects SQL-injection table names via URL pattern', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/raw-db/tables/drop%20table`);
+        expect(res.status).toBe(404);
     });
 });
