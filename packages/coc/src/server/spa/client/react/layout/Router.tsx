@@ -217,7 +217,7 @@ export function buildNoteHash(wsId: string, notePath: string): string {
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'chats', 'work-items', 'pull-requests', 'terminal', 'notes']);
 const ACTIVITY_VIRTUAL_WORKSPACE_IDS: Set<string> = new Set(['my_work', 'my_life']);
 
-export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template', 'tasks']);
+export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'llm-tools', 'instructions', 'memory', 'run-script-template', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
 export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 
