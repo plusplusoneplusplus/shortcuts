@@ -152,7 +152,7 @@ describe('NoteEditorCommentBackend', () => {
 
             await waitFor(() => {
                 expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
-                expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
             });
 
             // The no-op backend should have been called (not notesApi directly)

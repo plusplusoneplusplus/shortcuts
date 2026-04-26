@@ -210,7 +210,7 @@ describe('NoteEditor', () => {
         });
         await waitFor(() => {
             expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
-            expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
         });
     });
 
@@ -471,7 +471,7 @@ describe('NoteEditor', () => {
         });
         await waitFor(() => {
             expect(mockGetContent).toHaveBeenCalledWith('ws1', 'd.md');
-            expect(mockSetContent).toHaveBeenCalledWith('<p>default</p>');
+            expect(mockSetContent).toHaveBeenCalledWith('<p>default</p>', { emitUpdate: false });
         });
     });
 
@@ -488,7 +488,7 @@ describe('NoteEditor', () => {
         });
         await waitFor(() => {
             expect(customIo.loadContent).toHaveBeenCalledWith('ws1', 'c.md');
-            expect(mockSetContent).toHaveBeenCalledWith('<p>custom</p>');
+            expect(mockSetContent).toHaveBeenCalledWith('<p>custom</p>', { emitUpdate: false });
         });
         // notesApi should NOT have been called for content
         expect(mockGetContent).not.toHaveBeenCalled();
@@ -547,7 +547,7 @@ describe('NoteEditor', () => {
             await act(async () => { resolveLoad({ content: '# Hello', path: 'page.md' }); });
 
             expect(mockSetContent).toHaveBeenCalledTimes(1);
-            expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
         });
 
         it('switching notes does not remount editor — only one mount total', async () => {
@@ -556,7 +556,7 @@ describe('NoteEditor', () => {
             const { rerender } = await act(async () => {
                 return render(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
             });
-            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># First</p>'));
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># First</p>', { emitUpdate: false }));
             expect(richEditorMountCount).toBe(1);
 
             // Switch to a different note
@@ -564,7 +564,7 @@ describe('NoteEditor', () => {
             await act(async () => {
                 rerender(<NoteEditor workspaceId="ws1" notePath="b.md" io={mockIo} />);
             });
-            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Second</p>'));
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Second</p>', { emitUpdate: false }));
 
             // Editor was still only mounted once — never unmounted/remounted
             expect(richEditorMountCount).toBe(1);
@@ -618,11 +618,11 @@ describe('NoteEditor', () => {
 
             // Resolve first (stale) — should be ignored
             await act(async () => { resolveFirst({ content: '# Stale', path: 'a.md' }); });
-            expect(mockSetContent).not.toHaveBeenCalledWith('<p># Stale</p>');
+            expect(mockSetContent).not.toHaveBeenCalledWith('<p># Stale</p>', { emitUpdate: false });
 
             // Resolve second (current) — should be applied
             await act(async () => { resolveSecond({ content: '# Current', path: 'b.md' }); });
-            expect(mockSetContent).toHaveBeenCalledWith('<p># Current</p>');
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Current</p>', { emitUpdate: false });
         });
 
         it('editor-content is in DOM but visually hidden during loading', async () => {
@@ -684,7 +684,7 @@ describe('NoteEditor', () => {
             });
 
             await waitFor(() => {
-                expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
             });
 
             // Still only one mount — the editor instance survived the transition
@@ -746,7 +746,7 @@ describe('NoteEditor', () => {
             await act(async () => {
                 render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
             });
-            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
 
             // Switch to source — loads fresh markdown from server
             mockLoadContent.mockResolvedValue({ content: '# Edited in source', path: 'page.md' });
@@ -761,7 +761,7 @@ describe('NoteEditor', () => {
             });
 
             await waitFor(() => {
-                expect(mockSetContent).toHaveBeenCalledWith('<p># Edited in source</p>');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Edited in source</p>', { emitUpdate: false });
             });
         });
     });
@@ -777,7 +777,7 @@ describe('NoteEditor', () => {
             await act(async () => {
                 render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
             });
-            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
 
             // Reset to track the reload
             mockLoadContent.mockClear();
@@ -1020,7 +1020,7 @@ describe('NoteEditor', () => {
             await act(async () => {
                 render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
             });
-            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
 
             mockLoadContent.mockClear();
             mockSetContent.mockClear();
@@ -1032,7 +1032,7 @@ describe('NoteEditor', () => {
 
             await waitFor(() => {
                 expect(mockLoadContent).toHaveBeenCalledTimes(1);
-                expect(mockSetContent).toHaveBeenCalledWith('<p># Refreshed</p>');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Refreshed</p>', { emitUpdate: false });
             });
         });
 

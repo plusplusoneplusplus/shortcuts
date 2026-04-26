@@ -438,7 +438,7 @@ export function NoteEditor({
         if (ed && !ed.isDestroyed) {
             let html = markdownToHtml(rawMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
-            ed.commands.setContent(html);
+            ed.commands.setContent(html, { emitUpdate: false });
 
             // Cancel any save triggered by setContent
             pendingContentRef.current = null;
@@ -528,7 +528,7 @@ export function NoteEditor({
 
                 const ed = editorRef.current;
                 if (ed && !ed.isDestroyed) {
-                    ed.commands.setContent(html);
+                    ed.commands.setContent(html, { emitUpdate: false });
                     pendingContentRef.current = null;
                     if (saveTimerRef.current) {
                         clearTimeout(saveTimerRef.current);
