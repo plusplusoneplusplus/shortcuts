@@ -28,6 +28,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
+import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
@@ -347,8 +348,11 @@ export function buildUpdateTaskStatusAddon(
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `search_conversations` tool.
- * The tool is only injected when the store supports `searchConversations` (SQLite only).
+ * Builds the tools array and prompt suffix for the conversation-history tools:
+ * `search_conversations` (FTS5 keyword search) and `get_conversation` (fetch a
+ * full transcript by processId, compacted to fit a token budget).
+ *
+ * Tools are only injected when the store supports `searchConversations` (SQLite only).
  *
  * @param store        The ProcessStore instance.
  * @param workspaceId  Optional default workspace to scope searches.
@@ -363,16 +367,20 @@ export function buildSearchConversationsAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createSearchConversationsTool({
+    const { tool: searchTool } = createSearchConversationsTool({
         store,
         workspaceId,
         currentProcessId,
     });
+    const { tool: getTool } = createGetConversationTool({ store, workspaceId });
     const suffix =
-        '\n\nYou have access to `search_conversations` to search past AI conversation history in this workspace. ' +
-        'Use it when the user references previous discussions or you need context from earlier sessions.';
+        '\n\nYou have access to two conversation-history tools: ' +
+        '`search_conversations` to find past sessions by keyword (returns snippets), and ' +
+        '`get_conversation` to fetch the full transcript of a session by processId (compacted to fit a token budget). ' +
+        'Typical flow: search → pick a relevant processId → get_conversation. ' +
+        'Use these when the user references previous discussions or you need context from earlier sessions.';
 
-    return { tools: [tool], suffix };
+    return { tools: [searchTool, getTool], suffix };
 }
 
 // ============================================================================

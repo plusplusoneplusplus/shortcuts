@@ -497,18 +497,20 @@ describe('buildSearchConversationsAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns tool and suffix when store supports searchConversations', () => {
+    it('returns search_conversations and get_conversation tools when store supports searchConversations', () => {
         const store = { searchConversations: vi.fn() } as any;
         const result = buildSearchConversationsAddon(store, 'ws-1');
-        expect(result.tools).toHaveLength(1);
-        expect(result.tools[0].name).toBe('search_conversations');
+        expect(result.tools).toHaveLength(2);
+        const names = result.tools.map(t => t.name).sort();
+        expect(names).toEqual(['get_conversation', 'search_conversations']);
         expect(result.suffix).toContain('search_conversations');
+        expect(result.suffix).toContain('get_conversation');
     });
 
     it('suffix mentions past conversation history', () => {
         const store = { searchConversations: vi.fn() } as any;
         const result = buildSearchConversationsAddon(store);
-        expect(result.suffix).toContain('conversation history');
+        expect(result.suffix).toContain('conversation-history');
     });
 });
 

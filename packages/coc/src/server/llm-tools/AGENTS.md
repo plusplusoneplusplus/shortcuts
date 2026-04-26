@@ -10,6 +10,7 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 | `ask-user-tool.ts` | `ask_user` | Poses structured questions to the user (select, multi-select, yes/no, confirm, text) and blocks until the user responds. Returns a Promise resolved by `answerQuestion()`/`skipQuestion()`. Emits an SSE event so the SPA renders the interactive widget. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved during AI-assisted comment resolution. Tracks resolved IDs in a per-invocation Map. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
+| `get-conversation-tool.ts` | `get_conversation` | Fetches the full transcript of a past session by `processId` (typically from `search_conversations`), compacted to fit a token budget. Applies progressive compaction in 5 levels: strip noise → truncate tool results → drop unimportant tool calls (Read/Glob/Grep/etc.) → truncate prose → drop middle turns. Supports `fromTurn`/`toTurn` paging and `includeToolCalls: false` for prose-only views. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions displayed after the AI response. |
 | `update-task-status-tool.ts` | `update_task_status` | Updates task file status (e.g. in-progress, done) when executing against a plan file. |
 
