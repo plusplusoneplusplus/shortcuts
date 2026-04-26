@@ -13,6 +13,7 @@ interface DashboardConfig {
     myLifeEnabled?: boolean;
     scratchpadEnabled?: boolean;
     scratchpadLayout?: 'horizontal' | 'vertical';
+    workflowsEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -57,4 +58,8 @@ export function isScratchpadEnabled(): boolean {
 
 export function getScratchpadLayout(): 'horizontal' | 'vertical' {
     return getConfig().scratchpadLayout === 'horizontal' ? 'horizontal' : 'vertical';
+}
+
+export function isWorkflowsEnabled(): boolean {
+    return getConfig().workflowsEnabled === true;
 }

@@ -1402,6 +1402,61 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // PUT /api/admin/config — workflows.enabled
+    // ========================================================================
+
+    describe('workflows.enabled', () => {
+        it('should return workflows.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.workflows.enabled).toBe(false);
+            expect(body.sources['workflows.enabled']).toBe('default');
+        });
+
+        it('should accept workflows.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'workflows.enabled': true }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.workflows.enabled).toBe(true);
+            expect(body.sources['workflows.enabled']).toBe('file');
+        });
+
+        it('should accept workflows.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'workflows.enabled': false }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.workflows.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean workflows.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'workflows.enabled': 'yes' }),
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('workflows.enabled');
+        });
+    });
+
+    // ========================================================================
 
     describe('serve.serverName', () => {
         it('should accept a valid serverName string', async () => {

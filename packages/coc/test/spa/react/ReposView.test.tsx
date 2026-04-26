@@ -46,6 +46,10 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode'
     useUiLayoutMode: () => [mockUiLayoutModeValue, vi.fn()],
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
+    useWorkflowsEnabled: () => true,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>

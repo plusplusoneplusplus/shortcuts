@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -312,6 +312,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('scratchpad.layout' in body) {
                 if (body['scratchpad.layout'] !== 'horizontal' && body['scratchpad.layout'] !== 'vertical') {
                     errors.push('scratchpad.layout must be "horizontal" or "vertical"');
+                }
+            }
+            if ('workflows.enabled' in body) {
+                if (typeof body['workflows.enabled'] !== 'boolean') {
+                    errors.push('workflows.enabled must be a boolean');
                 }
             }
 
@@ -420,6 +425,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('scratchpad.layout' in body) {
                 if (!existing.scratchpad) { existing.scratchpad = {}; }
                 existing.scratchpad.layout = body['scratchpad.layout'] as 'horizontal' | 'vertical';
+            }
+
+            // Handle nested workflows.enabled field
+            if ('workflows.enabled' in body) {
+                if (!existing.workflows) { existing.workflows = {}; }
+                existing.workflows.enabled = body['workflows.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

@@ -34,6 +34,7 @@ import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
+import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
@@ -108,6 +109,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
+    const workflowsEnabled = useWorkflowsEnabled();
 
     // Work items: load for this repo if not yet in context (for badge)
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
@@ -129,12 +131,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     // transitions, not on the initial mount (defense-in-depth for deep links).
     const prevTerminalEnabled = useRef(terminalEnabled);
     const prevNotesEnabled = useRef(notesEnabled);
+    const prevWorkflowsEnabled = useRef(workflowsEnabled);
 
     const visibleSubTabs = useMemo(() => {
         let tabs = VISIBLE_SUB_TABS;
         if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
         if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
+        if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
             // Classic: replace Chats with Activity, hide Work Items, relabel Tasks as Plans
@@ -169,7 +173,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             tabs = ordered;
         }
         return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled, uiLayoutMode]);
+    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -193,6 +197,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
+
+    // Redirect away from workflows tab only when the feature transitions to disabled
+    useEffect(() => {
+        if (activeSubTab === 'workflows' && !workflowsEnabled && prevWorkflowsEnabled.current) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+        }
+        prevWorkflowsEnabled.current = workflowsEnabled;
+    }, [activeSubTab, workflowsEnabled, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {

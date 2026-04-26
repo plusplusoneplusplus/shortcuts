@@ -83,6 +83,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNote
     useNotesEnabled: () => false,
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
+    useWorkflowsEnabled: () => false,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
     useNotesAutoCommit: () => false,
 }));

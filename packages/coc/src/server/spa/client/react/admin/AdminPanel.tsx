@@ -80,6 +80,7 @@ export function AdminPanel() {
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
     const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
     const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
+    const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -96,7 +97,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical' });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -187,7 +188,9 @@ export function AdminPanel() {
             setScratchpadEnabled(se);
             const sl = (resolved.scratchpad?.layout === 'vertical' ? 'vertical' : 'horizontal') as 'horizontal' | 'vertical';
             setScratchpadLayout(sl);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl });
+            const we = resolved.workflows?.enabled ?? false;
+            setWorkflowsEnabled(we);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -243,7 +246,8 @@ export function AdminPanel() {
         myWorkEnabled !== featuresSnapshot.myWork ||
         myLifeEnabled !== featuresSnapshot.myLife ||
         scratchpadEnabled !== featuresSnapshot.scratchpad ||
-        scratchpadLayout !== featuresSnapshot.scratchpadLayout;
+        scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
+        workflowsEnabled !== featuresSnapshot.workflows;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -397,6 +401,7 @@ export function AdminPanel() {
                     'myLife.enabled': myLifeEnabled,
                     'scratchpad.enabled': scratchpadEnabled,
                     'scratchpad.layout': scratchpadLayout,
+                    'workflows.enabled': workflowsEnabled,
                 }),
             });
             if (!res.ok) {
@@ -405,13 +410,13 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -420,6 +425,7 @@ export function AdminPanel() {
         setMyLifeEnabled(featuresSnapshot.myLife);
         setScratchpadEnabled(featuresSnapshot.scratchpad);
         setScratchpadLayout(featuresSnapshot.scratchpadLayout);
+        setWorkflowsEnabled(featuresSnapshot.workflows);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1135,6 +1141,25 @@ export function AdminPanel() {
                                             </div>
                                         </div>
                                     )}
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Workflows Tab</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">YAML workflow runner tab in repo view.</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['workflows.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={workflowsEnabled}
+                                                    onChange={e => setWorkflowsEnabled(e.target.checked)}
+                                                    data-testid="toggle-workflows-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
                                 </SettingsCard>
                                 <SettingsCard
                                     title="Advanced & Recovery"

@@ -60,6 +60,7 @@ describe('Config', () => {
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'vertical' });
+            expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
         });
     });
 
@@ -340,6 +341,7 @@ timeout: 300
                 myWork: { enabled: false },
                 myLife: { enabled: false },
                 scratchpad: { enabled: false, layout: 'vertical' },
+                workflows: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -452,6 +454,16 @@ timeout: 300
             const result = mergeConfig(DEFAULT_CONFIG, { scratchpad: { enabled: true } });
             expect(result.scratchpad.enabled).toBe(true);
             expect(result.scratchpad.layout).toBe('vertical');
+        });
+
+        it('should preserve workflows.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.workflows.enabled).toBe(false);
+        });
+
+        it('should override workflows.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { workflows: { enabled: true } });
+            expect(result.workflows.enabled).toBe(true);
         });
 
         it('should override store.backend from file', () => {
@@ -627,6 +639,22 @@ timeout: 300
             expect(result.sources['notes.enabled']).toBe('default');
         });
 
+        it('should report file source for workflows.enabled when set', () => {
+            const configPath = path.join(tmpDir, 'workflows.yaml');
+            fs.writeFileSync(configPath, 'workflows:\n  enabled: true\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.workflows.enabled).toBe(true);
+            expect(result.sources['workflows.enabled']).toBe('file');
+        });
+
+        it('should report default source for workflows.enabled when not set', () => {
+            const configPath = path.join(tmpDir, 'no-workflows.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.workflows.enabled).toBe(false);
+            expect(result.sources['workflows.enabled']).toBe('default');
+        });
+
         it('should return resolved config with defaults applied', () => {
             const configPath = path.join(tmpDir, 'config.yaml');
             fs.writeFileSync(configPath, 'model: claude\n');
@@ -680,6 +708,8 @@ timeout: 300
                 'scratchpad:',
                 '  enabled: true',
                 '  layout: vertical',
+                'workflows:',
+                '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 

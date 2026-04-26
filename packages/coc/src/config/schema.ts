@@ -85,6 +85,9 @@ export const CLIConfigSchema = z.object({
         enabled: z.boolean().optional(),
         layout: z.enum(['horizontal', 'vertical']).optional(),
     }).passthrough().optional(),
+    workflows: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
     }).passthrough().optional(),

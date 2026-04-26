@@ -65,6 +65,9 @@ export interface CLIConfig {
         enabled?: boolean;
         layout?: 'horizontal' | 'vertical';
     };
+    workflows?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

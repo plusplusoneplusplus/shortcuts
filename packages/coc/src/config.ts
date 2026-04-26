@@ -96,6 +96,10 @@ export interface CLIConfig {
         enabled?: boolean;
         layout?: 'horizontal' | 'vertical';
     };
+    /** Workflows configuration */
+    workflows?: {
+        enabled?: boolean;
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -215,6 +219,10 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
         layout: 'horizontal' | 'vertical';
     };
+    /** Workflows configuration */
+    workflows: {
+        enabled: boolean;
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -286,6 +294,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         layout: 'vertical',
     },
+    workflows: {
+        enabled: false,
+    },
     store: {
         backend: 'sqlite',
     },
@@ -322,6 +333,7 @@ export const CONFIG_SOURCE_KEYS = [
     'myLife.enabled',
     'scratchpad.enabled',
     'scratchpad.layout',
+    'workflows.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -475,6 +487,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             enabled: override.scratchpad?.enabled ?? base.scratchpad.enabled,
             layout: override.scratchpad?.layout ?? base.scratchpad.layout,
         },
+        workflows: {
+            enabled: override.workflows?.enabled ?? base.workflows.enabled,
+        },
         store: {
             backend: override.store?.backend ?? base.store.backend,
         },
@@ -558,6 +573,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('scratchpad.')) {
         const subKey = key.slice('scratchpad.'.length) as keyof NonNullable<CLIConfig['scratchpad']>;
         return fileConfig.scratchpad?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('workflows.')) {
+        const subKey = key.slice('workflows.'.length) as keyof NonNullable<CLIConfig['workflows']>;
+        return fileConfig.workflows?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

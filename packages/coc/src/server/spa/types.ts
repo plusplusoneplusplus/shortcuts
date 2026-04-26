@@ -23,6 +23,8 @@ export interface DashboardOptions {
     scratchpadEnabled?: boolean;
     /** Scratchpad split layout direction. */
     scratchpadLayout?: 'horizontal' | 'vertical';
+    /** Whether the workflows feature is enabled in server config. */
+    workflowsEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */
