@@ -52,7 +52,7 @@ describe('createMemoryTool', () => {
     beforeEach(() => {
         repoStore = createMockBoundedStore();
         systemStore = createMockBoundedStore();
-        stores = { memory: repoStore, system: systemStore };
+        stores = { repo: repoStore, system: systemStore };
     });
 
     // -----------------------------------------------------------------------
@@ -78,7 +78,7 @@ describe('createMemoryTool', () => {
             expect(params.properties.action.type).toBe('string');
             expect(params.properties.action.enum).toEqual(['add', 'replace', 'remove']);
             expect(params.properties.target.type).toBe('string');
-            expect(params.properties.target.enum).toEqual(['memory', 'system']);
+            expect(params.properties.target.enum).toEqual(['repo', 'system']);
             expect(params.required).toEqual(['action', 'target']);
         });
 
@@ -97,9 +97,9 @@ describe('createMemoryTool', () => {
     // -----------------------------------------------------------------------
 
     describe('action: add', () => {
-        it('calls store.add() when target is "memory"', async () => {
+        it('calls store.add() when target is "repo"', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'Use tabs' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'Use tabs' }, mockInvocation);
             expect(repoStore.add).toHaveBeenCalledWith('Use tabs');
         });
 
@@ -114,19 +114,19 @@ describe('createMemoryTool', () => {
             (repoStore.add as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
 
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'add', target: 'memory', content: 'Use tabs' }, mockInvocation);
+            const result = await tool.handler({ action: 'add', target: 'repo', content: 'Use tabs' }, mockInvocation);
             expect(result).toEqual(expected);
         });
 
         it('returns error when content is missing', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'add', target: 'memory' }, mockInvocation);
+            const result = await tool.handler({ action: 'add', target: 'repo' }, mockInvocation);
             expect(result).toEqual({ success: false, error: "Content is required for 'add' action." });
         });
 
         it('tracks added content in getWrittenFacts()', async () => {
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'Fact one' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'Fact one' }, mockInvocation);
             await tool.handler({ action: 'add', target: 'system', content: 'Fact two' }, mockInvocation);
             expect(getWrittenFacts()).toEqual(['Fact one', 'Fact two']);
         });
@@ -135,7 +135,7 @@ describe('createMemoryTool', () => {
             (repoStore.add as ReturnType<typeof vi.fn>).mockResolvedValue(makeFailResult('Entry already exists.'));
 
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'Duplicate' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'Duplicate' }, mockInvocation);
             expect(getWrittenFacts()).toEqual([]);
         });
     });
@@ -148,20 +148,20 @@ describe('createMemoryTool', () => {
         it('calls store.replace() with old_text and content', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
             await tool.handler({
-                action: 'replace', target: 'memory', old_text: 'old fact', content: 'new fact',
+                action: 'replace', target: 'repo', old_text: 'old fact', content: 'new fact',
             }, mockInvocation);
             expect(repoStore.replace).toHaveBeenCalledWith('old fact', 'new fact');
         });
 
         it('returns error when old_text is missing', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'replace', target: 'memory', content: 'new' }, mockInvocation);
+            const result = await tool.handler({ action: 'replace', target: 'repo', content: 'new' }, mockInvocation);
             expect(result).toEqual({ success: false, error: "old_text is required for 'replace' action." });
         });
 
         it('returns error when content is missing', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'replace', target: 'memory', old_text: 'old' }, mockInvocation);
+            const result = await tool.handler({ action: 'replace', target: 'repo', old_text: 'old' }, mockInvocation);
             expect(result).toEqual({ success: false, error: "content is required for 'replace' action." });
         });
 
@@ -180,7 +180,7 @@ describe('createMemoryTool', () => {
 
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
             await tool.handler({
-                action: 'replace', target: 'memory', old_text: 'xyz', content: 'new',
+                action: 'replace', target: 'repo', old_text: 'xyz', content: 'new',
             }, mockInvocation);
             expect(getWrittenFacts()).toEqual([]);
         });
@@ -193,13 +193,13 @@ describe('createMemoryTool', () => {
     describe('action: remove', () => {
         it('calls store.remove() with old_text', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'remove', target: 'memory', old_text: 'stale fact' }, mockInvocation);
+            await tool.handler({ action: 'remove', target: 'repo', old_text: 'stale fact' }, mockInvocation);
             expect(repoStore.remove).toHaveBeenCalledWith('stale fact');
         });
 
         it('returns error when old_text is missing', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'remove', target: 'memory' }, mockInvocation);
+            const result = await tool.handler({ action: 'remove', target: 'repo' }, mockInvocation);
             expect(result).toEqual({ success: false, error: "old_text is required for 'remove' action." });
         });
 
@@ -217,20 +217,20 @@ describe('createMemoryTool', () => {
     describe('target validation', () => {
         it('rejects target not in allowedTargets', async () => {
             const { tool } = createMemoryTool(stores, { source: 'test', allowedTargets: ['system'] });
-            const result = await tool.handler({ action: 'add', target: 'memory', content: 'x' }, mockInvocation);
-            expect(result).toEqual({ success: false, error: "Target 'memory' is not available." });
+            const result = await tool.handler({ action: 'add', target: 'repo', content: 'x' }, mockInvocation);
+            expect(result).toEqual({ success: false, error: "Target 'repo' is not available." });
         });
 
         it('rejects target when no store is configured for it', async () => {
-            const { tool } = createMemoryTool({ memory: repoStore }, baseOptions);
+            const { tool } = createMemoryTool({ repo: repoStore }, baseOptions);
             const result = await tool.handler({ action: 'add', target: 'system', content: 'x' }, mockInvocation);
             expect(result).toEqual({ success: false, error: "No store configured for target 'system'." });
         });
 
-        it('defaults allowedTargets to both memory and system', async () => {
+        it('defaults allowedTargets to both repo and system', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
 
-            const r1 = await tool.handler({ action: 'add', target: 'memory', content: 'a' }, mockInvocation);
+            const r1 = await tool.handler({ action: 'add', target: 'repo', content: 'a' }, mockInvocation);
             const r2 = await tool.handler({ action: 'add', target: 'system', content: 'b' }, mockInvocation);
 
             expect((r1 as any).success).toBe(true);
@@ -250,7 +250,7 @@ describe('createMemoryTool', () => {
             (repoStore.add as ReturnType<typeof vi.fn>).mockResolvedValue(capacityResult);
 
             const { tool } = createMemoryTool(stores, baseOptions);
-            const result = await tool.handler({ action: 'add', target: 'memory', content: 'big entry' }, mockInvocation);
+            const result = await tool.handler({ action: 'add', target: 'repo', content: 'big entry' }, mockInvocation);
             expect(result).toEqual(capacityResult);
         });
 
@@ -260,7 +260,7 @@ describe('createMemoryTool', () => {
 
             const { tool } = createMemoryTool(stores, baseOptions);
             const result = await tool.handler({
-                action: 'replace', target: 'memory', old_text: 'xyz', content: 'new',
+                action: 'replace', target: 'repo', old_text: 'xyz', content: 'new',
             }, mockInvocation);
             expect(result).toEqual(noMatch);
         });
@@ -273,7 +273,7 @@ describe('createMemoryTool', () => {
 
             const { tool } = createMemoryTool(stores, baseOptions);
             const result = await tool.handler({
-                action: 'remove', target: 'memory', old_text: 'common',
+                action: 'remove', target: 'repo', old_text: 'common',
             }, mockInvocation);
             expect(result).toEqual(ambiguous);
         });
@@ -302,15 +302,15 @@ describe('createMemoryTool', () => {
 
         it('accumulates across multiple successful add/replace calls', async () => {
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'A' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'A' }, mockInvocation);
             await tool.handler({ action: 'replace', target: 'system', old_text: 'x', content: 'B' }, mockInvocation);
-            await tool.handler({ action: 'add', target: 'memory', content: 'C' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'C' }, mockInvocation);
             expect(getWrittenFacts()).toEqual(['A', 'B', 'C']);
         });
 
         it('returns a defensive copy', async () => {
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'Fact 1' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'Fact 1' }, mockInvocation);
 
             const copy = getWrittenFacts();
             copy.push('injected');
@@ -322,14 +322,14 @@ describe('createMemoryTool', () => {
             (repoStore.add as ReturnType<typeof vi.fn>).mockResolvedValue(makeFailResult('Entry already exists.'));
 
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'dup' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'dup' }, mockInvocation);
             expect(getWrittenFacts()).toEqual([]);
         });
 
         it('does not include remove operations', async () => {
             const { tool, getWrittenFacts } = createMemoryTool(stores, baseOptions);
-            await tool.handler({ action: 'add', target: 'memory', content: 'A' }, mockInvocation);
-            await tool.handler({ action: 'remove', target: 'memory', old_text: 'A' }, mockInvocation);
+            await tool.handler({ action: 'add', target: 'repo', content: 'A' }, mockInvocation);
+            await tool.handler({ action: 'remove', target: 'repo', old_text: 'A' }, mockInvocation);
             expect(getWrittenFacts()).toEqual(['A']);
         });
     });
@@ -342,7 +342,7 @@ describe('createMemoryTool', () => {
         it('unknown action returns error', async () => {
             const { tool } = createMemoryTool(stores, baseOptions);
             const result = await tool.handler(
-                { action: 'unknown' as any, target: 'memory' },
+                { action: 'unknown' as any, target: 'repo' },
                 mockInvocation,
             );
             expect(result).toEqual({ success: false, error: "Unknown action 'unknown'." });
@@ -359,9 +359,9 @@ describe('createMemoryTool', () => {
         });
 
         it('works with only repo store (no system store)', async () => {
-            const { tool } = createMemoryTool({ memory: repoStore }, baseOptions);
+            const { tool } = createMemoryTool({ repo: repoStore }, baseOptions);
             const result = await tool.handler(
-                { action: 'add', target: 'memory', content: 'repo fact' },
+                { action: 'add', target: 'repo', content: 'repo fact' },
                 mockInvocation,
             );
             expect((result as any).success).toBe(true);
@@ -370,9 +370,9 @@ describe('createMemoryTool', () => {
 
         it('empty stores map → both targets fail gracefully', async () => {
             const { tool } = createMemoryTool({}, baseOptions);
-            const r1 = await tool.handler({ action: 'add', target: 'memory', content: 'x' }, mockInvocation);
+            const r1 = await tool.handler({ action: 'add', target: 'repo', content: 'x' }, mockInvocation);
             const r2 = await tool.handler({ action: 'add', target: 'system', content: 'y' }, mockInvocation);
-            expect(r1).toEqual({ success: false, error: "No store configured for target 'memory'." });
+            expect(r1).toEqual({ success: false, error: "No store configured for target 'repo'." });
             expect(r2).toEqual({ success: false, error: "No store configured for target 'system'." });
         });
     });

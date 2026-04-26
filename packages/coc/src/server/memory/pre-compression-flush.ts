@@ -72,7 +72,7 @@ export async function flushMemories(options: FlushOptions): Promise<FlushResult>
     }
 
     const { tool: memoryTool, getWrittenFacts } = createMemoryTool(
-        { memory: memoryStore },
+        { repo: memoryStore },
         { source: 'pre-compression-flush' },
     );
     const currentEntries = memoryStore.read();

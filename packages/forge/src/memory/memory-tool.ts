@@ -26,8 +26,8 @@ export type MemoryToolMode = 'bounded' | 'capture';
 export interface MemoryToolOptions {
     /** Source pipeline/feature name for logging (e.g. 'chat', 'code-review') */
     source: string;
-    /** Override which targets the AI can write to. Default: ['memory', 'system'] */
-    allowedTargets?: Array<'memory' | 'system'>;
+    /** Override which targets the AI can write to. Default: ['repo', 'system'] */
+    allowedTargets?: Array<'repo' | 'system'>;
     /** Operating mode. Default: 'bounded'. */
     mode?: MemoryToolMode;
 }
@@ -45,8 +45,8 @@ export interface MemoryToolCaptureContext {
 export interface MemoryToolArgs {
     /** The action to perform */
     action: 'add' | 'replace' | 'remove';
-    /** Which memory store: 'memory' for repo-scoped notes, 'system' for global */
-    target: 'memory' | 'system';
+    /** Which memory store: 'repo' for repo-scoped notes, 'system' for global */
+    target: 'repo' | 'system';
     /** The entry content. Required for 'add' and 'replace'. */
     content?: string;
     /** Short unique substring identifying the entry to replace or remove. */
@@ -55,13 +55,13 @@ export interface MemoryToolArgs {
 
 /** Map of target name → BoundedMemoryStore instance. */
 export type MemoryToolStores = {
-    memory?: BoundedMemoryStore;
+    repo?: BoundedMemoryStore;
     system?: BoundedMemoryStore;
 };
 
 /** Map of target name → RawMemoryRecordStore instance (for capture mode). */
 export type MemoryToolRawStores = {
-    memory?: RawMemoryRecordStore;
+    repo?: RawMemoryRecordStore;
     system?: RawMemoryRecordStore;
 };
 
@@ -91,7 +91,7 @@ export const MEMORY_SCHEMA =
     + 'Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO state.\n'
     + '\n'
     + 'TWO TARGETS:\n'
-    + '- \'memory\': repo-scoped notes — project conventions, tool quirks, environment facts\n'
+    + '- \'repo\': repo-scoped notes — project conventions, tool quirks, environment facts\n'
     + '- \'system\': global notes — cross-repo preferences, general patterns\n'
     + '\n'
     + 'ACTIONS: add (new entry), replace (update existing — old_text identifies it),\n'
@@ -124,7 +124,7 @@ export function createMemoryTool(
     },
 ): { tool: Tool<MemoryToolArgs>; getWrittenFacts: () => string[] } {
     const writtenFacts: string[] = [];
-    const allowedTargets = options.allowedTargets ?? ['memory', 'system'];
+    const allowedTargets = options.allowedTargets ?? ['repo', 'system'];
     const mode: MemoryToolMode = options.mode ?? 'bounded';
 
     const tool = defineTool<MemoryToolArgs>('memory', {
@@ -139,8 +139,8 @@ export function createMemoryTool(
                 },
                 target: {
                     type: 'string',
-                    enum: ['memory', 'system'],
-                    description: "Which memory store: 'memory' for repo-scoped notes, 'system' for global notes.",
+                    enum: ['repo', 'system'],
+                    description: "Which memory store: 'repo' for repo-scoped notes, 'system' for global notes.",
                 },
                 content: {
                     type: 'string',
@@ -253,8 +253,8 @@ async function handleCaptureMode(
         return { success: false, error: `Content blocked by security scanner: ${scan.reason}` };
     }
 
-    // Map tool target ('memory'/'system') to raw record target ('repo'/'system')
-    const rawTarget = args.target === 'memory' ? 'repo' : 'system';
+    // args.target is already 'repo' or 'system' — pass through directly
+    const rawTarget = args.target;
 
     const record = await rawStore.append({
         target: rawTarget,

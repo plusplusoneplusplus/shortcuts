@@ -54,7 +54,7 @@ export class BackgroundReviewExecutor {
 
             // 3. Create memory tool for this workspace
             const { tool: memoryTool, getWrittenFacts } = createMemoryTool(
-                { memory: memoryStore },
+                { repo: memoryStore },
                 { source: 'background-review' },
             );
 

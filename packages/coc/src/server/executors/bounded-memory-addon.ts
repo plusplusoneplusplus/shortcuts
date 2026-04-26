@@ -115,7 +115,7 @@ export async function buildBoundedMemoryAddon(
 
             captureConfig = {
                 rawStores: {
-                    memory: repoRaw,
+                    repo: repoRaw,
                     system: systemRaw,
                 },
                 context: {
@@ -126,7 +126,7 @@ export async function buildBoundedMemoryAddon(
         }
 
         const { tool } = createMemoryTool(
-            { memory: store, system: systemStore },
+            { repo: store, system: systemStore },
             { source: 'coc-chat', mode: useCapture ? 'capture' : 'bounded' },
             captureConfig,
         );
