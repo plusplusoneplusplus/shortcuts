@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Button, Spinner } from '../ui';
 import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload';
+import { useQueue } from '../contexts/QueueContext';
 
 export interface PendingTaskInfoPanelProps {
     task: any;
@@ -11,6 +12,12 @@ export interface PendingTaskInfoPanelProps {
 
 export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTaskInfoPanelProps) {
     const [resolvedPrompt, setResolvedPrompt] = useState<any>(null);
+    const { state: queueState } = useQueue();
+
+    const queuePosition = task?.id
+        ? queueState.queued.findIndex((t: any) => t.id === task.id) + 1
+        : 0;
+    const queueTotal = queueState.queued.length;
 
     useEffect(() => {
         if (!task?.id) return;
@@ -51,6 +58,7 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                 <MetaRow label="Task ID" value={task.id} />
                 <MetaRow label="Type" value={task.type || 'unknown'} />
                 <MetaRow label="Priority" value={`${priorityIcons[priorityLabel] || ''} ${priorityLabel}`} />
+                {queuePosition > 0 && <MetaRow label="Queue Position" value={`${queuePosition} of ${queueTotal}`} />}
                 {created && <MetaRow label="Created" value={created} />}
                 {model && <MetaRow label="Model" value={model} />}
                 {workingDir && <FilePathValue label="Working Directory" value={workingDir} />}

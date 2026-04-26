@@ -124,13 +124,7 @@ export function ConversationArea({
                 className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
             >
                 {isPending ? (
-                    task?.type === 'chat' ? (
-                        <div className="flex items-center gap-2 text-[#848484] text-sm">
-                            <Spinner size="sm" /> Task queued, starting soon…
-                        </div>
-                    ) : (
-                        <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
-                    )
+                    <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
                 ) : loading ? (
                     <div className="flex items-center gap-2 text-[#848484] text-sm">
                         <Spinner size="sm" /> Loading conversation...

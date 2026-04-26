@@ -167,9 +167,13 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
+            expect(screen.getByText('Task ID')).toBeTruthy();
         });
-        expect(screen.queryByText('Please implement the feature.')).toBeNull();
+        // Chat tasks now show the full PendingTaskInfoPanel with the prompt
+        expect(screen.queryByText(/Task queued, starting soon/)).toBeNull();
+        await waitFor(() => {
+            expect(screen.getByText('Please implement the feature.')).toBeTruthy();
+        });
     });
 
     it('renders prompt for chat task with mode', async () => {
@@ -191,9 +195,14 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
+            expect(screen.getByText('Task ID')).toBeTruthy();
         });
-        expect(screen.queryByText(/function doSomething\(\)/)).toBeNull();
+        // Chat tasks now show the full PendingTaskInfoPanel
+        expect(screen.queryByText(/Task queued, starting soon/)).toBeNull();
+        // The prompt is shown
+        await waitFor(() => {
+            expect(screen.getByText(/function doSomething\(\)/)).toBeTruthy();
+        });
     });
 
     it('renders resolve-comments payload with document, comments, and prompt', async () => {
@@ -223,9 +232,13 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
+            expect(screen.getByText('Task ID')).toBeTruthy();
         });
-        expect(screen.queryByText('Resolve Comments Details')).toBeNull();
+        // Resolve Comments Details section is now shown for chat tasks too
+        expect(screen.queryByText(/Task queued, starting soon/)).toBeNull();
+        await waitFor(() => {
+            expect(screen.getByText('Resolve Comments Details')).toBeTruthy();
+        });
     });
 
     it('renders context files and mode for chat task', async () => {
@@ -250,9 +263,15 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText(/Task queued, starting soon/)).toBeTruthy();
+            expect(screen.getByText('Task ID')).toBeTruthy();
         });
-        expect(screen.queryByText('Mode')).toBeNull();
+        // Chat tasks now show the full PendingTaskInfoPanel
+        expect(screen.queryByText(/Task queued, starting soon/)).toBeNull();
+        // Mode row and files are shown
+        await waitFor(() => {
+            expect(screen.getByText('Mode')).toBeTruthy();
+            expect(screen.getByText('ask')).toBeTruthy();
+        });
     });
 
     it('calls /queue/<id> API on mount to fetch full task data', async () => {
@@ -432,5 +451,49 @@ describe('PendingTaskInfoPanel', () => {
             expect(screen.getByText('File')).toBeTruthy();
             expect(screen.getByText('Workflow')).toBeTruthy();
         });
+    });
+
+    it('renders queue position when task is in the queue', async () => {
+        const task = makePendingTask();
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            // task-123 is the only queued item, so position should be "1 of 1"
+            expect(screen.getByText('Queue Position')).toBeTruthy();
+            expect(screen.getByText('1 of 1')).toBeTruthy();
+        });
+    });
+
+    it('does not render queue position when task is not in the queued list', async () => {
+        // Task status is queued but it's absent from queueState.queued (e.g. just transitioned to running)
+        const task = makePendingTask();
+        setupFetchForTask(task);
+
+        function SeededChatDetailWithoutQueueEntry({ task }: { task: any }) {
+            const { dispatch: queueDispatch } = useQueue();
+            useEffect(() => {
+                // Seed an empty queued list — task-123 is not in it
+                queueDispatch({ type: 'QUEUE_UPDATED', queue: { queued: [], running: [], stats: {} } });
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+            }, []);
+            return <ChatDetail taskId={task.id} />;
+        }
+
+        render(
+            <Wrap>
+                <SeededChatDetailWithoutQueueEntry task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Task ID')).toBeTruthy();
+        });
+        expect(screen.queryByText('Queue Position')).toBeNull();
     });
 });
