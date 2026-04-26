@@ -142,11 +142,11 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('badge')).toBeTruthy();
             expect(screen.getByTestId('references-dropdown')).toBeTruthy();
             expect(screen.getByText('5000ms')).toBeTruthy();
-            expect(screen.getByTestId('resume-cli-btn')).toBeTruthy();
             expect(screen.getByTestId('context-window')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
             expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
+            // Resume CLI and Fork are now inside the metadata popover (not standalone inline buttons)
             expect(screen.getByTestId('metadata-popover')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
@@ -450,11 +450,12 @@ describe('ChatHeader', () => {
     });
 
     describe('fork button', () => {
-        it('renders inline fork button in wide tier when onFork is provided', () => {
+        it('metadata popover is rendered when onFork is provided (fork lives inside popover)', () => {
             setTier('wide');
             const onFork = vi.fn();
             render(<ChatHeader {...defaultProps({ onFork, forking: false })} />);
-            expect(screen.getByText(/Fork/)).toBeTruthy();
+            // Fork was moved into the ConversationMetadataPopover (alongside Resume CLI)
+            expect(screen.getByTestId('metadata-popover')).toBeTruthy();
         });
 
         it('does not render fork button when onFork is undefined', () => {

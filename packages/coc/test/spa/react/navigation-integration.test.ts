@@ -23,11 +23,6 @@ const REPO_DETAIL_SRC = fs.readFileSync(
     'utf-8',
 );
 
-const PROCESS_DETAIL_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'processes', 'ProcessDetail.tsx'),
-    'utf-8',
-);
-
 const USE_PIPELINE_PROGRESS_SRC = fs.readFileSync(
     path.join(SRC_ROOT, 'features', 'workflow', 'hooks', 'useWorkflowProgress.ts'),
     'utf-8',
@@ -134,30 +129,6 @@ describe('RepoDetail: workflow sub-tab rendering', () => {
 
     it('passes selectedWorkflowProcessId to WorkflowDetailView', () => {
         expect(REPO_DETAIL_SRC).toContain('state.selectedWorkflowProcessId');
-    });
-});
-
-// ─── ProcessDetail: View Workflow button ────────────────────────
-describe('ProcessDetail: View Workflow button', () => {
-    it('has a View Workflow button with data-testid', () => {
-        expect(PROCESS_DETAIL_SRC).toContain('data-testid="view-workflow-btn"');
-    });
-
-    it('button text says "View Workflow →"', () => {
-        expect(PROCESS_DETAIL_SRC).toContain('View Workflow →');
-    });
-
-    it('button is shown for pipeline-type processes', () => {
-        expect(PROCESS_DETAIL_SRC).toContain("metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow'");
-    });
-
-    it('button navigates to workflow hash with wsId and process.id', () => {
-        const btnSection = PROCESS_DETAIL_SRC.substring(
-            PROCESS_DETAIL_SRC.indexOf('view-workflow-btn') - 200,
-            PROCESS_DETAIL_SRC.indexOf('view-workflow-btn') + 300
-        );
-        expect(btnSection).toContain('/workflow/');
-        expect(btnSection).toContain('process.id');
     });
 });
 

@@ -22,7 +22,7 @@ suite('Permission Handler Tests', () => {
 
         for (const request of requests) {
             const result = await Promise.resolve(approveAllPermissions(request, { sessionId: 'test-session' }));
-            assert.strictEqual(result.kind, 'approved', `Should approve ${request.kind} requests`);
+            assert.strictEqual(result.kind, 'approve-once', `Should approve ${request.kind} requests`);
         }
     });
 
@@ -37,7 +37,7 @@ suite('Permission Handler Tests', () => {
 
         for (const request of requests) {
             const result = await Promise.resolve(denyAllPermissions(request, { sessionId: 'test-session' }));
-            assert.strictEqual(result.kind, 'denied-by-rules', `Should deny ${request.kind} requests`);
+            assert.strictEqual(result.kind, 'reject', `Should deny ${request.kind} requests`);
         }
     });
 
@@ -45,9 +45,9 @@ suite('Permission Handler Tests', () => {
         const selectiveHandler: PermissionHandler = (request) => {
             // Approve reads, deny everything else
             if (request.kind === 'read') {
-                return { kind: 'approved' };
+                return { kind: 'approve-once' };
             }
-            return { kind: 'denied-by-rules', rules: [] };
+            return { kind: 'reject' };
         };
 
         const readRequest: PermissionRequest = { kind: 'read' };
@@ -56,47 +56,44 @@ suite('Permission Handler Tests', () => {
         const readResult = await Promise.resolve(selectiveHandler(readRequest, { sessionId: 'test' }));
         const writeResult = await Promise.resolve(selectiveHandler(writeRequest, { sessionId: 'test' }));
 
-        assert.strictEqual(readResult.kind, 'approved');
-        assert.strictEqual(writeResult.kind, 'denied-by-rules');
+        assert.strictEqual(readResult.kind, 'approve-once');
+        assert.strictEqual(writeResult.kind, 'reject');
     });
 
     test('Permission handler can be async', async () => {
         const asyncHandler: PermissionHandler = async (request) => {
             // Simulate async approval logic
             await new Promise(resolve => setTimeout(resolve, 10));
-            return { kind: 'approved' };
+            return { kind: 'approve-once' };
         };
 
         const request: PermissionRequest = { kind: 'shell' };
         const result = await asyncHandler(request, { sessionId: 'test' });
 
-        assert.strictEqual(result.kind, 'approved');
+        assert.strictEqual(result.kind, 'approve-once');
     });
 
     test('Permission handler receives session context', () => {
         const handler: PermissionHandler = (request, invocation) => {
             assert.ok(invocation.sessionId, 'Should receive session ID');
-            return { kind: 'approved' };
+            return { kind: 'approve-once' };
         };
 
         const request: PermissionRequest = { kind: 'read' };
         handler(request, { sessionId: 'my-session-123' });
     });
 
-    test('Permission request can include additional metadata', () => {
+    test('Permission request can include toolCallId metadata', () => {
         const request: PermissionRequest = {
             kind: 'write',
             toolCallId: 'tool-123',
-            filePath: '/path/to/file.txt',
-            customField: 'custom-value'
         };
 
         // Handler can access all fields
         const handler: PermissionHandler = (req) => {
             assert.strictEqual(req.kind, 'write');
             assert.strictEqual(req.toolCallId, 'tool-123');
-            assert.strictEqual(req['filePath'], '/path/to/file.txt');
-            return { kind: 'approved' };
+            return { kind: 'approve-once' };
         };
 
         handler(request, { sessionId: 'test' });

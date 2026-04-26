@@ -27,6 +27,7 @@ const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 
 const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'hooks', 'useSendMessage.ts'), 'utf-8');
 const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'hooks', 'useChatSSE.ts'), 'utf-8');
 const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'FollowUpInputArea.tsx'), 'utf-8');
+const SPLIT_SEND_BUTTON_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'ui', 'SplitSendButton.tsx'), 'utf-8');
 const CHAT_HEADER_SRC = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'ChatHeader.tsx'), 'utf-8');
 const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'ConversationArea.tsx'), 'utf-8');
 const MODE_CONFIG_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'modeConfig.ts'), 'utf-8');
@@ -442,15 +443,10 @@ describe('ChatDetail', () => {
             expect(source).toContain('Fetch full task data for pending tasks');
         });
 
-        it('skips PendingTaskInfoPanel for chat tasks (shows conversation instead)', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain("task?.type === 'chat'");
-            // Chat tasks show a "starting soon" placeholder, non-chat show PendingTaskInfoPanel
+        it('all pending tasks use PendingTaskInfoPanel (chat tasks no longer exempt)', () => {
+            // Commit 71eaab5fd removed the task?.type === 'chat' exception; all pending tasks now render PendingTaskInfoPanel
             expect(CONVERSATION_AREA_SOURCE).toContain('PendingTaskInfoPanel');
-        });
-
-        it('shows streaming placeholder for pending chat tasks', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain("task?.type === 'chat'");
-            expect(CONVERSATION_AREA_SOURCE).toContain('Task queued, starting soon');
+            expect(CONVERSATION_AREA_SOURCE).not.toContain("task?.type === 'chat'");
         });
     });
 
@@ -1196,8 +1192,9 @@ describe('ChatDetail', () => {
         });
 
         it('send button text is "Send" (no longer shows "...")', () => {
-            const sendBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-send-btn');
-            const sendBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(sendBtnIdx - 10, sendBtnIdx + 100);
+            // activity-chat-send-btn lives in SplitSendButton.tsx (SendButton component), not FollowUpInputArea
+            const sendBtnIdx = SPLIT_SEND_BUTTON_SOURCE.indexOf('activity-chat-send-btn');
+            const sendBtnBlock = SPLIT_SEND_BUTTON_SOURCE.substring(sendBtnIdx - 10, sendBtnIdx + 200);
             expect(sendBtnBlock).toContain('Send');
             expect(sendBtnBlock).not.toContain('...');
         });

@@ -24,7 +24,6 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
 import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
-import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
 import { useWorkflowProgress } from '../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress';
 import { createMockFetch } from './test-utils';
 
@@ -73,19 +72,6 @@ function SeededWorkflowRunHistory({ workspaceId, pipelineName, tasks }: {
         });
     }, [dispatch, workspaceId, tasks]);
     return <WorkflowRunHistory workspaceId={workspaceId} pipelineName={pipelineName} />;
-}
-
-/** Seeds a process for ProcessDetail and selects it. */
-function SeededProcessDetail({ process, workspaces }: { process: any; workspaces?: any[] }) {
-    const { dispatch } = useApp();
-    useEffect(() => {
-        dispatch({ type: 'SET_PROCESSES', processes: [process] });
-        dispatch({ type: 'SELECT_PROCESS', id: process.id });
-        if (workspaces) {
-            dispatch({ type: 'WORKSPACES_LOADED', workspaces });
-        }
-    }, [dispatch, process, workspaces]);
-    return <ProcessDetail />;
 }
 
 // ── EventSource mock infrastructure ────────────────────────────────────
@@ -242,91 +228,6 @@ describe('WorkflowRunHistory: workflow navigation', () => {
         await waitFor(() => {
             expect(screen.getByTestId('empty-state')).toBeDefined();
         });
-    });
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// ProcessDetail: View Workflow button
-// ════════════════════════════════════════════════════════════════════════
-
-describe('ProcessDetail: View Workflow button', () => {
-    let fetchMock: ReturnType<typeof createMockFetch>;
-
-    beforeEach(() => {
-        fetchMock = createMockFetch({
-            '/processes/': { body: { process: null } },
-        });
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('shows "View Workflow →" button for run-workflow process', async () => {
-        window.location.hash = '#processes';
-        render(
-            <Wrap>
-                <SeededProcessDetail
-                    process={{
-                        id: 'proc-wf-1',
-                        status: 'completed',
-                        type: 'run-workflow',
-                        promptPreview: 'Run my workflow',
-                        workspaceId: 'ws-1',
-                    }}
-                    workspaces={[{ id: 'ws-1', name: 'my-repo', rootPath: '/tmp/my-repo' }]}
-                />
-            </Wrap>,
-        );
-
-        const btn = await screen.findByTestId('view-workflow-btn');
-        expect(btn).toBeDefined();
-        expect(btn.textContent?.trim()).toBe('View Workflow →');
-    });
-
-    it('button navigates to workflow hash route', async () => {
-        window.location.hash = '#process/proc-wf-2';
-        render(
-            <Wrap>
-                <SeededProcessDetail
-                    process={{
-                        id: 'proc-wf-2',
-                        status: 'completed',
-                        type: 'run-workflow',
-                        promptPreview: 'Another workflow',
-                        workspaceId: 'ws-2',
-                    }}
-                    workspaces={[{ id: 'ws-2', name: 'other-repo', rootPath: '/tmp/other' }]}
-                />
-            </Wrap>,
-        );
-
-        const btn = await screen.findByTestId('view-workflow-btn');
-        fireEvent.click(btn);
-        expect(window.location.hash).toBe('#repos/ws-2/workflow/proc-wf-2');
-    });
-
-    it('does not show View Workflow button for non-workflow process', async () => {
-        render(
-            <Wrap>
-                <SeededProcessDetail
-                    process={{
-                        id: 'proc-chat-1',
-                        status: 'completed',
-                        type: 'chat',
-                        promptPreview: 'Just a chat',
-                        workspaceId: 'ws-3',
-                    }}
-                    workspaces={[{ id: 'ws-3', name: 'chat-repo', rootPath: '/tmp/chat' }]}
-                />
-            </Wrap>,
-        );
-
-        // Wait for component to render fully
-        await waitFor(() => {
-            expect(screen.getByText('Just a chat')).toBeDefined();
-        });
-        expect(screen.queryByTestId('view-workflow-btn')).toBeNull();
     });
 });
 

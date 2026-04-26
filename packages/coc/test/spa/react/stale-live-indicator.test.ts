@@ -49,37 +49,3 @@ describe('App.tsx — INVALIDATE_CONVERSATION on terminal process-updated', () =
         expect(caseBody).toMatch(/terminalStatuses\.includes\(msg\.process\.status\)/);
     });
 });
-
-describe('ProcessDetail.tsx — SSE "done" listener and streaming flag clear', () => {
-    let source: string;
-
-    beforeAll(() => {
-        source = fs.readFileSync(
-            path.join(CLIENT_DIR, 'processes', 'ProcessDetail.tsx'),
-            'utf-8',
-        );
-    });
-
-    it('registers a "done" SSE event listener', () => {
-        expect(source).toContain("addEventListener('done'");
-    });
-
-    it('"done" listener calls setTurns to clear streaming flags', () => {
-        const doneIdx = source.indexOf("addEventListener('done'");
-        expect(doneIdx).toBeGreaterThan(-1);
-        const doneBlock = source.slice(doneIdx, doneIdx + 300);
-        expect(doneBlock).toContain('streaming: false');
-    });
-
-    it('"status" listener clears streaming flags for terminal statuses', () => {
-        const statusIdx = source.indexOf("addEventListener('status'");
-        expect(statusIdx).toBeGreaterThan(-1);
-        const statusBlock = source.slice(statusIdx, statusIdx + 500);
-        expect(statusBlock).toContain('terminalStatuses');
-        expect(statusBlock).toContain('streaming: false');
-    });
-
-    it('data-fetch useEffect depends on process?.status', () => {
-        expect(source).toContain('process?.status, dispatch');
-    });
-});
