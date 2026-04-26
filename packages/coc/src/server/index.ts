@@ -181,7 +181,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
     bridge.registerRepoId(myLifeWorkspace.id, myLifeWorkspace.rootPath);
 
-    const resolvedAiService = options.aiService ?? getCopilotSDKService();
+    // Eagerly register all known workspaces with the schedule manager so repo
+    // schedules start timers immediately — not lazily on first HTTP request.
+    const allWorkspaces = await store.getWorkspaces();
+    for (const ws of allWorkspaces) {
+        scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
+    }
+
+    const resolvedAiService= options.aiService ?? getCopilotSDKService();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;

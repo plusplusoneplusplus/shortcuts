@@ -5,7 +5,7 @@
  * file watcher setup, dispose cleanup.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -182,6 +182,30 @@ describe('ScheduleManager — repo schedules', () => {
 
     it('dispose cleans up without error even if no workspace registered', () => {
         expect(() => manager.dispose()).not.toThrow();
+    });
+
+    it('startup eager registration: active-override repo schedule fires timer without HTTP request', async () => {
+        vi.useFakeTimers();
+        try {
+            writeScheduleFile(scheduleDir, 'every-min.yaml', 'name: Every Min\ncron: "* * * * *"');
+            const overrideStore = new RepoScheduleOverrideStore(dataDir);
+            overrideStore.save(REPO_ID, { 'repo:every-min': { status: 'active' } });
+
+            // Simulate what index.ts now does at startup for all persisted workspaces —
+            // registerWorkspacePath is called eagerly rather than waiting for an HTTP request.
+            manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+
+            // Schedule must be active immediately (no HTTP request needed)
+            expect(manager.getSchedule(REPO_ID, 'repo:every-min')!.status).toBe('active');
+
+            // Advance past the next cron tick to confirm the timer was armed
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            // A run was recorded — proves the timer fired without a prior HTTP request
+            expect(manager.getRunHistory('repo:every-min').length).toBeGreaterThan(0);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('repo schedule defaults to paused when YAML has no status field', () => {
