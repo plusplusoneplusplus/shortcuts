@@ -241,14 +241,14 @@ describe('NoteEditor — Source Mode', () => {
             await renderAndWaitForLoad();
             await switchToSource();
 
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('Source');
+            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD');
 
             const textarea = getSourceTextarea();
             await act(async () => {
                 fireEvent.change(textarea, { target: { value: '# Modified\n' } });
             });
 
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('Source ●');
+            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD ●');
         });
 
         it('shows Save button when source is dirty', async () => {
@@ -281,7 +281,7 @@ describe('NoteEditor — Source Mode', () => {
             await waitFor(() => {
                 expect(screen.queryByTestId('note-source-save-btn')).toBeNull();
             });
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('Source');
+            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD');
         });
     });
 

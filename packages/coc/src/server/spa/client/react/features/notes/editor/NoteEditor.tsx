@@ -10,7 +10,6 @@ import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../../shared/SourceEditor';
-import type { ModeOption } from '../../../ui/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import { wordDiff } from './noteEditDiff';
@@ -20,11 +19,6 @@ import { AIEditNavigator } from './AIEditNavigator';
 import './noteEditor.css';
 
 export type NoteViewMode = 'rich' | 'source';
-
-const NOTE_MODE_OPTIONS: readonly ModeOption<NoteViewMode>[] = [
-    { value: 'rich', label: 'Rich', testId: 'note-mode-rich' },
-    { value: 'source', label: 'Source', testId: 'note-mode-source' },
-] as const;
 
 export interface NoteEditorProps {
     workspaceId: string;
@@ -781,19 +775,30 @@ export function NoteEditor({
                     toolbarRight={toolbarRight}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
-                            {NOTE_MODE_OPTIONS.map((m) => {
-                                const isActive = m.value === viewMode;
-                                const showDirty = isActive && sourceDirty;
-                                return (
-                                    <button
-                                        key={m.value}
-                                        className={`mode-btn${isActive ? ' active' : ''}`}
-                                        onClick={() => { if (!isActive) { m.value === 'source' ? switchToSource() : switchToRich(); } }}
-                                        aria-label={showDirty ? `${m.label} (modified)` : undefined}
-                                        data-testid={m.testId}
-                                    >{showDirty ? `${m.label} ●` : m.label}</button>
-                                );
-                            })}
+                            <div className="flex h-5 rounded border border-[#c0c0c0] dark:border-[#555] overflow-hidden text-[10px]">
+                                <button
+                                    type="button"
+                                    className={`px-1.5 h-full flex items-center transition-colors ${
+                                        viewMode === 'rich'
+                                            ? 'bg-[#0078d4] text-white active'
+                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c]'
+                                    }`}
+                                    onClick={() => viewMode !== 'rich' && switchToRich()}
+                                    title="Rich editor"
+                                    data-testid="note-mode-rich"
+                                >Rich</button>
+                                <button
+                                    type="button"
+                                    className={`px-1.5 h-full flex items-center transition-colors ${
+                                        viewMode === 'source'
+                                            ? 'bg-[#0078d4] text-white active'
+                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c]'
+                                    }`}
+                                    onClick={() => viewMode !== 'source' && switchToSource()}
+                                    title={sourceDirty ? 'MD (modified)' : 'Source editor'}
+                                    data-testid="note-mode-source"
+                                >{sourceDirty && viewMode === 'source' ? 'MD ●' : 'MD'}</button>
+                            </div>
                             {viewMode === 'source' && sourceDirty && (
                                 <button className="save-btn" onClick={flushSourceSave} disabled={saveState === 'saving'} data-testid="note-source-save-btn">
                                     {saveState === 'saving' ? 'Saving…' : 'Save'}
