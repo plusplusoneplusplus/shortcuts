@@ -756,5 +756,39 @@ describe('useComments', () => {
             expect(body.content).toContain('highlighted text here');
             expect(body.content).toContain('This needs review');
         });
+
+        it('passes selectedMode in POST body when provided', async () => {
+            mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+
+            const { result } = renderHook(() =>
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42', selectedMode: 'ask' }),
+            );
+
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            await act(async () => {
+                await result.current.resolveWithAI('document body');
+            });
+
+            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            expect(body.mode).toBe('ask');
+        });
+
+        it('omits mode from POST body when selectedMode is not provided', async () => {
+            mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+
+            const { result } = renderHook(() =>
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+            );
+
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            await act(async () => {
+                await result.current.resolveWithAI('document body');
+            });
+
+            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            expect(body).not.toHaveProperty('mode');
+        });
     });
 });

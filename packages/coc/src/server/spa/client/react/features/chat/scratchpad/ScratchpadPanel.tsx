@@ -29,6 +29,8 @@ export interface ScratchpadPanelProps {
     onNotFound?: () => void;
     /** processId of the parent chat — when set, resolve-with-AI sends a follow-up instead of a new task. */
     parentProcessId?: string;
+    /** Current chat mode — passed through to resolve-with-AI follow-ups so they run in the user's selected mode. */
+    selectedMode?: 'ask' | 'plan' | 'autopilot';
     /**
      * When provided, renders a horizontal header bar at the top of the panel containing
      * file tabs and control icons. Used in vertical (side-by-side) layout where the divider
@@ -43,7 +45,7 @@ function isPlanFile(notePath: string | null): boolean {
     return name === 'plan.md' || name.endsWith('.plan.md');
 }
 
-export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, parentProcessId, headerBar }: ScratchpadPanelProps) {
+export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, parentProcessId, selectedMode, headerBar }: ScratchpadPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
     // ── Comments state (ephemeral — not persisted) ──────────────────────────
@@ -55,6 +57,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
         workspaceId,
         notePath,
         parentProcessId,
+        selectedMode,
     });
 
     // ── Wrapped delete/resolve/reopen that sync editor marks ────────────────

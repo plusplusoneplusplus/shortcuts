@@ -10,6 +10,8 @@ export interface UseCommentsOptions {
     notePath: string | null;
     /** When set, resolve-with-AI sends a follow-up to this chat instead of a new task. */
     parentProcessId?: string;
+    /** Mode to use when sending a follow-up via resolve-with-AI (defaults to the process's stored mode). */
+    selectedMode?: 'ask' | 'plan' | 'autopilot';
     onThreadSelect?: (threadId: string | null) => void;
 }
 
@@ -59,7 +61,7 @@ function filterThreads(threads: CommentThread[], filter: CommentFilter): Comment
 }
 
 export function useComments(options: UseCommentsOptions): UseCommentsReturn {
-    const { workspaceId, notePath, parentProcessId, onThreadSelect } = options;
+    const { workspaceId, notePath, parentProcessId, selectedMode, onThreadSelect } = options;
 
     const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
     const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     const workspaceIdRef = useRef(workspaceId);
     const notePathRef = useRef(notePath);
     const parentProcessIdRef = useRef(parentProcessId);
+    const selectedModeRef = useRef(selectedMode);
     const onThreadSelectRef = useRef(onThreadSelect);
     const threadsRef = useRef(allThreads);
     const lastFetchedPathRef = useRef<string | null>(null);
@@ -79,6 +82,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     workspaceIdRef.current = workspaceId;
     notePathRef.current = notePath;
     parentProcessIdRef.current = parentProcessId;
+    selectedModeRef.current = selectedMode;
     onThreadSelectRef.current = onThreadSelect;
     threadsRef.current = allThreads;
 
@@ -272,6 +276,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         content: message,
+                        ...(selectedModeRef.current ? { mode: selectedModeRef.current } : {}),
                         context: {
                             noteContent: documentContent,
                             resolveComments: {
