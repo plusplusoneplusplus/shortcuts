@@ -28,15 +28,13 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildModeSystemMessage,
-    appendAutoFolderBlock,
-    appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
-    withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
 } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import { readRepoPreferences } from '../preferences-handler';
 import type { ProcessWebSocketServer } from '../websocket';
 
@@ -80,17 +78,12 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
-        const systemMessage = appendAutoFolderBlock(
-            appendBoundedMemoryContext(
-                await withRepoInstructions(
-                    buildModeSystemMessage('ask'),
-                    workingDirectory,
-                    'ask',
-                ),
-                boundedMemory,
-            ),
-            autoFolderContext,
-        );
+        const systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage('ask')?.content)
+            .withRepoInstructions(workingDirectory, 'ask')
+            .appendMemory(boundedMemory)
+            .appendAutoFolder(autoFolderContext)
+            .build();
 
         // Build tools
         const tools: Tool<unknown>[] = [];

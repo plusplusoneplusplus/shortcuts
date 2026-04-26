@@ -21,10 +21,7 @@ import type { ProcessWebSocketServer } from '../websocket';
 import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
-    appendAutoFolderBlock,
-    appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
-    withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
@@ -33,6 +30,7 @@ import {
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
 } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import { readRepoPreferences } from '../preferences-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -70,17 +68,12 @@ export class ChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
-        const systemMessage = appendAutoFolderBlock(
-            appendBoundedMemoryContext(
-                await withRepoInstructions(
-                    buildModeSystemMessage('ask'),
-                    workingDirectory,
-                    'ask',
-                ),
-                boundedMemory,
-            ),
-            autoFolderContext,
-        );
+        const systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage('ask')?.content)
+            .withRepoInstructions(workingDirectory, 'ask')
+            .appendMemory(boundedMemory)
+            .appendAutoFolder(autoFolderContext)
+            .build();
 
         const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
         const followUp = buildFollowUpSuggestionsAddon(

@@ -20,7 +20,6 @@ import type {
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
 import {
-    appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
@@ -29,6 +28,7 @@ import {
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
 } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import { readRepoPreferences } from '../preferences-handler';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -86,7 +86,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
 
         return {
             agentMode: 'autopilot' as AgentMode,
-            systemMessage: appendBoundedMemoryContext(undefined, boundedMemory),
+            systemMessage: await systemMessageBuilder().appendMemory(boundedMemory).build(),
             tools,
             effectivePrompt: prompt + suffix,
             dispose: boundedMemory.dispose,

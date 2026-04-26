@@ -31,14 +31,12 @@ import {
 } from '@plusplusoneplusplus/forge';
 import {
     buildModeSystemMessage,
-    appendAutoFolderBlock,
-    appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
-    withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
@@ -201,17 +199,12 @@ export class FollowUpExecutor extends BaseExecutor {
             processId,
             turnIndex: process.conversationTurns?.length ?? 0,
         });
-        let systemMessage = appendAutoFolderBlock(
-            appendBoundedMemoryContext(
-                await withRepoInstructions(
-                    buildModeSystemMessage(currentMode),
-                    workingDirectory,
-                    currentMode,
-                ),
-                boundedMemory,
-            ),
-            autoFolderContextForFollowUp,
-        );
+        let systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage(currentMode)?.content)
+            .withRepoInstructions(workingDirectory, currentMode)
+            .appendMemory(boundedMemory)
+            .appendAutoFolder(autoFolderContextForFollowUp)
+            .build();
 
         // Inject note context for note-chat follow-ups
         const notePath = process.metadata?.notePath as string | undefined;

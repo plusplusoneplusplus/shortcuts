@@ -49,6 +49,12 @@ import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 
 
 // ============================================================================
+// System Message Builder (fluent API — preferred over the helpers below)
+// ============================================================================
+
+export { systemMessageBuilder } from './system-message-builder';
+
+// ============================================================================
 // System Message Builders
 // ============================================================================
 
@@ -74,6 +80,8 @@ export function buildModeSystemMessage(
  * Appends the auto-folder location block to an existing system message config.
  * Must be called AFTER {@link withRepoInstructions} so the canonical
  * save-location directive appears last and cannot be overridden by repo instructions.
+ *
+ * @deprecated Use {@link systemMessageBuilder} instead.
  */
 export function appendAutoFolderBlock(
     systemMessage: SystemMessageConfig | undefined,
@@ -103,6 +111,8 @@ export type { BoundedMemoryAddon } from './bounded-memory-addon';
  * Must be called AFTER {@link withRepoInstructions} and BEFORE
  * {@link appendAutoFolderBlock} so memory context sits between repo
  * instructions and the auto-folder directive.
+ *
+ * @deprecated Use {@link systemMessageBuilder} instead.
  */
 export function appendBoundedMemoryContext(
     systemMessage: SystemMessageConfig | undefined,
@@ -120,6 +130,8 @@ export function appendBoundedMemoryContext(
  * Appends per-repo custom instructions (from `.github/coc/`) to an existing
  * system message config.  If no instructions exist for the repo/mode, the
  * original config is returned unchanged.
+ *
+ * @deprecated Use {@link systemMessageBuilder} instead.
  */
 export async function withRepoInstructions(
     systemMessage: SystemMessageConfig | undefined,

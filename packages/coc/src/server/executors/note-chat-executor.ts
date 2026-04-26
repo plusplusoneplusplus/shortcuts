@@ -21,14 +21,13 @@ import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResult } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
-    appendAutoFolderBlock,
-    appendBoundedMemoryContext,
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
 } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import { readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
 
@@ -148,13 +147,10 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
-        let systemMessage = appendAutoFolderBlock(
-            appendBoundedMemoryContext(
-                undefined,
-                boundedMemory,
-            ),
-            autoFolderContext,
-        );
+        let systemMessage = await systemMessageBuilder()
+            .appendMemory(boundedMemory)
+            .appendAutoFolder(autoFolderContext)
+            .build();
 
         // Inject note content into the system message
         const noteContent = await this.readNoteContentForWs(wsId, notePath);

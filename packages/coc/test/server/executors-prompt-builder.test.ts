@@ -573,3 +573,219 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix).toContain('do not ask the user whether to create a plan first');
     });
 });
+
+// ============================================================================
+// systemMessageBuilder
+// ============================================================================
+
+import { systemMessageBuilder } from '../../src/server/executors/system-message-builder';
+
+describe('systemMessageBuilder', () => {
+    beforeEach(() => {
+        mockLoadInstructions.mockReset();
+        mockBuildAutoFolderLocationBlock.mockReset();
+        mockBuildAutoFolderLocationBlock.mockReturnValue('auto-folder-block');
+        mockToForwardSlashes.mockImplementation((p: string) => p.replace(/\\/g, '/'));
+    });
+
+    // -------------------------------------------------------------------------
+    // .append()
+    // -------------------------------------------------------------------------
+
+    it('returns undefined when nothing is appended', async () => {
+        const result = await systemMessageBuilder().build();
+        expect(result).toBeUndefined();
+    });
+
+    it('returns a system message for a single string block', async () => {
+        const result = await systemMessageBuilder().append('Hello').build();
+        expect(result).toEqual({ mode: 'append', content: 'Hello' });
+    });
+
+    it('skips undefined blocks from .append()', async () => {
+        const result = await systemMessageBuilder().append(undefined).build();
+        expect(result).toBeUndefined();
+    });
+
+    it('skips empty-string blocks from .append()', async () => {
+        const result = await systemMessageBuilder().append('').build();
+        expect(result).toBeUndefined();
+    });
+
+    it('joins multiple blocks with double newlines', async () => {
+        const result = await systemMessageBuilder()
+            .append('Block A')
+            .append('Block B')
+            .build();
+        expect(result!.content).toBe('Block A\n\nBlock B');
+    });
+
+    // -------------------------------------------------------------------------
+    // .appendMemory()
+    // -------------------------------------------------------------------------
+
+    it('appends memory suffix when addon has systemMessageSuffix', async () => {
+        const addon = { systemMessageSuffix: 'MEMORY_BLOCK', tools: [], suffix: '', dispose: () => {} };
+        const result = await systemMessageBuilder().appendMemory(addon).build();
+        expect(result!.content).toBe('MEMORY_BLOCK');
+    });
+
+    it('is a no-op when addon is undefined', async () => {
+        const result = await systemMessageBuilder().appendMemory(undefined).build();
+        expect(result).toBeUndefined();
+    });
+
+    it('is a no-op when addon has no systemMessageSuffix', async () => {
+        const addon = { systemMessageSuffix: undefined, tools: [], suffix: '', dispose: () => {} };
+        const result = await systemMessageBuilder().appendMemory(addon).build();
+        expect(result).toBeUndefined();
+    });
+
+    it('is a no-op when addon systemMessageSuffix is empty string', async () => {
+        const addon = { systemMessageSuffix: '', tools: [], suffix: '', dispose: () => {} };
+        const result = await systemMessageBuilder().appendMemory(addon).build();
+        expect(result).toBeUndefined();
+    });
+
+    // -------------------------------------------------------------------------
+    // .withRepoInstructions()
+    // -------------------------------------------------------------------------
+
+    it('appends repo instructions when loadInstructions returns content', async () => {
+        mockLoadInstructions.mockResolvedValue('repo instructions');
+        const result = await systemMessageBuilder()
+            .withRepoInstructions('/repo', 'ask')
+            .build();
+        expect(result!.content).toBe('repo instructions');
+    });
+
+    it('is a no-op when workingDir is undefined', async () => {
+        const result = await systemMessageBuilder()
+            .withRepoInstructions(undefined, 'ask')
+            .build();
+        expect(result).toBeUndefined();
+        expect(mockLoadInstructions).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when mode is undefined', async () => {
+        const result = await systemMessageBuilder()
+            .withRepoInstructions('/repo', undefined)
+            .build();
+        expect(result).toBeUndefined();
+        expect(mockLoadInstructions).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when loadInstructions returns undefined', async () => {
+        mockLoadInstructions.mockResolvedValue(undefined);
+        const result = await systemMessageBuilder()
+            .withRepoInstructions('/repo', 'ask')
+            .build();
+        expect(result).toBeUndefined();
+    });
+
+    it('is a no-op when loadInstructions throws', async () => {
+        mockLoadInstructions.mockRejectedValue(new Error('fail'));
+        const result = await systemMessageBuilder()
+            .append('base')
+            .withRepoInstructions('/repo', 'ask')
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    // -------------------------------------------------------------------------
+    // .appendAutoFolder()
+    // -------------------------------------------------------------------------
+
+    it('appends auto-folder block when prior content exists', async () => {
+        const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendAutoFolder(ctx)
+            .build();
+        expect(result!.content).toBe('base\n\nauto-folder-block');
+        expect(mockBuildAutoFolderLocationBlock).toHaveBeenCalledWith('/tasks', ['feat1']);
+    });
+
+    it('is a no-op when no prior content exists (preserves legacy behavior)', async () => {
+        const ctx = { tasksRoot: '/tasks', existingFolders: [] };
+        const result = await systemMessageBuilder()
+            .appendAutoFolder(ctx)
+            .build();
+        expect(result).toBeUndefined();
+    });
+
+    it('is a no-op when ctx is undefined', async () => {
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendAutoFolder(undefined)
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    it('passes tasksRoot through toForwardSlashes', async () => {
+        const ctx = { tasksRoot: 'C:\\tasks\\root', existingFolders: [] };
+        await systemMessageBuilder().append('base').appendAutoFolder(ctx).build();
+        expect(mockToForwardSlashes).toHaveBeenCalledWith('C:\\tasks\\root');
+    });
+
+    // -------------------------------------------------------------------------
+    // Full chain — ordering mirrors the legacy nesting
+    // -------------------------------------------------------------------------
+
+    it('produces content in insertion order: base → repoInstructions → memory → autoFolder', async () => {
+        mockLoadInstructions.mockResolvedValue('repo-instructions');
+        const addon = { systemMessageSuffix: 'MEMORY', tools: [], suffix: '', dispose: () => {} };
+        const ctx = { tasksRoot: '/tasks', existingFolders: [] };
+
+        const result = await systemMessageBuilder()
+            .append('READ_ONLY')
+            .withRepoInstructions('/repo', 'ask')
+            .appendMemory(addon)
+            .appendAutoFolder(ctx)
+            .build();
+
+        const content = result!.content;
+        const baseIdx = content.indexOf('READ_ONLY');
+        const repoIdx = content.indexOf('repo-instructions');
+        const memoryIdx = content.indexOf('MEMORY');
+        const folderIdx = content.indexOf('auto-folder-block');
+
+        expect(baseIdx).toBeGreaterThan(-1);
+        expect(repoIdx).toBeGreaterThan(baseIdx);
+        expect(memoryIdx).toBeGreaterThan(repoIdx);
+        expect(folderIdx).toBeGreaterThan(memoryIdx);
+    });
+
+    it('autopilot pattern: only memory (no base, no repo, no autoFolder)', async () => {
+        const addon = { systemMessageSuffix: 'MEMORY_CONTENT', tools: [], suffix: '', dispose: () => {} };
+        const result = await systemMessageBuilder()
+            .appendMemory(addon)
+            .build();
+        expect(result!.content).toBe('MEMORY_CONTENT');
+    });
+
+    it('note-chat pattern with disabled memory: appendAutoFolder is a no-op (returns undefined)', async () => {
+        const disabledMemory = { systemMessageSuffix: undefined, tools: [], suffix: '', dispose: () => {} };
+        const ctx = { tasksRoot: '/tasks', existingFolders: [] };
+        const result = await systemMessageBuilder()
+            .appendMemory(disabledMemory)
+            .appendAutoFolder(ctx)
+            .build();
+        expect(result).toBeUndefined();
+    });
+
+    it('note-chat pattern with enabled memory: memory + autoFolder are both appended', async () => {
+        const addon = { systemMessageSuffix: 'MEMORY', tools: [], suffix: '', dispose: () => {} };
+        const ctx = { tasksRoot: '/tasks', existingFolders: [] };
+        const result = await systemMessageBuilder()
+            .appendMemory(addon)
+            .appendAutoFolder(ctx)
+            .build();
+        expect(result!.content).toBe('MEMORY\n\nauto-folder-block');
+    });
+
+    it('always returns mode: append', async () => {
+        const result = await systemMessageBuilder().append('x').build();
+        expect(result!.mode).toBe('append');
+    });
+});
