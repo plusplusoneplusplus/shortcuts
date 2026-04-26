@@ -69,7 +69,7 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
     }
 
     return (
-        <div className="flex flex-col gap-4" data-testid="llm-tools-panel">
+        <div className="flex flex-col gap-3" data-testid="llm-tools-panel">
             <div>
                 <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">LLM Tools</h2>
                 <p className="text-xs text-[#848484] mt-0.5">
@@ -77,51 +77,40 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
                 </p>
             </div>
 
-            <div className="flex flex-col gap-0.5 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-hidden" data-testid="llm-tools-list">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1" data-testid="llm-tools-list">
                 {tools.map(tool => {
                     const enabled = !disabledTools.includes(tool.name);
                     return (
-                        <div
+                        <label
                             key={tool.name}
-                            className="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-[#1e1e1e] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] border-b border-[#e0e0e0] dark:border-[#3c3c3c] last:border-b-0"
+                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] transition-colors ${enabled ? '' : 'opacity-60'}`}
+                            title={tool.description}
                             data-testid={`llm-tool-row-${tool.name}`}
                         >
-                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={enabled}
-                                    onChange={e => handleToggle(tool.name, e.target.checked)}
-                                    disabled={saving}
-                                    data-testid={`llm-tool-toggle-${tool.name}`}
-                                />
-                                <div className={`w-8 h-4.5 rounded-full transition-colors ${
-                                    enabled
-                                        ? 'bg-[#0078d4]'
-                                        : 'bg-[#ccc] dark:bg-[#555]'
-                                } ${saving ? 'opacity-50' : ''}`}>
-                                    <div className={`absolute top-[2px] w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
-                                        enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'
-                                    }`} />
-                                </div>
-                            </label>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                                        {tool.label}
-                                    </span>
-                                    <code className="text-[10px] font-mono text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">
-                                        {tool.name}
-                                    </code>
-                                    {!tool.enabledByDefault && (
-                                        <span className="text-[9px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1.5 py-0.5 rounded-full">
-                                            off by default
-                                        </span>
-                                    )}
-                                </div>
-                                <p className="text-[11px] text-[#848484] mt-0.5">{tool.description}</p>
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={enabled}
+                                onChange={e => handleToggle(tool.name, e.target.checked)}
+                                disabled={saving}
+                                data-testid={`llm-tool-toggle-${tool.name}`}
+                            />
+                            <div className={`relative flex-shrink-0 w-7 h-4 rounded-full transition-colors ${
+                                enabled ? 'bg-[#0078d4]' : 'bg-[#ccc] dark:bg-[#555]'
+                            } ${saving ? 'opacity-50' : ''}`}>
+                                <div className={`absolute top-[2px] w-3 h-3 rounded-full bg-white shadow transition-transform ${
+                                    enabled ? 'translate-x-[14px]' : 'translate-x-[2px]'
+                                }`} />
                             </div>
-                        </div>
+                            <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                                {tool.label}
+                            </span>
+                            {!tool.enabledByDefault && (
+                                <span className="flex-shrink-0 text-[9px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">
+                                    off
+                                </span>
+                            )}
+                        </label>
                     );
                 })}
             </div>
