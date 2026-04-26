@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Button, SuggestionChips, SendButton } from '../../ui';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { PastePreview } from '../../ui/PastePreview';
@@ -115,6 +115,10 @@ export function FollowUpInputArea({
     // Global (unscoped) detection so chips show the "send" state even when input isn't focused.
     const chipsCtrlHeld = useModifierKey();
 
+    const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+    // Reset dismiss state whenever a new set of suggestions arrives.
+    useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
+
     // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
@@ -155,21 +159,32 @@ export function FollowUpInputArea({
                     Retry
                 </Button>
             )}
-            {suggestions.length > 0 && !sending && task?.status !== 'running' && (
-                <SuggestionChips
-                    suggestions={suggestions}
-                    onSelect={(text, e) => {
-                        if (e.ctrlKey || e.metaKey) {
-                            void onSend(text);
-                        } else {
-                            setFollowUpInput(text);
-                            richTextRef.current?.setValue(text);
-                            richTextRef.current?.focus();
-                        }
-                    }}
-                    disabled={inputDisabled}
-                    ctrlHeld={chipsCtrlHeld}
-                />
+            {suggestions.length > 0 && !sending && task?.status !== 'running' && !suggestionsDismissed && (
+                <div className="relative">
+                    <SuggestionChips
+                        suggestions={suggestions}
+                        onSelect={(text, e) => {
+                            if (e.ctrlKey || e.metaKey) {
+                                void onSend(text);
+                            } else {
+                                setFollowUpInput(text);
+                                richTextRef.current?.setValue(text);
+                                richTextRef.current?.focus();
+                            }
+                        }}
+                        disabled={inputDisabled}
+                        ctrlHeld={chipsCtrlHeld}
+                    />
+                    <button
+                        type="button"
+                        className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#c8c8c8] dark:hover:bg-[#4e4e4e] text-[10px] leading-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#0078d4]/50"
+                        onClick={() => setSuggestionsDismissed(true)}
+                        aria-label="Dismiss suggestions"
+                        data-testid="dismiss-suggestions-btn"
+                    >
+                        ✕
+                    </button>
+                </div>
             )}
             {attachedContext && onRemoveAttachedContext && (
                 <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />

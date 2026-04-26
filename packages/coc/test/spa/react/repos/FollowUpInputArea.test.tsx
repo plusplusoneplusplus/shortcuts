@@ -229,4 +229,39 @@ describe('FollowUpInputArea — Send button tooltip', () => {
     });
 });
 
+describe('FollowUpInputArea — dismiss suggestions', () => {
+    it('shows dismiss button when suggestions are present', () => {
+        render(<FollowUpInputArea {...makeProps({ suggestions: ['Option A', 'Option B', 'Option C'] })} />);
+        expect(screen.getByTestId('dismiss-suggestions-btn')).toBeTruthy();
+    });
+
+    it('hides chips after dismiss button is clicked', () => {
+        render(<FollowUpInputArea {...makeProps({ suggestions: ['Option A', 'Option B', 'Option C'] })} />);
+        fireEvent.click(screen.getByTestId('dismiss-suggestions-btn'));
+        expect(screen.queryByTestId('suggestion-chips')).toBeNull();
+        expect(screen.queryByTestId('dismiss-suggestions-btn')).toBeNull();
+    });
+
+    it('does not show dismiss button when suggestions is empty', () => {
+        render(<FollowUpInputArea {...makeProps({ suggestions: [] })} />);
+        expect(screen.queryByTestId('dismiss-suggestions-btn')).toBeNull();
+    });
+
+    it('resets dismissed state when suggestions prop changes', async () => {
+        const { rerender } = render(
+            <FollowUpInputArea {...makeProps({ suggestions: ['Option A'] })} />
+        );
+        // Dismiss the first set
+        fireEvent.click(screen.getByTestId('dismiss-suggestions-btn'));
+        expect(screen.queryByTestId('suggestion-chips')).toBeNull();
+
+        // New suggestions arrive — chips should reappear
+        await act(async () => {
+            rerender(<FollowUpInputArea {...makeProps({ suggestions: ['New suggestion'] })} />);
+        });
+        expect(screen.getByTestId('suggestion-chips')).toBeTruthy();
+        expect(screen.getByTestId('dismiss-suggestions-btn')).toBeTruthy();
+    });
+});
+
 
