@@ -34,12 +34,17 @@ describe('NoteChatPanel', () => {
             expect(source).not.toContain('useNoteChatBinding');
         });
 
-        it('calls useNotesChat with workspace and note options', () => {
-            expect(source).toContain('useNotesChat({ workspaceId, notePath, noteTitle })');
+        it('calls useNotesChat with workspace, note, and scope options', () => {
+            // Call is now multiline and includes defaultScope
+            expect(source).toContain('useNotesChat({');
+            expect(source).toContain('workspaceId,');
+            expect(source).toContain('notePath,');
+            expect(source).toContain('noteTitle,');
+            expect(source).toContain('defaultScope,');
         });
 
-        it('destructures taskId, chatNoteContext, createChat, resetChat', () => {
-            expect(source).toContain('{ taskId, chatNoteContext, createChat, resetChat }');
+        it('destructures taskId, chatNoteContext, createChat, resetChat, scope, setScope', () => {
+            expect(source).toContain('{ taskId, chatNoteContext, createChat, resetChat, scope, setScope }');
         });
 
         it('does not use loading or error states', () => {

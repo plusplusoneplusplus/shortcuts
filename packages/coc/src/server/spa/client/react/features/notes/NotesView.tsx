@@ -6,6 +6,7 @@ import { NoteEditor } from './editor/NoteEditor';
 import type { NoteViewMode } from './editor/NoteEditor';
 import { CommentsSidebar } from './editor/CommentsSidebar';
 import { NoteChatPanel } from './editor/NoteChatPanel';
+import type { ChatScope } from './hooks/useNotesChat';
 import { useComments } from './editor/useComments';
 import { notesApi } from './notesApi';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
@@ -19,16 +20,37 @@ import { buildNoteHash } from '../../layout/Router';
 export interface NotesViewProps {
     workspaceId: string;
     initialNotePath?: string | null;
+    /** External control for the chat panel. When provided, the parent owns the open/close state. */
     chatPanelOpen?: boolean;
+    /** Callback to toggle the chat panel. When provided, the parent owns the toggle. */
     onToggleChatPanel?: () => void;
+    /** Default chat scope for the NoteChatPanel. Defaults to 'per-workspace'. */
+    defaultScope?: ChatScope;
 }
 
-export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false, onToggleChatPanel }: NotesViewProps) {
+export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPanelOpenProp, onToggleChatPanel: onToggleChatPanelProp, defaultScope }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
+
+    // ── Internal chat panel state (used when parent doesn't control it) ──────
+
+    const [internalChatPanelOpen, setInternalChatPanelOpen] = useState(() => {
+        if (chatPanelOpenProp !== undefined) return false; // controlled by parent
+        try { return localStorage.getItem(`coc-notes-chat-panel-open-${workspaceId}`) === 'true'; }
+        catch { return false; }
+    });
+
+    const chatPanelOpen = chatPanelOpenProp !== undefined ? chatPanelOpenProp : internalChatPanelOpen;
+    const handleToggleChatPanel = onToggleChatPanelProp ?? (() => {
+        setInternalChatPanelOpen(v => {
+            const next = !v;
+            try { localStorage.setItem(`coc-notes-chat-panel-open-${workspaceId}`, String(next)); } catch { /* ignore */ }
+            return next;
+        });
+    });
 
     // ── Resizable panels ────────────────────────────────────────────────────
 
@@ -322,6 +344,8 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                     onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
                     commentCount={wrappedComments.totalCount}
                     onFlushSave={(fn) => { flushSaveRef.current = fn; }}
+                    chatPanelOpen={chatPanelOpen}
+                    onToggleChatPanel={handleToggleChatPanel}
                 />
             </div>
 
@@ -390,8 +414,9 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                             workspaceId={workspaceId}
                             notePath={selectedPath}
                             noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
-                            onClose={() => onToggleChatPanel?.()}
+                            onClose={() => handleToggleChatPanel()}
                             onBeforeSend={async () => { await flushSaveRef.current?.(); }}
+                            defaultScope={defaultScope}
                         />
                     </div>
                 </>

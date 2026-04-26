@@ -34,6 +34,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', (
         <div
             data-testid="notes-view"
             data-workspace-id={props.workspaceId}
+            data-default-scope={props.defaultScope ?? ''}
             data-chat-panel-open={String(!!props.chatPanelOpen)}
             data-has-toggle={String(typeof props.onToggleChatPanel === 'function')}
         />
@@ -206,33 +207,32 @@ describe('MyWorkView', () => {
         expect(MY_WORK_WORKSPACE_ID).toBe('my_work');
     });
 
-    describe('chat toggle button', () => {
-        it('renders the 🤖 Chat toggle button in the header', () => {
+    describe('chat toggle button (removed from header)', () => {
+        it('does not render a 🤖 Chat toggle button in the header', () => {
             renderView();
-            expect(screen.getByTestId('my-work-chat-toggle')).toBeTruthy();
+            expect(screen.queryByTestId('my-work-chat-toggle')).toBeNull();
+        });
+    });
+
+    describe('defaultScope prop', () => {
+        it('passes defaultScope="per-workspace" to NotesView', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+            const notesView = screen.getByTestId('notes-view');
+            expect(notesView.getAttribute('data-default-scope')).toBe('per-workspace');
         });
 
-        it('clicking the toggle toggles chatPanelOpen', () => {
+        it('does not pass chatPanelOpen from header to NotesView (no external state)', () => {
             renderView();
-            const toggle = screen.getByTestId('my-work-chat-toggle');
             const notesView = screen.getByTestId('notes-view');
-
-            // Initially false
+            // NotesView manages chat panel state internally (no external chatPanelOpen)
             expect(notesView.getAttribute('data-chat-panel-open')).toBe('false');
-
-            // Click to open
-            fireEvent.click(toggle);
-            expect(screen.getByTestId('notes-view').getAttribute('data-chat-panel-open')).toBe('true');
-
-            // Click to close
-            fireEvent.click(toggle);
-            expect(screen.getByTestId('notes-view').getAttribute('data-chat-panel-open')).toBe('false');
         });
 
-        it('passes onToggleChatPanel callback to NotesView', () => {
+        it('does not pass onToggleChatPanel to NotesView (internal management)', () => {
             renderView();
             const notesView = screen.getByTestId('notes-view');
-            expect(notesView.getAttribute('data-has-toggle')).toBe('true');
+            expect(notesView.getAttribute('data-has-toggle')).toBe('false');
         });
     });
 

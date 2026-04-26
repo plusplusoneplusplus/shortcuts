@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNotesChat } from '../hooks/useNotesChat';
+import type { ChatScope } from '../hooks/useNotesChat';
 import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
 import { RichTextInput } from '../../../shared/RichTextInput';
@@ -14,10 +15,17 @@ export interface NoteChatPanelProps {
     onClose: () => void;
     /** Called before creating a new chat to flush pending editor saves. */
     onBeforeSend?: () => Promise<void>;
+    /** Default chat scope. Defaults to 'per-workspace'. */
+    defaultScope?: ChatScope;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend }: NoteChatPanelProps) {
-    const { taskId, chatNoteContext, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope }: NoteChatPanelProps) {
+    const { taskId, chatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
+        workspaceId,
+        notePath,
+        noteTitle,
+        defaultScope,
+    });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
 
@@ -39,11 +47,17 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         await createChat(text);
     };
 
+    const noNoteSelected = scope === 'per-note' && !notePath;
+
+    const emptyStateText = scope === 'per-note'
+        ? 'Ask about this note…'
+        : 'Ask about your notes — one chat per workspace';
+
     return (
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
              data-testid="note-chat-panel">
 
-            {/* Empty state — no chat yet */}
+            {/* Empty state / no-note state — no chat yet */}
             {!taskId && (
                 <>
                     <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
@@ -51,33 +65,49 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
                                 data-testid="note-chat-close-btn" title="Close">✕</button>
                     </div>
-                    <div className="flex-1 flex items-center justify-center">
-                        <div className="text-center text-[#848484]">
-                            <div className="text-3xl mb-2">🤖</div>
-                            <div className="text-sm font-medium mb-1">Notes Chat</div>
-                            <div className="text-xs">Ask about your notes — one chat per workspace</div>
+
+                    {/* Scope toggle */}
+                    <ScopeToggle scope={scope} onScopeChange={setScope} />
+
+                    {noNoteSelected ? (
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="text-center text-[#848484]">
+                                <div className="text-3xl mb-2">📝</div>
+                                <div className="text-sm font-medium mb-1">No note selected</div>
+                                <div className="text-xs">Select a note to start chatting</div>
+                            </div>
                         </div>
-                    </div>
-                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
-                        <div className="flex items-center gap-2">
-                            <RichTextInput
-                                ref={richTextRef}
-                                placeholder="Ask about your notes..."
-                                className="flex-1 min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm"
-                                onChange={setInput}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                                }}
-                                data-testid="note-chat-input"
-                            />
-                            <button
-                                disabled={!input.trim()}
-                                onClick={handleSend}
-                                className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
-                                data-testid="note-chat-send-btn"
-                            >Send</button>
-                        </div>
-                    </div>
+                    ) : (
+                        <>
+                            <div className="flex-1 flex items-center justify-center">
+                                <div className="text-center text-[#848484]">
+                                    <div className="text-3xl mb-2">🤖</div>
+                                    <div className="text-sm font-medium mb-1">Notes Chat</div>
+                                    <div className="text-xs">{emptyStateText}</div>
+                                </div>
+                            </div>
+                            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                                <div className="flex items-center gap-2">
+                                    <RichTextInput
+                                        ref={richTextRef}
+                                        placeholder="Ask about your notes..."
+                                        className="flex-1 min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm"
+                                        onChange={setInput}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                                        }}
+                                        data-testid="note-chat-input"
+                                    />
+                                    <button
+                                        disabled={!input.trim()}
+                                        onClick={handleSend}
+                                        className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
+                                        data-testid="note-chat-send-btn"
+                                    >Send</button>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </>
             )}
 
@@ -95,12 +125,18 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             🔄 New Chat
                         </button>
                     </div>
-                    <NoteContextBanner
-                        chatNotePath={chatNoteContext?.notePath}
-                        chatNoteTitle={chatNoteContext?.noteTitle}
-                        currentNotePath={notePath}
-                        contentStatus={chatNoteContext?.contentStatus ?? null}
-                    />
+
+                    {/* Scope toggle */}
+                    <ScopeToggle scope={scope} onScopeChange={setScope} />
+
+                    {scope === 'per-note' && (
+                        <NoteContextBanner
+                            chatNotePath={chatNoteContext?.notePath}
+                            chatNoteTitle={chatNoteContext?.noteTitle}
+                            currentNotePath={notePath}
+                            contentStatus={chatNoteContext?.contentStatus ?? null}
+                        />
+                    )}
                     <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}
@@ -113,6 +149,51 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                     />
                 </ChatPreferencesProvider>
             )}
+        </div>
+    );
+}
+
+// ── Scope toggle segmented control ───────────────────────────────────────────
+
+interface ScopeToggleProps {
+    scope: ChatScope;
+    onScopeChange: (scope: ChatScope) => void;
+}
+
+function ScopeToggle({ scope, onScopeChange }: ScopeToggleProps) {
+    return (
+        <div
+            className="flex items-center gap-1 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0"
+            data-testid="chat-scope-toggle"
+        >
+            <button
+                type="button"
+                className={
+                    'flex-1 text-[10px] py-0.5 rounded transition-colors ' +
+                    (scope === 'per-note'
+                        ? 'bg-[#0078d4] text-white font-medium'
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                }
+                onClick={() => onScopeChange('per-note')}
+                data-testid="chat-scope-per-note"
+                title="One chat per note"
+            >
+                📝 This Note
+            </button>
+            <button
+                type="button"
+                className={
+                    'flex-1 text-[10px] py-0.5 rounded transition-colors ' +
+                    (scope === 'per-workspace'
+                        ? 'bg-[#0078d4] text-white font-medium'
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                }
+                onClick={() => onScopeChange('per-workspace')}
+                data-testid="chat-scope-per-workspace"
+                title="One chat for the whole workspace"
+            >
+                🗂️ Workspace
+            </button>
         </div>
     );
 }

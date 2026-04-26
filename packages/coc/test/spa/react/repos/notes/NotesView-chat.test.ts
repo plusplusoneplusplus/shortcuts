@@ -1,6 +1,5 @@
 /**
- * Tests for NotesView — verifies chat panel state is lifted to parent
- * and per-note binding code was removed (single-chat-per-workspace model).
+ * Tests for NotesView — verifies chat panel state and scope wiring.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -32,39 +31,49 @@ describe('NotesView (notes chat refactor)', () => {
         });
     });
 
-    describe('chat state lifted to parent', () => {
-        it('accepts chatPanelOpen as a prop', () => {
+    describe('chat state lifted to parent (optional) with internal fallback', () => {
+        it('accepts chatPanelOpen as an optional prop', () => {
             expect(source).toContain('chatPanelOpen?: boolean');
         });
 
-        it('accepts onToggleChatPanel as a prop', () => {
+        it('accepts onToggleChatPanel as an optional prop', () => {
             expect(source).toContain('onToggleChatPanel?: () => void');
         });
 
-        it('does not own chatPanelOpen state internally', () => {
+        it('does not own chatPanelOpen state with the old single key', () => {
             expect(source).not.toContain("useState(() => {\n        try { return localStorage.getItem('coc-notes-chat-panel-open')");
         });
 
-        it('does not sync chatPanelOpen to localStorage', () => {
+        it('does not sync chatPanelOpen to the old single localStorage key', () => {
             expect(source).not.toContain("localStorage.setItem('coc-notes-chat-panel-open'");
         });
 
-        it('chat panel visibility uses the prop', () => {
+        it('provides internal chatPanelOpen state with workspace-scoped key', () => {
+            expect(source).toContain('`coc-notes-chat-panel-open-${workspaceId}`');
+        });
+
+        it('chat panel visibility uses the resolved chatPanelOpen', () => {
             expect(source).toContain('const chatVisible = chatPanelOpen;');
         });
     });
 
-    describe('chat toggle not in per-note toolbar', () => {
-        it('does not pass chatPanelOpen to NoteEditor', () => {
-            expect(source).not.toContain('chatPanelOpen={chatPanelOpen}');
+    describe('chat toggle wired to NoteEditor', () => {
+        it('passes chatPanelOpen to NoteEditor', () => {
+            expect(source).toContain('chatPanelOpen={chatPanelOpen}');
         });
 
-        it('does not pass onToggleChatPanel to NoteEditor', () => {
-            expect(source).not.toContain('onToggleChatPanel=');
+        it('passes onToggleChatPanel to NoteEditor', () => {
+            expect(source).toContain('onToggleChatPanel={handleToggleChatPanel}');
+        });
+    });
+
+    describe('defaultScope prop', () => {
+        it('accepts defaultScope as a prop', () => {
+            expect(source).toContain('defaultScope?: ChatScope');
         });
 
-        it('does not render a mobile chat button', () => {
-            expect(source).not.toContain('notes-mobile-chat-btn');
+        it('passes defaultScope to NoteChatPanel', () => {
+            expect(source).toContain('defaultScope={defaultScope}');
         });
     });
 

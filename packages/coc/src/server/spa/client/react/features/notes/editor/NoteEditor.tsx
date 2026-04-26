@@ -44,6 +44,10 @@ export interface NoteEditorProps {
     onNotFound?: () => void;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: React.ReactNode;
+    /** Whether the AI chat panel is currently open. */
+    chatPanelOpen?: boolean;
+    /** Called to toggle the AI chat panel. When provided, a 🤖 button appears in the toolbar. */
+    onToggleChatPanel?: () => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -136,6 +140,8 @@ export function NoteEditor({
     onFlushSave,
     onNotFound,
     toolbarRight,
+    chatPanelOpen,
+    onToggleChatPanel,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -773,6 +779,8 @@ export function NoteEditor({
                     onDismissAiEdits={handleAiEditDismiss}
                     onToggleAiEdits={handleAiEditToggle}
                     toolbarRight={toolbarRight}
+                    chatPanelOpen={chatPanelOpen}
+                    onToggleChatPanel={onToggleChatPanel}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
                             <div className="flex h-5 rounded border border-[#c0c0c0] dark:border-[#555] overflow-hidden text-[10px]">

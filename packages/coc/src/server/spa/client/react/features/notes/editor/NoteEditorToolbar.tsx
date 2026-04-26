@@ -21,6 +21,10 @@ export interface NoteEditorToolbarProps {
     aiEditsVisible?: boolean;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: ReactNode;
+    /** Whether the AI chat panel is currently open. */
+    chatPanelOpen?: boolean;
+    /** Called to toggle the AI chat panel. When provided, the 🤖 button is rendered. */
+    onToggleChatPanel?: () => void;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -257,7 +261,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, chatPanelOpen, onToggleChatPanel }: NoteEditorToolbarProps) {
     if (!editor) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -325,7 +329,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || toolbarRight || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || modeToggle || toolbarRight || onToggleChatPanel || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -362,6 +366,23 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                                     {commentCount}
                                 </span>
                             )}
+                        </button>
+                    )}
+                    {onToggleChatPanel && (
+                        <button
+                            type="button"
+                            className={
+                                'text-xs px-2 py-0.5 rounded ' +
+                                (chatPanelOpen
+                                    ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
+                                    : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                            }
+                            onClick={onToggleChatPanel}
+                            data-testid="chat-panel-toggle"
+                            aria-label={chatPanelOpen ? 'Hide AI chat' : 'Show AI chat'}
+                            title={chatPanelOpen ? 'Hide AI chat' : 'Show AI chat'}
+                        >
+                            🤖
                         </button>
                     )}
                     {toolbarRight}

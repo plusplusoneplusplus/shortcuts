@@ -6,7 +6,7 @@
  * Activity reuses RepoChatTab; Notes reuses NotesView.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
@@ -37,15 +37,6 @@ export function MyWorkView() {
     const [syncing, setSyncing] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [statusMsg, setStatusMsg] = useState<string | null>(null);
-    const [chatPanelOpen, setChatPanelOpen] = useState(() => {
-        try { return localStorage.getItem('coc-notes-chat-panel-open') === 'true'; }
-        catch { return false; }
-    });
-
-    useEffect(() => {
-        try { localStorage.setItem('coc-notes-chat-panel-open', String(chatPanelOpen)); }
-        catch { /* ignore */ }
-    }, [chatPanelOpen]);
 
     // Default to 'notes' when the current sub-tab is not one of the My Work tabs
     const activeTab = MY_WORK_TABS.some(t => t.key === state.activeRepoSubTab)
@@ -148,19 +139,6 @@ export function MyWorkView() {
                     >
                         {generating ? '⏳ Generating…' : '📝 Generate Summary'}
                     </button>
-                    <button
-                        className={cn(
-                            'text-xs px-2.5 py-1 rounded border transition-colors',
-                            chatPanelOpen
-                                ? 'border-[#0078d4] bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#3794ff]'
-                                : 'border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#3c3c3c] hover:bg-[#e8e8e8] dark:hover:bg-[#4a4a4a] text-[#333] dark:text-[#ccc]'
-                        )}
-                        onClick={() => setChatPanelOpen((v) => !v)}
-                        data-testid="my-work-chat-toggle"
-                        title={chatPanelOpen ? 'Hide AI chat panel' : 'Show AI chat panel'}
-                    >
-                        🤖 Chat
-                    </button>
                     {statusMsg && (
                         <span className="text-xs text-[#666] dark:text-[#999] ml-1" data-testid="my-work-status">
                             {statusMsg}
@@ -178,8 +156,7 @@ export function MyWorkView() {
                     <NotesView
                         workspaceId={MY_WORK_WORKSPACE_ID}
                         initialNotePath={state.selectedNotePath}
-                        chatPanelOpen={chatPanelOpen}
-                        onToggleChatPanel={() => setChatPanelOpen((v) => !v)}
+                        defaultScope="per-workspace"
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
