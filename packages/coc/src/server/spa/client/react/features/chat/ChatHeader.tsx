@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../ui';
-import { Button } from '../../ui';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { ConversationMetadataPopover } from './conversation/ConversationMetadataPopover';
@@ -519,19 +518,9 @@ export function ChatHeader({
                                 resumeSessionId={resumeSessionId}
                                 resumeLaunching={resumeLaunching}
                                 onLaunchInteractiveResume={onLaunchInteractiveResume}
+                                onFork={onFork}
+                                forking={forking}
                             />
-                        )}
-                        {onFork && (
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                data-testid="fork-chat-btn"
-                                loading={forking}
-                                onClick={onFork}
-                                title="Fork this conversation into a new independent chat"
-                            >
-                                🍴 Fork
-                            </Button>
                         )}
                     </>
                 )}
