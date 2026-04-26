@@ -108,7 +108,7 @@ export function ChatHeader({
                         loading={resumeLaunching}
                         onClick={onLaunchInteractiveResume}
                     >
-                        Resume CLI
+                        Resume In CLI
                     </Button>
                 )}
                 <ContextWindowIndicator

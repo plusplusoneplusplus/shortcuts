@@ -160,11 +160,11 @@ function buildOverflowItems(
         }
     }
 
-    // Resume CLI
+    // Resume In CLI
     if (!props.isPending && props.resumeSessionId) {
         items.push({
             key: 'resume-cli',
-            label: 'Resume CLI',
+            label: 'Resume In CLI',
             icon: <span className="text-xs">▶</span>,
             onClick: props.onLaunchInteractiveResume,
         });
@@ -388,7 +388,7 @@ export function ChatHeader({
                         {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status, task.type)}` : ''}
                     </Badge>
                 )}
-                {/* References, duration, Resume CLI, context window — only in wide tier */}
+                {/* References, duration, Resume In CLI, context window — only in wide tier */}
                 {isWide && (
                     <>
                         <ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />

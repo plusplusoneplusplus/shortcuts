@@ -2,7 +2,7 @@
  * Process Resume API Tests
  *
  * Tests POST /api/processes/:id/resume-cli route used by the
- * "Resume CLI" button in process detail views.
+ * "Resume In CLI" button in process detail views.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

@@ -319,8 +319,8 @@ describe('ActivityChatDetail: inline chat detail', () => {
 
     it('supports resume CLI', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('resume-cli');
-        // Resume CLI button label lives in the extracted ChatHeader component
-        expect(CHAT_HEADER_SOURCE).toContain('Resume CLI');
+        // Resume In CLI button label lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('Resume In CLI');
     });
 
     it('supports image paste', () => {

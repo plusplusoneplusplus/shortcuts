@@ -97,7 +97,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
 export interface ConversationMetadataPopoverProps {
     process: any;
     turnsCount?: number;
-    /** When provided, a "Resume CLI" action button is shown at the bottom of the popover. */
+    /** When provided, a "Resume In CLI" action button is shown at the bottom of the popover. */
     resumeSessionId?: string | null;
     resumeLaunching?: boolean;
     onLaunchInteractiveResume?: () => void;
@@ -230,7 +230,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                             className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-[#0078d4] dark:text-[#3794ff] border border-[#0078d4] dark:border-[#3794ff] hover:bg-[#e8f0fb] dark:hover:bg-[#1a2a40] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <span>▶</span>
-                            {resumeLaunching ? 'Launching…' : 'Resume CLI'}
+                            {resumeLaunching ? 'Launching…' : 'Resume In CLI'}
                         </button>
                     )}
                     {onFork && (

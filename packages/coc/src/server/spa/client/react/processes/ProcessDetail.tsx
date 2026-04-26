@@ -479,7 +479,7 @@ export function ProcessDetail() {
                                     loading={resumeLaunching}
                                     onClick={() => { void launchInteractiveResume(); }}
                                 >
-                                    Resume CLI
+                                    Resume In CLI
                                 </Button>
                             )}
                             {resumeSessionId && (

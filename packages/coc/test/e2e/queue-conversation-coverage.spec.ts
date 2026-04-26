@@ -22,7 +22,7 @@
  *   - No-session state shows follow-up unavailable message
  *
  * Low Priority (5):
- *   - Resume CLI button appears and shows feedback
+ *   - Resume In CLI button appears and shows feedback
  *   - Context window indicator shows token usage
  *   - Loading spinner shown during initial conversation fetch
  *   - Empty conversation fallback renders 'No conversation data available'
@@ -856,13 +856,13 @@ test.describe('No-session State', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Low Priority: 1 — Resume CLI button
+// Low Priority: 1 — Resume In CLI button
 // ---------------------------------------------------------------------------
 
-test.describe('Resume CLI', () => {
-    test('Resume CLI button appears when process has a session ID and shows feedback', async ({ page, serverUrl, mockAI }) => {
+test.describe('Resume In CLI', () => {
+    test('Resume In CLI button appears when process has a session ID and shows feedback', async ({ page, serverUrl, mockAI }) => {
         const task = await seedAndWaitForTask(serverUrl, {
-            payload: { prompt: 'Resume CLI test' },
+            payload: { prompt: 'Resume In CLI test' },
         });
 
         // Intercept process API to return data WITH a session ID
@@ -878,7 +878,7 @@ test.describe('Resume CLI', () => {
             const originalResponse = await route.fetch();
             const body = await originalResponse.json().catch(() => ({}));
 
-            // Inject a session ID so the Resume CLI button appears
+            // Inject a session ID so the Resume In CLI button appears
             if (body?.process) {
                 body.process.sdkSessionId = 'test-resume-session-id';
             }
@@ -892,8 +892,8 @@ test.describe('Resume CLI', () => {
 
         await gotoQueueTask(page, serverUrl, task.id as string);
 
-        // Resume CLI button should be visible (hidden on mobile, visible on sm+)
-        const resumeBtn = page.locator('button', { hasText: 'Resume CLI' });
+        // Resume In CLI button should be visible (hidden on mobile, visible on sm+)
+        const resumeBtn = page.locator('button', { hasText: 'Resume In CLI' });
         await expect(resumeBtn).toBeVisible({ timeout: 5_000 });
 
         // Click the button

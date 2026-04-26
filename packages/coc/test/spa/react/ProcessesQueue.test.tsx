@@ -481,7 +481,7 @@ describe('ProcessDetail', () => {
         );
 
         await screen.findByText('Q');
-        fireEvent.click(screen.getByRole('button', { name: 'Resume CLI' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume In CLI' }));
 
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith(
