@@ -60,14 +60,12 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
             {/* Empty state / no-note state — no chat yet */}
             {!taskId && (
                 <>
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                         <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">🤖 Notes Chat</span>
+                        <ScopeToggle scope={scope} onScopeChange={setScope} />
                         <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
                                 data-testid="note-chat-close-btn" title="Close">✕</button>
                     </div>
-
-                    {/* Scope toggle */}
-                    <ScopeToggle scope={scope} onScopeChange={setScope} />
 
                     {noNoteSelected ? (
                         <div className="flex-1 flex items-center justify-center">
@@ -116,6 +114,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                 <ChatPreferencesProvider workspaceId={workspaceId}>
                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0">
                         <span className="text-[10px] text-[#848484]">🤖 Notes Chat</span>
+                        <ScopeToggle scope={scope} onScopeChange={setScope} />
                         <button
                             onClick={resetChat}
                             className="text-[10px] px-1.5 py-0.5 rounded text-[#0078d4] hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
@@ -125,9 +124,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             🔄 New Chat
                         </button>
                     </div>
-
-                    {/* Scope toggle */}
-                    <ScopeToggle scope={scope} onScopeChange={setScope} />
 
                     {scope === 'per-note' && (
                         <NoteContextBanner
@@ -163,13 +159,13 @@ interface ScopeToggleProps {
 function ScopeToggle({ scope, onScopeChange }: ScopeToggleProps) {
     return (
         <div
-            className="flex items-center gap-1 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0"
+            className="flex items-center gap-0.5"
             data-testid="chat-scope-toggle"
         >
             <button
                 type="button"
                 className={
-                    'flex-1 text-[10px] py-0.5 rounded transition-colors ' +
+                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
                     (scope === 'per-note'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
@@ -183,7 +179,7 @@ function ScopeToggle({ scope, onScopeChange }: ScopeToggleProps) {
             <button
                 type="button"
                 className={
-                    'flex-1 text-[10px] py-0.5 rounded transition-colors ' +
+                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
                     (scope === 'per-workspace'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')

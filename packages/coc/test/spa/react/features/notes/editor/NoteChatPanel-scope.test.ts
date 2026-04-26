@@ -96,14 +96,35 @@ describe('NoteChatPanel — scope toggle', () => {
     });
 
     describe('ScopeToggle in both empty and active states', () => {
-        it('renders ScopeToggle in empty state', () => {
-            // ScopeToggle should appear both when taskId is null and when it has a value
-            const emptyStateIdx = source.indexOf('note-chat-close-btn');
-            const activeStateIdx = source.indexOf('note-chat-new-btn');
-            const scopeToggle1 = source.indexOf('<ScopeToggle', emptyStateIdx);
-            const scopeToggle2 = source.indexOf('<ScopeToggle', activeStateIdx);
-            expect(scopeToggle1).toBeGreaterThan(emptyStateIdx);
-            expect(scopeToggle2).toBeGreaterThan(activeStateIdx);
+        it('renders ScopeToggle in same row as header buttons (single-row layout)', () => {
+            // In the single-row layout, ScopeToggle is inlined before the action button in each header row
+            const emptyStateStart = source.indexOf('{!taskId && (');
+            const activeStateStart = source.indexOf('{taskId && (');
+
+            // ScopeToggle in empty state (before close button)
+            const scopeToggle1 = source.indexOf('<ScopeToggle', emptyStateStart);
+            expect(scopeToggle1).toBeGreaterThan(emptyStateStart);
+            expect(scopeToggle1).toBeLessThan(activeStateStart);
+
+            const closeIdx = source.indexOf('note-chat-close-btn', scopeToggle1);
+            expect(closeIdx).toBeGreaterThan(scopeToggle1);
+            expect(closeIdx).toBeLessThan(activeStateStart);
+
+            // ScopeToggle in active state (before new-chat button)
+            const scopeToggle2 = source.indexOf('<ScopeToggle', activeStateStart);
+            expect(scopeToggle2).toBeGreaterThan(activeStateStart);
+
+            const newChatIdx = source.indexOf('note-chat-new-btn', scopeToggle2);
+            expect(newChatIdx).toBeGreaterThan(scopeToggle2);
+        });
+
+        it('ScopeToggle no longer renders its own border-b row', () => {
+            const scopeToggleDef = source.indexOf('function ScopeToggle');
+            expect(scopeToggleDef).toBeGreaterThan(-1);
+            const afterDef = source.slice(scopeToggleDef);
+            const componentBodyEnd = afterDef.indexOf('\n}');
+            const componentBody = afterDef.slice(0, componentBodyEnd);
+            expect(componentBody).not.toContain('border-b');
         });
     });
 });
