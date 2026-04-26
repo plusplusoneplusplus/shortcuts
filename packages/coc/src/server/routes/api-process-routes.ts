@@ -58,6 +58,30 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
     };
 }
 
+/**
+ * Resolve a process by ID with a fallback for mismatched `queue_` prefixes.
+ *
+ * Forked processes (and other non-queue-created processes) have bare UUID IDs,
+ * but the SPA may prefix them with `queue_` (the standard convention for
+ * queue-created processes). This helper tries the given ID first, then falls
+ * back to the bare ID (prefix stripped) or the prefixed ID, so lookups succeed
+ * regardless of whether the caller added or omitted the `queue_` prefix.
+ */
+async function resolveProcess(
+    store: ProcessStore,
+    id: string,
+    workspaceId?: string,
+): Promise<AIProcess | undefined> {
+    const proc = await store.getProcess(id, workspaceId);
+    if (proc) return proc;
+    // Fallback: try the bare ID if the given ID has the queue_ prefix
+    if (isQueueProcessId(id)) {
+        const bareId = toTaskId(id);
+        return store.getProcess(bareId, workspaceId);
+    }
+    return undefined;
+}
+
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     const { routes, store, bridge, dataDir, getWsServer } = ctx;
 
@@ -227,7 +251,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)\/stream$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            let id = decodeURIComponent(match![1]);
+            // Resolve queue_ prefix mismatch for forked processes
+            const resolved = await resolveProcess(store, id);
+            if (resolved) id = resolved.id;
             return handleProcessStream(req, res, id, store);
         },
     });
@@ -239,7 +266,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const proc = await store.getProcess(id, wsId);
+            const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
                 // If the process ID is a queue-derived ID and the task is still queued,
                 // return empty output instead of 404.
@@ -277,7 +304,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const filter = parseQueryParams(req.url || '/');
-            const proc = await store.getProcess(id, filter.workspaceId);
+            const proc = await resolveProcess(store, id, filter.workspaceId);
             if (!proc) {
                 // Synthesize a response for queued tasks that don't yet have a process record
                 if (isQueueProcessId(id) && bridge) {
@@ -318,7 +345,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const existing = await store.getProcess(id, wsId);
+            const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -337,14 +364,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
             if (body.title !== undefined) { updates.title = body.title; }
 
-            await store.updateProcess(id, updates);
+            await store.updateProcess(existing.id, updates);
 
             // Sync queue task displayName when title is updated
-            if (body.title !== undefined && isQueueProcessId(id) && bridge) {
-                bridge.updateTaskDisplayName?.(id, body.title);
+            if (body.title !== undefined && isQueueProcessId(existing.id) && bridge) {
+                bridge.updateTaskDisplayName?.(existing.id, body.title);
             }
 
-            const updated = await store.getProcess(id, wsId);
+            const updated = await store.getProcess(existing.id, wsId);
             sendJSON(res, 200, { process: updated });
         },
     });
@@ -358,11 +385,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const existing = await store.getProcess(id, wsId);
+            const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
-            await store.removeProcess(id);
+            await store.removeProcess(existing.id);
             res.writeHead(204);
             res.end();
         },
@@ -375,7 +402,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const existing = await store.getProcess(id, wsId);
+            const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -384,17 +411,17 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, new APIError(409, `Process is already in terminal state: ${existing.status}`, 'CONFLICT'));
             }
 
-            await store.updateProcess(id, {
+            await store.updateProcess(existing.id, {
                 status: 'cancelling' as any,
             });
 
-            process.stderr.write(`[Process] cancel id=${id} prevStatus=${existing.status}\n`);
+            process.stderr.write(`[Process] cancel id=${existing.id} prevStatus=${existing.status}\n`);
 
             // Await the abort with a timeout so we don't hang the HTTP response
             const CANCEL_TIMEOUT_MS = 30_000;
             try {
                 await Promise.race([
-                    bridge?.cancelProcess?.(id),
+                    bridge?.cancelProcess?.(existing.id),
                     new Promise<void>((_, reject) =>
                         setTimeout(() => reject(new Error('Cancel timeout')), CANCEL_TIMEOUT_MS)),
                 ]);
@@ -403,15 +430,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             // Finalize: set terminal cancelled status (unless lifecycle runner already did)
-            const current = await store.getProcess(id, wsId);
+            const current = await store.getProcess(existing.id, wsId);
             if (current && !TERMINAL_STATUSES.has(current.status)) {
-                await store.updateProcess(id, {
+                await store.updateProcess(existing.id, {
                     status: 'cancelled',
                     endTime: new Date(),
                 });
             }
 
-            const updated = await store.getProcess(id, wsId);
+            const updated = await store.getProcess(existing.id, wsId);
             sendJSON(res, 200, { process: updated });
         },
     });
@@ -423,7 +450,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const proc = await store.getProcess(id, wsId);
+            const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -445,7 +472,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const forked = await store.forkProcess(id, newId, newSdkSessionId);
+                const forked = await store.forkProcess(proc.id, newId, newSdkSessionId);
                 const wsServer = getWsServer?.();
                 if (wsServer && forked.metadata?.workspaceId) {
                     wsServer.broadcastProcessEvent({
@@ -474,12 +501,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/message$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            let id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const proc = await store.getProcess(id, wsId);
+            const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
+            // Normalize: the resolved process ID may differ from the request ID
+            // (e.g. forked processes use bare UUIDs, but client may send queue_ prefix)
+            id = proc.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
@@ -730,7 +760,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const proc = await store.getProcess(id, wsId);
+            const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -768,14 +798,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const id = decodeURIComponent(match![1]);
             const msgId = decodeURIComponent(match![2]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const proc = await store.getProcess(id, wsId);
+            const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
 
             const existing = proc.pendingMessages ?? [];
             const filtered = existing.filter(m => m.id !== msgId);
-            await store.updateProcess(id, { pendingMessages: filtered });
+            await store.updateProcess(proc.id, { pendingMessages: filtered });
 
             res.writeHead(204);
             res.end();
