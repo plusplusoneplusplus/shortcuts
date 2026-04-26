@@ -31,6 +31,7 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
 
 const STORAGE_KEY_HORIZONTAL = 'coc.scratchpad.topHeightPct';
 const STORAGE_KEY_VERTICAL = 'coc.scratchpad.leftWidthPct';
+const STORAGE_KEY_OPEN = (taskId: string) => `coc.scratchpad.open.${taskId}`;
 const DEFAULT_PCT = 60;
 const MIN_PCT_HORIZONTAL = 15;
 const MIN_PCT_VERTICAL = 5;
@@ -50,8 +51,12 @@ function getStorageKey(layout: ScratchpadLayout): string {
 export function useScratchpadState(
     containerRef: React.RefObject<HTMLElement>,
     layout: ScratchpadLayout = 'horizontal',
+    taskId: string | null = null,
 ): UseScratchpadStateReturn {
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(() => {
+        if (!taskId) return false;
+        try { return localStorage.getItem(STORAGE_KEY_OPEN(taskId)) === 'true'; } catch { return false; }
+    });
     const [linkedNotePath, setLinkedNotePath] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [expandMode, setExpandModeRaw] = useState<ScratchpadExpandMode>('split');
@@ -85,6 +90,14 @@ export function useScratchpadState(
         setTopHeightPctRaw(DEFAULT_PCT);
     }, [layout]);
 
+    // Reset open state from localStorage when taskId changes
+    useEffect(() => {
+        if (!taskId) { setIsOpen(false); return; }
+        try {
+            setIsOpen(localStorage.getItem(STORAGE_KEY_OPEN(taskId)) === 'true');
+        } catch { setIsOpen(false); }
+    }, [taskId]);
+
     const setTopHeightPct = useCallback((pct: number) => {
         setTopHeightPctRaw(Math.min(Math.max(pct, getMinPct(layout)), MAX_PCT));
     }, [layout]);
@@ -103,6 +116,9 @@ export function useScratchpadState(
             if (!prev) setExpandModeRaw('split');
             return true;
         });
+        if (taskId) {
+            try { localStorage.setItem(STORAGE_KEY_OPEN(taskId), 'true'); } catch { /* ignore */ }
+        }
         if (notePath !== undefined) {
             setLinkedNotePath(notePath);
             setKnownFiles(prev => {
@@ -111,11 +127,14 @@ export function useScratchpadState(
                 return [...prev, notePath];
             });
         }
-    }, []);
+    }, [taskId]);
 
     const close = useCallback(() => {
         setIsOpen(false);
-    }, []);
+        if (taskId) {
+            try { localStorage.removeItem(STORAGE_KEY_OPEN(taskId)); } catch { /* ignore */ }
+        }
+    }, [taskId]);
 
     const registerFiles = useCallback((paths: string[]) => {
         setKnownFiles(prev => {

@@ -46,7 +46,6 @@ import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
-import { extractLastWrittenNotePath } from './scratchpad/scratchpadUtils';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -154,7 +153,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
-    const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout);
+    const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -630,18 +629,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             }
         }
     }, [turns, loading]);
-
-    // Auto-open scratchpad when the last assistant turn writes a .md file
-    useEffect(() => {
-        if (!scratchpadEnabled) return;
-        const path = extractLastWrittenNotePath(turns);
-        if (path && !scratchpad.isOpen) {
-            scratchpad.open(path);
-        }
-        // Intentionally omit scratchpad.isOpen from deps: we only want to re-evaluate
-        // when turns change or the feature flag changes, not when the panel itself opens.
-        // scratchpad.open is stable (never re-created).
-    }, [turns, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Register all .md files from created files into the scratchpad tab list.
     // The plan file is excluded — it has its own dedicated display in the header.
