@@ -83,8 +83,7 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
                     return (
                         <label
                             key={tool.name}
-                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] transition-colors ${enabled ? '' : 'opacity-60'}`}
-                            title={tool.description}
+                            className={`flex items-start gap-2 px-2.5 py-1.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] transition-colors ${enabled ? '' : 'opacity-60'}`}
                             data-testid={`llm-tool-row-${tool.name}`}
                         >
                             <input
@@ -95,21 +94,26 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
                                 disabled={saving}
                                 data-testid={`llm-tool-toggle-${tool.name}`}
                             />
-                            <div className={`relative flex-shrink-0 w-7 h-4 rounded-full transition-colors ${
+                            <div className={`relative flex-shrink-0 w-7 h-4 mt-0.5 rounded-full transition-colors ${
                                 enabled ? 'bg-[#0078d4]' : 'bg-[#ccc] dark:bg-[#555]'
                             } ${saving ? 'opacity-50' : ''}`}>
                                 <div className={`absolute top-[2px] w-3 h-3 rounded-full bg-white shadow transition-transform ${
                                     enabled ? 'translate-x-[14px]' : 'translate-x-[2px]'
                                 }`} />
                             </div>
-                            <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                                {tool.label}
-                            </span>
-                            {!tool.enabledByDefault && (
-                                <span className="flex-shrink-0 text-[9px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">
-                                    off
-                                </span>
-                            )}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                                        {tool.label}
+                                    </span>
+                                    {!tool.enabledByDefault && (
+                                        <span className="flex-shrink-0 text-[9px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">
+                                            off
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[10px] leading-tight text-[#848484] mt-0.5 line-clamp-2">{tool.description}</p>
+                            </div>
                         </label>
                     );
                 })}
