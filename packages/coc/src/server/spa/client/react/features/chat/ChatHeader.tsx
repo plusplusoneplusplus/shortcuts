@@ -396,16 +396,6 @@ export function ChatHeader({
                         {task?.duration != null && (
                             <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
                         )}
-                        {!isPending && resumeSessionId && (
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                loading={resumeLaunching}
-                                onClick={onLaunchInteractiveResume}
-                            >
-                                Resume CLI
-                            </Button>
-                        )}
                         <ContextWindowIndicator
                             tokenLimit={sessionTokenLimit}
                             currentTokens={sessionCurrentTokens}
@@ -523,7 +513,13 @@ export function ChatHeader({
                             </button>
                         )}
                         {!isPending && metadataProcess && (
-                            <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                            <ConversationMetadataPopover
+                                process={metadataProcess}
+                                turnsCount={turns.length}
+                                resumeSessionId={resumeSessionId}
+                                resumeLaunching={resumeLaunching}
+                                onLaunchInteractiveResume={onLaunchInteractiveResume}
+                            />
                         )}
                         {onFork && (
                             <Button

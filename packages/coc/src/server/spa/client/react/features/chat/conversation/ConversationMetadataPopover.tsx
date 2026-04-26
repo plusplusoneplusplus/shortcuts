@@ -94,7 +94,16 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     return rows;
 }
 
-export function ConversationMetadataPopover({ process, turnsCount }: { process: any; turnsCount?: number }) {
+export interface ConversationMetadataPopoverProps {
+    process: any;
+    turnsCount?: number;
+    /** When provided, a "Resume CLI" action button is shown at the bottom of the popover. */
+    resumeSessionId?: string | null;
+    resumeLaunching?: boolean;
+    onLaunchInteractiveResume?: () => void;
+}
+
+export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -208,6 +217,19 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
                     </div>
                 ))}
             </div>
+            {resumeSessionId && onLaunchInteractiveResume && (
+                <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <button
+                        type="button"
+                        disabled={resumeLaunching}
+                        onClick={() => { onLaunchInteractiveResume(); setOpen(false); }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-[#0078d4] dark:text-[#3794ff] border border-[#0078d4] dark:border-[#3794ff] hover:bg-[#e8f0fb] dark:hover:bg-[#1a2a40] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <span>▶</span>
+                        {resumeLaunching ? 'Launching…' : 'Resume CLI'}
+                    </button>
+                </div>
+            )}
         </>
     );
 
