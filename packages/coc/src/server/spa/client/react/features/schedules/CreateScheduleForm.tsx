@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
+import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getApiBase } from '../../utils/config';
 import { fetchWorkflows } from '../workflow/workflow-api';
-import { parseCronToInterval, describeCron, intervalToCron, CRON_EXAMPLES } from '../../utils/cron';
+import { parseCronToInterval, intervalToCron } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
+import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import { TaskDefs } from '../../../../../task-types';
 import type { PipelineInfo } from '../../repos/repoGrouping';
 
@@ -185,21 +187,16 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 />
 
                 {/* Target type picker */}
-                <div className="flex items-center gap-2" data-testid="target-type-picker">
-                    <span className="text-[10px] text-[#616161] dark:text-[#999]">Type:</span>
-                    <button
-                        type="button"
-                        className={cn('text-[10px] px-2 py-1 rounded', targetType === 'prompt' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
-                        onClick={() => setTargetType('prompt')}
-                        data-testid="target-type-prompt"
-                    >Prompt</button>
-                    <button
-                        type="button"
-                        className={cn('text-[10px] px-2 py-1 rounded', targetType === 'script' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
-                        onClick={() => setTargetType('script')}
-                        data-testid="target-type-script"
-                    >Script</button>
-                </div>
+                <SegmentedControl
+                    label="Type:"
+                    options={[
+                        { value: 'prompt' as const, label: 'Prompt', testId: 'target-type-prompt' },
+                        { value: 'script' as const, label: 'Script', testId: 'target-type-script' },
+                    ]}
+                    value={targetType}
+                    onChange={setTargetType}
+                    data-testid="target-type-picker"
+                />
 
                 {/* Target field — pipeline selector for run-workflow, plain input otherwise */}
                 {selectedTemplate === TaskDefs.runWorkflow.kind && !manualPipeline ? (
@@ -314,101 +311,31 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
                 {/* Chat mode selector — only for prompt type */}
                 {(!targetType || targetType === 'prompt') && (
-                    <div className="flex items-center gap-2" data-testid="chat-mode-picker">
-                        <span className="text-[10px] text-[#616161] dark:text-[#999]">Mode:</span>
-                        {(['ask', 'plan', 'autopilot'] as const).map(m => (
-                            <button
-                                key={m}
-                                type="button"
-                                className={cn('text-[10px] px-2 py-1 rounded capitalize', chatMode === m ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
-                                onClick={() => setChatMode(m)}
-                                data-testid={`chat-mode-${m}`}
-                            >{m.charAt(0).toUpperCase() + m.slice(1)}</button>
-                        ))}
-                    </div>
+                    <SegmentedControl
+                        label="Mode:"
+                        options={[
+                            { value: 'ask' as const, label: 'Ask', testId: 'chat-mode-ask' },
+                            { value: 'plan' as const, label: 'Plan', testId: 'chat-mode-plan' },
+                            { value: 'autopilot' as const, label: 'Autopilot', testId: 'chat-mode-autopilot' },
+                        ]}
+                        value={chatMode}
+                        onChange={setChatMode}
+                        data-testid="chat-mode-picker"
+                    />
                 )}
 
-                {/* Schedule mode toggle */}
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        className={cn('text-[10px] px-2 py-1 rounded', mode === 'interval' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
-                        onClick={() => setMode('interval')}
-                    >Interval</button>
-                    <button
-                        type="button"
-                        className={cn('text-[10px] px-2 py-1 rounded', mode === 'cron' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
-                        onClick={() => setMode('cron')}
-                    >Cron</button>
-                </div>
-
-                {mode === 'interval' ? (
-                    <div className="flex items-center gap-1.5 text-xs">
-                        <span className="text-[#616161] dark:text-[#999]">Run every</span>
-                        <input
-                            type="number"
-                            min="1"
-                            className="w-14 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                            value={intervalValue}
-                            onChange={e => setIntervalValue(e.target.value)}
-                        />
-                        <select
-                            className="px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                            value={intervalUnit}
-                            onChange={e => setIntervalUnit(e.target.value)}
-                        >
-                            <option value="minutes">minutes</option>
-                            <option value="hours">hours</option>
-                            <option value="days">days</option>
-                        </select>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-1.5" data-testid="cron-hint-panel">
-                        <input
-                            className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] font-mono"
-                            placeholder="0 9 * * *"
-                            value={cron}
-                            onChange={e => setCron(e.target.value)}
-                        />
-                        <div className="flex items-center gap-1" data-testid="cron-field-legend">
-                            {['min', 'hr', 'dom', 'mon', 'dow'].map(f => (
-                                <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-[#e8e8e8] dark:bg-[#333] text-[#616161] dark:text-[#999] font-mono">{f}</span>
-                            ))}
-                            <span className="text-[9px] text-[#848484] ml-1">minute · hour · day-of-month · month · day-of-week</span>
-                        </div>
-                        {cron.trim() && describeCron(cron) && (
-                            <div className="text-[10px] text-[#0078d4] dark:text-[#4fc3f7]" data-testid="cron-description">
-                                {describeCron(cron)}
-                            </div>
-                        )}
-                        <div className="flex flex-wrap gap-1" data-testid="cron-examples">
-                            {CRON_EXAMPLES.map(ex => (
-                                <button
-                                    key={ex.expr}
-                                    type="button"
-                                    className="text-[9px] px-1.5 py-0.5 rounded border border-[#d0d0d0] dark:border-[#555] bg-white dark:bg-[#2a2a2a] text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#333] hover:text-[#1e1e1e] dark:hover:text-[#ccc] transition-colors"
-                                    onClick={() => setCron(ex.expr)}
-                                    title={ex.expr}
-                                    data-testid={`cron-example-${ex.expr.replace(/\s+/g, '-')}`}
-                                >
-                                    {ex.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex items-center gap-2 text-xs">
-                    <span className="text-[#616161] dark:text-[#999]">On failure:</span>
-                    <select
-                        className="px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        value={onFailure}
-                        onChange={e => setOnFailure(e.target.value)}
-                    >
-                        <option value="notify">Notify</option>
-                        <option value="stop">Stop</option>
-                    </select>
-                </div>
+                <ScheduleTriggerPanel
+                    mode={mode}
+                    onModeChange={setMode}
+                    intervalValue={intervalValue}
+                    onIntervalValueChange={setIntervalValue}
+                    intervalUnit={intervalUnit}
+                    onIntervalUnitChange={setIntervalUnit}
+                    cron={cron}
+                    onCronChange={setCron}
+                    onFailure={onFailure}
+                    onFailureChange={setOnFailure}
+                />
 
                 {/* Dynamic params fields */}
                 {selectedTemplate && (() => {

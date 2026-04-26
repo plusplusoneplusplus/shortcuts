@@ -36,6 +36,8 @@ export { SendButton, SplitSendButton } from './SplitSendButton';
 export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
 export { ModeToggleToolbar } from './ModeToggleToolbar';
 export type { ModeOption, ModeToggleToolbarProps } from './ModeToggleToolbar';
+export { SegmentedControl } from './SegmentedControl';
+export type { SegmentedControlOption, SegmentedControlProps } from './SegmentedControl';
 export { SuggestionChips } from './SuggestionChips';
 export type { SuggestionChipsProps } from './SuggestionChips';
 

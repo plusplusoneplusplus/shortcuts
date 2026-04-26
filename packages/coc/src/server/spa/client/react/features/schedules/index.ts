@@ -4,5 +4,7 @@ export { ScheduleDetail } from './ScheduleDetail';
 export type { ScheduleDetailProps } from './ScheduleDetail';
 export { StatusDot, StatusBadge, failureLabel } from './ScheduleStatusBadge';
 export { CreateScheduleForm } from './CreateScheduleForm';
+export { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
+export type { ScheduleTriggerPanelProps } from './ScheduleTriggerPanel';
 export { SCHEDULE_TEMPLATES } from './scheduleTemplates';
 export type { Schedule, RunRecord } from './scheduleTypes';
