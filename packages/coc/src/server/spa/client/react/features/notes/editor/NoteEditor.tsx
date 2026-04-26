@@ -16,6 +16,8 @@ import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
 import { AIEditNavigator } from './AIEditNavigator';
+import type { TocEntry } from './noteTocUtils';
+import { extractHeadings } from './noteTocUtils';
 import './noteEditor.css';
 
 export type NoteViewMode = 'rich' | 'source';
@@ -155,6 +157,12 @@ export function NoteEditor({
     const [aiEditsVisible, setAiEditsVisible] = useState(true);
     const aiEditRegionsRef = useRef<Array<{ id: string; from: number; to: number }>>([]);
 
+    // TOC state
+    const [tocOpen, setTocOpen] = useState(false);
+    const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
+    const [tocActiveIndex, setTocActiveIndex] = useState<number | null>(null);
+    const editorScrollContainerRef = useRef<HTMLDivElement | null>(null);
+
     // Source mode state
     const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
     const [rawMarkdown, setRawMarkdown] = useState('');
@@ -195,11 +203,13 @@ export function NoteEditor({
     const handleEditorReady = useCallback((ed: Editor) => {
         editorRef.current = ed;
         setEditor(ed);
+        setTocEntries(extractHeadings(ed));
         onEditorReady?.(ed);
     }, [onEditorReady]);
 
     const handleEditorChange = useCallback((ed: Editor) => {
         setDirty(true);
+        setTocEntries(extractHeadings(ed));
         scheduleSave(ed);
     }, []);
 
@@ -491,6 +501,10 @@ export function NoteEditor({
         aiEditRegionsRef.current = [];
         setAiEditCount(0);
         setAiEditsVisible(false);
+        // Reset TOC state
+        setTocEntries([]);
+        setTocOpen(false);
+        setTocActiveIndex(null);
 
         if (!notePath) {
             editorRef.current?.commands.clearContent({ emitUpdate: false });
@@ -621,6 +635,40 @@ export function NoteEditor({
             setAiEditsVisible(true);
         }
     }, [aiEditsVisible]);
+
+    // ── TOC: jump to heading ────────────────────────────────────────────────
+
+    const handleTocJump = useCallback((entry: TocEntry) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        ed.chain().setTextSelection(entry.pos).scrollIntoView().run();
+        setTocOpen(false);
+    }, []);
+
+    // ── TOC: scroll-spy ─────────────────────────────────────────────────────
+
+    useEffect(() => {
+        if (!tocOpen || !editor) return;
+        const scrollContainer = editorScrollContainerRef.current;
+        if (!scrollContainer) return;
+
+        const updateActive = () => {
+            const headingEls = scrollContainer.querySelectorAll<HTMLElement>(
+                '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3',
+            );
+            const containerTop = scrollContainer.getBoundingClientRect().top;
+            let activeIdx: number | null = null;
+            headingEls.forEach((el, i) => {
+                const top = el.getBoundingClientRect().top - containerTop;
+                if (top <= 8) activeIdx = i;
+            });
+            setTocActiveIndex(activeIdx);
+        };
+
+        scrollContainer.addEventListener('scroll', updateActive, { passive: true });
+        updateActive();
+        return () => scrollContainer.removeEventListener('scroll', updateActive);
+    }, [tocOpen, editor, tocEntries]);
 
     // ── Auto-reload on notes-changed WS event (with diff decorations) ───
 
@@ -781,6 +829,11 @@ export function NoteEditor({
                     toolbarRight={toolbarRight}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={onToggleChatPanel}
+                    tocOpen={tocOpen}
+                    onToggleToc={() => setTocOpen(v => !v)}
+                    tocEntries={viewMode === 'source' ? [] : tocEntries}
+                    tocActiveIndex={tocActiveIndex}
+                    onTocJump={handleTocJump}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
                             <div className="flex h-5 rounded border border-[#c0c0c0] dark:border-[#555] overflow-hidden text-[10px]">
@@ -832,6 +885,7 @@ export function NoteEditor({
                 destroyed.  Hidden via CSS when source mode, loading, error,
                 or empty state is active. */}
             <div
+                ref={editorScrollContainerRef}
                 className="flex-1 overflow-y-auto relative"
                 style={viewMode === 'source' && !editorHidden ? { display: 'none' } : undefined}
                 onContextMenu={(e) => {

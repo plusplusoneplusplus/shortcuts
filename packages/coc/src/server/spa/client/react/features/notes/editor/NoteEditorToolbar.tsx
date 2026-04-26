@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
+import type { TocEntry } from './noteTocUtils';
+import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
@@ -25,6 +27,16 @@ export interface NoteEditorToolbarProps {
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, the 🤖 button is rendered. */
     onToggleChatPanel?: () => void;
+    /** Whether the TOC panel is currently open. */
+    tocOpen?: boolean;
+    /** Called to toggle the TOC panel. When provided, the ≡ button is rendered. */
+    onToggleToc?: () => void;
+    /** Heading entries for the TOC. Empty list disables the button. */
+    tocEntries?: TocEntry[];
+    /** Currently active (scroll-spy) heading index, or null. */
+    tocActiveIndex?: number | null;
+    /** Called when the user clicks a TOC entry to jump to it. */
+    onTocJump?: (entry: TocEntry) => void;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -261,9 +273,12 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, chatPanelOpen, onToggleChatPanel }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, chatPanelOpen, onToggleChatPanel, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
+    const tocRef = useRef<HTMLDivElement>(null);
+
     if (!editor) return null;
 
+    const hasHeadings = tocEntries.length > 0;
     const c = editor.chain().focus.bind(editor.chain());
 
     function handleLink() {
@@ -329,7 +344,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || toolbarRight || onToggleChatPanel || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || modeToggle || toolbarRight || onToggleChatPanel || onToggleToc || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -384,6 +399,36 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                         >
                             🤖
                         </button>
+                    )}
+                    {onToggleToc && (
+                        <div className="relative" ref={tocRef}>
+                            <button
+                                type="button"
+                                title={hasHeadings ? 'Table of contents' : 'No headings in this note'}
+                                aria-label="Table of contents"
+                                disabled={!hasHeadings}
+                                className={
+                                    'text-xs px-2 py-0.5 rounded ' +
+                                    (tocOpen && hasHeadings
+                                        ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
+                                        : !hasHeadings
+                                            ? 'opacity-40 cursor-not-allowed text-[#888]'
+                                            : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                                }
+                                onClick={onToggleToc}
+                                data-testid="toc-toggle-btn"
+                            >
+                                ≡
+                            </button>
+                            {tocOpen && hasHeadings && onTocJump && (
+                                <NoteTocPanel
+                                    entries={tocEntries}
+                                    activeIndex={tocActiveIndex}
+                                    onJump={onTocJump}
+                                    onClose={onToggleToc}
+                                />
+                            )}
+                        </div>
                     )}
                     {toolbarRight}
                     {modeToggle}
