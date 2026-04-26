@@ -13,6 +13,7 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 | `get-conversation-tool.ts` | `get_conversation` | Fetches the full transcript of a past session by `processId` (typically from `search_conversations`), compacted to fit a token budget. Applies progressive compaction in 5 levels: strip noise → truncate tool results → drop unimportant tool calls (Read/Glob/Grep/etc.) → truncate prose → drop middle turns. Supports `fromTurn`/`toTurn` paging and `includeToolCalls: false` for prose-only views. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions displayed after the AI response. |
 | `update-task-status-tool.ts` | `update_task_status` | Updates task file status (e.g. in-progress, done) when executing against a plan file. |
+| `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via the Tavily Search API (`POST {baseUrl}/search`). Args: `query` (required), `searchDepth`, `topic`, `maxResults` (1–20), `includeAnswer`, `includeRawContent`, `includeDomains`, `excludeDomains`, `days`. API key resolved from `options.apiKey` then `~/.coc/providers.json` → `providers.tavily.apiKey` (configured in Admin → Providers). Returns `{query, answer?, results: [{title, url, snippet, score, publishedDate?, rawContent?}], totalResults}` or an `{error, status?}` envelope on failure (timeout, non-2xx, missing key). |
 
 ## Supporting Modules
 

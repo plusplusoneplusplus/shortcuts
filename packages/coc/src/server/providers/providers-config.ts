@@ -18,6 +18,7 @@ export interface ProvidersFileConfig {
     providers: {
         github?: { token: string };
         ado?: { orgUrl: string };
+        tavily?: { apiKey: string };
     };
 }
 

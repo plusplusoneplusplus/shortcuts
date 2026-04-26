@@ -127,6 +127,19 @@ describe('Provider Routes', () => {
             expect(status).toBe(200);
             expect((body as any).providers.ado.orgUrl).toBe('https://dev.azure.com/myorg');
         });
+
+        it('masks Tavily API key as hasApiKey boolean', async () => {
+            const configPath = path.join(dataDir, 'providers.json');
+            fs.writeFileSync(configPath, JSON.stringify({
+                providers: { tavily: { apiKey: 'tvly-secret' } },
+            }), 'utf-8');
+
+            const { status, body } = await apiGet(baseUrl, '/api/providers/config');
+            expect(status).toBe(200);
+            const providers = (body as any).providers;
+            expect(typeof providers.tavily.apiKey).not.toBe('string');
+            expect(providers.tavily.hasApiKey).toBe(true);
+        });
     });
 
     // ---- PUT /api/providers/config ----------------------------------------
@@ -196,6 +209,60 @@ describe('Provider Routes', () => {
             const configPath = path.join(dataDir, 'providers.json');
             const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(saved.providers.github.token).toBe('second');
+        });
+
+        it('saves Tavily apiKey and returns 204', async () => {
+            const { status } = await apiPut(baseUrl, '/api/providers/config', {
+                tavily: { apiKey: 'tvly-abc123' },
+            });
+            expect(status).toBe(204);
+
+            const configPath = path.join(dataDir, 'providers.json');
+            const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            expect(saved.providers.tavily.apiKey).toBe('tvly-abc123');
+        });
+
+        it('returns 400 when tavily.apiKey is empty', async () => {
+            const { status } = await apiPut(baseUrl, '/api/providers/config', {
+                tavily: { apiKey: '' },
+            });
+            expect(status).toBe(400);
+        });
+
+        it('returns 400 when tavily.apiKey is not a string', async () => {
+            const { status } = await apiPut(baseUrl, '/api/providers/config', {
+                tavily: { apiKey: 42 },
+            });
+            expect(status).toBe(400);
+        });
+
+        it('merges partial saves — saving one provider preserves the others', async () => {
+            // Seed all three providers
+            await apiPut(baseUrl, '/api/providers/config', {
+                github: { token: 'gh-1' },
+                ado: { orgUrl: 'https://dev.azure.com/orgA' },
+                tavily: { apiKey: 'tvly-1' },
+            });
+
+            // Update just GitHub
+            await apiPut(baseUrl, '/api/providers/config', {
+                github: { token: 'gh-2' },
+            });
+
+            const configPath = path.join(dataDir, 'providers.json');
+            const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            expect(saved.providers.github.token).toBe('gh-2');
+            expect(saved.providers.ado.orgUrl).toBe('https://dev.azure.com/orgA');
+            expect(saved.providers.tavily.apiKey).toBe('tvly-1');
+
+            // Update just Tavily
+            await apiPut(baseUrl, '/api/providers/config', {
+                tavily: { apiKey: 'tvly-2' },
+            });
+            const saved2 = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            expect(saved2.providers.github.token).toBe('gh-2');
+            expect(saved2.providers.ado.orgUrl).toBe('https://dev.azure.com/orgA');
+            expect(saved2.providers.tavily.apiKey).toBe('tvly-2');
         });
     });
 });

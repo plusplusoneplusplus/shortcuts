@@ -17,16 +17,22 @@ type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSectionProps) {
     const [hasGithubToken, setHasGithubToken] = useState(false);
     const [adoOrgUrlSaved, setAdoOrgUrlSaved] = useState('');
+    const [hasTavilyApiKey, setHasTavilyApiKey] = useState(false);
 
     const [githubToken, setGithubToken] = useState('');
     const [showGithubToken, setShowGithubToken] = useState(false);
 
     const [adoOrgUrl, setAdoOrgUrl] = useState('');
 
+    const [tavilyApiKey, setTavilyApiKey] = useState('');
+    const [showTavilyApiKey, setShowTavilyApiKey] = useState(false);
+
     const [githubStatus, setGithubStatus] = useState<SaveStatus>('idle');
     const [githubError, setGithubError] = useState('');
     const [adoStatus, setAdoStatus] = useState<SaveStatus>('idle');
     const [adoError, setAdoError] = useState('');
+    const [tavilyStatus, setTavilyStatus] = useState<SaveStatus>('idle');
+    const [tavilyError, setTavilyError] = useState('');
 
     useEffect(() => {
         async function load() {
@@ -40,6 +46,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                     setAdoOrgUrlSaved(providers.ado.orgUrl);
                     setAdoOrgUrl(providers.ado.orgUrl);
                 }
+                setHasTavilyApiKey(!!providers?.tavily?.hasApiKey);
             } catch (err: any) {
                 onError(err.message || 'Failed to load provider config');
             }
@@ -70,6 +77,31 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         } catch (err: any) {
             setGithubError(err.message || 'Failed to save');
             setGithubStatus('error');
+        }
+    };
+
+    const handleSaveTavily = async () => {
+        if (!tavilyApiKey.trim()) return;
+        setTavilyStatus('saving');
+        setTavilyError('');
+        try {
+            const res = await fetch(getApiBase() + '/providers/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tavily: { apiKey: tavilyApiKey } }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error((body as any).error || `Error ${res.status}`);
+            }
+            setTavilyApiKey('');
+            setHasTavilyApiKey(true);
+            setTavilyStatus('success');
+            onSuccess('Tavily API key saved');
+            setTimeout(() => setTavilyStatus('idle'), 3000);
+        } catch (err: any) {
+            setTavilyError(err.message || 'Failed to save');
+            setTavilyStatus('error');
         }
     };
 
@@ -195,6 +227,58 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                     </p>
                 )}
             </div>
+            {/* Tavily */}
+            <div className="mt-5" data-testid="tavily-subsection">
+                <p className={subHeadClass}>Tavily Web Search</p>
+                {hasTavilyApiKey && (
+                    <p className="text-xs text-[#616161] dark:text-[#999] mb-2" data-testid="tavily-api-key-saved">
+                        An API key is already saved (<span className="font-mono">****</span>). Enter a new value to replace it.
+                    </p>
+                )}
+                <div className="flex items-center gap-2">
+                    <label className={labelClass} htmlFor="tavily-api-key-input">Tavily API Key</label>
+                    <div className="flex flex-1 gap-1">
+                        <input
+                            id="tavily-api-key-input"
+                            type={showTavilyApiKey ? 'text' : 'password'}
+                            className={inputClass}
+                            placeholder={hasTavilyApiKey ? '****' : 'tvly-...'}
+                            value={tavilyApiKey}
+                            onChange={e => setTavilyApiKey(e.target.value)}
+                            data-testid="tavily-api-key-input"
+                        />
+                        <button
+                            type="button"
+                            className="px-2 text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                            onClick={() => setShowTavilyApiKey(v => !v)}
+                            aria-label={showTavilyApiKey ? 'Hide Tavily API key' : 'Show Tavily API key'}
+                            data-testid="tavily-toggle-visibility"
+                        >
+                            👁
+                        </button>
+                        <button
+                            type="button"
+                            className="px-3 py-1 text-sm bg-[#0078d4] hover:bg-[#106ebe] text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={handleSaveTavily}
+                            disabled={tavilyApiKey.trim() === '' || tavilyStatus === 'saving'}
+                            data-testid="tavily-save-button"
+                        >
+                            {tavilyStatus === 'saving' ? 'Saving…' : 'Save'}
+                        </button>
+                    </div>
+                </div>
+                {tavilyStatus === 'success' && (
+                    <p className="mt-2 text-xs text-green-600 dark:text-green-400" data-testid="tavily-save-success">
+                        ✅ Tavily API key saved.
+                    </p>
+                )}
+                {tavilyStatus === 'error' && (
+                    <p className="mt-2 text-xs text-red-600 dark:text-red-400" data-testid="tavily-save-error">
+                        ❌ Error: {tavilyError}
+                    </p>
+                )}
+            </div>
+
             <p className="text-[10px] text-[#616161] dark:text-[#999] mt-3">
                 Tokens are stored locally in <span className="font-mono">~/.coc/providers.json</span>.
             </p>

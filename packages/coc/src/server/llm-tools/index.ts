@@ -13,6 +13,15 @@ export { createSuggestFollowUpsTool, type FollowUpSuggestion } from './suggest-f
 export { createUpdateTaskStatusTool, type UpdateTaskStatusArgs } from './update-task-status-tool';
 export { createAddDiffCommentTool, type AddDiffCommentArgs, type AddDiffCommentDeps } from './add-diff-comment-tool';
 export {
+    createTavilyWebSearchTool,
+    type TavilyWebSearchArgs,
+    type TavilyWebSearchToolOptions,
+    type TavilyWebSearchResult,
+    type TavilyWebSearchSuccess,
+    type TavilyWebSearchError,
+    type TavilyResult,
+} from './tavily-web-search-tool';
+export {
     getFileDiff,
     parseUnifiedDiff,
     mapLinesToDiffIndices,

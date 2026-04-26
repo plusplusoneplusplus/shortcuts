@@ -19,12 +19,14 @@ import type { ProvidersFileConfig } from './providers-config';
 /** Sanitize config so credentials never leave the server.
  *  GitHub: returns `{ hasToken: boolean }` instead of the masked string.
  *  ADO:    returns only `orgUrl` (PAT is no longer stored).
+ *  Tavily: returns `{ hasApiKey: boolean }` instead of the key.
  */
 function sanitizeConfig(config: ProvidersFileConfig): unknown {
     const sanitized: {
         providers: {
             github?: { hasToken: boolean };
             ado?: { orgUrl: string };
+            tavily?: { hasApiKey: boolean };
         };
     } = { providers: {} };
 
@@ -33,6 +35,9 @@ function sanitizeConfig(config: ProvidersFileConfig): unknown {
     }
     if (config.providers.ado) {
         sanitized.providers.ado = { orgUrl: config.providers.ado.orgUrl };
+    }
+    if (config.providers.tavily) {
+        sanitized.providers.tavily = { hasApiKey: !!config.providers.tavily.apiKey };
     }
 
     return sanitized;
@@ -76,6 +81,7 @@ export function registerProviderRoutes(routes: Route[], dataDir: string): void {
                 const body = await readJsonBody<{
                     github?: { token?: unknown };
                     ado?: { orgUrl?: unknown };
+                    tavily?: { apiKey?: unknown };
                 }>(req);
 
                 if (body.github !== undefined) {
@@ -92,17 +98,30 @@ export function registerProviderRoutes(routes: Route[], dataDir: string): void {
                     }
                 }
 
-                const config: ProvidersFileConfig = { providers: {} };
-                if (body.github) {
-                    config.providers.github = { token: body.github.token as string };
-                }
-                if (body.ado) {
-                    config.providers.ado = {
-                        orgUrl: body.ado.orgUrl as string,
-                    };
+                if (body.tavily !== undefined) {
+                    if (typeof body.tavily.apiKey !== 'string' || !body.tavily.apiKey) {
+                        send400(res, 'tavily.apiKey must be a non-empty string');
+                        return;
+                    }
                 }
 
-                await writeProvidersConfig(config, dataDir);
+                // Merge into existing config so a partial save (e.g. just GitHub)
+                // does not wipe other providers.
+                const existing = await readProvidersConfig(dataDir);
+                const merged: ProvidersFileConfig = {
+                    providers: { ...existing.providers },
+                };
+                if (body.github) {
+                    merged.providers.github = { token: body.github.token as string };
+                }
+                if (body.ado) {
+                    merged.providers.ado = { orgUrl: body.ado.orgUrl as string };
+                }
+                if (body.tavily) {
+                    merged.providers.tavily = { apiKey: body.tavily.apiKey as string };
+                }
+
+                await writeProvidersConfig(merged, dataDir);
                 res.writeHead(204);
                 res.end();
             } catch (err) {
