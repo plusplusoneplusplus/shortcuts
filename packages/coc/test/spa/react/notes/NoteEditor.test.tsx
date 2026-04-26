@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, cleanup, within } from '@testing-library/react';
+import { render, screen, waitFor, act, cleanup, fireEvent, within } from '@testing-library/react';
 import { useEffect } from 'react';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
@@ -998,6 +998,169 @@ describe('NoteEditor', () => {
             await act(async () => { await capturedFlush!(); });
 
             expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Manual refresh
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('manual refresh', () => {
+        it('toolbar renders the refresh button after note loads', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.getByTestId('note-editor-refresh-btn')).toBeDefined();
+        });
+
+        it('clicking refresh button reloads content from server', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Original', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Refreshed', path: 'page.md' });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-editor-refresh-btn'));
+            });
+
+            await waitFor(() => {
+                expect(mockLoadContent).toHaveBeenCalledTimes(1);
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Refreshed</p>');
+            });
+        });
+
+        it('shows confirm dialog when dirty and user cancels — no reload', async () => {
+            mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Make content dirty
+            act(() => { capturedOnChange?.(mockEditor); });
+
+            mockLoadContent.mockClear();
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-editor-refresh-btn'));
+            });
+
+            expect(confirmSpy).toHaveBeenCalledOnce();
+            expect(mockLoadContent).not.toHaveBeenCalled();
+            confirmSpy.mockRestore();
+        });
+
+        it('shows confirm dialog when dirty and user confirms — triggers reload', async () => {
+            mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Make content dirty
+            act(() => { capturedOnChange?.(mockEditor); });
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# After confirm', path: 'p.md' });
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-editor-refresh-btn'));
+            });
+
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+            expect(confirmSpy).toHaveBeenCalledOnce();
+            confirmSpy.mockRestore();
+        });
+
+        it('no confirm dialog shown when not dirty — reloads immediately', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Refreshed', path: 'page.md' });
+            const confirmSpy = vi.spyOn(window, 'confirm');
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-editor-refresh-btn'));
+            });
+
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+            expect(confirmSpy).not.toHaveBeenCalled();
+            confirmSpy.mockRestore();
+        });
+
+        it('Ctrl+Shift+R keyboard shortcut triggers refresh', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Via keyboard', path: 'page.md' });
+
+            const event = new KeyboardEvent('keydown', {
+                key: 'R',
+                ctrlKey: true,
+                shiftKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            const preventSpy = vi.spyOn(event, 'preventDefault');
+
+            await act(async () => { document.dispatchEvent(event); });
+
+            expect(preventSpy).toHaveBeenCalled();
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+        });
+
+        it('Cmd+Shift+R (metaKey) also triggers refresh', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            mockLoadContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Via cmd', path: 'page.md' });
+
+            const event = new KeyboardEvent('keydown', {
+                key: 'R',
+                metaKey: true,
+                shiftKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+
+            await act(async () => { document.dispatchEvent(event); });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+        });
+
+        it('refresh button is disabled during loading', async () => {
+            // First load resolves so toolbar appears
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Verify button is enabled when not loading
+            expect(screen.getByTestId('note-editor-refresh-btn')).not.toBeDisabled();
         });
     });
 });

@@ -23,6 +23,10 @@ export interface NoteEditorToolbarProps {
     aiEditsVisible?: boolean;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: ReactNode;
+    /** Called to manually refresh/reload the note from disk. When provided, a ↻ button is rendered. */
+    onRefresh?: () => void;
+    /** When true, the refresh button is disabled (load in progress). */
+    refreshing?: boolean;
     /** Whether the AI chat panel is currently open. */
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, the 🤖 button is rendered. */
@@ -273,7 +277,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, chatPanelOpen, onToggleChatPanel, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
     const tocRef = useRef<HTMLDivElement>(null);
 
     if (!editor) return null;
@@ -344,7 +348,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || toolbarRight || onToggleChatPanel || onToggleToc || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || modeToggle || toolbarRight || onRefresh || onToggleChatPanel || onToggleToc || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -429,6 +433,19 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                                 />
                             )}
                         </div>
+                    )}
+                    {onRefresh && (
+                        <button
+                            type="button"
+                            className="text-xs px-2 py-0.5 rounded text-[#888] hover:text-[#333] dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                            onClick={onRefresh}
+                            disabled={refreshing}
+                            aria-label="Refresh"
+                            title="Refresh (Ctrl+Shift+R)"
+                            data-testid="note-editor-refresh-btn"
+                        >
+                            ↻
+                        </button>
                     )}
                     {toolbarRight}
                     {modeToggle}

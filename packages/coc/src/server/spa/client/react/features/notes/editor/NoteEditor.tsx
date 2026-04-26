@@ -146,6 +146,7 @@ export function NoteEditor({
     onToggleChatPanel,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
+    const [refreshCounter, setRefreshCounter] = useState(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [dirty, setDirty] = useState(false);
@@ -581,7 +582,7 @@ export function NoteEditor({
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [notePath, workspaceId, onNotFound]);
+    }, [notePath, workspaceId, onNotFound, refreshCounter]);
 
     // ── Flush on unmount ────────────────────────────────────────────────────
 
@@ -790,6 +791,40 @@ export function NoteEditor({
         return () => document.removeEventListener('keydown', handler);
     }, [flushSave, flushSourceSave, viewMode]);
 
+    // ── Manual refresh ──────────────────────────────────────────────────────
+
+    const handleRefresh = useCallback(() => {
+        if (dirty || sourceDirty) {
+            if (!window.confirm('You have unsaved changes. Discard and refresh?')) return;
+            if (saveTimerRef.current) {
+                clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
+            pendingContentRef.current = null;
+            if (sourceSaveTimerRef.current) {
+                clearTimeout(sourceSaveTimerRef.current);
+                sourceSaveTimerRef.current = null;
+            }
+            pendingSourceContentRef.current = null;
+            setDirty(false);
+            setSourceDirty(false);
+        }
+        setRefreshCounter(c => c + 1);
+    }, [dirty, sourceDirty]);
+
+    // ── Ctrl/Cmd+Shift+R keyboard shortcut for refresh ─────────────────────
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                handleRefresh();
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [handleRefresh]);
+
     // ── beforeunload guard ──────────────────────────────────────────────────
 
     useEffect(() => {
@@ -827,6 +862,8 @@ export function NoteEditor({
                     onDismissAiEdits={handleAiEditDismiss}
                     onToggleAiEdits={handleAiEditToggle}
                     toolbarRight={toolbarRight}
+                    onRefresh={handleRefresh}
+                    refreshing={loading}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={onToggleChatPanel}
                     tocOpen={tocOpen}

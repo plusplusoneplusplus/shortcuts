@@ -234,3 +234,73 @@ describe('NoteEditorToolbar — hidden prop (source mode)', () => {
         expect(container.innerHTML).toBe('');
     });
 });
+
+describe('NoteEditorToolbar — refresh button', () => {
+    let editor: Editor;
+
+    afterEach(() => {
+        cleanup();
+        editor?.destroy();
+        vi.restoreAllMocks();
+    });
+
+    it('renders refresh button when onRefresh is provided', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={() => {}} />);
+        expect(screen.getByTestId('note-editor-refresh-btn')).toBeInTheDocument();
+    });
+
+    it('does not render refresh button when onRefresh is omitted', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+        expect(screen.queryByTestId('note-editor-refresh-btn')).not.toBeInTheDocument();
+    });
+
+    it('calls onRefresh when clicked', () => {
+        const onRefresh = vi.fn();
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={onRefresh} />);
+        fireEvent.click(screen.getByTestId('note-editor-refresh-btn'));
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('is disabled when refreshing is true', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={() => {}} refreshing={true} />);
+        expect(screen.getByTestId('note-editor-refresh-btn')).toBeDisabled();
+    });
+
+    it('is enabled when refreshing is false', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={() => {}} refreshing={false} />);
+        expect(screen.getByTestId('note-editor-refresh-btn')).not.toBeDisabled();
+    });
+
+    it('has correct aria-label and title', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={() => {}} />);
+        const btn = screen.getByTestId('note-editor-refresh-btn');
+        expect(btn.getAttribute('aria-label')).toBe('Refresh');
+        expect(btn.getAttribute('title')).toBe('Refresh (Ctrl+Shift+R)');
+    });
+
+    it('refresh button appears before toolbarRight content', () => {
+        editor = createTestEditor();
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                onRefresh={() => {}}
+                toolbarRight={<span data-testid="toolbar-right-content">Extra</span>}
+            />,
+        );
+        const refreshBtn = screen.getByTestId('note-editor-refresh-btn');
+        const toolbarRight = screen.getByTestId('toolbar-right-content');
+        expect(refreshBtn.compareDocumentPosition(toolbarRight) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('renders refresh button in both rich and source (hidden) modes', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} onRefresh={() => {}} hidden={true} />);
+        expect(screen.getByTestId('note-editor-refresh-btn')).toBeInTheDocument();
+    });
+});
