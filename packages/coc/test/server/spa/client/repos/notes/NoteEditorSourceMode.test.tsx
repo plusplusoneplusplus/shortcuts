@@ -214,7 +214,7 @@ describe('NoteEditor — Source Mode', () => {
             });
 
             await waitFor(() => {
-                expect(notesApi.saveContent).toHaveBeenCalledWith('ws1', 'test.md', '# Modified\n');
+                expect(notesApi.saveContent).toHaveBeenCalledWith('ws1', 'test.md', '# Modified\n', undefined);
             });
         });
 

@@ -155,7 +155,7 @@ describe('buildBoundedMemoryAddon', () => {
 
         expect(addon.tools).toHaveLength(1);
         const tool = addon.tools[0] as any;
-        const result = await tool.handler({ action: 'add', target: 'memory', content: 'test repo fact' });
+        const result = await tool.handler({ action: 'add', target: 'repo', content: 'test repo fact' });
         expect(result.success).toBe(true);
     });
 });
