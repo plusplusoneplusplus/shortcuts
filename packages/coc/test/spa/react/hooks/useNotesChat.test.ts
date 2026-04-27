@@ -186,6 +186,14 @@ describe('useNotesChat', () => {
         it('returns null on failure', () => {
             expect(source).toContain('return null');
         });
+
+        it('accepts optional model parameter in createChat signature', () => {
+            expect(source).toContain('createChat: (prompt: string, model?: string | null)');
+        });
+
+        it('includes model in payload when provided', () => {
+            expect(source).toContain('...(model ? { model } : {})');
+        });
     });
 
     describe('resetChat clears correct bucket', () => {

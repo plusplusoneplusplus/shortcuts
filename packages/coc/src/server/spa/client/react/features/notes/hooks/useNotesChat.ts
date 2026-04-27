@@ -27,7 +27,7 @@ export interface UseNotesChatReturn {
     /** Metadata about the note attached to the current chat (from process metadata). */
     chatNoteContext: ChatNoteContext | null;
     /** Create a new chat. The currently-selected note is injected as context. */
-    createChat: (prompt: string) => Promise<string | null>;
+    createChat: (prompt: string, model?: string | null) => Promise<string | null>;
     /** Discard the current scope's chat and start fresh. Old chat stays in history. */
     resetChat: () => void;
     /** Current active scope. */
@@ -196,7 +196,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     // ── createChat ───────────────────────────────────────────────────────────
 
-    const createChat = useCallback(async (prompt: string): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, model?: string | null): Promise<string | null> => {
         try {
             const res = await fetchApi('/queue/tasks', {
                 method: 'POST',
@@ -209,6 +209,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                         mode: 'autopilot',
                         prompt,
                         workspaceId,
+                        ...(model ? { model } : {}),
                         context: {
                             noteChat: notePath ? { notePath, noteTitle } : undefined,
                         },

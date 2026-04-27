@@ -158,7 +158,7 @@ describe('NoteChatPanel', () => {
         it('calls onBeforeSend before createChat in handleSend', () => {
             // Verify the call order: onBeforeSend appears before createChat in handleSend
             const sendIdx = source.indexOf('await onBeforeSend?.()');
-            const createIdx = source.indexOf('await createChat(text)');
+            const createIdx = source.indexOf('await createChat(text,');
             expect(sendIdx).toBeGreaterThan(-1);
             expect(createIdx).toBeGreaterThan(-1);
             expect(sendIdx).toBeLessThan(createIdx);
@@ -176,6 +176,58 @@ describe('NoteChatPanel', () => {
     describe('onNoteFileEdit prop removed', () => {
         it('does not declare onNoteFileEdit in NoteChatPanelProps', () => {
             expect(source).not.toContain('onNoteFileEdit');
+        });
+    });
+
+    describe('/model command support', () => {
+        it('imports useModels', () => {
+            expect(source).toContain("from '../../../hooks/useModels'");
+        });
+
+        it('imports useSlashCommands', () => {
+            expect(source).toContain("from '../../chat/hooks/useSlashCommands'");
+        });
+
+        it('imports useModelCommand', () => {
+            expect(source).toContain("from '../../chat/hooks/useModelCommand'");
+        });
+
+        it('imports SlashCommandMenu', () => {
+            expect(source).toContain("from '../../chat/SlashCommandMenu'");
+        });
+
+        it('imports ModelCommandMenu', () => {
+            expect(source).toContain("from '../../chat/ModelCommandMenu'");
+        });
+
+        it('wires model command hooks', () => {
+            expect(source).toContain('useModels()');
+            expect(source).toContain('useSlashCommands(augmentedSkills)');
+            expect(source).toContain('useModelCommand(enabledModels)');
+        });
+
+        it('renders SlashCommandMenu in empty state input', () => {
+            expect(source).toContain('<SlashCommandMenu');
+        });
+
+        it('renders ModelCommandMenu in empty state input', () => {
+            expect(source).toContain('<ModelCommandMenu');
+        });
+
+        it('renders model badge with testid', () => {
+            expect(source).toContain('note-chat-model-badge');
+        });
+
+        it('passes modelOverride to createChat', () => {
+            expect(source).toContain('createChat(text, modelCommand.modelOverride)');
+        });
+
+        it('wraps RichTextInput in relative container for menu positioning', () => {
+            // Menus are children of the relative container
+            const relIdx = source.indexOf('min-w-0 relative');
+            expect(relIdx).toBeGreaterThan(-1);
+            const slashMenuIdx = source.indexOf('<SlashCommandMenu', relIdx);
+            expect(slashMenuIdx).toBeGreaterThan(relIdx);
         });
     });
 });
