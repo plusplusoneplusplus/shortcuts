@@ -50,6 +50,8 @@ export interface NoteEditorProps {
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, a 🤖 button appears in the toolbar. */
     onToggleChatPanel?: () => void;
+    /** Called when the user clicks a `[[note:...]]` cross-link. Receives the target path and optional heading slug. */
+    onNavigateToNote?: (path: string, heading?: string) => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -144,6 +146,7 @@ export function NoteEditor({
     toolbarRight,
     chatPanelOpen,
     onToggleChatPanel,
+    onNavigateToNote,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -670,6 +673,27 @@ export function NoteEditor({
         updateActive();
         return () => scrollContainer.removeEventListener('scroll', updateActive);
     }, [tocOpen, editor, tocEntries]);
+
+    // ── Note cross-link click handler ──────────────────────────────────────
+
+    const onNavigateToNoteRef = useRef(onNavigateToNote);
+    onNavigateToNoteRef.current = onNavigateToNote;
+
+    useEffect(() => {
+        const container = editorScrollContainerRef.current;
+        if (!container) return;
+        const handler = (e: MouseEvent) => {
+            const target = (e.target as HTMLElement).closest?.('.note-link');
+            if (!target) return;
+            e.preventDefault();
+            const path = target.getAttribute('data-note-path');
+            if (!path) return;
+            const heading = target.getAttribute('data-note-heading') || undefined;
+            onNavigateToNoteRef.current?.(path, heading);
+        };
+        container.addEventListener('click', handler);
+        return () => container.removeEventListener('click', handler);
+    }, []);
 
     // ── Auto-reload on notes-changed WS event (with diff decorations) ───
 

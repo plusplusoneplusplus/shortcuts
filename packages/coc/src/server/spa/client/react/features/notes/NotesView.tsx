@@ -239,6 +239,32 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         if (isMobile) setSidebarOpen(false);
     }, [isMobile, dispatch, updateHash]);
 
+    const handleNavigateToNote = useCallback((path: string, heading?: string) => {
+        handleSelectPage(path);
+        if (heading) {
+            // Scroll to heading after navigation. Use a small delay to allow content to load.
+            setTimeout(() => {
+                const slug = heading.toLowerCase().replace(/\s+/g, '-');
+                const el = document.getElementById(slug)
+                    ?? document.querySelector(`[data-toc-id="${slug}"]`)
+                    ?? document.querySelector(`.ProseMirror h1, .ProseMirror h2, .ProseMirror h3`);
+                // Find heading by text content match as a fallback
+                if (!el) {
+                    const headings = document.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3');
+                    for (const h of headings) {
+                        const headingSlug = (h.textContent ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+                        if (headingSlug === slug) {
+                            h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            return;
+                        }
+                    }
+                } else {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 500);
+        }
+    }, [handleSelectPage]);
+
     const handleNoteRenamed = useCallback((oldPath: string, newPath: string) => {
         if (selectedPath === oldPath || selectedPath?.startsWith(oldPath + '/')) {
             const updated = selectedPath === oldPath
@@ -346,6 +372,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onFlushSave={(fn) => { flushSaveRef.current = fn; }}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={handleToggleChatPanel}
+                    onNavigateToNote={handleNavigateToNote}
                 />
             </div>
 

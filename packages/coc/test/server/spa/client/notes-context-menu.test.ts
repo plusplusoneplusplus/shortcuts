@@ -30,6 +30,7 @@ function buildContextMenuItems(
     if (isFolder) {
         return [
             { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+            { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}/]]`); closeContextMenu(); } },
             { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
             { separator: true, label: '', onClick: () => {} },
             { label: 'Create Page', onClick: () => openDialog('create-page', node) },
@@ -41,6 +42,7 @@ function buildContextMenuItems(
     }
     return [
         { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+        { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}]]`); closeContextMenu(); } },
         { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
         { separator: true, label: '', onClick: () => {} },
         { label: 'Rename', onClick: () => openDialog('rename', node) },
@@ -94,15 +96,16 @@ describe('NotesSidebar buildContextMenuItems', () => {
             expect(labels).toContain('Copy Absolute Path');
         });
 
-        it('Copy Path is first, Copy Absolute Path is second', () => {
+        it('Copy Path is first, Copy Link is second, Copy Absolute Path is third', () => {
             const items = buildContextMenuItems(pageNode, NOTES_ROOT, openDialog, closeContextMenu);
             expect(items[0].label).toBe('Copy Path');
-            expect(items[1].label).toBe('Copy Absolute Path');
+            expect(items[1].label).toBe('Copy Link');
+            expect(items[2].label).toBe('Copy Absolute Path');
         });
 
         it('separator follows the copy group', () => {
             const items = buildContextMenuItems(pageNode, NOTES_ROOT, openDialog, closeContextMenu);
-            expect(items[2].separator).toBe(true);
+            expect(items[3].separator).toBe(true);
         });
 
         it('Copy Path writes node.path to clipboard and closes menu', async () => {
@@ -166,10 +169,11 @@ describe('NotesSidebar buildContextMenuItems', () => {
             expect(closeContextMenu).toHaveBeenCalledOnce();
         });
 
-        it('Copy Path is first, Copy Absolute Path is second', () => {
+        it('Copy Path is first, Copy Link is second, Copy Absolute Path is third', () => {
             const items = buildContextMenuItems(notebookNode, NOTES_ROOT, openDialog, closeContextMenu);
             expect(items[0].label).toBe('Copy Path');
-            expect(items[1].label).toBe('Copy Absolute Path');
+            expect(items[1].label).toBe('Copy Link');
+            expect(items[2].label).toBe('Copy Absolute Path');
         });
 
         it('includes Create Page and Create Section', () => {
@@ -197,6 +201,43 @@ describe('NotesSidebar buildContextMenuItems', () => {
             expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
                 `${NOTES_ROOT}/My Notebook/Section A`,
             );
+        });
+    });
+
+    describe('Copy Link', () => {
+        const pageNode: NoteTreeNode = { name: 'my-note.md', path: 'My Notebook/my-note.md', type: 'page' };
+        const notebookNode: NoteTreeNode = { name: 'My Notebook', path: 'My Notebook', type: 'notebook' };
+
+        it('page node includes Copy Link', () => {
+            const items = buildContextMenuItems(pageNode, NOTES_ROOT, openDialog, closeContextMenu);
+            expect(items.map(i => i.label)).toContain('Copy Link');
+        });
+
+        it('page Copy Link writes [[note:path]] format', async () => {
+            const items = buildContextMenuItems(pageNode, NOTES_ROOT, openDialog, closeContextMenu);
+            items.find(i => i.label === 'Copy Link')!.onClick();
+            await Promise.resolve();
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('[[note:My Notebook/my-note.md]]');
+            expect(closeContextMenu).toHaveBeenCalledOnce();
+        });
+
+        it('notebook node includes Copy Link', () => {
+            const items = buildContextMenuItems(notebookNode, NOTES_ROOT, openDialog, closeContextMenu);
+            expect(items.map(i => i.label)).toContain('Copy Link');
+        });
+
+        it('folder Copy Link writes [[note:path/]] with trailing slash', async () => {
+            const items = buildContextMenuItems(notebookNode, NOTES_ROOT, openDialog, closeContextMenu);
+            items.find(i => i.label === 'Copy Link')!.onClick();
+            await Promise.resolve();
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('[[note:My Notebook/]]');
+            expect(closeContextMenu).toHaveBeenCalledOnce();
+        });
+
+        it('root node does not include Copy Link', () => {
+            const rootNode: NoteTreeNode = { name: '', path: '', type: 'notebook' };
+            const items = buildContextMenuItems(rootNode, NOTES_ROOT, openDialog, closeContextMenu);
+            expect(items.map(i => i.label)).not.toContain('Copy Link');
         });
     });
 });

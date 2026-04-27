@@ -12,6 +12,40 @@ import TurndownService from 'turndown';
 
 marked.setOptions({ gfm: true, breaks: false });
 
+// Add [[note:...]] wiki-link syntax support to marked
+const noteLinkExtension: marked.MarkedExtension = {
+    extensions: [
+        {
+            name: 'noteLink',
+            level: 'inline' as const,
+            start(src: string) {
+                return src.indexOf('[[note:');
+            },
+            tokenizer(src: string) {
+                // [[label|note:path#heading]] or [[note:path#heading]]
+                const match = /^\[\[(?:([^\]|]+)\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/.exec(src);
+                if (match) {
+                    return {
+                        type: 'noteLink',
+                        raw: match[0],
+                        label: match[1] || '',
+                        path: match[2],
+                        heading: match[3] || '',
+                    };
+                }
+                return undefined;
+            },
+            renderer(token: { label: string; path: string; heading: string }) {
+                const basename = token.path.split('/').pop()?.replace(/\.md$/i, '') ?? token.path;
+                const displayLabel = token.label || (token.heading ? `${basename} § ${token.heading}` : basename);
+                const headingAttr = token.heading ? ` data-note-heading="${token.heading}"` : '';
+                return `<span class="note-link" data-note-path="${token.path}"${headingAttr}>${displayLabel}</span>`;
+            },
+        },
+    ],
+};
+marked.use(noteLinkExtension);
+
 // Add ==highlight== syntax support to marked
 const highlightExtension: marked.MarkedExtension = {
     extensions: [
@@ -213,6 +247,23 @@ turndown.addRule('mermaidCode', {
         const code = (node as Element).querySelector('code.language-mermaid');
         const text = code?.textContent ?? '';
         return `\`\`\`mermaid\n${text}\n\`\`\``;
+    },
+});
+
+// Note-link spans: <span class="note-link" data-note-path="..." data-note-heading="..."> → [[note:...]]
+turndown.addRule('noteLink', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            (node as Element).classList.contains('note-link') &&
+            node.hasAttribute('data-note-path')
+        );
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const path = el.getAttribute('data-note-path') ?? '';
+        const heading = el.getAttribute('data-note-heading') ?? '';
+        return heading ? `[[note:${path}#${heading}]]` : `[[note:${path}]]`;
     },
 });
 

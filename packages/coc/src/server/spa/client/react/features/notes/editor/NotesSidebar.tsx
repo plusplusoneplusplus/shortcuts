@@ -210,6 +210,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         if (isFolder) {
             return [
                 { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+                { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}/]]`); closeContextMenu(); } },
                 { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
                 { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
@@ -221,6 +222,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         }
         return [
             { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
+            { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}]]`); closeContextMenu(); } },
             { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
             { separator: true, label: '', onClick: () => {} },
             { label: 'Rename', onClick: () => openDialog('rename', node) },

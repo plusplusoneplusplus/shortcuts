@@ -277,6 +277,29 @@
     background: rgba(255, 255, 255, 0.4);
 }
 
+/* ── Note cross-links ──────────────────────────────────────────────── */
+
+.note-editor .ProseMirror .note-link {
+    color: var(--vscode-textLink-foreground, #4ea6ea);
+    text-decoration: underline;
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0 2px;
+    transition: background-color 0.15s;
+}
+
+.note-editor .ProseMirror .note-link:hover {
+    background-color: rgba(78, 166, 234, 0.12);
+}
+
+.dark .note-editor .ProseMirror .note-link {
+    color: var(--vscode-textLink-foreground, #4ea6ea);
+}
+
+.dark .note-editor .ProseMirror .note-link:hover {
+    background-color: rgba(78, 166, 234, 0.18);
+}
+
 /* ── Comment highlights ─────────────────────────────────────────────────── */
 
 /* Inline comment marks (rendered by CommentExtension) */

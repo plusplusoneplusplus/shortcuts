@@ -23,6 +23,7 @@ import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
+import { NoteLinkExtension } from './noteLinkExtension';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ export function RichEditorCore({
             TableHeader,
             Highlight.configure({ multicolor: true }),
             ResizableImage.configure({ inline: false, allowBase64: false }),
+            NoteLinkExtension,
             AiEditDecorationExtension,
             ...(commentsEnabled
                 ? [
