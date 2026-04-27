@@ -36,7 +36,7 @@ import { createTerminalInfrastructure } from './infrastructure/terminal-infrastr
 import { HeapMonitor } from './heap-monitor';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
-import { autoUpdateBundledSkills } from '@plusplusoneplusplus/forge';
+import { autoUpdateBundledSkills, autoInstallDefaultSkills } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './hostname-utils';
@@ -168,6 +168,19 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             }
             for (const e of result.errors) {
                 process.stderr.write(`[skills] Failed to update "${e.name}": ${e.error}\n`);
+            }
+        }).catch(() => { /* best-effort — never block startup */ });
+    }
+
+    // Auto-install default bundled skills into the global skills dir (non-blocking on errors)
+    if (resolvedConfig.skills.defaultSkills.length > 0) {
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        autoInstallDefaultSkills(globalSkillsDir, resolvedConfig.skills.defaultSkills).then(result => {
+            for (const name of result.installed) {
+                process.stderr.write(`[skills] Auto-installed default skill "${name}"\n`);
+            }
+            for (const e of result.errors) {
+                process.stderr.write(`[skills] Failed to install default skill "${e.name}": ${e.error}\n`);
             }
         }).catch(() => { /* best-effort — never block startup */ });
     }

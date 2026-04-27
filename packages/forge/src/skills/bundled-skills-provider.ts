@@ -258,3 +258,74 @@ export function parseSkillVersionFromContent(content: string): string | undefine
 export function getBundledSkillsRegistry(): readonly BundledSkill[] {
     return BUNDLED_SKILLS_REGISTRY;
 }
+
+// ============================================================================
+// Auto-install default skills
+// ============================================================================
+
+/** Result of an auto-install default skills run */
+export interface AutoInstallResult {
+    installed: string[];
+    skipped: string[];
+    errors: Array<{ name: string; error: string }>;
+}
+
+/**
+ * Install whitelisted bundled skills into `installPath` if they are not
+ * already present.  Existing installations are never overwritten — the
+ * function is fully idempotent.
+ *
+ * Skills whose name does not appear in `BUNDLED_SKILLS_REGISTRY` or whose
+ * source directory / SKILL.md is missing are silently skipped (not an error).
+ *
+ * @param installPath  Target directory (e.g. `~/.coc/skills`)
+ * @param skillNames   Whitelist of skill names to ensure are installed
+ */
+export async function autoInstallDefaultSkills(
+    installPath: string,
+    skillNames: string[],
+): Promise<AutoInstallResult> {
+    const logger = getLogger();
+    const result: AutoInstallResult = { installed: [], skipped: [], errors: [] };
+
+    if (skillNames.length === 0) {
+        return result;
+    }
+
+    ensureDirectoryExists(installPath);
+
+    const bundledPath = getBundledSkillsPath();
+
+    for (const name of skillNames) {
+        const entry = BUNDLED_SKILLS_REGISTRY.find(s => s.name === name);
+        if (!entry) {
+            result.skipped.push(name);
+            continue;
+        }
+
+        const skillSrc = path.join(bundledPath, entry.relativePath);
+        const skillFile = path.join(skillSrc, 'SKILL.md');
+        if (!safeExists(skillFile)) {
+            result.skipped.push(name);
+            continue;
+        }
+
+        const targetPath = path.join(installPath, name);
+        if (safeExists(targetPath)) {
+            result.skipped.push(name);
+            continue;
+        }
+
+        try {
+            await copyDirectory(skillSrc, targetPath);
+            result.installed.push(name);
+            logger.info(LogCategory.GENERAL, `Auto-installed default skill "${name}"`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            logger.error(LogCategory.GENERAL, `Failed to auto-install default skill "${name}"`, err);
+            result.errors.push({ name, error: err.message });
+        }
+    }
+
+    return result;
+}

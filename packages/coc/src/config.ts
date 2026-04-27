@@ -117,6 +117,8 @@ export interface CLIConfig {
     skills?: {
         /** Auto-update globally-installed bundled skills on serve startup (default: true) */
         autoUpdate?: boolean;
+        /** Bundled skills to auto-install on first serve startup if not already present (default: ['rethink']) */
+        defaultSkills?: string[];
     };
 }
 
@@ -240,6 +242,8 @@ export interface ResolvedCLIConfig {
     skills: {
         /** Auto-update globally-installed bundled skills on serve startup */
         autoUpdate: boolean;
+        /** Bundled skills to auto-install on first serve startup if not already present */
+        defaultSkills: string[];
     };
 }
 
@@ -310,6 +314,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     skills: {
         autoUpdate: true,
+        defaultSkills: ['rethink'],
     },
 };
 
@@ -503,6 +508,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         skills: {
             autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
+            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? ['rethink'],
         },
     };
 }

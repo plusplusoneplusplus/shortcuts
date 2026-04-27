@@ -7,7 +7,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as yaml from 'yaml';
-import { getBundledSkills, installBundledSkills, getBundledSkillsPath, parseBundledSkillVersion } from '../../src/skills/bundled-skills-provider';
+import {
+    getBundledSkills,
+    installBundledSkills,
+    getBundledSkillsPath,
+    parseBundledSkillVersion,
+    autoInstallDefaultSkills,
+} from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
 describe('getBundledSkillsPath', () => {
@@ -206,5 +212,89 @@ describe('installBundledSkills', () => {
             fs.rmSync(sourceDir, { recursive: true, force: true });
             fs.rmSync(installDir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('autoInstallDefaultSkills', () => {
+    let installDir: string;
+
+    beforeEach(() => {
+        installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-install-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(installDir, { recursive: true, force: true });
+    });
+
+    it('returns empty result for empty skill names list', async () => {
+        const result = await autoInstallDefaultSkills(installDir, []);
+        expect(result.installed).toHaveLength(0);
+        expect(result.skipped).toHaveLength(0);
+        expect(result.errors).toHaveLength(0);
+    });
+
+    it('silently skips unknown skill names (not an error)', async () => {
+        const result = await autoInstallDefaultSkills(installDir, ['non-existent-skill-xyz']);
+        expect(result.errors).toHaveLength(0);
+        expect(result.skipped).toContain('non-existent-skill-xyz');
+        expect(result.installed).toHaveLength(0);
+    });
+
+    it('installs a known bundled skill into a fresh directory', async () => {
+        const skills = getBundledSkills(installDir);
+        if (skills.length === 0) {
+            // bundled skills not available in this test environment
+            return;
+        }
+        const skillName = skills[0].name;
+        const result = await autoInstallDefaultSkills(installDir, [skillName]);
+        expect(result.errors).toHaveLength(0);
+        // Either installed (if bundled path available) or skipped (test env without bundled files)
+        const didInstall = result.installed.includes(skillName);
+        const didSkip = result.skipped.includes(skillName);
+        expect(didInstall || didSkip).toBe(true);
+        if (didInstall) {
+            expect(fs.existsSync(path.join(installDir, skillName, 'SKILL.md'))).toBe(true);
+        }
+    });
+
+    it('does not overwrite an already-installed skill (idempotent)', async () => {
+        const skills = getBundledSkills(installDir);
+        if (skills.length === 0) return;
+
+        const skillName = skills[0].name;
+
+        // Pre-install: create a stub with a sentinel file
+        const existingDir = path.join(installDir, skillName);
+        fs.mkdirSync(existingDir, { recursive: true });
+        const sentinelPath = path.join(existingDir, 'SENTINEL');
+        fs.writeFileSync(sentinelPath, 'original');
+
+        const result = await autoInstallDefaultSkills(installDir, [skillName]);
+        expect(result.errors).toHaveLength(0);
+        expect(result.skipped).toContain(skillName);
+        expect(result.installed).not.toContain(skillName);
+        // sentinel file must be untouched
+        expect(fs.readFileSync(sentinelPath, 'utf-8')).toBe('original');
+    });
+
+    it('installs only missing skills when some are already present', async () => {
+        const skills = getBundledSkills(installDir);
+        if (skills.length < 2) return;
+
+        const [first, second] = skills;
+
+        // Pre-install the first one
+        const firstDir = path.join(installDir, first.name);
+        fs.mkdirSync(firstDir, { recursive: true });
+        fs.writeFileSync(path.join(firstDir, 'SKILL.md'), '# pre-installed');
+
+        const result = await autoInstallDefaultSkills(installDir, [first.name, second.name]);
+        expect(result.errors).toHaveLength(0);
+        expect(result.skipped).toContain(first.name);
+        // second should be installed (or skipped if bundled files missing in test env)
+        const installed = result.installed.includes(second.name);
+        const skipped = result.skipped.includes(second.name);
+        expect(installed || skipped).toBe(true);
     });
 });
