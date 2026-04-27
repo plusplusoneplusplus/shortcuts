@@ -2,8 +2,8 @@
  * Suggest Follow-Ups Tool
  *
  * Factory that creates a `suggest_follow_ups` custom tool for the Copilot SDK.
- * The model calls this tool at the end of each turn with 2–3 suggested follow-up
- * questions; the handler is a passthrough that returns the suggestions as-is.
+ * The model calls this tool at the end of each turn with exactly 3 suggested follow-up
+ * actions; the handler is a passthrough that returns the suggestions as-is.
  */
 
 import { defineTool } from '@plusplusoneplusplus/forge';
@@ -19,16 +19,16 @@ export interface FollowUpSuggestion {
 export function createSuggestFollowUpsTool() {
     return defineTool<FollowUpSuggestion>('suggest_follow_ups', {
         description:
-            'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
+            'After completing your response, call this tool to suggest exactly 3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
         parameters: {
             type: 'object',
             properties: {
                 suggestions: {
                     type: 'array',
                     items: { type: 'string' },
-                    minItems: 2,
+                    minItems: 3,
                     maxItems: 3,
-                    description: '2-3 short follow-up action phrases the user might take next (imperative, not questions)',
+                    description: '3 short follow-up action phrases the user might take next (imperative, not questions)',
                 },
             },
             required: ['suggestions'],

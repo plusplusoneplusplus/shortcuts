@@ -25,23 +25,16 @@ describe('createSuggestFollowUpsTool', () => {
                 suggestions: {
                     type: 'array',
                     items: { type: 'string' },
-                    minItems: 2,
+                    minItems: 3,
                     maxItems: 3,
-                    description: '2-3 short follow-up action phrases the user might take next (imperative, not questions)',
+                    description: '3 short follow-up action phrases the user might take next (imperative, not questions)',
                 },
             },
             required: ['suggestions'],
         });
     });
 
-    it('handler returns 2 suggestions unchanged', async () => {
-        const tool = createSuggestFollowUpsTool();
-        const input = { suggestions: ['Q1', 'Q2'] };
-        const result = await tool.handler(input);
-        expect(result).toEqual({ suggestions: ['Q1', 'Q2'] });
-    });
-
-    it('handler returns 3 suggestions unchanged', async () => {
+    it('handler returns exactly 3 suggestions unchanged', async () => {
         const tool = createSuggestFollowUpsTool();
         const input = { suggestions: ['Q1', 'Q2', 'Q3'] };
         const result = await tool.handler(input);
@@ -50,14 +43,14 @@ describe('createSuggestFollowUpsTool', () => {
 
     it('handler is a passthrough — output equals input (deep equality)', async () => {
         const tool = createSuggestFollowUpsTool();
-        const input = { suggestions: ['How does auth work?', 'Show me the API routes'] };
+        const input = { suggestions: ['How does auth work?', 'Show me the API routes', 'Generate the fix'] };
         const result = await tool.handler(input);
         expect(result).toEqual(input);
     });
 
     it('FollowUpSuggestion type is importable', () => {
         // Compile-time check: if this file compiles, the type is importable
-        const _check: FollowUpSuggestion = { suggestions: ['a', 'b'] };
-        expect(_check.suggestions).toHaveLength(2);
+        const _check: FollowUpSuggestion = { suggestions: ['a', 'b', 'c'] };
+        expect(_check.suggestions).toHaveLength(3);
     });
 });
