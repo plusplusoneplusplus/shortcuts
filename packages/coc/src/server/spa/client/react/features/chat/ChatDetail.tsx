@@ -153,6 +153,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
+    const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
@@ -162,7 +163,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const processId = task?.processId ?? (taskId
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
-    const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
     const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
