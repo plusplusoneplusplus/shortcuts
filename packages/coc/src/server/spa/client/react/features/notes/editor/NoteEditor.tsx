@@ -12,6 +12,7 @@ import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
+import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
@@ -52,6 +53,9 @@ export interface NoteEditorProps {
     onToggleChatPanel?: () => void;
     /** Called when the user clicks a `[[note:...]]` cross-link. Receives the target path and optional heading slug. */
     onNavigateToNote?: (path: string, heading?: string) => void;
+    /** Called when the user selects "Add to chat as reference" from the context menu.
+     *  Only provided when the chat panel is open and below the reference cap. */
+    onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -147,6 +151,7 @@ export function NoteEditor({
     chatPanelOpen,
     onToggleChatPanel,
     onNavigateToNote,
+    onAddNoteReference,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -154,7 +159,7 @@ export function NoteEditor({
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
 
     // AI edit navigator state
     const [aiEditCount, setAiEditCount] = useState(0);
@@ -933,7 +938,21 @@ export function NoteEditor({
 
             {/* Source editor — mounted only when in source mode */}
             {viewMode === 'source' && !editorHidden && (
-                <div className="flex-1 overflow-y-auto" onPaste={handleSourcePaste} data-testid="note-source-container">
+                <div
+                    className="flex-1 overflow-y-auto"
+                    onPaste={handleSourcePaste}
+                    data-testid="note-source-container"
+                    onContextMenu={(e) => {
+                        if (!onAddNoteReference) return;
+                        const ta = sourceTextareaRef.current;
+                        const selectedText = ta
+                            ? ta.value.slice(ta.selectionStart, ta.selectionEnd)
+                            : (window.getSelection()?.toString() ?? '');
+                        if (!selectedText.trim()) return;
+                        e.preventDefault();
+                        setContextMenu({ x: e.clientX, y: e.clientY, selectedText });
+                    }}
+                >
                     <SourceEditor
                         content={rawMarkdown}
                         onChange={handleSourceChange}
@@ -950,9 +969,13 @@ export function NoteEditor({
                 className="flex-1 overflow-y-auto relative"
                 style={viewMode === 'source' && !editorHidden ? { display: 'none' } : undefined}
                 onContextMenu={(e) => {
-                    if (!editorHidden && viewMode !== 'source' && editor && !editor.state.selection.empty) {
-                        e.preventDefault();
-                        setContextMenu({ x: e.clientX, y: e.clientY });
+                    if (!editorHidden && viewMode !== 'source') {
+                        const hasSelection = editor && !editor.state.selection.empty;
+                        if (hasSelection) {
+                            e.preventDefault();
+                            const selectedText = window.getSelection()?.toString() ?? '';
+                            setContextMenu({ x: e.clientX, y: e.clientY, selectedText });
+                        }
                     }
                 }}
             >
@@ -996,24 +1019,49 @@ export function NoteEditor({
                 )}
             </div>
 
-            {/* Right-click context menu for adding comments */}
-            {contextMenu && (
-                <ContextMenu
-                    position={contextMenu}
-                    items={[
-                        {
-                            label: 'Add comment',
-                            icon: '💬',
-                            disabled: editor?.state.selection.empty ?? true,
-                            onClick: () => {
-                                onCommentCreate?.();
-                                setContextMenu(null);
-                            },
+            {/* Right-click context menu */}
+            {contextMenu && (() => {
+                const noteTitle = notePath?.split('/').pop()?.replace(/\.md$/, '') ?? '';
+                const hasSelectedText = !!contextMenu.selectedText?.trim();
+                const items: ContextMenuItem[] = [];
+
+                // Add comment — only in rich mode with a live selection
+                if (viewMode === 'rich' && commentsEnabled) {
+                    items.push({
+                        label: 'Add comment',
+                        icon: '💬',
+                        disabled: editor?.state.selection.empty ?? true,
+                        onClick: () => {
+                            onCommentCreate?.();
+                            setContextMenu(null);
                         },
-                    ]}
-                    onClose={() => setContextMenu(null)}
-                />
-            )}
+                    });
+                }
+
+                // Add to chat as reference — only when handler provided and text is selected
+                if (onAddNoteReference && hasSelectedText) {
+                    if (items.length > 0) {
+                        items.push({ label: '', separator: true, onClick: () => {} });
+                    }
+                    items.push({
+                        label: 'Add to chat as reference',
+                        icon: '📎',
+                        onClick: () => {
+                            onAddNoteReference(contextMenu.selectedText, notePath ?? '', noteTitle);
+                            setContextMenu(null);
+                        },
+                    });
+                }
+
+                if (items.length === 0) return null;
+                return (
+                    <ContextMenu
+                        position={{ x: contextMenu.x, y: contextMenu.y }}
+                        items={items}
+                        onClose={() => setContextMenu(null)}
+                    />
+                );
+            })()}
 
             {/* Save indicator */}
             <div className="absolute bottom-3 right-3 text-xs select-none" data-testid="save-indicator">

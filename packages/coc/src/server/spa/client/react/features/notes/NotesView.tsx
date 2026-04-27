@@ -16,6 +16,7 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
+import { useNoteReferences } from './editor/useNoteReferences';
 
 export interface NotesViewProps {
     workspaceId: string;
@@ -52,10 +53,13 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         });
     });
 
+    // ── Note references (shared between editor and chat panel) ──────────────
+
+    const noteRefs = useNoteReferences();
+
     // ── Resizable panels ────────────────────────────────────────────────────
 
-    const sidebarResize = useResizablePanel({
-        initialWidth: 280,
+    const sidebarResize = useResizablePanel({initialWidth: 280,
         minWidth: 160,
         maxWidth: 480,
         storageKey: 'coc.notesView.sidebarWidth',
@@ -373,6 +377,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={handleToggleChatPanel}
                     onNavigateToNote={handleNavigateToNote}
+                    onAddNoteReference={chatPanelOpen ? noteRefs.addReference : undefined}
                 />
             </div>
 
@@ -444,6 +449,9 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                             onClose={() => handleToggleChatPanel()}
                             onBeforeSend={async () => { await flushSaveRef.current?.(); }}
                             defaultScope={defaultScope}
+                            references={noteRefs.references}
+                            onRemoveReference={noteRefs.removeReference}
+                            onClearReferences={noteRefs.clearReferences}
                         />
                     </div>
                 </>

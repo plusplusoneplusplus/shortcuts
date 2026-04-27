@@ -158,7 +158,7 @@ describe('NoteChatPanel', () => {
         it('calls onBeforeSend before createChat in handleSend', () => {
             // Verify the call order: onBeforeSend appears before createChat in handleSend
             const sendIdx = source.indexOf('await onBeforeSend?.()');
-            const createIdx = source.indexOf('await createChat(text,');
+            const createIdx = source.indexOf('await createChat(prompt,');
             expect(sendIdx).toBeGreaterThan(-1);
             expect(createIdx).toBeGreaterThan(-1);
             expect(sendIdx).toBeLessThan(createIdx);
@@ -219,7 +219,7 @@ describe('NoteChatPanel', () => {
         });
 
         it('passes modelOverride to createChat', () => {
-            expect(source).toContain('createChat(text, modelCommand.modelOverride)');
+            expect(source).toContain('createChat(prompt, modelCommand.modelOverride)');
         });
 
         it('wraps RichTextInput in relative container for menu positioning', () => {

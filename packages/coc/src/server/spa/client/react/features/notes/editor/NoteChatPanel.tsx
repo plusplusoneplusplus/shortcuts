@@ -11,6 +11,9 @@ import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
 import { useModelCommand } from '../../chat/hooks/useModelCommand';
 import { SlashCommandMenu } from '../../chat/SlashCommandMenu';
 import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
+import { NoteReferenceChips } from './NoteReferenceChips';
+import { formatNoteReferences } from './useNoteReferences';
+import type { NoteTextReference } from './useNoteReferences';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -22,9 +25,15 @@ export interface NoteChatPanelProps {
     onBeforeSend?: () => Promise<void>;
     /** Default chat scope. Defaults to 'per-workspace'. */
     defaultScope?: ChatScope;
+    /** Note text references to prepend to the next message. */
+    references?: NoteTextReference[];
+    /** Called to remove a reference chip. */
+    onRemoveReference?: (id: string) => void;
+    /** Called to clear all reference chips after send. */
+    onClearReferences?: () => void;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences }: NoteChatPanelProps) {
     const { taskId, chatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
@@ -45,7 +54,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
 
     const handleSend = async () => {
         const text = input.trim();
-        if (!text) return;
+        const activeRefs = references ?? [];
+        if (!text && activeRefs.length === 0) return;
 
         // Intercept /new and /clear commands
         if (/^\/(new|clear)$/i.test(text)) {
@@ -58,7 +68,9 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         setInput('');
         richTextRef.current?.setValue('');
         await onBeforeSend?.();
-        await createChat(text, modelCommand.modelOverride);
+        const prompt = formatNoteReferences(activeRefs) + text;
+        onClearReferences?.();
+        await createChat(prompt, modelCommand.modelOverride);
     };
 
     const noNoteSelected = scope === 'per-note' && !notePath;
@@ -99,6 +111,13 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                 </div>
                             </div>
                             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                                {references && references.length > 0 && (
+                                    <NoteReferenceChips
+                                        references={references}
+                                        onRemove={onRemoveReference ?? (() => {})}
+                                        className="mb-2"
+                                    />
+                                )}
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 min-w-0 relative">
                                         <RichTextInput
@@ -189,7 +208,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                         </div>
                                     )}
                                     <button
-                                        disabled={!input.trim()}
+                                        disabled={!input.trim() && !(references && references.length > 0)}
                                         onClick={handleSend}
                                         className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
                                         data-testid="note-chat-send-btn"
