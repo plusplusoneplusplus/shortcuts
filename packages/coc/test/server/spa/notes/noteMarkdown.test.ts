@@ -5,6 +5,10 @@ import {
     markdownToHtml,
 } from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 import type { ExportCommentThread } from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
+import {
+    NOTE_LINK_PASTE_RE,
+    noteLinkLabel,
+} from '../../../../src/server/spa/client/react/features/notes/editor/noteLinkExtension';
 
 describe('htmlToMarkdownWithComments', () => {
     it('returns same output as htmlToMarkdown when no threads', () => {
@@ -156,5 +160,89 @@ describe('note cross-links — round-trip', () => {
         const html = markdownToHtml(original);
         const md = htmlToMarkdown(html);
         expect(md.trim()).toBe(original);
+    });
+});
+
+describe('noteLinkLabel', () => {
+    it('strips .md and returns basename', () => {
+        expect(noteLinkLabel('My Notebook/Notes.md')).toBe('Notes');
+    });
+
+    it('returns basename without extension for simple path', () => {
+        expect(noteLinkLabel('File.md')).toBe('File');
+    });
+
+    it('appends heading with § separator', () => {
+        expect(noteLinkLabel('Page.md', 'intro')).toBe('Page § intro');
+    });
+
+    it('returns path as-is when no slash and no .md', () => {
+        expect(noteLinkLabel('readme')).toBe('readme');
+    });
+
+    it('ignores null heading', () => {
+        expect(noteLinkLabel('File.md', null)).toBe('File');
+    });
+});
+
+describe('NOTE_LINK_PASTE_RE — paste regex regression', () => {
+    function allMatches(text: string) {
+        const re = new RegExp(NOTE_LINK_PASTE_RE.source, NOTE_LINK_PASTE_RE.flags);
+        const results: Array<{ full: string; path: string; heading?: string }> = [];
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            results.push({ full: m[0], path: m[1], heading: m[2] || undefined });
+        }
+        return results;
+    }
+
+    it('matches [[note:path]]', () => {
+        const matches = allMatches('See [[note:My Notebook/Notes.md]] here');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].path).toBe('My Notebook/Notes.md');
+        expect(matches[0].heading).toBeUndefined();
+    });
+
+    it('matches [[note:path#heading]]', () => {
+        const matches = allMatches('See [[note:Page.md#setup]]');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].path).toBe('Page.md');
+        expect(matches[0].heading).toBe('setup');
+    });
+
+    it('matches [[label|note:path]]', () => {
+        const matches = allMatches('[[Custom Label|note:Features/Page.md]]');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].path).toBe('Features/Page.md');
+    });
+
+    it('matches multiple links in one text', () => {
+        const matches = allMatches('Link [[note:A.md]] and [[note:B.md#heading]] done');
+        expect(matches).toHaveLength(2);
+        expect(matches[0].path).toBe('A.md');
+        expect(matches[1].path).toBe('B.md');
+        expect(matches[1].heading).toBe('heading');
+    });
+
+    it('does not match plain brackets without note: prefix', () => {
+        const matches = allMatches('See [[some text]] here');
+        expect(matches).toHaveLength(0);
+    });
+
+    it('does not match incomplete syntax [[note:', () => {
+        const matches = allMatches('See [[note:unclosed here');
+        expect(matches).toHaveLength(0);
+    });
+
+    it('matches path with spaces', () => {
+        const matches = allMatches('[[note:New Features/My Notes.md]]');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].path).toBe('New Features/My Notes.md');
+    });
+
+    it('matches heading with hyphens', () => {
+        const matches = allMatches('[[note:Page.md#my-long-heading]]');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].heading).toBe('my-long-heading');
     });
 });

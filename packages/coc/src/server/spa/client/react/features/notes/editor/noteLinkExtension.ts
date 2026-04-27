@@ -4,9 +4,15 @@
  * Renders note links as clickable chip-styled spans inside the editor.
  * Parsed from `<span class="note-link" data-note-path="..." data-note-heading="...">`.
  * Round-tripped through noteMarkdown.ts (markdownToHtml / htmlToMarkdown).
+ *
+ * Paste support: `addPasteRules` converts pasted plain-text `[[note:...]]`
+ * patterns into noteLink nodes so "Copy Link → paste in rich mode" works.
  */
 
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, nodePasteRule } from '@tiptap/core';
+
+/** Regex that matches `[[note:path]]` or `[[note:path#heading]]` in pasted text. */
+export const NOTE_LINK_PASTE_RE = /\[\[(?:[^\]|]+\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/g;
 
 /**
  * Derive a display label from a note path.
@@ -45,5 +51,18 @@ export const NoteLinkExtension = Node.create({
     renderHTML({ node, HTMLAttributes }) {
         const label = noteLinkLabel(node.attrs.path ?? '', node.attrs.heading);
         return ['span', mergeAttributes(HTMLAttributes, { class: 'note-link' }), label];
+    },
+
+    addPasteRules() {
+        return [
+            nodePasteRule({
+                find: NOTE_LINK_PASTE_RE,
+                type: this.type,
+                getAttributes: (match) => ({
+                    path: match[1],
+                    heading: match[2] || null,
+                }),
+            }),
+        ];
     },
 });
