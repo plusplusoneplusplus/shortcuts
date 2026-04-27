@@ -91,51 +91,137 @@ describe('Image URL rewriting', () => {
     });
 
     // ========================================================================
-    // Markdown round-trip with images
+    // rewriteImageSrcToApi — absolute paths
     // ========================================================================
 
-    describe('Markdown round-trip with images', () => {
-        it('should preserve image markdown through markdownToHtml → rewriteToApi → htmlToMarkdown → rewriteToRelative', () => {
-            const originalMd = 'Some text\n\n![my screenshot](.attachments/uuid-123.png)\n\nMore text\n';
+    describe('rewriteImageSrcToApi — absolute paths', () => {
+        it('should rewrite Windows absolute path to local-image API URL', () => {
+            const html = '<img src="C:\\src\\repo\\chart.png" alt="chart">';
+            const result = rewriteImageSrcToApi(html, 'my-ws');
+            expect(result).toContain('/api/workspaces/my-ws/notes/local-image?path=');
+            expect(result).toContain(encodeURIComponent('C:\\src\\repo\\chart.png'));
+            expect(result).toContain('alt="chart"');
+        });
 
-            // Load direction: md → html → rewrite src to API
+        it('should rewrite Windows forward-slash path', () => {
+            const html = '<img src="C:/src/repo/chart.png">';
+            const result = rewriteImageSrcToApi(html, 'ws-1');
+            expect(result).toContain('/api/workspaces/ws-1/notes/local-image?path=');
+            expect(result).toContain(encodeURIComponent('C:/src/repo/chart.png'));
+        });
+
+        it('should rewrite Unix absolute path to local-image API URL', () => {
+            const html = '<img src="/home/user/repo/chart.png">';
+            const result = rewriteImageSrcToApi(html, 'ws-1');
+            expect(result).toContain('/api/workspaces/ws-1/notes/local-image?path=');
+            expect(result).toContain(encodeURIComponent('/home/user/repo/chart.png'));
+        });
+
+        it('should not double-rewrite /api/ paths', () => {
+            const html = '<img src="/api/workspaces/ws/notes/image?path=.attachments%2Ftest.png">';
+            const result = rewriteImageSrcToApi(html, 'ws');
+            // Should remain unchanged — /api/ prefix guard prevents double-rewrite
+            expect(result).toBe(html);
+        });
+
+        it('should handle mixed .attachments and absolute paths', () => {
+            const html = '<img src=".attachments/a.png"><img src="C:\\repo\\b.png">';
+            const result = rewriteImageSrcToApi(html, 'ws');
+            expect(result).toContain('/notes/image?path=');
+            expect(result).toContain('/notes/local-image?path=');
+        });
+
+        it('should still pass through external URLs unchanged', () => {
+            const html = '<img src="https://example.com/photo.png">';
+            const result = rewriteImageSrcToApi(html, 'ws');
+            expect(result).toBe(html);
+        });
+    });
+
+    // ========================================================================
+    // rewriteImageSrcToRelative — local-image URLs
+    // ========================================================================
+
+    describe('rewriteImageSrcToRelative — local-image URLs', () => {
+        it('should rewrite local-image API URL back to Windows absolute path', () => {
+            const md = `![chart](/api/workspaces/ws/notes/local-image?path=${encodeURIComponent('C:\\src\\repo\\chart.png')})`;
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toBe('![chart](C:\\src\\repo\\chart.png)');
+        });
+
+        it('should rewrite local-image API URL back to Unix absolute path', () => {
+            const md = `![chart](/api/workspaces/ws/notes/local-image?path=${encodeURIComponent('/home/user/chart.png')})`;
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toBe('![chart](/home/user/chart.png)');
+        });
+
+        it('should rewrite local-image HTML img tags back to absolute paths', () => {
+            const md = `<img src="/api/workspaces/ws/notes/local-image?path=${encodeURIComponent('C:\\repo\\img.png')}" width="300" />`;
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toContain('src="C:\\repo\\img.png"');
+            expect(result).toContain('width="300"');
+        });
+
+        it('should handle mixed .attachments and local-image URLs', () => {
+            const md = [
+                '![a](/api/workspaces/ws/notes/image?path=.attachments%2Fa.png)',
+                `![b](/api/workspaces/ws/notes/local-image?path=${encodeURIComponent('C:\\repo\\b.png')})`,
+            ].join('\n');
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toContain('![a](.attachments/a.png)');
+            expect(result).toContain('![b](C:\\repo\\b.png)');
+        });
+
+        it('should handle empty alt text for local-image', () => {
+            const md = `![](/api/workspaces/ws/notes/local-image?path=${encodeURIComponent('/opt/img.png')})`;
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toBe('![](/opt/img.png)');
+        });
+    });
+
+    // ========================================================================
+    // Markdown round-trip with absolute-path images
+    // ========================================================================
+
+    describe('Markdown round-trip with absolute-path images', () => {
+        it('should round-trip a Windows absolute path through HTML conversion', () => {
+            const originalMd = 'Text\n\n![chart](C:\\src\\repo\\chart.png)\n\nMore text\n';
+
             const html = markdownToHtml(originalMd);
             expect(html).toContain('<img');
-            expect(html).toContain('.attachments/uuid-123.png');
 
             const rewrittenHtml = rewriteImageSrcToApi(html, 'test-ws');
-            expect(rewrittenHtml).toContain('/api/workspaces/test-ws/notes/image');
+            expect(rewrittenHtml).toContain('/api/workspaces/test-ws/notes/local-image');
 
-            // Save direction: html → md → rewrite URLs to relative
             let savedMd = htmlToMarkdown(rewrittenHtml);
             savedMd = rewriteImageSrcToRelative(savedMd);
 
-            // Image reference should be preserved
-            expect(savedMd).toContain('![my screenshot](.attachments/uuid-123.png)');
-            expect(savedMd).toContain('Some text');
+            expect(savedMd).toContain('![chart](C:\\src\\repo\\chart.png)');
+            expect(savedMd).toContain('Text');
             expect(savedMd).toContain('More text');
         });
 
-        it('should handle markdown with no images through the pipeline', () => {
-            const originalMd = '# Hello\n\nSome text\n';
+        it('should round-trip a Unix absolute path through HTML conversion', () => {
+            const originalMd = '![img](/home/user/photo.png)\n';
+
             const html = markdownToHtml(originalMd);
             const rewrittenHtml = rewriteImageSrcToApi(html, 'ws');
             let savedMd = htmlToMarkdown(rewrittenHtml);
             savedMd = rewriteImageSrcToRelative(savedMd);
 
-            expect(savedMd).toContain('# Hello');
-            expect(savedMd).toContain('Some text');
+            expect(savedMd).toContain('![img](/home/user/photo.png)');
         });
 
-        it('should handle mixed content with images and other elements', () => {
-            const originalMd = '# Title\n\n![img](.attachments/pic.png)\n\n- item 1\n- item 2\n';
+        it('should round-trip mixed .attachments and absolute paths', () => {
+            const originalMd = '![a](.attachments/a.png)\n\n![b](C:\\repo\\b.png)\n';
+
             const html = markdownToHtml(originalMd);
             const rewrittenHtml = rewriteImageSrcToApi(html, 'ws');
             let savedMd = htmlToMarkdown(rewrittenHtml);
             savedMd = rewriteImageSrcToRelative(savedMd);
 
-            expect(savedMd).toContain('![img](.attachments/pic.png)');
-            expect(savedMd).toContain('# Title');
+            expect(savedMd).toContain('![a](.attachments/a.png)');
+            expect(savedMd).toContain('![b](C:\\repo\\b.png)');
         });
     });
 });

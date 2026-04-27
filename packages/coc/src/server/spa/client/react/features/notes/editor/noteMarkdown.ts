@@ -425,32 +425,66 @@ export function htmlToMarkdownWithComments(
 // ── Image URL rewriting ─────────────────────────────────────────────────────
 
 /**
- * Rewrite relative `.attachments/...` image paths in HTML to API-served URLs.
+ * Rewrite relative `.attachments/...` image paths and absolute local file paths
+ * in HTML to API-served URLs.
  * Called after `markdownToHtml()` when loading content into the editor.
  *
  * Converts: `<img src=".attachments/uuid.png">`
  * To:       `<img src="/api/workspaces/<wsId>/notes/image?path=.attachments/uuid.png">`
+ *
+ * Also converts absolute paths:
+ * `<img src="C:\src\repo\chart.png">` or `<img src="/home/user/chart.png">`
+ * To: `<img src="/api/workspaces/<wsId>/notes/local-image?path=...">`
  */
 export function rewriteImageSrcToApi(html: string, workspaceId: string): string {
     if (!html) return html;
     const apiPrefix = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=`;
-    return html.replace(
+    const localApiPrefix = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=`;
+
+    // 1) Rewrite .attachments/ relative paths
+    let result = html.replace(
         /(<img\s[^>]*?)src="(\.attachments\/[^"]+)"/gi,
         (_match, prefix: string, relPath: string) => {
             return `${prefix}src="${apiPrefix}${encodeURIComponent(relPath)}"`;
         },
     );
+
+    // 2) Rewrite Windows absolute paths (e.g. C:\foo\bar.png)
+    //    marked.js may percent-encode backslashes, so decode first to normalize
+    result = result.replace(
+        /(<img\s[^>]*?)src="([A-Za-z]:[^"]+)"/gi,
+        (_match, prefix: string, absPath: string) => {
+            const decoded = decodeURIComponent(absPath);
+            return `${prefix}src="${localApiPrefix}${encodeURIComponent(decoded)}"`;
+        },
+    );
+
+    // 3) Rewrite Unix absolute paths (skip /api/ to avoid double-rewriting)
+    result = result.replace(
+        /(<img\s[^>]*?)src="(\/(?!api\/)[^"]+)"/gi,
+        (_match, prefix: string, absPath: string) => {
+            const decoded = decodeURIComponent(absPath);
+            return `${prefix}src="${localApiPrefix}${encodeURIComponent(decoded)}"`;
+        },
+    );
+
+    return result;
 }
 
 /**
- * Rewrite API-served image URLs back to relative `.attachments/...` paths.
+ * Rewrite API-served image URLs back to relative `.attachments/...` paths
+ * and local-image API URLs back to their original absolute paths.
  * Called before `htmlToMarkdown()` when saving editor content.
  *
  * Converts: `![alt](/api/workspaces/<wsId>/notes/image?path=.attachments/uuid.png)`
  * To:       `![alt](.attachments/uuid.png)`
+ *
+ * Converts: `![alt](/api/workspaces/<wsId>/notes/local-image?path=C%3A%5Csrc%5Cchart.png)`
+ * To:       `![alt](C:\src\chart.png)`
  */
 export function rewriteImageSrcToRelative(markdown: string): string {
     if (!markdown) return markdown;
+
     // Standard markdown images: ![alt](/api/workspaces/.../image?path=...)
     let result = markdown.replace(
         /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/image\?path=([^)]+)\)/g,
@@ -465,6 +499,22 @@ export function rewriteImageSrcToRelative(markdown: string): string {
             return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
         },
     );
+
+    // Standard markdown images: ![alt](/api/workspaces/.../local-image?path=...)
+    result = result.replace(
+        /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^)]+)\)/g,
+        (_match, alt: string, encodedPath: string) => {
+            return `![${alt}](${decodeURIComponent(encodedPath)})`;
+        },
+    );
+    // HTML <img> tags with local-image API URLs (from resized images)
+    result = result.replace(
+        /<img\s([^>]*?)src="\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
+        (_match, before: string, encodedPath: string, after: string) => {
+            return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
+        },
+    );
+
     return result;
 }
 

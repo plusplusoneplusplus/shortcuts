@@ -164,4 +164,42 @@ export function registerNotesImageRoutes(
             }
         },
     });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/local-image?path=<absolute-path>
+    // Serves image files from within the workspace rootPath.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/local-image$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const imagePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+
+            if (!imagePath) {
+                return sendError(res, 400, 'Missing "path" query parameter');
+            }
+
+            const resolved = path.resolve(imagePath);
+
+            // Security: file must be within the workspace root
+            if (!ws.rootPath || !isWithinDirectory(resolved, ws.rootPath)) {
+                return sendError(res, 403, 'Access denied: path is outside workspace root');
+            }
+
+            // Validate file extension
+            const ext = path.extname(resolved).toLowerCase();
+            if (!ALLOWED_EXTENSIONS.has(ext)) {
+                return sendError(res, 403, `File type "${ext}" is not allowed`);
+            }
+
+            const served = serveStaticFile(resolved, res);
+            if (!served) {
+                return sendError(res, 404, 'Image not found');
+            }
+        },
+    });
 }

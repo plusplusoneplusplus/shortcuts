@@ -377,6 +377,136 @@ describe('Notes Image Handler', () => {
     });
 
     // ========================================================================
+    // GET /api/workspaces/:id/notes/local-image — Serve local images
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/notes/local-image — Serve', () => {
+        it('should serve an image file within the workspace root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            // Create a test image inside the workspace
+            const imgPath = path.join(workspaceDir, 'chart.png');
+            const imgBuffer = Buffer.from(TINY_PNG_BASE64, 'base64');
+            fs.writeFileSync(imgPath, imgBuffer);
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(imgPath)}`
+            );
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toBe('image/png');
+            expect(res.rawBody).toEqual(imgBuffer);
+        });
+
+        it('should serve images in subdirectories of workspace root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const subDir = path.join(workspaceDir, 'docs', 'images');
+            fs.mkdirSync(subDir, { recursive: true });
+            const imgPath = path.join(subDir, 'diagram.png');
+            fs.writeFileSync(imgPath, Buffer.from(TINY_PNG_BASE64, 'base64'));
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(imgPath)}`
+            );
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toBe('image/png');
+        });
+
+        it('should reject paths outside workspace root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            // Create a file outside the workspace
+            const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'));
+            const outsidePath = path.join(outsideDir, 'secret.png');
+            fs.writeFileSync(outsidePath, Buffer.from(TINY_PNG_BASE64, 'base64'));
+
+            try {
+                const res = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(outsidePath)}`
+                );
+                expect(res.status).toBe(403);
+                expect(res.body).toContain('outside workspace root');
+            } finally {
+                fs.rmSync(outsideDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should reject path traversal attempts', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const traversalPath = path.join(workspaceDir, '..', '..', 'etc', 'passwd');
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(traversalPath)}`
+            );
+            expect(res.status).toBe(403);
+        });
+
+        it('should reject disallowed file extensions', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const txtPath = path.join(workspaceDir, 'notes.txt');
+            fs.writeFileSync(txtPath, 'hello');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(txtPath)}`
+            );
+            expect(res.status).toBe(403);
+            expect(res.body).toContain('not allowed');
+        });
+
+        it('should return 400 for missing path query param', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/local-image`);
+            expect(res.status).toBe(400);
+            expect(res.body).toContain('path');
+        });
+
+        it('should return 404 for non-existent file', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const missingPath = path.join(workspaceDir, 'no-such-file.png');
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(missingPath)}`
+            );
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const srv = await startServer();
+
+            const res = await request(
+                `${srv.url}/api/workspaces/nonexistent/notes/local-image?path=${encodeURIComponent('/some/path.png')}`
+            );
+            expect(res.status).toBe(404);
+        });
+
+        it('should serve JPEG with correct content type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const imgPath = path.join(workspaceDir, 'photo.jpg');
+            fs.writeFileSync(imgPath, Buffer.from(TINY_JPEG_BASE64, 'base64'));
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/local-image?path=${encodeURIComponent(imgPath)}`
+            );
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toBe('image/jpeg');
+        });
+    });
+
+    // ========================================================================
     // .attachments isolation from tree
     // ========================================================================
 

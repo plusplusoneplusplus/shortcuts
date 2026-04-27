@@ -19,6 +19,8 @@ export interface NoteEditorIO {
     uploadImage(workspaceId: string, fileName: string, dataUrl: string): Promise<{ path: string }>;
     /** Build a fully-qualified URL the browser can use to fetch an image by its relative path. */
     imageApiUrl(workspaceId: string, relativePath: string): string;
+    /** Build a URL to serve a local image file (absolute path) via the server proxy. */
+    localImageApiUrl(workspaceId: string, absolutePath: string): string;
 }
 
 // ── Default (notes-backed) implementation ───────────────────────────────────
@@ -32,23 +34,49 @@ export const defaultNoteEditorIO: NoteEditorIO = {
         notesApi.uploadImage(workspaceId, fileName, dataUrl),
     imageApiUrl: (workspaceId, relativePath) =>
         `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`,
+    localImageApiUrl: (workspaceId, absolutePath) =>
+        `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`,
 };
 
 // ── HTML image-src rewriter ─────────────────────────────────────────────────
 
 /**
- * Rewrite relative `.attachments/…` image paths inside HTML to the
- * backend-provided API URLs via {@link NoteEditorIO.imageApiUrl}.
+ * Rewrite relative `.attachments/…` image paths and absolute local file paths
+ * inside HTML to backend-provided API URLs.
  *
  * Called after markdown→HTML conversion when loading content into the
  * rich-text editor.
  */
 export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId: string): string {
     if (!html) return html;
-    return html.replace(
+
+    // 1) Rewrite .attachments/ relative paths
+    let result = html.replace(
         /(<img\s[^>]*?)src="(\.attachments\/[^"]+)"/gi,
         (_match, prefix: string, relPath: string) => {
             return `${prefix}src="${io.imageApiUrl(workspaceId, relPath)}"`;
         },
     );
+
+    // 2) Rewrite Windows absolute paths (e.g. C:\foo\bar.png or C:/foo/bar.png)
+    //    marked.js may percent-encode backslashes, so decode first to normalize
+    result = result.replace(
+        /(<img\s[^>]*?)src="([A-Za-z]:[^"]+)"/gi,
+        (_match, prefix: string, absPath: string) => {
+            const decoded = decodeURIComponent(absPath);
+            return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
+        },
+    );
+
+    // 3) Rewrite Unix absolute paths (e.g. /home/user/img.png)
+    //    Guard: skip paths starting with /api/ to avoid double-rewriting
+    result = result.replace(
+        /(<img\s[^>]*?)src="(\/(?!api\/)[^"]+)"/gi,
+        (_match, prefix: string, absPath: string) => {
+            const decoded = decodeURIComponent(absPath);
+            return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
+        },
+    );
+
+    return result;
 }
