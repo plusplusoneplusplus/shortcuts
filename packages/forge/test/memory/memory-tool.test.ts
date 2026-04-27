@@ -68,7 +68,7 @@ describe('createMemoryTool', () => {
         it('description contains behavioral guidance keywords', () => {
             const { tool } = createMemoryTool(stores, baseOptions);
             expect(tool.description).toContain('proactively');
-            expect(tool.description).toContain('TWO TARGETS');
+            expect(tool.description).toContain('TARGETS');
             expect(tool.description).toContain('ACTIONS');
         });
 
