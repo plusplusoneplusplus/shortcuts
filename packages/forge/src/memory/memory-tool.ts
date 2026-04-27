@@ -13,8 +13,8 @@
  */
 import { defineTool, Tool } from '../copilot-sdk-wrapper/types';
 import type { BoundedMemoryStore } from './bounded-memory-store';
-import type { RawMemoryRecordStore } from './raw-memory-record-store';
 import { scanMemoryContent } from './memory-security-scanner';
+import type { RawMemoryRecordStore } from './raw-memory-record-store';
 
 // ---------------------------------------------------------------------------
 // Option & argument interfaces
@@ -74,30 +74,28 @@ export type MemoryToolRawStores = {
  * Exported for admin dashboard prompt inspection.
  */
 export const MEMORY_SCHEMA =
-    'Save durable information to persistent memory that survives across sessions.\n'
-    + 'Memory is injected into future turns, so keep it compact and focused on facts\n'
-    + 'that will still matter later.\n'
+    'Save durable, high-value facts to persistent memory that survives across sessions.\n'
+    + 'Memory is injected into every future turn — keep entries compact and high-signal.\n'
     + '\n'
-    + 'WHEN TO SAVE (do this proactively, don\'t wait to be asked):\n'
-    + '- User corrects you or says \'remember this\' / \'don\'t do that again\'\n'
-    + '- User shares a preference, habit, or personal detail (name, role, timezone, coding style)\n'
-    + '- You discover something about the environment (OS, tools, project structure)\n'
-    + '- You learn a convention, API quirk, or workflow specific to this codebase\n'
-    + '- You identify a stable fact that will be useful again in future sessions\n'
+    + 'WHEN TO SAVE (proactively, when the fact is clearly worth keeping):\n'
+    + '- User corrects you, says \'remember this\', or \'don\'t do that again\'\n'
+    + '- User shares a preference, habit, or personal detail (name, role, timezone, style)\n'
+    + '- You discover something stable about the environment (OS, tools, layout, key paths)\n'
+    + '- You learn a convention, quirk, or workflow specific to this user\'s setup\n'
+    + '- A failure has a non-obvious fix worth keeping for next time\n'
+    + '- Any fact that took >1 tool call to discover and will clearly be useful again\n'
     + '\n'
-    + 'PRIORITY: User preferences and corrections > environment facts > procedural knowledge.\n'
-    + 'The most valuable memory prevents the user from having to repeat themselves.\n'
+    + 'PRIORITY: user corrections > preferences > environment facts > procedure.\n'
+    + 'The most valuable memory prevents the user from repeating themselves and\n'
+    + 'prevents you from re-deriving the same fact next session.\n'
     + '\n'
-    + 'Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO state.\n'
+    + 'SKIP everything else: task progress, completed-work logs, current TODO state,\n'
+    + 'trivia, one-shot ephemera, things already in context files (AGENTS.md, repo docs,\n'
+    + 'user profile), or facts that are easily re-derived. If a fact isn\'t clearly\n'
+    + 'valuable for future sessions, don\'t save it.\n'
     + '\n'
-    + 'TWO TARGETS:\n'
-    + '- \'repo\': repo-scoped notes — project conventions, tool quirks, environment facts\n'
-    + '- \'system\': global notes — cross-repo preferences, general patterns\n'
-    + '\n'
-    + 'ACTIONS: add (new entry), replace (update existing — old_text identifies it),\n'
-    + 'remove (delete — old_text identifies it).\n'
-    + '\n'
-    + 'SKIP: trivial/obvious info, things easily re-discovered, raw data dumps, temporary task state.';
+    + 'TARGETS: \'repo\' = current project/workspace. \'system\' = cross-project / user-wide.\n'
+    + 'ACTIONS: add | replace (old_text identifies entry) | remove (old_text identifies entry).';
 
 // ---------------------------------------------------------------------------
 // Capture-mode result shape
@@ -140,7 +138,7 @@ export function createMemoryTool(
                 target: {
                     type: 'string',
                     enum: ['repo', 'system'],
-                    description: "Which memory store: 'repo' for repo-scoped notes, 'system' for global notes.",
+                    description: "Which memory store: 'repo' for repo-scoped memory, 'system' for global memory. Use 'repo' for most cases.",
                 },
                 content: {
                     type: 'string',

@@ -13,17 +13,16 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as path from 'path';
-import type { Tool } from '@plusplusoneplusplus/forge';
+import type { MemoryToolCaptureContext, Tool } from '@plusplusoneplusplus/forge';
 import {
     BoundedMemoryStore,
-    MemoryPromptBuilder,
     createMemoryTool,
+    MemoryPromptBuilder,
     RawMemoryRecordStore,
 } from '@plusplusoneplusplus/forge';
-import type { MemoryToolCaptureContext } from '@plusplusoneplusplus/forge';
-import { readRepoPreferences } from '../preferences-handler';
+import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
 // Types
@@ -45,15 +44,13 @@ export interface BoundedMemoryAddon {
 // ============================================================================
 
 const MEMORY_TOOL_SUFFIX =
-    '\n\nYou have access to the `memory` tool. Use it to save important facts about' +
-    ' this codebase that would help in future conversations. Do NOT save trivial or' +
-    ' obvious information.';
+    '\n\nUse the `memory` tool to save durable, high-value facts you discover during this session.';
 
 const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
     systemMessageSuffix: undefined,
     tools: [],
     suffix: '',
-    dispose: () => {},
+    dispose: () => { },
 });
 
 // ============================================================================

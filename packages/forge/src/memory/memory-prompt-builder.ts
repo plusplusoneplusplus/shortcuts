@@ -19,15 +19,10 @@ const SEPARATOR = '═'.repeat(46);
  * Behavioral guidance injected into the system prompt alongside the memory
  * block. Tells the AI how to use the memory tool effectively.
  */
-export const MEMORY_GUIDANCE = `You have persistent memory across sessions. Save durable facts using the memory \
-tool: user preferences, environment details, tool quirks, and stable conventions. \
-Memory is injected into every turn, so keep it compact and focused on facts that \
-will still matter later.
-Prioritize what reduces future user steering — the most valuable memory is one \
-that prevents the user from having to correct or remind you again. \
-User preferences and recurring corrections matter more than procedural task details.
-Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO \
-state to memory.`;
+export const MEMORY_GUIDANCE = `You have a persistent \`memory\` tool. Use it to save durable, high-value \
+facts worth keeping for future sessions — see the tool description for the full save/skip criteria. \
+The most valuable memory prevents the user from repeating themselves and prevents you from \
+re-deriving the same fact next session.`;
 
 export interface MemoryPromptBuilderOptions {
     /** BoundedMemoryStore to read MEMORY.md from. */
