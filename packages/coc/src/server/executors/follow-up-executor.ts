@@ -37,7 +37,7 @@ import {
     prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
-import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
+import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
@@ -206,31 +206,12 @@ export class FollowUpExecutor extends BaseExecutor {
             .appendAutoFolder(autoFolderContextForFollowUp)
             .build();
 
-        // Inject note context for note-chat follow-ups
+        // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         const notePath = process.metadata?.notePath as string | undefined;
-        const noteTitle = process.metadata?.noteTitle as string | undefined;
         let preEditContent: string | undefined;
         if (notePath && wsId) {
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-            const noteContent = await readNoteContent(effectiveDataDir, wsId, notePath);
-            preEditContent = noteContent;
-            const noteContentStatus = resolveNoteContentStatus(noteContent);
-
-            if (noteContent !== undefined && systemMessage) {
-                systemMessage = {
-                    ...systemMessage,
-                    content: (systemMessage.content ?? '') + buildNoteContextBlock(notePath, noteTitle ?? notePath, noteContent),
-                };
-            }
-
-            // Best-effort update of note content status in process metadata
-            try {
-                await this.store.updateProcess(process.id, {
-                    metadata: { ...(process.metadata ?? {}), noteContentStatus } as any,
-                });
-            } catch (err) {
-                logger.debug(LogCategory.AI, `[FollowUp] Failed to update note metadata for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-            }
+            preEditContent = await readNoteContent(effectiveDataDir, wsId, notePath);
         }
 
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);

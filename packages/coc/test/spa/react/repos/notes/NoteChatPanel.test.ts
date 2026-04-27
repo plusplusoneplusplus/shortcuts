@@ -131,7 +131,6 @@ describe('NoteChatPanel', () => {
         it('passes chatNoteContext to banner', () => {
             expect(source).toContain('chatNoteContext?.notePath');
             expect(source).toContain('chatNoteContext?.noteTitle');
-            expect(source).toContain('chatNoteContext?.contentStatus');
         });
 
         it('passes currentNotePath to banner for anchoring detection', () => {

@@ -3,10 +3,9 @@
  *
  * Covers:
  * - Component exports and props interface
- * - Banner rendering for attached, truncated, not-found, and empty statuses
+ * - Banner rendering with static path-reference chip
  * - Anchoring hint when selected note differs from chat note
  * - Null chatNotePath returns null (no banner)
- * - Status chip variants
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -32,14 +31,6 @@ describe('NoteContextBanner', () => {
         expect(source).toContain('export interface NoteContextBannerProps');
     });
 
-    it('exports NoteContentStatusInfo interface', () => {
-        expect(source).toContain('export interface NoteContentStatusInfo');
-    });
-
-    it('exports NoteStatusKind type', () => {
-        expect(source).toContain('export type NoteStatusKind');
-    });
-
     describe('props interface', () => {
         it('accepts chatNotePath', () => {
             expect(source).toContain('chatNotePath:');
@@ -53,8 +44,8 @@ describe('NoteContextBanner', () => {
             expect(source).toContain('currentNotePath:');
         });
 
-        it('accepts contentStatus', () => {
-            expect(source).toContain('contentStatus:');
+        it('does not accept contentStatus (removed)', () => {
+            expect(source).not.toContain('contentStatus:');
         });
     });
 
@@ -64,33 +55,13 @@ describe('NoteContextBanner', () => {
         });
     });
 
-    describe('status chips', () => {
-        it('shows Attached note chip for attached status', () => {
-            expect(source).toContain("'Attached note'");
+    describe('path reference chip', () => {
+        it('shows static Path reference chip', () => {
+            expect(source).toContain('📎 Path reference');
         });
 
-        it('shows Truncated chip for truncated status', () => {
-            expect(source).toContain('Truncated to');
-        });
-
-        it('shows Note not found chip for not-found status', () => {
-            expect(source).toContain("'Note not found'");
-        });
-
-        it('shows Empty note chip for empty status', () => {
-            expect(source).toContain("'Empty note'");
-        });
-
-        it('uses info variant for attached', () => {
-            expect(source).toMatch(/statusKind === 'attached'.*statusChip.*'info'/s);
-        });
-
-        it('uses warning variant for truncated', () => {
-            expect(source).toMatch(/statusKind === 'truncated'.*statusChip[\s\S]*?'warning'/);
-        });
-
-        it('uses error variant for not-found', () => {
-            expect(source).toMatch(/statusKind === 'not-found'.*statusChip.*'error'/s);
+        it('uses note-status-chip testid', () => {
+            expect(source).toContain('note-status-chip');
         });
     });
 
@@ -113,20 +84,12 @@ describe('NoteContextBanner', () => {
             expect(source).toContain('note-context-banner');
         });
 
-        it('has note-status-chip testid', () => {
-            expect(source).toContain('note-status-chip');
-        });
-
         it('has note-anchor-hint testid', () => {
             expect(source).toContain('note-anchor-hint');
         });
     });
 
     describe('display helpers', () => {
-        it('formats character count with k suffix for large numbers', () => {
-            expect(source).toContain('formatCharCount');
-        });
-
         it('derives display title from path when noteTitle is missing', () => {
             // Falls back to extracting filename from path
             expect(source).toContain("chatNotePath.split('/')");

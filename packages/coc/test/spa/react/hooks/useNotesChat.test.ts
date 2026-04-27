@@ -124,24 +124,6 @@ describe('useNotesChat', () => {
         });
     });
 
-    describe('metadata fetch on restore', () => {
-        it('fetches process metadata when taskId is restored', () => {
-            expect(source).toContain('fetchApi(`/processes/');
-        });
-
-        it('extracts noteContentStatus from process metadata', () => {
-            expect(source).toContain('meta.noteContentStatus');
-        });
-
-        it('skips fetch when contentStatus already exists', () => {
-            expect(source).toContain('chatNoteContext?.contentStatus');
-        });
-
-        it('clears chatNoteContext when taskId becomes null', () => {
-            expect(source).toContain('setChatNoteContext(null)');
-        });
-    });
-
     describe('createChat creates queue task', () => {
         it('POSTs to /queue/tasks with chat payload', () => {
             expect(source).toContain("fetchApi('/queue/tasks'");
@@ -157,6 +139,10 @@ describe('useNotesChat', () => {
             expect(source).toContain('noteChat:');
             expect(source).toContain('notePath');
             expect(source).toContain('noteTitle');
+        });
+
+        it('prepends note path to prompt when notePath is set', () => {
+            expect(source).toContain('notePath ? `📝 Note: ${notePath}\\n\\n${prompt}` : prompt');
         });
 
         it('handles missing notePath gracefully (undefined context)', () => {

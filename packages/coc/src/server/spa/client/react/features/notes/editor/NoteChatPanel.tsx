@@ -241,7 +241,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             chatNotePath={chatNoteContext?.notePath}
                             chatNoteTitle={chatNoteContext?.noteTitle}
                             currentNotePath={notePath}
-                            contentStatus={chatNoteContext?.contentStatus ?? null}
                         />
                     )}
                     {references && references.length > 0 && (

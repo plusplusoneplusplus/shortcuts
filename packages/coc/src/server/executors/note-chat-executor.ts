@@ -1,8 +1,9 @@
 /**
  * Note Chat Executor
  *
- * Concrete executor for note-chat tasks. Extends ChatBaseExecutor to inject
- * note content as context, giving the AI awareness of the note being discussed.
+ * Concrete executor for note-chat tasks. Extends ChatBaseExecutor.
+ * The note path is prepended to the user's first message by the client;
+ * the AI reads the note file via its file-reading tools as needed.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -30,43 +31,6 @@ import {
 import { systemMessageBuilder } from './system-message-builder';
 import { readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
-
-// ============================================================================
-// Note-context transparency types
-// ============================================================================
-
-/** Maximum number of characters injected from the note into the system prompt. */
-export const NOTE_CONTENT_CHAR_LIMIT = 8000;
-
-/**
- * Machine-readable status of the note content injected into a chat session.
- * Stored in `process.metadata.noteContentStatus` so the SPA can render a
- * transparent "Attached note" banner.
- */
-export interface NoteContentStatus {
-    /** High-level content status */
-    status: 'attached' | 'truncated' | 'not-found' | 'empty';
-    /** The configured character limit for note injection */
-    charLimit: number;
-    /** Original content length in characters (set when content was read successfully) */
-    originalLength?: number;
-}
-
-/**
- * Derive the NoteContentStatus from the raw note content (or absence thereof).
- */
-export function resolveNoteContentStatus(noteContent: string | undefined): NoteContentStatus {
-    if (noteContent === undefined) {
-        return { status: 'not-found', charLimit: NOTE_CONTENT_CHAR_LIMIT };
-    }
-    if (noteContent.length === 0) {
-        return { status: 'empty', charLimit: NOTE_CONTENT_CHAR_LIMIT, originalLength: 0 };
-    }
-    if (noteContent.length > NOTE_CONTENT_CHAR_LIMIT) {
-        return { status: 'truncated', charLimit: NOTE_CONTENT_CHAR_LIMIT, originalLength: noteContent.length };
-    }
-    return { status: 'attached', charLimit: NOTE_CONTENT_CHAR_LIMIT, originalLength: noteContent.length };
-}
 
 // ============================================================================
 // Executor
@@ -132,9 +96,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
-        const noteChat = payload.context?.noteChat;
-        const notePath = noteChat?.notePath ?? '';
-        const noteTitle = noteChat?.noteTitle ?? notePath;
         const wsId = payload.workspaceId;
 
         // Build system message (same pattern as ChatExecutor)
@@ -147,24 +108,10 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
-        let systemMessage = await systemMessageBuilder()
+        const systemMessage = await systemMessageBuilder()
             .appendMemory(boundedMemory)
             .appendAutoFolder(autoFolderContext)
             .build();
-
-        // Inject note content into the system message
-        const noteContent = await this.readNoteContentForWs(wsId, notePath);
-        const noteContentStatus = resolveNoteContentStatus(noteContent);
-
-        if (noteContent !== undefined && systemMessage) {
-            systemMessage = {
-                ...systemMessage,
-                content: (systemMessage.content ?? '') + buildNoteContextBlock(notePath, noteTitle, noteContent),
-            };
-        }
-
-        // Persist note content status into process metadata
-        void this.patchNoteContentStatus(task.id, noteContentStatus);
 
         // Standard chat tools
         const followUp = buildFollowUpSuggestionsAddon(
@@ -197,20 +144,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         if (!wsId || !notePath) return undefined;
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
         return readNoteContent(effectiveDataDir, wsId, notePath);
-    }
-
-    /** Best-effort patch of process metadata with note content status. */
-    private async patchNoteContentStatus(taskId: string, status: NoteContentStatus): Promise<void> {
-        try {
-            const processId = toQueueProcessId(taskId);
-            const existing = await this.store.getProcess(processId);
-            if (!existing) return;
-            await this.store.updateProcess(processId, {
-                metadata: { ...(existing.metadata ?? {}), noteContentStatus: status } as any,
-            });
-        } catch {
-            // best-effort — don't fail the task if metadata patch fails
-        }
     }
 }
 
@@ -263,19 +196,6 @@ export async function appendNoteEditSnapshot(
 // ============================================================================
 // Shared helpers (exported for reuse by FollowUpExecutor)
 // ============================================================================
-
-export function buildNoteContextBlock(notePath: string, noteTitle: string, content: string): string {
-    const truncated = content.length > NOTE_CONTENT_CHAR_LIMIT
-        ? content.slice(0, NOTE_CONTENT_CHAR_LIMIT) + '\n\n... (content truncated)'
-        : content;
-    return (
-        '\n\n<note_context>\n' +
-        `Title: ${noteTitle}\n` +
-        `Path: ${notePath}\n\n` +
-        truncated +
-        '\n</note_context>'
-    );
-}
 
 /**
  * Read the note's markdown content from the data directory.

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
-import type { NoteContentStatusInfo } from '../editor/NoteContextBanner';
 
 /** Whether the chat is scoped to the current note or the whole workspace. */
 export type ChatScope = 'per-note' | 'per-workspace';
@@ -18,7 +17,6 @@ export interface UseNotesChatOptions {
 export interface ChatNoteContext {
     notePath: string;
     noteTitle: string;
-    contentStatus?: NoteContentStatusInfo;
 }
 
 export interface UseNotesChatReturn {
@@ -164,36 +162,6 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         saveContext(workspaceId, chatNoteContext);
     }, [workspaceId, chatNoteContext]);
 
-    // ── Fetch note content status from process metadata when taskId changes ──
-
-    useEffect(() => {
-        if (!taskId) {
-            setChatNoteContext(null);
-            return;
-        }
-        // If we already have contentStatus, skip the fetch
-        if (chatNoteContext?.contentStatus) return;
-
-        let cancelled = false;
-        (async () => {
-            try {
-                const queueProcessId = taskId.startsWith('q-') ? taskId : `q-${taskId}`;
-                const data = await fetchApi(`/processes/${encodeURIComponent(queueProcessId)}`);
-                if (cancelled) return;
-                const meta = data?.process?.metadata;
-                if (meta?.notePath) {
-                    const ctx: ChatNoteContext = {
-                        notePath: meta.notePath,
-                        noteTitle: meta.noteTitle ?? meta.notePath,
-                        contentStatus: meta.noteContentStatus ?? undefined,
-                    };
-                    setChatNoteContext(ctx);
-                }
-            } catch { /* best-effort */ }
-        })();
-        return () => { cancelled = true; };
-    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
-
     // ── createChat ───────────────────────────────────────────────────────────
 
     const createChat = useCallback(async (prompt: string, model?: string | null): Promise<string | null> => {
@@ -207,7 +175,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                     payload: {
                         kind: 'chat',
                         mode: 'autopilot',
-                        prompt,
+                        prompt: notePath ? `📝 Note: ${notePath}\n\n${prompt}` : prompt,
                         workspaceId,
                         ...(model ? { model } : {}),
                         context: {

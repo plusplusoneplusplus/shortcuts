@@ -4,14 +4,11 @@
  * Tests for NoteChatExecutor.
  * Covers:
  * - buildModeOptions uses autopilot agentMode
- * - buildModeOptions injects note content into system message
- * - buildModeOptions patches process metadata with noteContentStatus
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as path from 'path';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { NoteChatExecutor } from '../../../src/server/executors/note-chat-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -123,34 +120,6 @@ describe('NoteChatExecutor', () => {
             const task = makeNoteChatTask();
             const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
             expect(opts.toolResultInterceptors).toBeUndefined();
-        });
-    });
-
-    describe('noteContentStatus metadata patching', () => {
-        it('calls store.updateProcess with noteContentStatus after building options', async () => {
-            const task = makeNoteChatTask();
-            // Seed the process so getProcess finds it
-            const processId = toQueueProcessId(task.id);
-            await store.addProcess({
-                id: processId,
-                type: 'chat',
-                status: 'running',
-                startTime: new Date(),
-                metadata: { type: 'chat', notePath: NOTE_REL_PATH, noteTitle: 'My Note' },
-            } as any);
-
-            await (executor as any).buildModeOptions(task, 'do it', undefined);
-
-            // Allow async metadata patch to settle
-            await new Promise(r => setTimeout(r, 50));
-
-            const updated = await store.getProcess(processId);
-            expect(updated?.metadata).toHaveProperty('noteContentStatus');
-            const status = (updated?.metadata as any).noteContentStatus;
-            // Status may be 'attached' or 'not-found' depending on OS path resolution in tests.
-            // The resolveNoteContentStatus pure function is tested separately.
-            expect(['attached', 'truncated', 'not-found', 'empty']).toContain(status.status);
-            expect(status.charLimit).toBe(8000);
         });
     });
 });
