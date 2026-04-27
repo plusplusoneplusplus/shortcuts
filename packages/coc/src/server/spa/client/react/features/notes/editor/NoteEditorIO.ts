@@ -12,9 +12,9 @@ import { notesApi } from '../notesApi';
 
 export interface NoteEditorIO {
     /** Fetch the markdown content for a given path. */
-    loadContent(workspaceId: string, path: string): Promise<{ content: string; path: string }>;
+    loadContent(workspaceId: string, path: string): Promise<{ content: string; path: string; mtime: number }>;
     /** Persist markdown content at the given path. */
-    saveContent(workspaceId: string, path: string, markdown: string): Promise<{ path: string; updated: boolean }>;
+    saveContent(workspaceId: string, path: string, markdown: string, expectedMtime?: number): Promise<{ path: string; updated: boolean; mtime: number }>;
     /** Upload an image (base64 data-URL) and return the relative path to reference it. */
     uploadImage(workspaceId: string, fileName: string, dataUrl: string): Promise<{ path: string }>;
     /** Build a fully-qualified URL the browser can use to fetch an image by its relative path. */
@@ -26,8 +26,8 @@ export interface NoteEditorIO {
 export const defaultNoteEditorIO: NoteEditorIO = {
     loadContent: (workspaceId, path) =>
         notesApi.getContent(workspaceId, path),
-    saveContent: (workspaceId, path, markdown) =>
-        notesApi.saveContent(workspaceId, path, markdown),
+    saveContent: (workspaceId, path, markdown, expectedMtime?) =>
+        notesApi.saveContent(workspaceId, path, markdown, expectedMtime),
     uploadImage: (workspaceId, fileName, dataUrl) =>
         notesApi.uploadImage(workspaceId, fileName, dataUrl),
     imageApiUrl: (workspaceId, relativePath) =>

@@ -3,6 +3,23 @@
  */
 
 import { fetchApi } from '../../hooks/useApi';
+import { getApiBase } from '../../utils/config';
+
+/**
+ * Like fetchApi but surfaces 409 Conflict responses as enriched errors
+ * instead of generic "API error" messages.
+ */
+async function fetchApiWithConflict(urlPath: string, init: RequestInit): Promise<any> {
+    const url = getApiBase() + urlPath;
+    const res = await fetch(url, init);
+    if (res.status === 409) {
+        const data = await res.json();
+        throw Object.assign(new Error('conflict'), { status: 409, ...data });
+    }
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    if (res.status === 204) return undefined;
+    return res.json();
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,15 +82,15 @@ export const notesApi = {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/tree`);
     },
 
-    getContent(wsId: string, notePath: string): Promise<{ content: string; path: string }> {
+    getContent(wsId: string, notePath: string): Promise<{ content: string; path: string; mtime: number }> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/content?path=${encodeURIComponent(notePath)}`);
     },
 
-    saveContent(wsId: string, notePath: string, content: string): Promise<{ path: string; updated: boolean }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/content`, {
+    saveContent(wsId: string, notePath: string, content: string, expectedMtime?: number): Promise<{ path: string; updated: boolean; mtime: number }> {
+        return fetchApiWithConflict(`/workspaces/${encodeURIComponent(wsId)}/notes/content`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, content }),
+            body: JSON.stringify({ path: notePath, content, ...(expectedMtime !== undefined ? { expectedMtime } : {}) }),
         });
     },
 

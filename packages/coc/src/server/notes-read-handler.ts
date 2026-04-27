@@ -232,8 +232,11 @@ export function registerNotesRoutes(
             }
 
             try {
-                const content = await fs.promises.readFile(resolved, 'utf-8');
-                sendJSON(res, 200, { content, path: filePath });
+                const [content, stat] = await Promise.all([
+                    fs.promises.readFile(resolved, 'utf-8'),
+                    fs.promises.stat(resolved),
+                ]);
+                sendJSON(res, 200, { content, path: filePath, mtime: stat.mtimeMs });
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
                     return sendError(res, 404, 'File not found');

@@ -260,3 +260,187 @@ describe('Notes Write Handler — PUT /notes/content security', { timeout: 30_00
         expect(res.status).toBe(400);
     });
 });
+
+// ============================================================================
+// Mtime-based optimistic locking
+// ============================================================================
+
+describe('Notes Write Handler — PUT /notes/content mtime optimistic locking', { timeout: 30_000 }, () => {
+    let server: ExecutionServer | undefined;
+    let dataDir: string;
+    let workspaceDir: string;
+    let wsId: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-write-mtime-'));
+        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-write-mtime-ws-'));
+        wsId = 'test-ws-' + Date.now();
+    });
+
+    afterEach(async () => {
+        if (server) {
+            await server.close();
+            server = undefined;
+        }
+        await safeRm(dataDir);
+        await safeRm(workspaceDir);
+    });
+
+    async function startServer(): Promise<ExecutionServer> {
+        const store = new FileProcessStore({ dataDir });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+        return server;
+    }
+
+    async function registerWorkspace(srv: ExecutionServer): Promise<void> {
+        const res = await postJSON(`${srv.url}/api/workspaces`, {
+            id: wsId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+        });
+        expect(res.status).toBe(201);
+    }
+
+    function contentUrl(srv: ExecutionServer): string {
+        return `${srv.url}/api/workspaces/${wsId}/notes/content`;
+    }
+
+    function getContentUrl(srv: ExecutionServer, filePath: string): string {
+        return `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent(filePath)}`;
+    }
+
+    // -------------------------------------------------------------------------
+    // Backward compatibility — no expectedMtime
+    // -------------------------------------------------------------------------
+
+    it('PUT without expectedMtime returns 200 and includes mtime in response', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        const res = await putJSON(contentUrl(srv), { path: 'test.md', content: '# Hi' });
+        expect(res.status).toBe(200);
+        const data = JSON.parse(res.body);
+        expect(data.updated).toBe(true);
+        expect(typeof data.mtime).toBe('number');
+        expect(data.mtime).toBeGreaterThan(0);
+    });
+
+    // -------------------------------------------------------------------------
+    // GET includes mtime
+    // -------------------------------------------------------------------------
+
+    it('GET /notes/content includes mtime in response', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // Create a file first
+        await putJSON(contentUrl(srv), { path: 'mtime-test.md', content: '# Test' });
+
+        // Read it back
+        const res = await request(getContentUrl(srv, 'mtime-test.md'));
+        expect(res.status).toBe(200);
+        const data = JSON.parse(res.body);
+        expect(data.content).toBe('# Test');
+        expect(typeof data.mtime).toBe('number');
+        expect(data.mtime).toBeGreaterThan(0);
+    });
+
+    // -------------------------------------------------------------------------
+    // Correct mtime — save succeeds
+    // -------------------------------------------------------------------------
+
+    it('PUT with correct expectedMtime returns 200', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // Write initial content
+        const res1 = await putJSON(contentUrl(srv), { path: 'lock.md', content: '# V1' });
+        expect(res1.status).toBe(200);
+        const { mtime: mtime1 } = JSON.parse(res1.body);
+
+        // Save with correct mtime
+        const res2 = await putJSON(contentUrl(srv), {
+            path: 'lock.md', content: '# V2', expectedMtime: mtime1,
+        });
+        expect(res2.status).toBe(200);
+        const data2 = JSON.parse(res2.body);
+        expect(data2.updated).toBe(true);
+        expect(typeof data2.mtime).toBe('number');
+    });
+
+    // -------------------------------------------------------------------------
+    // Stale mtime — 409 Conflict
+    // -------------------------------------------------------------------------
+
+    it('PUT with stale expectedMtime returns 409 with currentContent and currentMtime', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // Write V1
+        const res1 = await putJSON(contentUrl(srv), { path: 'conflict.md', content: '# V1' });
+        expect(res1.status).toBe(200);
+        const { mtime: mtime1 } = JSON.parse(res1.body);
+
+        // External writer changes the file to V2
+        const res2 = await putJSON(contentUrl(srv), { path: 'conflict.md', content: '# V2 (external)' });
+        expect(res2.status).toBe(200);
+
+        // User tries to save with the old (stale) mtime
+        const res3 = await putJSON(contentUrl(srv), {
+            path: 'conflict.md', content: '# V2 (user)', expectedMtime: mtime1,
+        });
+        expect(res3.status).toBe(409);
+        const data3 = JSON.parse(res3.body);
+        expect(data3.error).toBe('conflict');
+        expect(data3.reason).toBe('mtime_mismatch');
+        expect(typeof data3.currentMtime).toBe('number');
+        expect(data3.currentContent).toBe('# V2 (external)');
+    });
+
+    // -------------------------------------------------------------------------
+    // New file with expectedMtime — no conflict
+    // -------------------------------------------------------------------------
+
+    it('PUT with expectedMtime for a non-existent file returns 200 (new file, no conflict)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        const res = await putJSON(contentUrl(srv), {
+            path: 'brand-new.md', content: '# New', expectedMtime: 99999,
+        });
+        expect(res.status).toBe(200);
+        const data = JSON.parse(res.body);
+        expect(data.updated).toBe(true);
+        expect(typeof data.mtime).toBe('number');
+    });
+
+    // -------------------------------------------------------------------------
+    // Mtime round-trip: GET → PUT → GET
+    // -------------------------------------------------------------------------
+
+    it('mtime flows correctly through GET → PUT → subsequent GET', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // Create
+        await putJSON(contentUrl(srv), { path: 'flow.md', content: '# Step 1' });
+
+        // GET to capture mtime
+        const getRes = await request(getContentUrl(srv, 'flow.md'));
+        const { mtime: getMtime } = JSON.parse(getRes.body);
+        expect(typeof getMtime).toBe('number');
+
+        // PUT with that mtime
+        const putRes = await putJSON(contentUrl(srv), {
+            path: 'flow.md', content: '# Step 2', expectedMtime: getMtime,
+        });
+        expect(putRes.status).toBe(200);
+        const { mtime: putMtime } = JSON.parse(putRes.body);
+
+        // Second GET — mtime should match the PUT response
+        const getRes2 = await request(getContentUrl(srv, 'flow.md'));
+        const { mtime: getMtime2, content } = JSON.parse(getRes2.body);
+        expect(content).toBe('# Step 2');
+        expect(Math.round(getMtime2)).toBe(Math.round(putMtime));
+    });
+});

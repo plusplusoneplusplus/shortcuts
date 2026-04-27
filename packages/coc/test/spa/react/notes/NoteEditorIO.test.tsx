@@ -40,10 +40,17 @@ describe('NoteEditorIO', () => {
         });
 
         it('saveContent delegates to notesApi.saveContent', async () => {
-            mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+            mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true, mtime: 1000 });
             const result = await defaultNoteEditorIO.saveContent('ws1', 'p.md', '# Hi');
-            expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', '# Hi');
-            expect(result).toEqual({ path: 'p.md', updated: true });
+            expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', '# Hi', undefined);
+            expect(result).toEqual({ path: 'p.md', updated: true, mtime: 1000 });
+        });
+
+        it('saveContent forwards expectedMtime to notesApi.saveContent', async () => {
+            mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true, mtime: 2000 });
+            const result = await defaultNoteEditorIO.saveContent('ws1', 'p.md', '# Hi', 1000);
+            expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', '# Hi', 1000);
+            expect(result).toEqual({ path: 'p.md', updated: true, mtime: 2000 });
         });
 
         it('uploadImage delegates to notesApi.uploadImage', async () => {

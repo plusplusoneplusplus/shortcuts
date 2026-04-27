@@ -21,6 +21,8 @@ import type { TocEntry } from './noteTocUtils';
 import { extractHeadings } from './noteTocUtils';
 import './noteEditor.css';
 
+import { NoteConflictBanner } from './NoteConflictBanner';
+
 export type NoteViewMode = 'rich' | 'source';
 
 export interface NoteEditorProps {
@@ -58,7 +60,7 @@ export interface NoteEditorProps {
     onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
 }
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
 
 /**
  * Find contiguous changed regions in the editor document from word diff chunks.
@@ -160,6 +162,10 @@ export function NoteEditor({
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
+
+    // Optimistic locking state
+    const mtimeRef = useRef<number | null>(null);
+    const [conflictContent, setConflictContent] = useState<string | null>(null);
 
     // AI edit navigator state
     const [aiEditCount, setAiEditCount] = useState(0);
@@ -280,7 +286,11 @@ export function NoteEditor({
         pendingContentRef.current = null;
         setSaveState('saving');
         try {
-            await ioRef.current.saveContent(workspaceIdRef.current, path, content);
+            const result = await ioRef.current.saveContent(
+                workspaceIdRef.current, path, content,
+                mtimeRef.current ?? undefined,
+            );
+            mtimeRef.current = result.mtime;
             lastSaveAtRef.current = Date.now();
             setSaveState('saved');
             setDirty(false);
@@ -299,8 +309,14 @@ export function NoteEditor({
                     }
                 }
             }
-        } catch {
-            setSaveState('error');
+        } catch (err: any) {
+            if (err?.status === 409) {
+                setConflictContent(err.currentContent ?? null);
+                setSaveState('conflict');
+                pendingContentRef.current = content;
+            } else {
+                setSaveState('error');
+            }
         }
     }, [editor, commentsEnabled]);
 
@@ -325,14 +341,24 @@ export function NoteEditor({
         pendingSourceContentRef.current = null;
         setSaveState('saving');
         try {
-            await ioRef.current.saveContent(workspaceIdRef.current, path, content);
+            const result = await ioRef.current.saveContent(
+                workspaceIdRef.current, path, content,
+                mtimeRef.current ?? undefined,
+            );
+            mtimeRef.current = result.mtime;
             lastSaveAtRef.current = Date.now();
             setSaveState('saved');
             setSourceDirty(false);
             setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
-        } catch {
-            setSaveState('error');
+        } catch (err: any) {
+            if (err?.status === 409) {
+                setConflictContent(err.currentContent ?? null);
+                setSaveState('conflict');
+                pendingSourceContentRef.current = content;
+            } else {
+                setSaveState('error');
+            }
         }
     }, []);
 
@@ -416,7 +442,8 @@ export function NoteEditor({
         const path = notePathRef.current;
         if (!path) return;
         try {
-            const { content } = await ioRef.current.loadContent(workspaceIdRef.current, path);
+            const { content, mtime } = await ioRef.current.loadContent(workspaceIdRef.current, path);
+            mtimeRef.current = mtime;
             setRawMarkdown(content);
             setSourceDirty(false);
             setViewMode('source');
@@ -472,6 +499,43 @@ export function NoteEditor({
         setViewMode('rich');
     }, [rawMarkdown, commentsEnabled, setViewMode]);
 
+    // ── Conflict resolution handlers ────────────────────────────────────────
+
+    const handleConflictKeepMine = useCallback(async () => {
+        mtimeRef.current = null;
+        setConflictContent(null);
+        setSaveState('idle');
+        // Re-trigger save without mtime check (force overwrite)
+        if (viewModeRef.current === 'source') {
+            await flushSourceSave();
+        } else {
+            await flushSave();
+        }
+    }, [flushSave, flushSourceSave]);
+
+    const handleConflictLoadDisk = useCallback(() => {
+        if (!conflictContent) return;
+        const ed = editorRef.current;
+        if (ed && !ed.isDestroyed) {
+            let html = markdownToHtml(conflictContent);
+            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
+            ed.commands.setContent(html, { emitUpdate: false });
+        }
+        setRawMarkdown(conflictContent);
+        pendingContentRef.current = null;
+        pendingSourceContentRef.current = null;
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
+        setDirty(false);
+        setSourceDirty(false);
+        setConflictContent(null);
+        setSaveState('idle');
+        // Refresh mtime from disk
+        ioRef.current.loadContent(workspaceIdRef.current, notePathRef.current!)
+            .then(r => { mtimeRef.current = r.mtime; })
+            .catch(() => {});
+    }, [conflictContent]);
+
     // ── Apply comment marks from threads prop ─────────────────────────────────
 
     const contentLoadedRef = useRef(false);
@@ -506,6 +570,9 @@ export function NoteEditor({
         setRawMarkdown('');
         setSourceDirty(false);
         contentLoadedRef.current = false;
+        // Reset optimistic locking state
+        mtimeRef.current = null;
+        setConflictContent(null);
         // Clear AI edit decorations from previous note
         aiEditRegionsRef.current = [];
         setAiEditCount(0);
@@ -529,8 +596,9 @@ export function NoteEditor({
 
         ioRef.current
             .loadContent(workspaceId, notePath)
-            .then(({ content }) => {
+            .then(({ content, mtime }) => {
                 if (cancelled) return;
+                mtimeRef.current = mtime;
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
 
@@ -936,6 +1004,14 @@ export function NoteEditor({
                 />
             )}
 
+            {/* Conflict banner — between toolbar and editor content */}
+            {saveState === 'conflict' && conflictContent !== null && !editorHidden && (
+                <NoteConflictBanner
+                    onKeepMine={handleConflictKeepMine}
+                    onLoadDisk={handleConflictLoadDisk}
+                />
+            )}
+
             {/* Source editor — mounted only when in source mode */}
             {viewMode === 'source' && !editorHidden && (
                 <div
@@ -1077,6 +1153,11 @@ export function NoteEditor({
                 )}
                 {saveState === 'saved' && (
                     <span className="text-green-600 dark:text-green-400">Saved ✓</span>
+                )}
+                {saveState === 'conflict' && (
+                    <span className="text-amber-600 dark:text-amber-400">
+                        ⚠ Conflict detected
+                    </span>
                 )}
                 {saveState === 'error' && (
                     <span className="text-red-500">

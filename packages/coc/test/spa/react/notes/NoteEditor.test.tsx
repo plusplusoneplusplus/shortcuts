@@ -246,7 +246,7 @@ describe('NoteEditor', () => {
 
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
     });
 
     // ── Debounce resets on rapid edits ──────────────────────────────────
@@ -386,7 +386,7 @@ describe('NoteEditor', () => {
         await act(async () => { document.dispatchEvent(event); });
 
         expect(preventSpy).toHaveBeenCalled();
-        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
     });
 
     it('Cmd+S (metaKey) also suppresses dialog and saves', async () => {
@@ -497,7 +497,7 @@ describe('NoteEditor', () => {
         act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content');
+        expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content', undefined);
         expect(mockSaveContent).not.toHaveBeenCalled();
     });
 
@@ -997,7 +997,7 @@ describe('NoteEditor', () => {
             expect(capturedFlush).not.toBeNull();
             await act(async () => { await capturedFlush!(); });
 
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
         });
     });
 

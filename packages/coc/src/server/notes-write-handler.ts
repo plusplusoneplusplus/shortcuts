@@ -117,7 +117,7 @@ export function registerNotesWriteRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: notePath, content } = body || {};
+            const { path: notePath, content, expectedMtime } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -135,10 +135,34 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
+            // Optimistic locking: if expectedMtime is provided, verify the file
+            // hasn't been modified since the client last read it.
+            if (typeof expectedMtime === 'number') {
+                try {
+                    const stat = await fs.promises.stat(resolved);
+                    if (Math.round(stat.mtimeMs) !== Math.round(expectedMtime)) {
+                        const currentContent = await fs.promises.readFile(resolved, 'utf-8');
+                        return sendJSON(res, 409, {
+                            error: 'conflict',
+                            reason: 'mtime_mismatch',
+                            currentMtime: stat.mtimeMs,
+                            currentContent,
+                        });
+                    }
+                } catch (err: any) {
+                    if (err.code !== 'ENOENT') throw err;
+                    // New file — no conflict possible
+                }
+            }
+
             try {
+                // Atomic write: write to temp file then rename
+                const tmpPath = resolved + '.tmp';
                 await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
-                await fs.promises.writeFile(resolved, content, 'utf-8');
-                sendJSON(res, 200, { path: notePath, updated: true });
+                await fs.promises.writeFile(tmpPath, content, 'utf-8');
+                await fs.promises.rename(tmpPath, resolved);
+                const writtenStat = await fs.promises.stat(resolved);
+                sendJSON(res, 200, { path: notePath, updated: true, mtime: writtenStat.mtimeMs });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to write file: ' + (err.message || 'Unknown error'));
             }
