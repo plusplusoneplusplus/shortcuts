@@ -24,6 +24,7 @@ import { MermaidBlock } from './extensions/mermaidBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
+import { FilePathNodeExtension } from './filePathNodeExtension';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export function RichEditorCore({
             Highlight.configure({ multicolor: true }),
             ResizableImage.configure({ inline: false, allowBase64: false }),
             NoteLinkExtension,
+            FilePathNodeExtension,
             AiEditDecorationExtension,
             ...(commentsEnabled
                 ? [

@@ -46,6 +46,37 @@ const noteLinkExtension: marked.MarkedExtension = {
 };
 marked.use(noteLinkExtension);
 
+// Add file-path reference syntax support to marked
+// Detects paths like `tasks/coc/foo.plan.md` and wraps them in <span class="file-ref-link">
+const filePathExtension: marked.MarkedExtension = {
+    extensions: [
+        {
+            name: 'filePathRef',
+            level: 'inline' as const,
+            start(src: string) {
+                // Look for the start of a path segment (word char or dot)
+                const m = /[a-zA-Z0-9_.]/.exec(src);
+                return m ? m.index : -1;
+            },
+            tokenizer(src: string) {
+                // Must not be inside a URL (preceded by :// or @ or # or " or ')
+                // Requires at least one `/` and a known extension
+                const match = /^([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|txt|py|go|sh|rs|css|html))(?=[^/a-zA-Z0-9_.-]|$)/.exec(src);
+                if (!match) return undefined;
+                return {
+                    type: 'filePathRef',
+                    raw: match[0],
+                    filePath: match[1],
+                };
+            },
+            renderer(token: { filePath: string }) {
+                return `<span class="file-ref-link" data-file-path="${token.filePath}">${token.filePath}</span>`;
+            },
+        },
+    ],
+};
+marked.use(filePathExtension);
+
 // Add ==highlight== syntax support to marked
 const highlightExtension: marked.MarkedExtension = {
     extensions: [
@@ -264,6 +295,20 @@ turndown.addRule('noteLink', {
         const path = el.getAttribute('data-note-path') ?? '';
         const heading = el.getAttribute('data-note-heading') ?? '';
         return heading ? `[[note:${path}#${heading}]]` : `[[note:${path}]]`;
+    },
+});
+
+// File-path reference spans: <span class="file-ref-link" data-file-path="..."> → plain text path
+turndown.addRule('filePathRef', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            (node as Element).classList.contains('file-ref-link') &&
+            node.hasAttribute('data-file-path')
+        );
+    },
+    replacement(_content, node) {
+        return (node as HTMLElement).getAttribute('data-file-path') ?? '';
     },
 });
 

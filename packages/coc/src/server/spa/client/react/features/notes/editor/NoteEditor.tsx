@@ -22,6 +22,7 @@ import { extractHeadings } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
+import { FilePreviewTooltip } from './FilePreviewTooltip';
 
 export type NoteViewMode = 'rich' | 'source';
 
@@ -768,6 +769,68 @@ export function NoteEditor({
         return () => container.removeEventListener('click', handler);
     }, []);
 
+    // ── File-path reference hover & click handlers ─────────────────────────
+
+    const [filePreviewTooltip, setFilePreviewTooltip] = useState<{
+        filePath: string;
+        anchorEl: HTMLElement;
+    } | null>(null);
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const container = editorScrollContainerRef.current;
+        if (!container) return;
+
+        const handleMouseEnter = (e: MouseEvent) => {
+            const target = (e.target as HTMLElement).closest?.('.file-ref-link') as HTMLElement | null;
+            if (!target) return;
+            const fp = target.getAttribute('data-file-path');
+            if (!fp) return;
+            // Debounce: wait 300ms before showing tooltip
+            if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = setTimeout(() => {
+                setFilePreviewTooltip({ filePath: fp, anchorEl: target });
+            }, 300);
+        };
+
+        const handleMouseLeave = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            const related = e.relatedTarget as HTMLElement | null;
+            // Don't dismiss if moving to the tooltip itself
+            if (related?.closest?.('.file-preview-tooltip-card')) return;
+            if (target.closest?.('.file-ref-link')) {
+                if (hoverTimerRef.current) {
+                    clearTimeout(hoverTimerRef.current);
+                    hoverTimerRef.current = null;
+                }
+                setFilePreviewTooltip(null);
+            }
+        };
+
+        const handleClick = (e: MouseEvent) => {
+            const target = (e.target as HTMLElement).closest?.('.file-ref-link');
+            if (!target) return;
+            e.preventDefault();
+            const fp = target.getAttribute('data-file-path');
+            if (!fp) return;
+            // Navigate to the file — if it ends with .md and looks like a note, use note navigation
+            if (fp.endsWith('.md') && onNavigateToNoteRef.current) {
+                onNavigateToNoteRef.current(fp);
+            }
+            setFilePreviewTooltip(null);
+        };
+
+        container.addEventListener('mouseover', handleMouseEnter);
+        container.addEventListener('mouseout', handleMouseLeave);
+        container.addEventListener('click', handleClick);
+        return () => {
+            container.removeEventListener('mouseover', handleMouseEnter);
+            container.removeEventListener('mouseout', handleMouseLeave);
+            container.removeEventListener('click', handleClick);
+            if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+        };
+    }, []);
+
     // ── Auto-reload on notes-changed WS event (with diff decorations) ───
 
     useEffect(() => {
@@ -1138,6 +1201,22 @@ export function NoteEditor({
                     />
                 );
             })()}
+
+            {/* File path reference hover tooltip */}
+            {filePreviewTooltip && (
+                <FilePreviewTooltip
+                    filePath={filePreviewTooltip.filePath}
+                    workspaceId={workspaceId}
+                    anchorEl={filePreviewTooltip.anchorEl}
+                    onOpen={(fp, type) => {
+                        if (type === 'note' && onNavigateToNote) {
+                            onNavigateToNote(fp);
+                        }
+                        setFilePreviewTooltip(null);
+                    }}
+                    onMouseLeave={() => setFilePreviewTooltip(null)}
+                />
+            )}
 
             {/* Save indicator */}
             <div className="absolute bottom-3 right-3 text-xs select-none" data-testid="save-indicator">
