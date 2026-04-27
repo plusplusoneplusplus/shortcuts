@@ -77,9 +77,16 @@ export interface ChatDetailProps {
      * redundant or would conflict with the host UI.
      */
     disableScratchpad?: boolean;
+    /**
+     * Text prefix to prepend to the next follow-up message (e.g. note reference text).
+     * Automatically prepended when the user sends and then cleared via onClearPendingPrefix.
+     */
+    pendingPrefix?: string;
+    /** Called after pendingPrefix has been consumed (prepended and sent). */
+    onClearPendingPrefix?: () => void;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false, disableScratchpad = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -342,6 +349,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         clearAttachedContext: attachedContext.clear,
         modelOverride: modelCommand.modelOverride,
     });
+
+    const sendFollowUpWithPrefix = useCallback(async (overrideContent?: string, deliveryMode?: any) => {
+        if (pendingPrefix) {
+            const base = overrideContent ?? followUpInputRef.current;
+            const prefixed = pendingPrefix + (base ? base : '');
+            onClearPendingPrefix?.();
+            return sendFollowUp(prefixed, deliveryMode);
+        }
+        return sendFollowUp(overrideContent, deliveryMode);
+    }, [pendingPrefix, onClearPendingPrefix, sendFollowUp, followUpInputRef]);
 
     const { stopStreaming } = useChatSSE({
         taskId,
@@ -912,7 +929,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             setFollowUpInput={setFollowUpInput}
                             selectedMode={selectedMode}
                             setSelectedMode={setSelectedMode}
-                            onSend={sendFollowUp}
+                            onSend={sendFollowUpWithPrefix}
                             onRetry={retryLastMessage}
                             onStop={handleStop}
                             skills={skills}
@@ -994,7 +1011,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     setFollowUpInput={setFollowUpInput}
                     selectedMode={selectedMode}
                     setSelectedMode={setSelectedMode}
-                    onSend={sendFollowUp}
+                    onSend={sendFollowUpWithPrefix}
                     onRetry={retryLastMessage}
                     onStop={handleStop}
                     skills={skills}

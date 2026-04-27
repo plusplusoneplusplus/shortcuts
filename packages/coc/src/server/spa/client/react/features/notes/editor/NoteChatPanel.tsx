@@ -244,6 +244,15 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             contentStatus={chatNoteContext?.contentStatus ?? null}
                         />
                     )}
+                    {references && references.length > 0 && (
+                        <div className="px-3 pt-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <NoteReferenceChips
+                                references={references}
+                                onRemove={onRemoveReference ?? (() => {})}
+                                className="mb-2"
+                            />
+                        </div>
+                    )}
                     <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}
@@ -253,6 +262,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         hideModeSelector
                         disableScratchpad
                         onBack={onClose}
+                        pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
+                        onClearPendingPrefix={onClearReferences}
                     />
                 </ChatPreferencesProvider>
             )}
