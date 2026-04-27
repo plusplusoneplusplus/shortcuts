@@ -314,7 +314,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     skills: {
         autoUpdate: true,
-        defaultSkills: ['rethink'],
+        defaultSkills: ['rethink', 'kb-refresh'],
     },
 };
 
@@ -508,7 +508,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         skills: {
             autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
-            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? ['rethink'],
+            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? ['rethink', 'kb-refresh'],
         },
     };
 }
