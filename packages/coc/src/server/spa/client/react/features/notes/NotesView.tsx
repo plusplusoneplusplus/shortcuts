@@ -29,12 +29,19 @@ export interface NotesViewProps {
     defaultScope?: ChatScope;
 }
 
+const MAX_NAV_HISTORY = 50;
+
 export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPanelOpenProp, onToggleChatPanel: onToggleChatPanelProp, defaultScope }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
+
+    // ── Navigation history ──────────────────────────────────────────────────
+
+    const [navHistory, setNavHistory] = useState<string[]>([]);
+    const [historyIndex, setHistoryIndex] = useState<number>(-1);
 
     // ── Internal chat panel state (used when parent doesn't control it) ──────
 
@@ -220,6 +227,12 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
 
     // ── Navigation ──────────────────────────────────────────────────────────
 
+    // Reset history when workspace changes
+    useEffect(() => {
+        setNavHistory([]);
+        setHistoryIndex(-1);
+    }, [workspaceId]);
+
     // Sync from external deep-link changes (e.g. back/forward navigation)
     useEffect(() => {
         if (initialNotePath !== undefined && initialNotePath !== selectedPath) {
@@ -236,12 +249,39 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         }
     }, [workspaceId]);
 
+    const selectedPathRef = useRef<string | null>(selectedPath);
+    useEffect(() => { selectedPathRef.current = selectedPath; }, [selectedPath]);
+
+    const pushHistory = useCallback((newPath: string) => {
+        const prev = selectedPathRef.current;
+        if (!prev || prev === newPath) return;
+        setNavHistory(h => {
+            // Discard any forward stack, push the previous path
+            const base = h.slice(0, historyIndex + 1);
+            const next = [...base, prev];
+            return next.length > MAX_NAV_HISTORY ? next.slice(next.length - MAX_NAV_HISTORY) : next;
+        });
+        setHistoryIndex(i => Math.min(i + 1, MAX_NAV_HISTORY - 1));
+    }, [historyIndex]);
+
+    const handleGoBack = useCallback(() => {
+        if (historyIndex < 0) return;
+        const prev = navHistory[historyIndex];
+        setHistoryIndex(i => i - 1);
+        setSelectedPath(prev);
+        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: prev });
+        updateHash(prev);
+    }, [navHistory, historyIndex, dispatch, updateHash]);
+
+    const canGoBack = historyIndex >= 0;
+
     const handleSelectPage = useCallback((path: string) => {
+        pushHistory(path);
         setSelectedPath(path);
         dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
         updateHash(path);
         if (isMobile) setSidebarOpen(false);
-    }, [isMobile, dispatch, updateHash]);
+    }, [isMobile, dispatch, updateHash, pushHistory]);
 
     const handleNavigateToNote = useCallback((path: string, heading?: string) => {
         handleSelectPage(path);
@@ -320,6 +360,8 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onNoteRenamed={handleNoteRenamed}
                     onNoteCreated={handleNoteCreated}
                     onNoteDeleted={handleNoteDeleted}
+                    canGoBack={canGoBack}
+                    onGoBack={handleGoBack}
                 />
             </ResponsiveSidebar>
 

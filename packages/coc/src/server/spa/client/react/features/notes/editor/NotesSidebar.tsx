@@ -30,9 +30,11 @@ export interface NotesSidebarProps {
     onNoteRenamed?: (oldPath: string, newPath: string) => void;
     onNoteCreated?: (path: string) => void;
     onNoteDeleted?: (path: string) => void;
+    canGoBack?: boolean;
+    onGoBack?: () => void;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack }: NotesSidebarProps) {
     const { tree, notesRoot, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -234,6 +236,18 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         <div className="flex flex-col h-full" data-testid="notes-sidebar">
             {/* Toolbar */}
             <div className="h-10 flex items-center gap-1 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onGoBack}
+                    disabled={!canGoBack}
+                    data-testid="notes-back-btn"
+                    aria-label="Go to previous note"
+                    title="Go to previous note"
+                    className={!canGoBack ? 'opacity-40 cursor-not-allowed' : ''}
+                >
+                    ←
+                </Button>
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">Notes</span>
                 <Button
                     variant="ghost"
