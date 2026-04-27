@@ -45,6 +45,47 @@ export interface CodeBlockRenderOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+const MIN_CHARS = 4;  // floor: prevents near-invisible columns
+const MAX_CHARS = 60; // ceiling: prevents one long column dominating
+
+/**
+ * Compute proportional percentage widths for each table column based on
+ * the maximum raw text length observed in headers and data cells.
+ *
+ * Each column's character count is clamped to [MIN_CHARS, MAX_CHARS] before
+ * computing the percentage share so that a single long column cannot dwarf
+ * everything else and tiny columns (e.g. "#") still get a readable slice.
+ *
+ * Rounding drift is corrected by adjusting the last column so the total
+ * always equals exactly 100.
+ */
+function computeColumnWidths(table: ParsedTable): number[] {
+    const colCount = table.headers.length;
+    if (colCount === 0) return [];
+
+    const clamped = table.headers.map((header, i) => {
+        let maxLen = header.length;
+        for (const row of table.rows) {
+            const cellLen = (row[i] ?? '').length;
+            if (cellLen > maxLen) maxLen = cellLen;
+        }
+        return Math.min(Math.max(maxLen, MIN_CHARS), MAX_CHARS);
+    });
+
+    const total = clamped.reduce((sum, v) => sum + v, 0);
+    const pct = clamped.map(v => Math.round(v / total * 100));
+
+    // Correct rounding drift so percentages sum to exactly 100
+    const drift = 100 - pct.reduce((sum, v) => sum + v, 0);
+    pct[colCount - 1] += drift;
+
+    return pct;
+}
+
+// ---------------------------------------------------------------------------
 // Renderers
 // ---------------------------------------------------------------------------
 
@@ -54,6 +95,10 @@ export interface CodeBlockRenderOptions {
  * The output intentionally mirrors the CSS class names used by the
  * review-editor webview so that the same stylesheet works for both
  * the VS Code extension and the CoC SPA.
+ *
+ * A `<colgroup>` with content-proportional widths is always emitted so that
+ * the `table-layout: fixed` CSS rule distributes space meaningfully instead
+ * of splitting it equally across all columns.
  */
 export function renderTable(table: ParsedTable, options?: TableRenderOptions): string {
     const fmt = options?.formatCell ?? escapeHtml;
@@ -61,6 +106,14 @@ export function renderTable(table: ParsedTable, options?: TableRenderOptions): s
     let html = '<div class="md-table-container" data-start-line="' + table.startLine +
                '" data-end-line="' + (table.endLine - 1) + '" data-table-id="' + table.id + '">';
     html += '<table class="md-table">';
+
+    // Colgroup for proportional column widths
+    const widths = computeColumnWidths(table);
+    if (widths.length > 0) {
+        html += '<colgroup>';
+        widths.forEach(w => { html += '<col style="width: ' + w + '%">'; });
+        html += '</colgroup>';
+    }
 
     // Header
     const headerLineNum = table.startLine;

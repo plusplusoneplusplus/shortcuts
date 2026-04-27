@@ -594,6 +594,7 @@
     border-collapse: collapse;
     width: 100%;
     min-width: 380px;
+    table-layout: fixed;
 }
 
 .markdown-body .md-table th,

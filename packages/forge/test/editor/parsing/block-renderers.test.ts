@@ -134,6 +134,100 @@ describe('renderTable', () => {
     });
 });
 
+// ─── renderTable — colgroup ──────────────────────────────────────────
+
+describe('renderTable — colgroup', () => {
+    it('emits <colgroup> and <col> elements', () => {
+        const table = makeTable();
+        const html = renderTable(table);
+
+        expect(html).toContain('<colgroup>');
+        expect(html).toContain('<col ');
+        expect(html).toContain('</colgroup>');
+    });
+
+    it('widths sum to exactly 100 for a 3-column table', () => {
+        const table = makeTable({
+            headers: ['#', 'Name', 'Description'],
+            alignments: ['left', 'left', 'left'],
+            rows: [['1', 'Alice', 'A very long description that goes on and on']],
+        });
+        const html = renderTable(table);
+
+        const matches = [...html.matchAll(/width:\s*(\d+)%/g)];
+        const widths = matches.map(m => parseInt(m[1], 10));
+        const sum = widths.reduce((a, b) => a + b, 0);
+        expect(sum).toBe(100);
+    });
+
+    it('narrow column gets a smaller percentage than a wide column', () => {
+        const table = makeTable({
+            headers: ['#', 'Description'],
+            alignments: ['left', 'left'],
+            rows: [
+                ['1', 'A very long description that spans many characters'],
+                ['2', 'Another long description with lots of content here'],
+            ],
+        });
+        const html = renderTable(table);
+
+        const matches = [...html.matchAll(/width:\s*(\d+)%/g)];
+        const widths = matches.map(m => parseInt(m[1], 10));
+        expect(widths.length).toBe(2);
+        expect(widths[0]).toBeLessThan(widths[1]);
+    });
+
+    it('single column gets 100%', () => {
+        const table = makeTable({
+            headers: ['Title'],
+            alignments: ['left'],
+            rows: [['Some title'], ['Another title']],
+        });
+        const html = renderTable(table);
+
+        expect(html).toContain('width: 100%');
+        const colCount = (html.match(/<col /g) || []).length;
+        expect(colCount).toBe(1);
+    });
+
+    it('equal-length columns share widths within rounding tolerance', () => {
+        const table = makeTable({
+            headers: ['A', 'B', 'C'],
+            alignments: ['left', 'left', 'left'],
+            rows: [['x', 'y', 'z']],
+        });
+        const html = renderTable(table);
+
+        const matches = [...html.matchAll(/width:\s*(\d+)%/g)];
+        const widths = matches.map(m => parseInt(m[1], 10));
+        expect(widths.length).toBe(3);
+        // All 3 columns have equal single-char content → widths ≈ 33/33/34
+        const maxW = Math.max(...widths);
+        const minW = Math.min(...widths);
+        expect(maxW - minW).toBeLessThanOrEqual(2); // only rounding drift
+    });
+
+    it('very long cell content is capped so other columns get a fair share', () => {
+        const longContent = 'x'.repeat(200); // well above MAX_CHARS (60)
+        const table = makeTable({
+            headers: ['Short', 'Long'],
+            alignments: ['left', 'left'],
+            rows: [['tiny', longContent]],
+        });
+        const html = renderTable(table);
+
+        const matches = [...html.matchAll(/width:\s*(\d+)%/g)];
+        const widths = matches.map(m => parseInt(m[1], 10));
+        expect(widths.length).toBe(2);
+        // Long column is capped at MAX_CHARS=60; Short is clamped to MIN_CHARS=4.
+        // So Long share = 60/(60+4) ≈ 94%, Short ≈ 6%.
+        // The long column should not reach 100%.
+        expect(widths[1]).toBeLessThan(100);
+        expect(widths[0]).toBeGreaterThan(0);
+        expect(widths[0] + widths[1]).toBe(100);
+    });
+});
+
 // ─── renderCodeBlock ─────────────────────────────────────────────────
 
 describe('renderCodeBlock', () => {
