@@ -254,12 +254,34 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(redirectCalls.length).toBe(0);
     });
 
-    it('classic mode: switching to classic DOES redirect away from work-items', () => {
+    it('classic mode: switching to classic does NOT redirect away from work-items', () => {
         mockUiLayoutMode = 'classic';
         mockActiveRepoSubTab = 'work-items';
         renderDetail();
 
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        // Work Items tab is now visible in classic mode — should NOT redirect
+        const redirectCalls = mockDispatch.mock.calls.filter(
+            (c: any[]) => c[0]?.type === 'SET_REPO_SUB_TAB' && c[0]?.tab === 'activity'
+        );
+        expect(redirectCalls.length).toBe(0);
+    });
+
+    it('classic mode: Work Items tab button is present in the tab strip', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'activity';
+        const { container } = renderDetail();
+
+        const workItemsTab = container.querySelector('[data-subtab="work-items"]');
+        expect(workItemsTab).toBeTruthy();
+    });
+
+    it('dev-workflow mode: Work Items tab button is present in the tab strip', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        const { container } = renderDetail();
+
+        const workItemsTab = container.querySelector('[data-subtab="work-items"]');
+        expect(workItemsTab).toBeTruthy();
     });
 });
 

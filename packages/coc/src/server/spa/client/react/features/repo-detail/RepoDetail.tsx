@@ -151,10 +151,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
-            // Classic: replace Chats with Activity, hide Work Items, relabel Tasks as Plans
+            // Classic: replace Chats with Activity, relabel Tasks as Plans
             tabs = tabs
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .filter(t => t.key !== 'work-items')
                 .map(t => t.key === 'tasks' ? { ...t, label: 'Plans' } : t);
         } else {
             // Dev-workflow: relabel and reorder tabs
@@ -218,7 +217,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     // Redirect when switching layout modes
     useEffect(() => {
-        if (uiLayoutMode === 'classic' && (activeSubTab === 'chats' || activeSubTab === 'work-items')) {
+        if (uiLayoutMode === 'classic' && activeSubTab === 'chats') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
