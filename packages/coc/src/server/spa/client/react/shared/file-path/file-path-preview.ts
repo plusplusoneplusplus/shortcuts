@@ -7,6 +7,8 @@
 
 import { getApiBase } from '../../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
+import { openLink } from '../../utils/link-handler';
 
 interface WorkspaceInfo {
     id: string;
@@ -641,9 +643,9 @@ function initFilePathPreviewDelegation(): void {
         const href = target.getAttribute('data-href');
         if (!href) return;
 
-        // External URLs — open in new tab
+        // External URLs — open using link-handler (may redirect to desktop app)
         if (/^https?:\/\/|^mailto:/i.test(href)) {
-            window.open(href, '_blank', 'noopener');
+            openLink(href, getLinkHandlersConfig());
             return;
         }
 

@@ -391,6 +391,12 @@ describe('readPreferences / writePreferences', () => {
         const loaded = readRepoPreferences(tmpDir, 'repo-a');
         expect(loaded.skillTemplates).toEqual(templates);
     });
+
+    it('round-trips linkHandlers through write and read', () => {
+        writePreferences(tmpDir, { global: { linkHandlers: { teams: true, onenote: false } } });
+        const loaded = readPreferences(tmpDir);
+        expect(loaded.global?.linkHandlers).toEqual({ teams: true, onenote: false });
+    });
 });
 
 describe('validatePreferences', () => {
@@ -945,6 +951,45 @@ describe('validateGlobalPreferences', () => {
         const result = validateGlobalPreferences({ theme: 'dark', uiLayoutMode: 'dev-workflow' });
         expect(result.theme).toBe('dark');
         expect(result.uiLayoutMode).toBe('dev-workflow');
+    });
+
+    // -- linkHandlers field --
+
+    it('accepts valid linkHandlers map of boolean values', () => {
+        const result = validateGlobalPreferences({ linkHandlers: { teams: true, vscode: false } });
+        expect(result.linkHandlers).toEqual({ teams: true, vscode: false });
+    });
+
+    it('accepts single-entry linkHandlers', () => {
+        expect(validateGlobalPreferences({ linkHandlers: { onenote: true } })).toEqual({ linkHandlers: { onenote: true } });
+    });
+
+    it('filters out non-boolean values from linkHandlers', () => {
+        const result = validateGlobalPreferences({ linkHandlers: { teams: true, vscode: 'yes', onenote: 1 } });
+        expect(result.linkHandlers).toEqual({ teams: true });
+    });
+
+    it('omits linkHandlers when all values are non-boolean', () => {
+        const result = validateGlobalPreferences({ linkHandlers: { teams: 'yes', vscode: 42 } });
+        expect(result.linkHandlers).toBeUndefined();
+    });
+
+    it('rejects non-object linkHandlers', () => {
+        expect(validateGlobalPreferences({ linkHandlers: 'teams' })).toEqual({});
+        expect(validateGlobalPreferences({ linkHandlers: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ linkHandlers: null })).toEqual({});
+        expect(validateGlobalPreferences({ linkHandlers: ['teams'] })).toEqual({});
+    });
+
+    it('strips empty-string keys from linkHandlers', () => {
+        const result = validateGlobalPreferences({ linkHandlers: { '': true, teams: true } });
+        expect(result.linkHandlers).toEqual({ teams: true });
+    });
+
+    it('accepts linkHandlers alongside other global fields', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', linkHandlers: { teams: true } });
+        expect(result.theme).toBe('dark');
+        expect(result.linkHandlers).toEqual({ teams: true });
     });
 });
 

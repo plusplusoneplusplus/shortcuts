@@ -25,6 +25,8 @@ import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
+import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
+import { openLink } from '../../../utils/link-handler';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,10 @@ export function RichEditorCore({
 
     const handlePasteRef = useRef(handlePaste);
     handlePasteRef.current = handlePaste;
+
+    const [linkHandlerConfig] = useLinkHandlers();
+    const linkHandlerConfigRef = useRef(linkHandlerConfig);
+    linkHandlerConfigRef.current = linkHandlerConfig;
 
     const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
         onChangeRef.current?.(ed as Editor);
@@ -111,13 +117,13 @@ export function RichEditorCore({
                 const $pos = state.doc.resolve(pos);
                 const linkMark = $pos.marks().find((m: any) => m.type.name === 'link');
                 if (linkMark?.attrs.href) {
-                    window.open(linkMark.attrs.href, '_blank', 'noopener');
+                    openLink(linkMark.attrs.href, linkHandlerConfigRef.current);
                     return true;
                 }
                 // Fallback: check if the DOM target is an <a> element
                 const anchor = (event.target as HTMLElement).closest?.('a');
                 if (anchor?.href) {
-                    window.open(anchor.href, '_blank', 'noopener');
+                    openLink(anchor.href, linkHandlerConfigRef.current);
                     return true;
                 }
                 return false;

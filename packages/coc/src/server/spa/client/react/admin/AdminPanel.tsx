@@ -14,6 +14,8 @@ import { DbBrowserSection } from './DbBrowserSection';
 import { useApp } from '../contexts/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
+import { useLinkHandlers } from '../hooks/useLinkHandlers';
+import { getLinkHandlersMeta } from '../utils/link-handler';
 import type { AdminSubTab } from '../types/dashboard';
 
 const StorageSection = lazy(() => import('./StorageSection'));
@@ -87,6 +89,9 @@ export function AdminPanel() {
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
+
+    // Link handlers — shared module-level state via hook
+    const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
 
     // Per-card saving state
     const [aiExecSaving, setAiExecSaving] = useState(false);
@@ -1186,6 +1191,34 @@ export function AdminPanel() {
                                         </div>
                                     </div>
                                 </SettingsCard>
+
+                                {/* ── 5. Link Handlers ── */}
+                                <SettingsCard
+                                    title="Link Handlers"
+                                    badge="Global"
+                                    description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
+                                    data-testid="settings-link-handlers"
+                                >
+                                    {getLinkHandlersMeta().map(meta => (
+                                        <div key={meta.name} className="flex items-center justify-between">
+                                            <div>
+                                                <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">{meta.label}</div>
+                                                <div className="text-xs text-[#616161] dark:text-[#999]">{meta.description}</div>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer ml-4">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={linkHandlersConfig[meta.name] === true}
+                                                    onChange={e => setHandlerEnabled(meta.name, e.target.checked)}
+                                                    data-testid={`toggle-link-handler-${meta.name}`}
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    ))}
+                                </SettingsCard>
+
                                 <SettingsCard
                                     title="Advanced & Recovery"
                                     badge="Advanced"

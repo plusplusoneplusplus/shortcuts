@@ -95,6 +95,13 @@ export interface GlobalPreferences {
 
     /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
     uiLayoutMode?: 'classic' | 'dev-workflow';
+
+    /**
+     * Per-handler enabled/disabled overrides for the link-handler feature.
+     * Keys are handler names (e.g. 'teams', 'vscode', 'onenote').
+     * `true` = handler is enabled; `false` or absent = disabled (default).
+     */
+    linkHandlers?: Record<string, boolean>;
 }
 
 /** Per-repository UI preferences. */
@@ -225,6 +232,18 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
 
     if (obj.uiLayoutMode === 'classic' || obj.uiLayoutMode === 'dev-workflow') {
         result.uiLayoutMode = obj.uiLayoutMode;
+    }
+
+    if (typeof obj.linkHandlers === 'object' && obj.linkHandlers !== null && !Array.isArray(obj.linkHandlers)) {
+        const validated: Record<string, boolean> = {};
+        for (const [key, value] of Object.entries(obj.linkHandlers as Record<string, unknown>)) {
+            if (typeof key === 'string' && key.length > 0 && typeof value === 'boolean') {
+                validated[key] = value;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.linkHandlers = validated;
+        }
     }
 
     return result;
