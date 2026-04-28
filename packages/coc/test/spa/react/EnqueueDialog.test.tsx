@@ -60,10 +60,10 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
 }
 
 // Helper to open dialog via dispatch
-function DialogOpener({ folderPath, workspaceId, mode }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve' }) {
+function DialogOpener({ folderPath, workspaceId, mode, contextFiles }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve'; contextFiles?: string[] | null }) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode });
+        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode, contextFiles });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 }
@@ -614,6 +614,37 @@ describe('EnqueueDialog', () => {
 
         // Enqueue should now be enabled even without prompt
         expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('enables submit button when contextFiles are present but no skill and no prompt', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/summary')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ workflows: [], tasks: {
+                        name: 'tasks', relativePath: '', children: [],
+                    } }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" contextFiles={['/tasks/feature.plan.md']} />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Run Skill')).toBeTruthy();
+        });
+
+        // Button should be enabled immediately — contextFiles make skill+prompt optional
+        const enqueueBtn = screen.getByText('Enqueue') as HTMLButtonElement;
+        expect(enqueueBtn.disabled).toBe(false);
     });
 
     it('renders ImagePreviews paste hint below the prompt input', async () => {

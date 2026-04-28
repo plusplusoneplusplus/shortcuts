@@ -243,7 +243,7 @@ export function EnqueueDialog() {
         const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
         const effectivePrompt = rawText.trim();
 
-        if (effectiveSkills.length === 0 && !effectivePrompt && !isResolveMode) return;
+        if (effectiveSkills.length === 0 && !effectivePrompt && !contextFiles.length && !isResolveMode) return;
 
         // Resolve mode: delegate to the resolve callback instead of the queue API
         if (isResolveMode && queueState.dialogResolveContext) {
@@ -751,7 +751,7 @@ export function EnqueueDialog() {
                         ? false
                         : activeTab === 'templates'
                             ? selectedTemplateId === null
-                            : selectedSkills.length === 0 && !prompt.trim()
+                            : selectedSkills.length === 0 && !prompt.trim() && !hasContextFiles
                 }
                 title="Ctrl+Enter"
             >
