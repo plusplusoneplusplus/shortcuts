@@ -19,6 +19,7 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-util
 import type { Route } from './types';
 import { getRepoDataPath } from './paths';
 import { readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
+import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 
 // ============================================================================
 // Helpers
@@ -38,6 +39,10 @@ function getCopilotDir(): string {
 
 function isAllowedPath(resolved: string, wsDataDir: string): boolean {
     return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
+}
+
+function isSystemFolder(notesRoot: string, resolvedPath: string): boolean {
+    return SYSTEM_FOLDER_NAMES.some(name => resolvedPath === path.join(notesRoot, name));
 }
 
 // ============================================================================
@@ -201,6 +206,10 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
+            if (isSystemFolder(notesRoot, resolvedOld)) {
+                return sendError(res, 403, 'Cannot rename a system folder');
+            }
+
             // Check source exists
             try {
                 await fs.promises.access(resolvedOld);
@@ -269,6 +278,10 @@ export function registerNotesWriteRoutes(
 
             if (!isWithinDirectory(resolved, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            if (isSystemFolder(notesRoot, resolved)) {
+                return sendError(res, 403, 'Cannot delete a system folder');
             }
 
             let stat: fs.Stats;

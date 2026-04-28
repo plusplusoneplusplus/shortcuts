@@ -20,6 +20,7 @@ import type { Route } from './types';
 import { getRepoDataPath } from './paths';
 import type { ResolvedCLIConfig } from '../config';
 import { readOrderFile, applyOrder } from './notes-order';
+import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 
 // ============================================================================
 // Types
@@ -200,8 +201,15 @@ export function registerNotesRoutes(
             const notesRoot = getNotesRoot(dataDir, ws.id);
             await ensureNotesRoot(notesRoot);
 
+            // Auto-create system folders so they always appear in the tree
+            await Promise.all(
+                SYSTEM_FOLDER_NAMES.map(name =>
+                    fs.promises.mkdir(path.join(notesRoot, name), { recursive: true }),
+                ),
+            );
+
             const tree = await buildTree(notesRoot, '');
-            sendJSON(res, 200, { tree, notesRoot });
+            sendJSON(res, 200, { tree, notesRoot, systemFolders: SYSTEM_FOLDER_NAMES });
         },
     });
 
