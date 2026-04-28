@@ -40,6 +40,7 @@ import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
+import { getRepoDataPath } from '../paths';
 import { BaseExecutor } from './base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';
 import { isValidTaskFolder } from './auto-folder-utils';
@@ -188,12 +189,19 @@ export class FollowUpExecutor extends BaseExecutor {
         let autoFolderContextForFollowUp: AutoFolderContext | undefined;
         const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this._resolveWorkspaceIdForPath(workingDirectory) : undefined);
         if (workingDirectory) {
-            const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
-            const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+            let folderRoot: string;
+            const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+            if (currentMode === 'plan') {
+                folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId!, 'notes'), 'Plans');
+                await fs.promises.mkdir(folderRoot, { recursive: true }).catch(() => {});
+            } else {
+                folderRoot = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
+            }
+            const entries = await fs.promises.readdir(folderRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
             const existingFolders = entries
                 .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
                 .map(e => e.name);
-            autoFolderContextForFollowUp = { tasksRoot, existingFolders };
+            autoFolderContextForFollowUp = { tasksRoot: folderRoot, existingFolders };
         }
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, {
             processId,

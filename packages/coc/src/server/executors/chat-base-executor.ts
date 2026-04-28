@@ -45,6 +45,7 @@ import {
 import type { ChatPayload } from '../task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { resolveTaskRoot } from '../task-root-resolver';
+import { getRepoDataPath } from '../paths';
 import { BaseExecutor } from './base-executor';
 import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';
 import { isValidTaskFolder } from './auto-folder-utils';
@@ -161,25 +162,40 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     // Shared helper — auto-folder context (used by ask and plan modes)
     // ========================================================================
 
-    /** Resolve the tasks-root directory and list existing sub-folders. */
+    /**
+     * Resolve the target root directory and list existing sub-folders.
+     *
+     * When `isPlanMode` is true the target root is `notes/Plans/` (auto-created)
+     * so that plan files land in the Notes tab rather than the Tasks tree.
+     * All other modes continue to use the tasks root.
+     */
     protected async buildAutoFolderContext(
         workingDirectory: string,
         workspaceId?: string,
+        isPlanMode?: boolean,
     ): Promise<AutoFolderContext> {
         const wsId = workspaceId || await this.resolveWorkspaceIdForPathFn(workingDirectory);
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-        const tasksRoot = resolveTaskRoot({
-            dataDir: effectiveDataDir,
-            rootPath: workingDirectory,
-            workspaceId: wsId,
-        }).absolutePath;
+
+        let folderRoot: string;
+        if (isPlanMode) {
+            folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId, 'notes'), 'Plans');
+            await fs.promises.mkdir(folderRoot, { recursive: true });
+        } else {
+            folderRoot = resolveTaskRoot({
+                dataDir: effectiveDataDir,
+                rootPath: workingDirectory,
+                workspaceId: wsId,
+            }).absolutePath;
+        }
+
         const entries = await fs.promises
-            .readdir(tasksRoot, { withFileTypes: true })
+            .readdir(folderRoot, { withFileTypes: true })
             .catch(() => [] as fs.Dirent[]);
         const existingFolders = entries
             .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
             .map(e => e.name);
-        return { tasksRoot, existingFolders };
+        return { tasksRoot: folderRoot, existingFolders };
     }
 
     // ========================================================================

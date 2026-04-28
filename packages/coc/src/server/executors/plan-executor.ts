@@ -65,6 +65,7 @@ export class PlanExecutor extends ChatBaseExecutor {
             autoFolderContext = await this.buildAutoFolderContext(
                 workingDirectory,
                 payload.workspaceId,
+                true,
             );
         }
 

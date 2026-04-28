@@ -47,7 +47,7 @@ export const AUTO_FOLDER_SENTINEL = '__auto__';
  * Context passed to prompt builders when the AI should auto-select the target subfolder.
  */
 export interface AutoFolderContext {
-    /** Absolute path to the .vscode/tasks root. */
+    /** Absolute path to the target root directory (tasks root or notes/Plans). */
     tasksRoot: string;
     /** Existing subfolder paths relative to tasksRoot (e.g. ["coc", "coc/chat", "deep-wiki"]). */
     existingFolders: string[];
@@ -447,7 +447,7 @@ export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders:
     const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
     return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`
 - Existing folder options: ${folderList}
-- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
+- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.
 - NEVER save to \`~/.copilot/session-state/\`, your session workspace, or any temporary directory.`;
 }
 

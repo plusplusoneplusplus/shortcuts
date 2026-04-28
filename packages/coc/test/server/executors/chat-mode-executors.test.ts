@@ -14,6 +14,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
@@ -34,6 +37,7 @@ vi.mock('fs', async (importOriginal) => {
         promises: {
             ...actual.promises,
             readdir: vi.fn().mockResolvedValue([]),
+            mkdir: vi.fn().mockResolvedValue(undefined),
         },
     };
 });
@@ -724,3 +728,99 @@ describe('create_work_item / create_bug tool wiring', () => {
     });
 });
 
+// ============================================================================
+// PlanExecutor auto-folder: notes/Plans/ path
+// ============================================================================
+
+describe('PlanExecutor auto-folder path (notes/Plans)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    const DATA_DIR = '/tmp/test-coc';
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'ok',
+            sessionId: 's1',
+            toolCalls: [],
+        });
+        vi.mocked(fs.promises.mkdir).mockClear().mockResolvedValue(undefined);
+        vi.mocked(fs.promises.readdir).mockClear().mockResolvedValue([]);
+    });
+
+    function makePlanTaskWithWorkdir(id: string): QueuedTask {
+        return {
+            id,
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'plan',
+                prompt: 'Plan something',
+                workingDirectory: '/fake/repo',
+                workspaceId: 'ws-plan-test',
+            },
+            config: {},
+            displayName: 'Plan something',
+        };
+    }
+
+    it('system message contains notes/Plans path for plan mode', async () => {
+        const executor = new PlanExecutor(store, makeOptions(store), DATA_DIR);
+        const task = makePlanTaskWithWorkdir('plan-path-test');
+
+        await executor.execute(task, 'Plan something');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const sysContent: string = call.systemMessage?.content ?? '';
+        expect(sysContent).toContain('notes');
+        expect(sysContent).toContain('Plans');
+        expect(sysContent).not.toContain('/tasks/');
+    });
+
+    it('creates notes/Plans directory via mkdir during plan mode', async () => {
+        const executor = new PlanExecutor(store, makeOptions(store), DATA_DIR);
+        const task = makePlanTaskWithWorkdir('plan-mkdir-test');
+
+        await executor.execute(task, 'Plan something');
+
+        const expectedPath = path.join(DATA_DIR, 'repos', 'ws-plan-test', 'notes', 'Plans');
+        expect(vi.mocked(fs.promises.mkdir)).toHaveBeenCalledWith(
+            expectedPath,
+            { recursive: true },
+        );
+    });
+
+    it('ChatExecutor still uses tasks root (not notes/Plans)', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store), DATA_DIR);
+        const task: QueuedTask = {
+            id: 'chat-tasks-root',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Hello',
+                workingDirectory: '/fake/repo',
+                workspaceId: 'ws-chat-test',
+            },
+            config: {},
+            displayName: 'Hello',
+        };
+
+        await executor.execute(task, 'Hello');
+
+        // mkdir should NOT be called (no plan mode)
+        expect(vi.mocked(fs.promises.mkdir)).not.toHaveBeenCalled();
+        // tasks root path should appear in system message
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const sysContent: string = call.systemMessage?.content ?? '';
+        expect(sysContent).toContain('tasks');
+    });
+});

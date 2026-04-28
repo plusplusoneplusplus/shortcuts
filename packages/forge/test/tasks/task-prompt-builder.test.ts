@@ -588,7 +588,7 @@ describe('buildAutoFolderLocationBlock', () => {
     it('should include folder selection rules', () => {
         const block = buildAutoFolderLocationBlock('/tmp/tasks', []);
         expect(block).toContain('kebab-case');
-        expect(block).toContain('do not save to the tasks root directly');
+        expect(block).toContain('do not save to the root directory directly');
     });
 
     it('should use forward slashes in the save location path', () => {
