@@ -32,9 +32,11 @@ export interface NotesSidebarProps {
     onNoteDeleted?: (path: string) => void;
     canGoBack?: boolean;
     onGoBack?: () => void;
+    /** Called once the notes root path is resolved from the server. */
+    onNotesRootReady?: (notesRoot: string) => void;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady }: NotesSidebarProps) {
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -56,6 +58,11 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             });
         }
     }, [selectedPath, tree]);
+
+    // Notify parent when the notes root path becomes available
+    useEffect(() => {
+        if (notesRoot) onNotesRootReady?.(notesRoot);
+    }, [notesRoot, onNotesRootReady]);
 
     // Scroll the selected tree item into view after tree renders
     useEffect(() => {

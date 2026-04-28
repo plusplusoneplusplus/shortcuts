@@ -17,6 +17,24 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
     },
 }));
 
+// Mock FollowPromptDialog — capture props for assertions, expose a close button
+const mockFollowPromptLastProps = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/shared/FollowPromptDialog', () => ({
+    FollowPromptDialog: (props: { wsId: string; taskPath: string; taskName: string; onClose: () => void }) => {
+        mockFollowPromptLastProps(props);
+        return (
+            <div
+                data-testid="follow-prompt-dialog"
+                data-ws-id={props.wsId}
+                data-task-path={props.taskPath}
+                data-task-name={props.taskName}
+            >
+                <button data-testid="fp-dialog-close" onClick={props.onClose}>Close</button>
+            </div>
+        );
+    },
+}));
+
 // Mock NoteEditorIO — the default export delegates to notesApi under the hood,
 // but we override it here so tests can intercept all IO calls via mockIo.
 const mockLoadContent = vi.fn();
@@ -108,6 +126,7 @@ describe('NoteEditor', () => {
         mockEditor.isDestroyed = false;
         capturedOnChange = null;
         richEditorMountCount = 0;
+        mockFollowPromptLastProps.mockReset();
     });
 
     afterEach(() => {
@@ -1161,6 +1180,144 @@ describe('NoteEditor', () => {
 
             // Verify button is enabled when not loading
             expect(screen.getByTestId('note-editor-refresh-btn')).not.toBeDisabled();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Run Skill button (plan files)
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('Run Skill button', () => {
+        it('does NOT show Run Skill button for a regular .md file', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'regular.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="regular.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.queryByTestId('note-run-skills-btn')).toBeNull();
+        });
+
+        it('shows Run Skill button for a .plan.md file', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/coc/my-feature.plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Plans/coc/my-feature.plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.getByTestId('note-run-skills-btn')).toBeDefined();
+        });
+
+        it('clicking Run Skill button opens the FollowPromptDialog', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/coc/my-feature.plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Plans/coc/my-feature.plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            expect(screen.queryByTestId('follow-prompt-dialog')).toBeNull();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            expect(screen.getByTestId('follow-prompt-dialog')).toBeDefined();
+        });
+
+        it('passes workspaceId and relative notePath to FollowPromptDialog when notesRoot is absent', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/my.plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws42" notePath="Plans/my.plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            const dialog = screen.getByTestId('follow-prompt-dialog');
+            expect(dialog.getAttribute('data-ws-id')).toBe('ws42');
+            expect(dialog.getAttribute('data-task-path')).toBe('Plans/my.plan.md');
+            expect(dialog.getAttribute('data-task-name')).toBe('my');
+        });
+
+        it('passes absolute path to FollowPromptDialog when notesRoot is provided (Unix)', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/coc/feat.plan.md' });
+            await act(async () => {
+                render(
+                    <NoteEditor
+                        workspaceId="ws1"
+                        notePath="Plans/coc/feat.plan.md"
+                        notesRoot="/home/user/.coc/repos/ws1/notes"
+                        io={mockIo}
+                    />,
+                );
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            const dialog = screen.getByTestId('follow-prompt-dialog');
+            expect(dialog.getAttribute('data-task-path')).toBe(
+                '/home/user/.coc/repos/ws1/notes/Plans/coc/feat.plan.md',
+            );
+        });
+
+        it('passes absolute path to FollowPromptDialog when notesRoot is provided (Windows backslash)', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/feat.plan.md' });
+            await act(async () => {
+                render(
+                    <NoteEditor
+                        workspaceId="ws1"
+                        notePath="Plans/feat.plan.md"
+                        notesRoot={"C:\\Users\\user\\.coc\\repos\\ws1\\notes"}
+                        io={mockIo}
+                    />,
+                );
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            const dialog = screen.getByTestId('follow-prompt-dialog');
+            expect(dialog.getAttribute('data-task-path')).toBe(
+                'C:/Users/user/.coc/repos/ws1/notes/Plans/feat.plan.md',
+            );
+        });
+
+        it('derives taskName by stripping .plan.md from the filename', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/my-feature.plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Plans/my-feature.plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            const dialog = screen.getByTestId('follow-prompt-dialog');
+            expect(dialog.getAttribute('data-task-name')).toBe('my-feature');
+        });
+
+        it('closing the FollowPromptDialog hides it', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/feat.plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Plans/feat.plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+            expect(screen.getByTestId('follow-prompt-dialog')).toBeDefined();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('fp-dialog-close'));
+            });
+            expect(screen.queryByTestId('follow-prompt-dialog')).toBeNull();
         });
     });
 });

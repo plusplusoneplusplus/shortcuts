@@ -563,4 +563,46 @@ describe('NotesSidebar', () => {
             expect(refreshed.disabled).toBe(false);
         });
     });
+
+    // ── onNotesRootReady ────────────────────────────────────────────────
+
+    it('calls onNotesRootReady with notesRoot once the tree loads', async () => {
+        mockGetTree.mockResolvedValue({ tree: SAMPLE_TREE, notesRoot: '/home/user/.coc/repos/ws1/notes' });
+        const onNotesRootReady = vi.fn();
+
+        await act(async () => {
+            render(
+                <NotesSidebar
+                    workspaceId="ws1"
+                    selectedPath={null}
+                    onSelectPage={vi.fn()}
+                    onNotesRootReady={onNotesRootReady}
+                />,
+            );
+        });
+
+        await waitFor(() => {
+            expect(onNotesRootReady).toHaveBeenCalledWith('/home/user/.coc/repos/ws1/notes');
+        });
+    });
+
+    it('does not call onNotesRootReady when tree response has no notesRoot', async () => {
+        mockGetTree.mockResolvedValue({ tree: [], notesRoot: '' });
+        const onNotesRootReady = vi.fn();
+
+        await act(async () => {
+            render(
+                <NotesSidebar
+                    workspaceId="ws1"
+                    selectedPath={null}
+                    onSelectPage={vi.fn()}
+                    onNotesRootReady={onNotesRootReady}
+                />,
+            );
+        });
+
+        // An empty string is falsy — callback should not fire
+        await new Promise(r => setTimeout(r, 50));
+        expect(onNotesRootReady).not.toHaveBeenCalled();
+    });
 });

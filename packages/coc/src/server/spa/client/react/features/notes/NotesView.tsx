@@ -68,6 +68,10 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
 
     const noteRefs = useNoteReferences();
 
+    // ── Notes root path (surfaced from NotesSidebar for plan-file skill button) ──
+
+    const [notesRoot, setNotesRoot] = useState<string | null>(null);
+
     // ── Resizable panels ────────────────────────────────────────────────────
 
     const sidebarResize = useResizablePanel({initialWidth: 280,
@@ -366,6 +370,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onNoteDeleted={handleNoteDeleted}
                     canGoBack={canGoBack}
                     onGoBack={handleGoBack}
+                    onNotesRootReady={setNotesRoot}
                 />
             </ResponsiveSidebar>
 
@@ -410,6 +415,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                 <NoteEditor
                     workspaceId={workspaceId}
                     notePath={selectedPath}
+                    notesRoot={notesRoot ?? undefined}
                     threads={comments.allThreads}
                     onCommentActivated={setActiveCommentId}
                     onEditorReady={(ed) => { editorRef.current = ed; }}

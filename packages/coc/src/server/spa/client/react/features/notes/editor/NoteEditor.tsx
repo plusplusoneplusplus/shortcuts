@@ -23,6 +23,7 @@ import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
+import { FollowPromptDialog } from '../../../shared/FollowPromptDialog';
 
 export type NoteViewMode = 'rich' | 'source';
 
@@ -50,6 +51,9 @@ export interface NoteEditorProps {
     onNotFound?: () => void;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: React.ReactNode;
+    /** Absolute path to the notes root directory. When provided and the note is a .plan.md file,
+     *  a ⚡ Run Skill button appears in the toolbar. */
+    notesRoot?: string;
     /** Whether the AI chat panel is currently open. */
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, a 🤖 button appears in the toolbar. */
@@ -153,6 +157,7 @@ export function NoteEditor({
     onFlushSave,
     onNotFound,
     toolbarRight,
+    notesRoot,
     chatPanelOpen,
     onToggleChatPanel,
     hasExistingChat,
@@ -166,6 +171,10 @@ export function NoteEditor({
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
+
+    // Plan-file skill trigger
+    const isPlanFile = notePath?.endsWith('.plan.md') ?? false;
+    const [runSkillsOpen, setRunSkillsOpen] = useState(false);
 
     // Optimistic locking state
     const mtimeRef = useRef<number | null>(null);
@@ -1024,7 +1033,23 @@ export function NoteEditor({
                     aiEditsVisible={aiEditsVisible}
                     onDismissAiEdits={handleAiEditDismiss}
                     onToggleAiEdits={handleAiEditToggle}
-                    toolbarRight={toolbarRight}
+                    toolbarRight={
+                        <>
+                            {isPlanFile && (
+                                <button
+                                    type="button"
+                                    className="h-7 px-2 rounded flex items-center gap-1 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                                    title="Run Skill"
+                                    aria-label="Run Skill"
+                                    data-testid="note-run-skills-btn"
+                                    onClick={() => setRunSkillsOpen(true)}
+                                >
+                                    <span>⚡</span> Run Skill
+                                </button>
+                            )}
+                            {toolbarRight}
+                        </>
+                    }
                     onRefresh={handleRefresh}
                     refreshing={loading}
                     chatPanelOpen={chatPanelOpen}
@@ -1258,6 +1283,16 @@ export function NoteEditor({
                     editCount={aiEditCount}
                     onNext={handleAiEditNext}
                     onDismiss={handleAiEditDismiss}
+                />
+            )}
+
+            {/* Run Skill dialog — plan files only */}
+            {runSkillsOpen && notePath && (
+                <FollowPromptDialog
+                    wsId={workspaceId}
+                    taskPath={notesRoot ? notesRoot.replace(/\\/g, '/') + '/' + notePath : notePath}
+                    taskName={notePath.split('/').pop()?.replace(/\.plan\.md$/, '') ?? ''}
+                    onClose={() => setRunSkillsOpen(false)}
                 />
             )}
         </div>
