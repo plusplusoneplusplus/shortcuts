@@ -32,6 +32,18 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
     WorkItemProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
+    useApp: () => ({
+        state: {
+            selectedWorkItemId: undefined,
+            selectedWorkItemSessionTaskId: undefined,
+            selectedWorkItemCommitHash: undefined,
+            selectedWorkItemCommitFilePath: undefined,
+        },
+        dispatch: vi.fn(),
+    }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileCommentCounts', () => {
     const stableMap = new Map();
     return { useFileCommentCounts: () => stableMap };
