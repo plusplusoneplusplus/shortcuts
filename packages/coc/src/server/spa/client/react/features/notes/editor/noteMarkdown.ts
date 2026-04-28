@@ -10,7 +10,7 @@ import TurndownService from 'turndown';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
-marked.setOptions({ gfm: true, breaks: false });
+marked.setOptions({ gfm: true, breaks: true });
 
 // Add [[note:...]] wiki-link syntax support to marked
 const noteLinkExtension: marked.MarkedExtension = {
@@ -112,6 +112,14 @@ const turndown = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
     bulletListMarker: '-',
+});
+
+// Line breaks: <br> → plain \n (avoids trailing-space hard-break syntax on save)
+turndown.addRule('lineBreak', {
+    filter: 'br',
+    replacement() {
+        return '\n';
+    },
 });
 
 // Strikethrough: <del> / <s> → ~~text~~

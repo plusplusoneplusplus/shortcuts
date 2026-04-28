@@ -322,6 +322,34 @@ describe('noteMarkdown', () => {
             // Should not have double trailing newlines
             expect(rt.endsWith('\n\n')).toBe(false);
         });
+
+        it('single-newline separated bold fields render on separate lines (regression)', () => {
+            // Content authored outside the editor with single newlines must not collapse
+            const md = '**Dates:** May 22 – May 25\n**Group:** 3 adults, 1 kid\n**Gear:** Paddleboard';
+            const html = markdownToHtml(md);
+            // Each bold field must be separated — not all smashed into one <p> with spaces
+            expect(html).toContain('<br');
+        });
+
+        it('single-newline fields round-trip to preserved line breaks', () => {
+            const md = '**Dates:** May 22 – May 25\n**Group:** 3 adults\n**Gear:** Paddleboard';
+            const rt = norm(roundTrip(md));
+            // All three field labels must survive
+            expect(rt).toContain('**Dates:**');
+            expect(rt).toContain('**Group:**');
+            expect(rt).toContain('**Gear:**');
+            // They must appear on separate lines (not smashed into one line with spaces)
+            expect(rt).not.toMatch(/\*\*Dates:\*\*.*\*\*Group:\*\*/);
+        });
+
+        it('<br> in html round-trips without trailing spaces', () => {
+            const html = '<p>line one<br>line two</p>';
+            const md = htmlToMarkdown(html);
+            // Must NOT produce trailing-space hard-break ("  \n")
+            expect(md).not.toMatch(/  \n/);
+            // Must still separate the two lines
+            expect(md).toContain('\n');
+        });
     });
 
     // ── Tight list fix (unwrapSingleParagraphListItems) ─────────────────
