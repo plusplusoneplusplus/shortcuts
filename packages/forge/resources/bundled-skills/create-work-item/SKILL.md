@@ -11,6 +11,15 @@ Guide the user through creating a well-structured work item and persisting it to
 
 ## Instructions
 
+### Phase 0 — Explore (for requests involving code changes)
+
+Before generating the plan, search the codebase:
+1. Use `grep`/`glob`/`view` to find relevant source files, analogous existing implementations, and conventions directly related to the request.
+2. Identify: specific file paths to modify, functions/components to add/change, and existing patterns to follow (e.g. "follow the same pattern as X").
+3. Embed concrete file paths in Steps and cite analogous patterns in Notes.
+
+Skip this phase only if the request is purely non-code (e.g. documentation, config).
+
 ### Phase 1 — Draft
 
 1. Analyze the user's request and extract or infer:
@@ -70,7 +79,9 @@ Guide the user through creating a well-structured work item and persisting it to
 
 ### Phase 3 — Create
 
-6. Call the `create_work_item` tool with the confirmed details:
+6. **You MUST use the `create_work_item` tool.** Do NOT substitute PowerShell API calls when the tool is available. Inline string encoding will corrupt or truncate long plan content. Only use the REST fallback if the tool explicitly throws an error.
+
+   Call the `create_work_item` tool with the confirmed details:
 
    ```
    create_work_item({
@@ -84,26 +95,31 @@ Guide the user through creating a well-structured work item and persisting it to
 
    The tool persists the work item to the Work Items page and broadcasts a live update to any connected dashboard.
 
-   If the `create_work_item` tool is unavailable, fall back to the REST API:
+   If the `create_work_item` tool is unavailable (throws an error), fall back to the REST API using a temp file to safely handle long markdown content:
 
    ```powershell
    $workspaceId = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces |
        Where-Object { $_.rootPath -eq (git rev-parse --show-toplevel) } |
        Select-Object -ExpandProperty id
 
+   $uri = "http://localhost:4000/api/workspaces/$workspaceId/work-items"
+
+   $planContent = @'
+<full plan markdown here — no escaping needed>
+'@
+
    $body = @{
      title       = "<confirmed title>"
      description = "<confirmed description>"
      priority    = "<confirmed priority>"
      tags        = @("<tag1>", "<tag2>")
-     plan        = @{ content = "<confirmed plan markdown>"; resolvedBy = "ai" }
-   } | ConvertTo-Json -Depth 5
+     plan        = @{ content = $planContent; resolvedBy = "ai" }
+   } | ConvertTo-Json -Depth 10
 
-   Invoke-RestMethod `
-       -Method Post `
-       -Uri "http://localhost:4000/api/workspaces/$workspaceId/work-items" `
-       -ContentType "application/json" `
-       -Body $body
+   $tmp = [System.IO.Path]::GetTempFileName() + ".json"
+   [System.IO.File]::WriteAllText($tmp, $body, [System.Text.Encoding]::UTF8)
+   Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -InFile $tmp
+   Remove-Item $tmp -ErrorAction SilentlyContinue
    ```
 
 7. On success, report to the user:
