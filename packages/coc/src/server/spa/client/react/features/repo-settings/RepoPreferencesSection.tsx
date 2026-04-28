@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { usePreferences, type SkillMode } from '../../hooks/preferences/usePreferences';
+import { usePreferences, type SkillMode, type ModelMode } from '../../hooks/preferences/usePreferences';
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
@@ -63,7 +63,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const enabledModels = availableModels.filter(m => m.enabled);
 
     // Model change handlers
-    const handleModelChange = useCallback((mode: SkillMode, value: string) => {
+    const handleModelChange = useCallback((mode: ModelMode, value: string) => {
         prefs.setModel(mode, value === 'default' ? '' : value);
     }, [prefs]);
 
@@ -144,6 +144,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                 <ModelRow label="Task Model" mode="task" value={prefs.models.task} models={enabledModels} onChange={handleModelChange} />
                 <ModelRow label="Ask Model" mode="ask" value={prefs.models.ask} models={enabledModels} onChange={handleModelChange} />
                 <ModelRow label="Plan Model" mode="plan" value={prefs.models.plan} models={enabledModels} onChange={handleModelChange} />
+                <ModelRow label="Note Model" mode="note" value={prefs.models.note} models={enabledModels} onChange={handleModelChange} helperText="Model used when creating or chatting in notes for this repo." />
             </div>
 
             <div className={dividerClass} />
@@ -318,27 +319,33 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function ModelRow({ label, mode, value, models, onChange }: {
+function ModelRow({ label, mode, value, models, onChange, helperText }: {
     label: string;
-    mode: SkillMode;
+    mode: ModelMode;
     value: string;
     models: ModelInfo[];
-    onChange: (mode: SkillMode, value: string) => void;
+    onChange: (mode: ModelMode, value: string) => void;
+    helperText?: string;
 }) {
     return (
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
-            <label className={labelClass}>{label}</label>
-            <select
-                className={selectClass}
-                value={value || 'default'}
-                onChange={e => onChange(mode, e.target.value)}
-                data-testid={`pref-model-${mode}`}
-            >
-                <option value="default">default</option>
-                {models.map(m => (
-                    <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                ))}
-            </select>
+        <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                <label className={labelClass}>{label}</label>
+                <select
+                    className={selectClass}
+                    value={value || 'default'}
+                    onChange={e => onChange(mode, e.target.value)}
+                    data-testid={`pref-model-${mode}`}
+                >
+                    <option value="default">default</option>
+                    {models.map(m => (
+                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                    ))}
+                </select>
+            </div>
+            {helperText && (
+                <p className="text-[11px] text-[#848484] ml-28 pl-2">{helperText}</p>
+            )}
         </div>
     );
 }

@@ -15,6 +15,7 @@ interface LastModelsByMode {
     task?: string;
     ask?: string;
     plan?: string;
+    note?: string;
 }
 
 interface LastSkillsByMode {
@@ -190,6 +191,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                 ) : !preferences || Object.keys(preferences).length === 0 || (
                     !preferences.lastModels?.task &&
                     !preferences.lastModels?.ask &&
+                    !preferences.lastModels?.note &&
                     !preferences.lastModel &&
                     !preferences.lastDepth &&
                     !preferences.lastEffort &&
@@ -202,6 +204,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" id="repo-preferences-grid">
                         <MetaRow label="Task Model" value={preferences.lastModels?.task || preferences.lastModel || 'default'} />
                         <MetaRow label="Ask Model" value={preferences.lastModels?.ask || preferences.lastModel || 'default'} />
+                        <MetaRow label="Note Model" value={preferences.lastModels?.note || 'claude-sonnet-4.6'} />
                         <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
                         <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />

@@ -315,7 +315,7 @@ describe('usePreferences', () => {
             });
 
             expect(result.current.model).toBe('');
-            expect(result.current.models).toEqual({ task: '', ask: '', plan: '' });
+            expect(result.current.models).toEqual({ task: '', ask: '', plan: '', note: '' });
             expect(result.current.depth).toBe('');
             expect(result.current.effort).toBe('');
             expect(result.current.skills).toEqual({ task: [], ask: [], plan: [] });

@@ -317,6 +317,22 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini' });
     });
 
+    it('round-trips lastModels with note mode', () => {
+        writeRepoPreferences(tmpDir, 'r', { lastModels: { task: 'gpt-4', note: 'claude-sonnet-4.6' } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastModels).toEqual({ task: 'gpt-4', note: 'claude-sonnet-4.6' });
+    });
+
+    it('accepts lastModels with note mode', () => {
+        const result = validatePerRepoPreferences({ lastModels: { note: 'claude-sonnet-4.6' } });
+        expect(result.lastModels).toEqual({ note: 'claude-sonnet-4.6' });
+    });
+
+    it('accepts lastModels with all four modes including note', () => {
+        const result = validatePerRepoPreferences({ lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini', note: 'my-model' } });
+        expect(result.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini', note: 'my-model' });
+    });
+
     it('strips invalid lastModels in repos on read', () => {
         const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
         fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
@@ -1658,6 +1674,25 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { lastModels: { ask: 'claude-3' } });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
+    });
+
+    it('PATCH persists lastModels.note and deep-merges with other modes', async () => {
+        await patchJSON(repoUrl(repoId), { lastModels: { task: 'gpt-4', ask: 'claude-3' } });
+        const res = await patchJSON(repoUrl(repoId), { lastModels: { note: 'claude-sonnet-4.6' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', note: 'claude-sonnet-4.6' });
+    });
+
+    it('PATCH updating lastModels.note does not erase task or ask modes', async () => {
+        await patchJSON(repoUrl(repoId), { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } });
+        const res = await patchJSON(repoUrl(repoId), { lastModels: { note: 'my-model' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModels.task).toBe('gpt-4');
+        expect(body.lastModels.ask).toBe('claude-3');
+        expect(body.lastModels.plan).toBe('gemini');
+        expect(body.lastModels.note).toBe('my-model');
     });
 
     // -- linkedRepoIds --

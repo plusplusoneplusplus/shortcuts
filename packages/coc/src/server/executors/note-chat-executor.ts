@@ -46,13 +46,24 @@ export class NoteChatExecutor extends ChatBaseExecutor {
     }
 
     /**
-     * Override execute to capture pre/post note snapshots for inline diff.
+     * Override execute to capture pre/post note snapshots for inline diff,
+     * and to inject the note model preference when the task has no explicit model.
      */
     async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
         const payload = task.payload as unknown as ChatPayload;
         const noteChat = payload.context?.noteChat;
         const notePath = noteChat?.notePath ?? '';
         const wsId = payload.workspaceId;
+
+        // Inject the note model preference when the task has no explicit model.
+        // Task-level model (task.config.model) always takes precedence.
+        if (!task.config.model) {
+            const repoPrefs = this.dataDir && wsId
+                ? readRepoPreferences(this.dataDir, wsId)
+                : undefined;
+            const noteModel = repoPrefs?.lastModels?.note ?? 'claude-sonnet-4.6';
+            task = { ...task, config: { ...task.config, model: noteModel } };
+        }
 
         // Capture pre-edit content
         const preEditContent = notePath

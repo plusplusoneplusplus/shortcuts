@@ -5,6 +5,7 @@
  * Covers:
  * - buildModeOptions defaults to interactive (ask) agentMode
  * - buildModeOptions honors payload mode
+ * - execute injects note model preference when task has no explicit model
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -14,6 +15,7 @@ import { NoteChatExecutor } from '../../../src/server/executors/note-chat-execut
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { readRepoPreferences } from '../../../src/server/preferences-handler';
 
 // ============================================================================
 // Mocks
@@ -47,6 +49,14 @@ vi.mock('../../../src/server/output-file-manager', () => ({
         saveOutput: vi.fn().mockResolvedValue(undefined),
     },
 }));
+
+vi.mock('../../../src/server/preferences-handler', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../src/server/preferences-handler')>();
+    return {
+        ...actual,
+        readRepoPreferences: vi.fn().mockReturnValue({}),
+    };
+});
 
 // ============================================================================
 // Helpers
@@ -140,6 +150,60 @@ describe('NoteChatExecutor', () => {
             const task = makeNoteChatTask();
             const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
             expect(opts.toolResultInterceptors).toBeUndefined();
+        });
+    });
+
+    describe('note model preference', () => {
+        const mockReadRepoPrefs = vi.mocked(readRepoPreferences);
+
+        beforeEach(() => {
+            mockReadRepoPrefs.mockReset();
+            sdkMocks.mockSendMessage.mockReset().mockResolvedValue({
+                success: true,
+                response: 'AI response text',
+                sessionId: 'session-123',
+            });
+        });
+
+        it('uses claude-sonnet-4.6 as default when no preference is set', async () => {
+            mockReadRepoPrefs.mockReturnValue({});
+            const task = makeNoteChatTask('task-default', 'autopilot');
+
+            await executor.execute(task, 'Update the note');
+
+            const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArgs.model).toBe('claude-sonnet-4.6');
+        });
+
+        it('uses lastModels.note preference when set', async () => {
+            mockReadRepoPrefs.mockReturnValue({ lastModels: { note: 'gpt-5.4' } });
+            const task = makeNoteChatTask('task-pref', 'autopilot');
+
+            await executor.execute(task, 'Update the note');
+
+            const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArgs.model).toBe('gpt-5.4');
+        });
+
+        it('task-level model override takes precedence over note preference', async () => {
+            mockReadRepoPrefs.mockReturnValue({ lastModels: { note: 'gpt-5.4' } });
+            const task = makeNoteChatTask('task-override', 'autopilot');
+            task.config.model = 'explicit-override-model';
+
+            await executor.execute(task, 'Update the note');
+
+            const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArgs.model).toBe('explicit-override-model');
+        });
+
+        it('falls back to claude-sonnet-4.6 when lastModels has other modes but not note', async () => {
+            mockReadRepoPrefs.mockReturnValue({ lastModels: { task: 'gpt-4', ask: 'claude-3' } });
+            const task = makeNoteChatTask('task-fallback', 'autopilot');
+
+            await executor.execute(task, 'Update the note');
+
+            const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArgs.model).toBe('claude-sonnet-4.6');
         });
     });
 });

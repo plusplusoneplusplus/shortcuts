@@ -36,6 +36,8 @@ export interface LastModelsByMode {
     task?: string;
     ask?: string;
     plan?: string;
+    /** Default model for note-chat sessions. Falls back to claude-sonnet-4.6 when absent. */
+    note?: string;
 }
 
 /** A single saved run-script template. */
@@ -243,7 +245,7 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
     if (typeof obj.lastModels === 'object' && obj.lastModels !== null && !Array.isArray(obj.lastModels)) {
         const raw = obj.lastModels as Record<string, unknown>;
         const validated: LastModelsByMode = {};
-        for (const mode of ['task', 'ask', 'plan'] as const) {
+        for (const mode of ['task', 'ask', 'plan', 'note'] as const) {
             if (typeof raw[mode] === 'string') {
                 validated[mode] = raw[mode] as string;
             }

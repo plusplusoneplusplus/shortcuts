@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
 
 export type SkillMode = 'task' | 'ask' | 'plan';
+export type ModelMode = SkillMode | 'note';
 
 export interface LastSkillsByMode {
     task: string[];
@@ -19,6 +20,7 @@ export interface LastModelsByMode {
     task: string;
     ask: string;
     plan: string;
+    note: string;
 }
 
 export interface UsePreferencesResult {
@@ -26,7 +28,7 @@ export interface UsePreferencesResult {
     model: string;
     /** Per-mode last-used AI models. */
     models: LastModelsByMode;
-    setModel: (mode: SkillMode, m: string) => void;
+    setModel: (mode: ModelMode, m: string) => void;
     depth: string;
     setDepth: (d: string) => void;
     effort: string;
@@ -37,7 +39,7 @@ export interface UsePreferencesResult {
 }
 
 const EMPTY_SKILLS: LastSkillsByMode = { task: [], ask: [], plan: [] };
-const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', plan: '' };
+const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', plan: '', note: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
     const [models, setModelsState] = useState<LastModelsByMode>({ ...EMPTY_MODELS });
@@ -70,6 +72,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                             task: typeof prefs.lastModels.task === 'string' ? prefs.lastModels.task : '',
                             ask: typeof prefs.lastModels.ask === 'string' ? prefs.lastModels.ask : '',
                             plan: typeof prefs.lastModels.plan === 'string' ? prefs.lastModels.plan : '',
+                            note: typeof prefs.lastModels.note === 'string' ? prefs.lastModels.note : '',
                         });
                     } else if (typeof prefs.lastModel === 'string') {
                         // Backward compat: populate all modes from legacy single model
@@ -77,6 +80,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                             task: prefs.lastModel,
                             ask: prefs.lastModel,
                             plan: prefs.lastModel,
+                            note: '',
                         });
                     }
                     if (typeof prefs.lastDepth === 'string') {
@@ -107,7 +111,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         return () => { cancelled = true; };
     }, [repoId]);
 
-    const setModel = useCallback((mode: SkillMode, m: string) => {
+    const setModel = useCallback((mode: ModelMode, m: string) => {
         setModelsState(prev => ({ ...prev, [mode]: m }));
         if (!repoId) return;
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {

@@ -21,6 +21,13 @@ export interface PerRepoPrefsClient {
     statusFilter?: string;
     typeFilter?: string;
   };
+  /** Per-mode last-used AI model names. */
+  lastModels?: {
+    task?: string;
+    ask?: string;
+    plan?: string;
+    note?: string;
+  };
 }
 
 /**
