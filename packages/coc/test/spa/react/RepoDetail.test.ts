@@ -57,10 +57,10 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[0].key).toBe('chats');
     });
 
-    it('tasks tab has label "Tasks"', () => {
+    it('tasks tab has label "Tasks (Dep.)"', () => {
         const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
         expect(tasksTab).toBeDefined();
-        expect(tasksTab!.label).toBe('Tasks');
+        expect(tasksTab!.label).toBe('Tasks (Dep.)');
     });
 });
 

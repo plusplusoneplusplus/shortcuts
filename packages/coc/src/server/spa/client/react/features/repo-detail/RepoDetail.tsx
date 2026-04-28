@@ -56,7 +56,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
-    { key: 'tasks', label: 'Tasks', shortcut: 'Alt+T' },
+    { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
@@ -158,7 +158,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             // Classic: replace Chats with Activity, relabel Tasks as Plans
             tabs = tabs
                 .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans' } : t);
+                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
         } else {
             // Dev-workflow: relabel and reorder tabs
             const devWorkflowRelabels: Record<string, string> = {
