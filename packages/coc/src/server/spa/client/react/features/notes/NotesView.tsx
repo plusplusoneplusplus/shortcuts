@@ -60,6 +60,10 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         });
     });
 
+    // ── Whether the notes chat has an existing conversation ──────────────────
+
+    const [hasNoteChat, setHasNoteChat] = useState(false);
+
     // ── Note references (shared between editor and chat panel) ──────────────
 
     const noteRefs = useNoteReferences();
@@ -418,6 +422,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onFlushSave={(fn) => { flushSaveRef.current = fn; }}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={handleToggleChatPanel}
+                    hasExistingChat={hasNoteChat}
                     onNavigateToNote={handleNavigateToNote}
                     onAddNoteReference={chatPanelOpen ? noteRefs.addReference : undefined}
                 />
@@ -494,6 +499,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                             references={noteRefs.references}
                             onRemoveReference={noteRefs.removeReference}
                             onClearReferences={noteRefs.clearReferences}
+                            onHasChatChange={setHasNoteChat}
                         />
                     </div>
                 </>

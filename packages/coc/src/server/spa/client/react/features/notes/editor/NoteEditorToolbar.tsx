@@ -31,6 +31,8 @@ export interface NoteEditorToolbarProps {
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, the 🤖 button is rendered. */
     onToggleChatPanel?: () => void;
+    /** When true, the 🤖 button is tinted blue to indicate an existing chat history. */
+    hasExistingChat?: boolean;
     /** Whether the TOC panel is currently open. */
     tocOpen?: boolean;
     /** Called to toggle the TOC panel. When provided, the ≡ button is rendered. */
@@ -277,7 +279,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, hasExistingChat, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
     const tocRef = useRef<HTMLDivElement>(null);
 
     if (!editor) return null;
@@ -394,12 +396,14 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                                 'text-xs px-2 py-0.5 rounded ' +
                                 (chatPanelOpen
                                     ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
-                                    : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                                    : hasExistingChat
+                                        ? 'text-[#0078d4] dark:text-[#3794ff] hover:bg-[#e0eef9] dark:hover:bg-[#1a3a5c]'
+                                        : 'text-[#888] hover:text-[#333] dark:hover:text-white')
                             }
                             onClick={onToggleChatPanel}
                             data-testid="chat-panel-toggle"
-                            aria-label={chatPanelOpen ? 'Hide AI chat' : 'Show AI chat'}
-                            title={chatPanelOpen ? 'Hide AI chat' : 'Show AI chat'}
+                            aria-label={chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat'}
+                            title={chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat'}
                         >
                             🤖
                         </button>

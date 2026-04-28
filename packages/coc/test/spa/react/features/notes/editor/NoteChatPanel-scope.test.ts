@@ -95,6 +95,26 @@ describe('NoteChatPanel — scope toggle', () => {
         });
     });
 
+    describe('onHasChatChange callback', () => {
+        it('accepts onHasChatChange prop in NoteChatPanelProps', () => {
+            expect(source).toContain('onHasChatChange?: (hasChat: boolean) => void');
+        });
+
+        it('destructs onHasChatChange in the component function signature', () => {
+            expect(source).toContain('onHasChatChange }');
+        });
+
+        it('calls onHasChatChange via useEffect when taskId changes', () => {
+            expect(source).toContain('onHasChatChange?.(!!taskId)');
+        });
+
+        it('passes taskId and onHasChatChange as useEffect dependencies', () => {
+            const effectIdx = source.indexOf('onHasChatChange?.(!!taskId)');
+            const afterEffect = source.slice(effectIdx, effectIdx + 100);
+            expect(afterEffect).toContain('[taskId, onHasChatChange]');
+        });
+    });
+
     describe('ScopeToggle in both empty and active states', () => {
         it('renders ScopeToggle in same row as header buttons (single-row layout)', () => {
             // In the single-row layout, ScopeToggle is inlined before the action button in each header row

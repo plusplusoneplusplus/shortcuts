@@ -54,6 +54,8 @@ export interface NoteEditorProps {
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, a 🤖 button appears in the toolbar. */
     onToggleChatPanel?: () => void;
+    /** When true, the 🤖 button is tinted blue to indicate an existing chat history. */
+    hasExistingChat?: boolean;
     /** Called when the user clicks a `[[note:...]]` cross-link. Receives the target path and optional heading slug. */
     onNavigateToNote?: (path: string, heading?: string) => void;
     /** Called when the user selects "Add to chat as reference" from the context menu.
@@ -153,6 +155,7 @@ export function NoteEditor({
     toolbarRight,
     chatPanelOpen,
     onToggleChatPanel,
+    hasExistingChat,
     onNavigateToNote,
     onAddNoteReference,
 }: NoteEditorProps) {
@@ -1026,6 +1029,7 @@ export function NoteEditor({
                     refreshing={loading}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={onToggleChatPanel}
+                    hasExistingChat={hasExistingChat}
                     tocOpen={tocOpen}
                     onToggleToc={() => setTocOpen(v => !v)}
                     tocEntries={viewMode === 'source' ? [] : tocEntries}

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useNotesChat } from '../hooks/useNotesChat';
 import type { ChatScope } from '../hooks/useNotesChat';
 import { ChatDetail } from '../../chat/ChatDetail';
@@ -32,9 +32,11 @@ export interface NoteChatPanelProps {
     onRemoveReference?: (id: string) => void;
     /** Called to clear all reference chips after send. */
     onClearReferences?: () => void;
+    /** Called whenever the chat existence state changes (taskId goes from null→set or set→null). */
+    onHasChatChange?: (hasChat: boolean) => void;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, onHasChatChange }: NoteChatPanelProps) {
     const { taskId, chatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
@@ -53,6 +55,10 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
+
+    useEffect(() => {
+        onHasChatChange?.(!!taskId);
+    }, [taskId, onHasChatChange]);
 
     const handleSend = async () => {
         const text = input.trim();

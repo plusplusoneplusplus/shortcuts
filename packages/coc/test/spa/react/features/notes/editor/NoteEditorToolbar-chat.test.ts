@@ -56,4 +56,35 @@ describe('NoteEditorToolbar — chat toggle', () => {
     it('right-end section is shown when onToggleChatPanel is provided', () => {
         expect(source).toContain('onToggleChatPanel ||');
     });
+
+    describe('hasExistingChat indicator', () => {
+        it('accepts hasExistingChat prop', () => {
+            expect(source).toContain('hasExistingChat?: boolean');
+        });
+
+        it('destructs hasExistingChat in the toolbar function signature', () => {
+            expect(source).toContain('hasExistingChat,');
+        });
+
+        it('uses hasExistingChat to apply blue color class when chat exists and panel is closed', () => {
+            // The button should apply a blue color when hasExistingChat is true and chatPanelOpen is false
+            const toggleBlock = source.substring(source.indexOf('data-testid="chat-panel-toggle"') - 500, source.indexOf('data-testid="chat-panel-toggle"') + 500);
+            expect(toggleBlock).toContain('hasExistingChat');
+            expect(toggleBlock).toContain('0078d4');
+        });
+
+        it('shows "Continue AI chat" tooltip when hasExistingChat is true and panel is closed', () => {
+            expect(source).toContain('Continue AI chat');
+        });
+
+        it('title attribute reflects hasExistingChat state', () => {
+            const titleIdx = source.indexOf("title={chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
+            expect(titleIdx).toBeGreaterThan(-1);
+        });
+
+        it('aria-label reflects hasExistingChat state', () => {
+            const ariaIdx = source.indexOf("aria-label={chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
+            expect(ariaIdx).toBeGreaterThan(-1);
+        });
+    });
 });
