@@ -3,7 +3,8 @@
  *
  * Tests for NoteChatExecutor.
  * Covers:
- * - buildModeOptions uses autopilot agentMode
+ * - buildModeOptions defaults to interactive (ask) agentMode
+ * - buildModeOptions honors payload mode
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -72,7 +73,7 @@ function makeOptions(
     };
 }
 
-function makeNoteChatTask(id = 'task-1'): QueuedTask {
+function makeNoteChatTask(id = 'task-1', mode: string = 'autopilot'): QueuedTask {
     return {
         id,
         type: 'chat',
@@ -81,7 +82,7 @@ function makeNoteChatTask(id = 'task-1'): QueuedTask {
         createdAt: Date.now(),
         payload: {
             kind: 'chat',
-            mode: 'autopilot',
+            mode,
             prompt: 'Update the note',
             workspaceId: WS_ID,
             context: {
@@ -110,10 +111,29 @@ describe('NoteChatExecutor', () => {
     });
 
     describe('buildModeOptions', () => {
-        it('uses autopilot agentMode', async () => {
-            const task = makeNoteChatTask();
+        it('defaults to interactive (ask) agentMode when mode is missing', async () => {
+            const task = makeNoteChatTask('task-no-mode', undefined as any);
+            (task.payload as any).mode = undefined;
+            const opts = await (executor as any).buildModeOptions(task, 'Ask a question', undefined);
+            expect(opts.agentMode).toBe('interactive');
+        });
+
+        it('maps ask mode to interactive agentMode', async () => {
+            const task = makeNoteChatTask('task-ask', 'ask');
+            const opts = await (executor as any).buildModeOptions(task, 'Ask a question', undefined);
+            expect(opts.agentMode).toBe('interactive');
+        });
+
+        it('maps autopilot mode to autopilot agentMode', async () => {
+            const task = makeNoteChatTask('task-auto', 'autopilot');
             const opts = await (executor as any).buildModeOptions(task, 'Update the note', undefined);
             expect(opts.agentMode).toBe('autopilot');
+        });
+
+        it('falls back to interactive for unrecognized mode', async () => {
+            const task = makeNoteChatTask('task-bad', 'plan');
+            const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);
+            expect(opts.agentMode).toBe('interactive');
         });
 
         it('does not include toolResultInterceptors', async () => {

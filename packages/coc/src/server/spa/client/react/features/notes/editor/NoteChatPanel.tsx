@@ -14,6 +14,7 @@ import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
+import type { ChatMode } from '../../../repos/modeConfig';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -41,6 +42,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         defaultScope,
     });
     const [input, setInput] = useState('');
+    const [selectedMode, setSelectedMode] = useState<'ask' | 'autopilot'>('ask');
     const richTextRef = useRef<RichTextInputHandle>(null);
 
     const { models: availableModels } = useModels();
@@ -70,7 +72,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         await onBeforeSend?.();
         const prompt = formatNoteReferences(activeRefs) + text;
         onClearReferences?.();
-        await createChat(prompt, modelCommand.modelOverride);
+        await createChat(prompt, modelCommand.modelOverride, selectedMode);
     };
 
     const noNoteSelected = scope === 'per-note' && !notePath;
@@ -89,6 +91,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                         <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">🤖 Notes Chat</span>
                         <ScopeToggle scope={scope} onScopeChange={setScope} />
+                        <NoteModeToggle mode={selectedMode} onModeChange={setSelectedMode} />
                         <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
                                 data-testid="note-chat-close-btn" title="Close">✕</button>
                     </div>
@@ -258,7 +261,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         variant="floating"
                         standalone
                         title="Notes Chat"
-                        hideModeSelector
+                        allowedModes={NOTE_CHAT_ALLOWED_MODES}
                         disableScratchpad
                         onBack={onClose}
                         pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
@@ -269,6 +272,10 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         </div>
     );
 }
+
+// ── Allowed modes for Note Chat ──────────────────────────────────────────────
+
+const NOTE_CHAT_ALLOWED_MODES: ChatMode[] = ['ask', 'autopilot'];
 
 // ── Scope toggle segmented control ───────────────────────────────────────────
 
@@ -310,6 +317,51 @@ function ScopeToggle({ scope, onScopeChange }: ScopeToggleProps) {
                 title="One chat for the whole workspace"
             >
                 🗂️ Workspace
+            </button>
+        </div>
+    );
+}
+
+// ── Mode toggle segmented control ────────────────────────────────────────────
+
+interface NoteModeToggleProps {
+    mode: 'ask' | 'autopilot';
+    onModeChange: (mode: 'ask' | 'autopilot') => void;
+}
+
+function NoteModeToggle({ mode, onModeChange }: NoteModeToggleProps) {
+    return (
+        <div
+            className="flex items-center gap-0.5"
+            data-testid="note-mode-toggle"
+        >
+            <button
+                type="button"
+                className={
+                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    (mode === 'ask'
+                        ? 'bg-[#0078d4] text-white font-medium'
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                }
+                onClick={() => onModeChange('ask')}
+                data-testid="note-mode-ask"
+                title="Ask mode — conversational Q&A"
+            >
+                💡 Ask
+            </button>
+            <button
+                type="button"
+                className={
+                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    (mode === 'autopilot'
+                        ? 'bg-[#0078d4] text-white font-medium'
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                }
+                onClick={() => onModeChange('autopilot')}
+                data-testid="note-mode-autopilot"
+                title="Autopilot mode — agentic edits"
+            >
+                🤖 Auto
             </button>
         </div>
     );

@@ -10,6 +10,7 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from '../../repos/modeConfig';
+import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { ModelInfo } from '../../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
@@ -78,6 +79,8 @@ export interface FollowUpInputAreaProps {
     sessionModel?: string;
     /** When true, the ask/plan/autopilot mode selector is hidden */
     hideModeSelector?: boolean;
+    /** When set, restricts mode selector to only these modes */
+    allowedModes?: ChatMode[];
 }
 
 export function FollowUpInputArea({
@@ -108,6 +111,7 @@ export function FollowUpInputArea({
     modelCommand,
     sessionModel,
     hideModeSelector = false,
+    allowedModes,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,7 +235,7 @@ export function FollowUpInputArea({
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button
                         type="button"
-                        onClick={() => setSelectedMode(cycleMode(selectedMode))}
+                        onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
                         className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
                         data-testid="mode-cycle-btn"
                         aria-label={`Mode: ${selectedMode}. Tap to switch.`}
@@ -245,7 +249,9 @@ export function FollowUpInputArea({
                         className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
                         data-testid="mode-dropdown"
                     >
-                        {(Object.entries(MODE_LABELS) as [string, string][]).map(([mode, label]) => (
+                        {(Object.entries(MODE_LABELS) as [string, string][])
+                            .filter(([mode]) => !allowedModes || allowedModes.includes(mode as ChatMode))
+                            .map(([mode, label]) => (
                             <option key={mode} value={mode}>{label}</option>
                         ))}
                     </select>
@@ -305,7 +311,7 @@ export function FollowUpInputArea({
                             }
                             if (e.key === 'Tab' && e.shiftKey) {
                                 e.preventDefault();
-                                setSelectedMode(cycleMode(selectedMode));
+                                setSelectedMode(cycleMode(selectedMode, allowedModes));
                                 return;
                             }
                             if (e.key === 'Enter') {

@@ -4,8 +4,8 @@
  * Static analysis test: ChatDetail must default hideModeSelector to false
  * so the mode selector is visible in existing chat sessions.
  *
- * CommitChatPanel and NoteChatPanel must explicitly pass hideModeSelector
- * to suppress it in their contexts.
+ * CommitChatPanel must explicitly pass hideModeSelector to suppress it.
+ * NoteChatPanel must pass allowedModes to restrict to ask/autopilot.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -26,8 +26,27 @@ describe('ChatDetail hideModeSelector default', () => {
         expect(source).toMatch(/hideModeSelector/);
     });
 
-    it('NoteChatPanel explicitly passes hideModeSelector', () => {
+    it('NoteChatPanel passes allowedModes (ask/autopilot only)', () => {
         const source = readFileSync(resolve(SPA_ROOT, 'features/notes/editor/NoteChatPanel.tsx'), 'utf-8');
-        expect(source).toMatch(/hideModeSelector/);
+        expect(source).toMatch(/allowedModes/);
+        // Should not use hideModeSelector anymore
+        expect(source).not.toMatch(/hideModeSelector/);
+    });
+});
+
+describe('ChatDetail allowedModes prop', () => {
+    it('ChatDetail accepts allowedModes prop', () => {
+        const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
+        expect(source).toMatch(/allowedModes\??: ChatMode\[\]/);
+    });
+
+    it('FollowUpInputArea accepts allowedModes prop', () => {
+        const source = readFileSync(resolve(SPA_ROOT, 'features/chat/FollowUpInputArea.tsx'), 'utf-8');
+        expect(source).toMatch(/allowedModes\??: ChatMode\[\]/);
+    });
+
+    it('ChatDetail passes allowedModes to FollowUpInputArea', () => {
+        const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
+        expect(source).toMatch(/allowedModes=\{allowedModes\}/);
     });
 });

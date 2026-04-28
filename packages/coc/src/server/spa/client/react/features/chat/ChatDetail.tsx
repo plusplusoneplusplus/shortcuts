@@ -47,6 +47,7 @@ import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
+import type { ChatMode } from '../../repos/modeConfig';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -69,6 +70,8 @@ export interface ChatDetailProps {
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
+    /** When set, restricts mode selector to only these modes */
+    allowedModes?: ChatMode[];
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
     /**
@@ -86,7 +89,7 @@ export interface ChatDetailProps {
     onClearPendingPrefix?: () => void;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -951,6 +954,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             modelCommand={modelCommand}
                             sessionModel={sessionModel}
                             hideModeSelector={hideModeSelector}
+                            allowedModes={allowedModes}
                         />
                     )}
                 </div>
@@ -1033,6 +1037,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     modelCommand={modelCommand}
                     sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
+                    allowedModes={allowedModes}
                 />
             )}
         </div>

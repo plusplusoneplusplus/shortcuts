@@ -130,8 +130,14 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             disabledLlmTools,
         );
 
+        const payloadMode = payload.mode;
+        const agentMode: AgentMode =
+            payloadMode === 'ask' ? 'interactive'
+            : payloadMode === 'autopilot' ? 'autopilot'
+            : 'interactive';
+
         return {
-            agentMode: 'autopilot' as AgentMode,
+            agentMode,
             systemMessage,
             tools,
             effectivePrompt: prompt + toolSuffix,

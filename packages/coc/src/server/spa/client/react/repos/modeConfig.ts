@@ -18,12 +18,10 @@ export const MODE_LABELS: Record<ChatMode, string> = {
     autopilot: '🤖 Autopilot',
 };
 
-const NEXT_MODE: Record<ChatMode, ChatMode> = {
-    ask: 'plan',
-    plan: 'autopilot',
-    autopilot: 'ask',
-};
+const MODE_ORDER: ChatMode[] = ['ask', 'plan', 'autopilot'];
 
-export function cycleMode(current: ChatMode): ChatMode {
-    return NEXT_MODE[current];
+export function cycleMode(current: ChatMode, allowedModes?: ChatMode[]): ChatMode {
+    const modes = allowedModes ?? MODE_ORDER;
+    const idx = modes.indexOf(current);
+    return modes[(idx + 1) % modes.length];
 }

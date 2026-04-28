@@ -217,8 +217,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('note-chat-model-badge');
         });
 
-        it('passes modelOverride to createChat', () => {
-            expect(source).toContain('createChat(prompt, modelCommand.modelOverride)');
+        it('passes modelOverride and selectedMode to createChat', () => {
+            expect(source).toContain('createChat(prompt, modelCommand.modelOverride, selectedMode)');
         });
 
         it('wraps RichTextInput in relative container for menu positioning', () => {

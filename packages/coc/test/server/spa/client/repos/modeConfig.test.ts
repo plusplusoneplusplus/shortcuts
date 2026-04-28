@@ -30,6 +30,25 @@ describe('modeConfig', () => {
             }
             expect(visited).toEqual(new Set(['ask', 'plan', 'autopilot']));
         });
+
+        it('cycles within allowedModes when provided', () => {
+            const allowed: ChatMode[] = ['ask', 'autopilot'];
+            expect(cycleMode('ask', allowed)).toBe('autopilot');
+            expect(cycleMode('autopilot', allowed)).toBe('ask');
+        });
+
+        it('skips plan when allowedModes excludes it', () => {
+            const allowed: ChatMode[] = ['ask', 'autopilot'];
+            let mode: ChatMode = 'ask';
+            mode = cycleMode(mode, allowed);
+            expect(mode).toBe('autopilot');
+            mode = cycleMode(mode, allowed);
+            expect(mode).toBe('ask');
+        });
+
+        it('handles single-mode allowedModes', () => {
+            expect(cycleMode('ask', ['ask'])).toBe('ask');
+        });
     });
 
     describe('MODE_LABELS', () => {
