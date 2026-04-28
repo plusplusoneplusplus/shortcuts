@@ -214,6 +214,58 @@ export function buildNoteHash(wsId: string, notePath: string): string {
     return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
 }
 
+// ── Work-items deep-links ─────────────────────────────────────────────
+
+export interface WorkItemDeepLink {
+    itemId: string | null;
+    sessionTaskId: string | null;
+    commitHash: string | null;
+    commitFilePath: string | null;
+}
+
+/**
+ * Parse a work-items deep-link. Supported forms:
+ *   #repos/{wsId}/work-items/{itemId}
+ *   #repos/{wsId}/work-items/{itemId}/session/{taskId}
+ *   #repos/{wsId}/work-items/{itemId}/commit/{sha}
+ *   #repos/{wsId}/work-items/{itemId}/commit/{sha}/{filePath...}
+ */
+export function parseWorkItemDeepLink(hash: string): WorkItemDeepLink {
+    const base: WorkItemDeepLink = { itemId: null, sessionTaskId: null, commitHash: null, commitFilePath: null };
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] !== 'repos' || !parts[1] || parts[2] !== 'work-items' || !parts[3]) return base;
+    const itemId = decodeURIComponent(parts[3]);
+    if (parts[4] === 'session' && parts[5]) {
+        return { itemId, sessionTaskId: decodeURIComponent(parts[5]), commitHash: null, commitFilePath: null };
+    }
+    if (parts[4] === 'commit' && parts[5]) {
+        const commitHash = decodeURIComponent(parts[5]);
+        const commitFilePath = parts[6] ? parts.slice(6).map(decodeURIComponent).join('/') : null;
+        return { itemId, sessionTaskId: null, commitHash, commitFilePath };
+    }
+    return { itemId, sessionTaskId: null, commitHash: null, commitFilePath: null };
+}
+
+/** Build `#repos/{wsId}/work-items/{itemId}` */
+export function buildWorkItemHash(wsId: string, itemId: string): string {
+    return '#repos/' + encodeURIComponent(wsId) + '/work-items/' + encodeURIComponent(itemId);
+}
+
+/** Build `#repos/{wsId}/work-items/{itemId}/session/{taskId}` */
+export function buildWorkItemSessionHash(wsId: string, itemId: string, taskId: string): string {
+    return '#repos/' + encodeURIComponent(wsId) + '/work-items/' + encodeURIComponent(itemId) + '/session/' + encodeURIComponent(taskId);
+}
+
+/** Build `#repos/{wsId}/work-items/{itemId}/commit/{sha}[/{filePath...}]` */
+export function buildWorkItemCommitHash(wsId: string, itemId: string, commitHash: string, filePath?: string): string {
+    let h = '#repos/' + encodeURIComponent(wsId) + '/work-items/' + encodeURIComponent(itemId) + '/commit/' + encodeURIComponent(commitHash);
+    if (filePath) {
+        h += '/' + filePath.split('/').map(encodeURIComponent).join('/');
+    }
+    return h;
+}
+
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'chats', 'work-items', 'pull-requests', 'terminal', 'notes']);
 const ACTIVITY_VIRTUAL_WORKSPACE_IDS: Set<string> = new Set(['my_work', 'my_life']);
 
@@ -477,6 +529,21 @@ export function Router() {
                         dispatch({ type: 'SET_PR_DETAIL_TAB', tab: subTab });
                     } else if (parts[2] === 'pull-requests') {
                         dispatch({ type: 'CLEAR_SELECTED_PR' });
+                    }
+                    // Work-items deep-link: #repos/{id}/work-items[/{itemId}[/session/{taskId}|/commit/{sha}[/{filePath}]]]
+                    if (parts[2] === 'work-items') {
+                        if (parts[3]) {
+                            const link = parseWorkItemDeepLink('#' + hash);
+                            dispatch({
+                                type: 'SET_WORK_ITEM_DEEP_LINK',
+                                workItemId: link.itemId,
+                                sessionTaskId: link.sessionTaskId,
+                                commitHash: link.commitHash,
+                                commitFilePath: link.commitFilePath,
+                            });
+                        } else {
+                            dispatch({ type: 'SET_WORK_ITEM_DEEP_LINK', workItemId: null });
+                        }
                     }
                     // Settings section deep-link: #repos/{id}/settings/{section}
                     if (parts[2] === 'settings') {

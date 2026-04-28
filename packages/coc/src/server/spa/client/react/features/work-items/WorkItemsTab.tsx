@@ -3,7 +3,7 @@
  * Replaces the Plans tab with a list + detail split view.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { Spinner } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -16,10 +16,12 @@ import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { createCommitDiffSource } from '../git/diff/diffSource';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
+import { useApp } from '../../contexts/AppContext';
 import { fetchApi } from '../../hooks/useApi';
 import { buildFileTree, compactFolders, FileTreeView } from '../git/diff/FileTree';
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
+import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } from '../../layout/Router';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -40,12 +42,34 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const { isMobile, isTablet } = useBreakpoint();
     const { dispatch } = useWorkItems();
+    const { state: appState } = useApp();
+    const deepLinkConsumedRef = useRef(false);
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 280 : 340,
         minWidth: 200,
         maxWidth: 600,
         storageKey: 'work-items-left-panel-width',
     });
+
+    // Initialise from URL deep-link on first mount only.
+    useEffect(() => {
+        if (deepLinkConsumedRef.current) return;
+        deepLinkConsumedRef.current = true;
+        if (appState.selectedWorkItemId) {
+            setSelectedWorkItemId(appState.selectedWorkItemId);
+            if (appState.selectedWorkItemSessionTaskId) {
+                setSelectedSessionTaskId(appState.selectedWorkItemSessionTaskId);
+            }
+            if (appState.selectedWorkItemCommitHash) {
+                setSelectedCommitHash(appState.selectedWorkItemCommitHash);
+                if (appState.selectedWorkItemCommitFilePath) {
+                    setSelectedCommitFile(appState.selectedWorkItemCommitFilePath);
+                }
+            }
+            if (isMobile) setMobileShowDetail(true);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Fetch changed files when a commit is selected, auto-select the first file
     useEffect(() => {
@@ -106,7 +130,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
-    }, [isMobile]);
+        location.hash = buildWorkItemHash(workspaceId, id);
+    }, [isMobile, workspaceId]);
 
     const handleBack = useCallback(() => {
         setSelectedWorkItemId(null);
@@ -114,31 +139,47 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         setMobileShowDetail(false);
-    }, []);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/work-items';
+    }, [workspaceId]);
 
     const handleBackFromSession = useCallback(() => {
         setSelectedSessionTaskId(null);
-    }, []);
+        if (selectedWorkItemId) {
+            location.hash = buildWorkItemHash(workspaceId, selectedWorkItemId);
+        }
+    }, [workspaceId, selectedWorkItemId]);
 
     const handleViewCommit = useCallback((sha: string) => {
         setSelectedCommitHash(sha);
         setSelectedCommitFile(null);
         setHunkTarget(undefined);
-    }, []);
+        if (selectedWorkItemId) {
+            location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, sha);
+        }
+    }, [workspaceId, selectedWorkItemId]);
 
     const handleBackFromCommit = useCallback(() => {
         if (selectedCommitFile) {
             setSelectedCommitFile(null);
             setHunkTarget(undefined);
+            if (selectedWorkItemId && selectedCommitHash) {
+                location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, selectedCommitHash);
+            }
         } else {
             setSelectedCommitHash(null);
+            if (selectedWorkItemId) {
+                location.hash = buildWorkItemHash(workspaceId, selectedWorkItemId);
+            }
         }
-    }, [selectedCommitFile]);
+    }, [selectedCommitFile, selectedWorkItemId, selectedCommitHash, workspaceId]);
 
     const handleCommitFileSelect = useCallback((filePath: string) => {
         setSelectedCommitFile(filePath);
         setHunkTarget(undefined);
-    }, []);
+        if (selectedWorkItemId && selectedCommitHash) {
+            location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, selectedCommitHash, filePath);
+        }
+    }, [workspaceId, selectedWorkItemId, selectedCommitHash]);
 
     const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
         setSelectedCommitFile(filePath);
@@ -147,7 +188,10 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
 
     const handleViewTask = useCallback((taskId: string) => {
         setSelectedSessionTaskId(taskId);
-    }, []);
+        if (selectedWorkItemId) {
+            location.hash = buildWorkItemSessionHash(workspaceId, selectedWorkItemId, taskId);
+        }
+    }, [workspaceId, selectedWorkItemId]);
 
     const handleCreated = useCallback((item: any) => {
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
@@ -156,6 +200,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
+        location.hash = buildWorkItemHash(workspaceId, item.id);
     }, [dispatch, workspaceId, isMobile]);
 
     const handleExecuted = useCallback(() => {

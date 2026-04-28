@@ -73,6 +73,10 @@ export interface AppContextState {
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
     selectedNotePath: string | null;
+    selectedWorkItemId: string | null;
+    selectedWorkItemSessionTaskId: string | null;
+    selectedWorkItemCommitHash: string | null;
+    selectedWorkItemCommitFilePath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
@@ -137,6 +141,10 @@ const initialState: AppContextState = {
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
     selectedNotePath: null,
+    selectedWorkItemId: null,
+    selectedWorkItemSessionTaskId: null,
+    selectedWorkItemCommitHash: null,
+    selectedWorkItemCommitFilePath: null,
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'bounded',
@@ -214,6 +222,7 @@ export type AppAction =
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_SELECTED_NOTE_PATH'; notePath: string | null }
+    | { type: 'SET_WORK_ITEM_DEEP_LINK'; workItemId: string | null; sessionTaskId?: string | null; commitHash?: string | null; commitFilePath?: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
@@ -471,6 +480,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 : state.notePathState;
             return { ...state, selectedNotePath: action.notePath, notePathState: updatedNoteState };
         }
+        case 'SET_WORK_ITEM_DEEP_LINK':
+            return {
+                ...state,
+                selectedWorkItemId: action.workItemId,
+                selectedWorkItemSessionTaskId: action.sessionTaskId ?? null,
+                selectedWorkItemCommitHash: action.commitHash ?? null,
+                selectedWorkItemCommitFilePath: action.commitFilePath ?? null,
+            };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':
