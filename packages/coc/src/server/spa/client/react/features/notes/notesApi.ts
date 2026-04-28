@@ -48,6 +48,8 @@ export interface NoteSearchResponse {
 export interface NoteTreeResponse {
     tree: NoteTreeNode[];
     notesRoot: string;
+    /** Names of top-level notebook folders that are managed by the system and cannot be renamed or deleted. */
+    systemFolders?: string[];
 }
 
 // ── Comment types (mirrors notes-comments-types.ts) ────────────────────────

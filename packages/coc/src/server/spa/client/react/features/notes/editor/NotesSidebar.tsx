@@ -35,7 +35,7 @@ export interface NotesSidebarProps {
 }
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack }: NotesSidebarProps) {
-    const { tree, notesRoot, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
+    const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
@@ -125,6 +125,13 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     ) => {
         if (!tree) return;
 
+        // System folders cannot be moved or reordered
+        const isSysFolder = (item: NoteDragItem) =>
+            item.type === 'notebook' &&
+            systemFolders.includes(item.name) &&
+            !getNotesParentPath(item.path);
+        if (isSysFolder(dragged)) return;
+
         if (position === 'inside') {
             // Move dragged item INTO target folder
             const isTargetFolder = target.type !== 'page';
@@ -208,19 +215,25 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         }
 
         const isFolder = node.type === 'notebook' || node.type === 'section';
+        const isSys = systemFolders.includes(node.name) && node.type === 'notebook';
 
         if (isFolder) {
-            return [
+            const items: ContextMenuItem[] = [
                 { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
                 { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}/]]`); closeContextMenu(); } },
                 { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
                 { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
                 { label: 'Create Section', onClick: () => openDialog('create-section', node) },
-                { separator: true, label: '', onClick: () => {} },
-                { label: 'Rename', onClick: () => openDialog('rename', node) },
-                { label: 'Delete', onClick: () => openDialog('delete', node) },
             ];
+            if (!isSys) {
+                items.push(
+                    { separator: true, label: '', onClick: () => {} },
+                    { label: 'Rename', onClick: () => openDialog('rename', node) },
+                    { label: 'Delete', onClick: () => openDialog('delete', node) },
+                );
+            }
+            return items;
         }
         return [
             { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
@@ -297,6 +310,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         nodes={tree}
                         selectedPath={selectedPath}
                         expandedPaths={expandedPaths}
+                        systemFolders={systemFolders}
                         onToggleExpand={handleToggleExpand}
                         onSelectPage={onSelectPage}
                         onContextMenu={handleContextMenu}

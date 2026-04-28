@@ -166,15 +166,19 @@ describe('Notes Handler', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/notes/tree — Tree', () => {
-        it('should return empty array when notes directory does not exist', async () => {
+        it('should return only system folders when notes directory does not exist', async () => {
             const srv = await startServer();
             await registerWorkspace(srv, workspaceDir);
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.tree).toEqual([]);
+            // Plans is auto-created as a system folder even when no user notes exist
+            expect(body.tree).toHaveLength(1);
+            expect(body.tree[0].name).toBe('Plans');
+            expect(body.tree[0].type).toBe('notebook');
             expect(body.notesRoot).toBeTruthy();
+            expect(body.systemFolders).toEqual(['Plans']);
         });
 
         it('should return correct hierarchy for nested notebooks/sections/pages', async () => {
@@ -192,31 +196,35 @@ describe('Notes Handler', () => {
             const body = JSON.parse(res.body);
             const tree = body.tree;
 
-            // Top-level should have 2 notebooks (dirs) + 1 page
-            expect(tree).toHaveLength(3);
+            // Top-level should have 3 notebooks (dirs) + 1 page (Plans auto-created as a system folder)
+            expect(tree).toHaveLength(4);
 
-            // Directories first, alphabetical
+            // Directories first, alphabetical (case-insensitive): personal, Plans, work
             expect(tree[0].name).toBe('personal');
             expect(tree[0].type).toBe('notebook');
             expect(tree[0].children).toHaveLength(1);
             expect(tree[0].children[0].name).toBe('journal.md');
             expect(tree[0].children[0].type).toBe('page');
 
-            expect(tree[1].name).toBe('work');
+            // Plans is the system folder auto-created between personal and work
+            expect(tree[1].name).toBe('Plans');
             expect(tree[1].type).toBe('notebook');
-            expect(tree[1].children).toHaveLength(2);
-            // Nested dir 'projects' is a section
-            expect(tree[1].children[0].name).toBe('projects');
-            expect(tree[1].children[0].type).toBe('section');
-            expect(tree[1].children[0].children).toHaveLength(1);
-            expect(tree[1].children[0].children[0].name).toBe('project1.md');
 
-            expect(tree[1].children[1].name).toBe('daily.md');
-            expect(tree[1].children[1].type).toBe('page');
+            expect(tree[2].name).toBe('work');
+            expect(tree[2].type).toBe('notebook');
+            expect(tree[2].children).toHaveLength(2);
+            // Nested dir 'projects' is a section
+            expect(tree[2].children[0].name).toBe('projects');
+            expect(tree[2].children[0].type).toBe('section');
+            expect(tree[2].children[0].children).toHaveLength(1);
+            expect(tree[2].children[0].children[0].name).toBe('project1.md');
+
+            expect(tree[2].children[1].name).toBe('daily.md');
+            expect(tree[2].children[1].type).toBe('page');
 
             // File last
-            expect(tree[2].name).toBe('quick-note.md');
-            expect(tree[2].type).toBe('page');
+            expect(tree[3].name).toBe('quick-note.md');
+            expect(tree[3].type).toBe('page');
         });
 
         it('should sort directories before files, alphabetically within each', async () => {
@@ -234,11 +242,12 @@ describe('Notes Handler', () => {
             const body = JSON.parse(res.body);
             const tree = body.tree;
 
-            // Dirs first: aaaa, beta — then files: alpha, zebra
+            // Dirs first: aaaa, beta, Plans (case-insensitive: a < b < p) — then files: alpha, zebra
             expect(tree[0].name).toBe('aaaa');
             expect(tree[1].name).toBe('beta');
-            expect(tree[2].name).toBe('alpha.md');
-            expect(tree[3].name).toBe('zebra.md');
+            expect(tree[2].name).toBe('Plans');
+            expect(tree[3].name).toBe('alpha.md');
+            expect(tree[4].name).toBe('zebra.md');
         });
     });
 

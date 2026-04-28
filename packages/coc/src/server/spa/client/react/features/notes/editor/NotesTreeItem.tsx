@@ -7,6 +7,7 @@ export interface NotesTreeItemProps {
     selectedPath: string | null;
     isExpanded: boolean;
     depth: number;
+    isSystemFolder?: boolean;
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
@@ -35,6 +36,7 @@ export function NotesTreeItem({
     selectedPath,
     isExpanded,
     depth,
+    isSystemFolder,
     onToggleExpand,
     onSelectPage,
     onContextMenu,
@@ -117,7 +119,19 @@ export function NotesTreeItem({
                 {/* Icon */}
                 <span className="flex-shrink-0 text-[11px]" data-testid="node-icon">{ICON_MAP[node.type]}</span>
                 {/* Name */}
-                <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">{displayName}</span>
+                <span className={cn('flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]', isSystemFolder && 'italic opacity-80')}>{displayName}</span>
+                {/* System folder lock badge */}
+                {isSystemFolder && (
+                    <span
+                        className="flex-shrink-0 ml-1 text-[#848484] dark:text-[#666] opacity-60"
+                        title="System folder — cannot be renamed or deleted"
+                        aria-label="System folder"
+                    >
+                        <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 inline-block">
+                            <path d="M10 7V5a2 2 0 0 0-4 0v2H4.5A1.5 1.5 0 0 0 3 8.5v4A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-4A1.5 1.5 0 0 0 11.5 7H10zM7 5a1 1 0 1 1 2 0v2H7V5zm1 4.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                        </svg>
+                    </span>
+                )}
             </div>
             {/* Drop indicator line — after */}
             {showAfterIndicator && (

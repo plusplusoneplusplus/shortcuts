@@ -22,6 +22,7 @@ export interface NotesTreeProps {
     selectedPath: string | null;
     expandedPaths: Set<string>;
     depth?: number;
+    systemFolders?: string[];
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
@@ -33,6 +34,7 @@ export function NotesTree({
     selectedPath,
     expandedPaths,
     depth = 0,
+    systemFolders,
     onToggleExpand,
     onSelectPage,
     onContextMenu,
@@ -43,8 +45,9 @@ export function NotesTree({
             {nodes.map(node => {
                 const isFolder = node.type === 'notebook' || node.type === 'section';
                 const isExpanded = expandedPaths.has(node.path);
+                const isSysFolder = !!(systemFolders && systemFolders.includes(node.name) && node.type === 'notebook' && depth === 0);
 
-                const dragItem: NoteDragItem | undefined = dragDrop
+                const dragItem: NoteDragItem | undefined = (dragDrop && !isSysFolder)
                     ? { path: node.path, name: node.name, type: node.type }
                     : undefined;
 
@@ -57,14 +60,15 @@ export function NotesTree({
                             selectedPath={selectedPath}
                             isExpanded={isExpanded}
                             depth={depth}
+                            isSystemFolder={isSysFolder}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
-                            draggable={!!dragDrop}
+                            draggable={!!dragDrop && !isSysFolder}
                             isDragOver={isDragOver}
                             dropPosition={isDragOver ? dragDrop!.dropPosition : null}
                             onDragStart={dragItem ? dragDrop!.createDragStartHandler(dragItem) : undefined}
-                            onDragEnd={dragDrop ? dragDrop.createDragEndHandler() : undefined}
+                            onDragEnd={dragDrop && !isSysFolder ? dragDrop.createDragEndHandler() : undefined}
                             onDragOver={dragItem ? dragDrop!.createDragOverHandler(dragItem) : undefined}
                             onDragEnter={dragItem ? dragDrop!.createDragEnterHandler(dragItem) : undefined}
                             onDragLeave={dragItem ? dragDrop!.createDragLeaveHandler(dragItem) : undefined}
@@ -78,6 +82,7 @@ export function NotesTree({
                                 selectedPath={selectedPath}
                                 expandedPaths={expandedPaths}
                                 depth={depth + 1}
+                                systemFolders={systemFolders}
                                 onToggleExpand={onToggleExpand}
                                 onSelectPage={onSelectPage}
                                 onContextMenu={onContextMenu}

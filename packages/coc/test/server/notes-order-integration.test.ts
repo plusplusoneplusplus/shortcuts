@@ -157,10 +157,11 @@ describe('Notes Order — Integration', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             const tree = JSON.parse(res.body).tree;
 
-            // Default: dirs first (alpha, zebra), then files (note.md)
+            // Default: dirs first (alpha, Plans, zebra — case-insensitive a < p < z), then files (note.md)
             expect(tree[0].name).toBe('alpha');
-            expect(tree[1].name).toBe('zebra');
-            expect(tree[2].name).toBe('note.md');
+            expect(tree[1].name).toBe('Plans');
+            expect(tree[2].name).toBe('zebra');
+            expect(tree[3].name).toBe('note.md');
         });
 
         it('returns tree in custom order when .order.json is present at root', async () => {
@@ -202,9 +203,11 @@ describe('Notes Order — Integration', () => {
             expect(tree[0].name).toBe('gamma');
             expect(tree[1].name).toBe('alpha');
             // Then unlisted items in default order (dirs before files, alphabetical)
+            // beta and Plans are unlisted dirs (b < p), then pages
             expect(tree[2].name).toBe('beta');
-            expect(tree[3].name).toBe('a-page.md');
-            expect(tree[4].name).toBe('z-page.md');
+            expect(tree[3].name).toBe('Plans');
+            expect(tree[4].name).toBe('a-page.md');
+            expect(tree[5].name).toBe('z-page.md');
         });
 
         it('applies .order.json inside a nested notebook', async () => {
