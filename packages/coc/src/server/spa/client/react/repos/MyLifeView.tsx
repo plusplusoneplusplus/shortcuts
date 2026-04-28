@@ -21,8 +21,8 @@ import type { RepoData } from './repoGrouping';
 export const MY_LIFE_WORKSPACE_ID = 'my_life';
 
 const MY_LIFE_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
-    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
+    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
