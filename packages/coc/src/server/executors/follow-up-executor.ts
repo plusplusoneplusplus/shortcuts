@@ -199,15 +199,16 @@ export class FollowUpExecutor extends BaseExecutor {
             processId,
             turnIndex: process.conversationTurns?.length ?? 0,
         });
+        const notePath = process.metadata?.notePath as string | undefined;
         let systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(currentMode)?.content)
             .withRepoInstructions(workingDirectory, currentMode)
             .appendMemory(boundedMemory)
             .appendAutoFolder(autoFolderContextForFollowUp)
+            .appendNoteFile(notePath)
             .build();
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
-        const notePath = process.metadata?.notePath as string | undefined;
         let preEditContent: string | undefined;
         if (notePath && wsId) {
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');

@@ -304,6 +304,77 @@ describe('ChatExecutor system message content', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.systemMessage?.content).toBe(READ_ONLY_SYSTEM_MESSAGE);
     });
+
+    it('injects note-file permission block when payload has noteChat.notePath', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-note',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Hi',
+                context: { noteChat: { notePath: 'notes/design.md' } },
+            },
+            config: {},
+            displayName: 'Hi',
+        };
+
+        await executor.execute(task, 'Hi');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content).toContain('notes/design.md');
+        expect(call.systemMessage?.content).toContain('You may also edit the attached note file');
+    });
+
+    it('does NOT inject note-file block when noteChat is absent', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask', 'task-no-note');
+
+        await executor.execute(task, 'Hi');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content ?? '').not.toContain('You may also edit the attached note file');
+    });
+});
+
+describe('PlanExecutor system message content', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('injects note-file permission block when payload has noteChat.notePath', async () => {
+        const executor = new PlanExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-plan-note',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'plan',
+                prompt: 'Plan it',
+                context: { noteChat: { notePath: 'notes/spec.md' } },
+            },
+            config: {},
+            displayName: 'Plan it',
+        };
+
+        await executor.execute(task, 'Plan it');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content).toContain('notes/spec.md');
+        expect(call.systemMessage?.content).toContain('You may also edit the attached note file');
+    });
 });
 
 // ============================================================================

@@ -88,6 +88,22 @@ class SystemMessageBuilder {
     }
 
     /**
+     * Append a directive permitting edits to the attached note file.
+     *
+     * This step is **conditional**: it is only included when prior content
+     * already exists at build time (preserving the same behaviour as
+     * `appendAutoFolder`).
+     *
+     * No-op when `notePath` is `undefined` or empty.
+     */
+    appendNoteFile(notePath: string | undefined): this {
+        if (!notePath) return this;
+        const block = `You may also edit the attached note file: \`${notePath}\``;
+        this.steps.push({ kind: 'conditional', block });
+        return this;
+    }
+
+    /**
      * Append the auto-folder location directive.
      *
      * This step is **conditional**: it is only included when prior content

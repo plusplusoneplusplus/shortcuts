@@ -68,11 +68,13 @@ export class ChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
+        const notePath = payload.context?.noteChat?.notePath;
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
             .withRepoInstructions(workingDirectory, 'ask')
             .appendMemory(boundedMemory)
             .appendAutoFolder(autoFolderContext)
+            .appendNoteFile(notePath)
             .build();
 
         const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;

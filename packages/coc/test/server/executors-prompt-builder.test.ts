@@ -729,10 +729,52 @@ describe('systemMessageBuilder', () => {
     });
 
     // -------------------------------------------------------------------------
+    // .appendNoteFile()
+    // -------------------------------------------------------------------------
+
+    it('appendNoteFile appends note-file directive when prior content exists', async () => {
+        const result = await systemMessageBuilder()
+            .append('READ_ONLY')
+            .appendNoteFile('notes/my-note.md')
+            .build();
+        expect(result!.content).toContain('notes/my-note.md');
+        expect(result!.content).toContain('You may also edit the attached note file');
+    });
+
+    it('appendNoteFile is a no-op when notePath is undefined', async () => {
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendNoteFile(undefined)
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    it('appendNoteFile is a conditional step: no-op when no prior content exists', async () => {
+        const result = await systemMessageBuilder()
+            .appendNoteFile('notes/my-note.md')
+            .build();
+        expect(result).toBeUndefined();
+    });
+
+    it('appendNoteFile appears after autoFolder in the full chain', async () => {
+        const ctx = { tasksRoot: '/tasks', existingFolders: [] };
+        const result = await systemMessageBuilder()
+            .append('READ_ONLY')
+            .appendAutoFolder(ctx)
+            .appendNoteFile('notes/my-note.md')
+            .build();
+        const content = result!.content;
+        const folderIdx = content.indexOf('auto-folder-block');
+        const noteIdx = content.indexOf('notes/my-note.md');
+        expect(folderIdx).toBeGreaterThan(-1);
+        expect(noteIdx).toBeGreaterThan(folderIdx);
+    });
+
+    // -------------------------------------------------------------------------
     // Full chain — ordering mirrors the legacy nesting
     // -------------------------------------------------------------------------
 
-    it('produces content in insertion order: base → repoInstructions → memory → autoFolder', async () => {
+    it('produces content in insertion order: base → repoInstructions → memory → autoFolder → noteFile', async () => {
         mockLoadInstructions.mockResolvedValue('repo-instructions');
         const addon = { systemMessageSuffix: 'MEMORY', tools: [], suffix: '', dispose: () => {} };
         const ctx = { tasksRoot: '/tasks', existingFolders: [] };
@@ -742,6 +784,7 @@ describe('systemMessageBuilder', () => {
             .withRepoInstructions('/repo', 'ask')
             .appendMemory(addon)
             .appendAutoFolder(ctx)
+            .appendNoteFile('notes/my-note.md')
             .build();
 
         const content = result!.content;
@@ -749,11 +792,13 @@ describe('systemMessageBuilder', () => {
         const repoIdx = content.indexOf('repo-instructions');
         const memoryIdx = content.indexOf('MEMORY');
         const folderIdx = content.indexOf('auto-folder-block');
+        const noteIdx = content.indexOf('notes/my-note.md');
 
         expect(baseIdx).toBeGreaterThan(-1);
         expect(repoIdx).toBeGreaterThan(baseIdx);
         expect(memoryIdx).toBeGreaterThan(repoIdx);
         expect(folderIdx).toBeGreaterThan(memoryIdx);
+        expect(noteIdx).toBeGreaterThan(folderIdx);
     });
 
     it('autopilot pattern: only memory (no base, no repo, no autoFolder)', async () => {
