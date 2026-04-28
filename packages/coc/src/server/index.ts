@@ -221,7 +221,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? false, notesEnabled: resolvedConfig.notes?.enabled ?? false, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? false, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),

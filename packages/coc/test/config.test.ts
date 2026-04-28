@@ -423,7 +423,7 @@ timeout: 300
 
         it('should preserve notes.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.notes.enabled).toBe(false);
+            expect(result.notes.enabled).toBe(true);
         });
 
         it('should override notes.enabled from file', () => {
@@ -636,7 +636,7 @@ timeout: 300
             const configPath = path.join(tmpDir, 'no-notes.yaml');
             fs.writeFileSync(configPath, 'model: gpt-4\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.notes.enabled).toBe(false);
+            expect(result.resolved.notes.enabled).toBe(true);
             expect(result.sources['notes.enabled']).toBe('default');
         });
 

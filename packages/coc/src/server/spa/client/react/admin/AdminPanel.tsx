@@ -75,7 +75,7 @@ export function AdminPanel() {
 
     // Feature toggles
     const [terminalEnabled, setTerminalEnabled] = useState(false);
-    const [notesEnabled, setNotesEnabled] = useState(false);
+    const [notesEnabled, setNotesEnabled] = useState(true);
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
     const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
@@ -98,7 +98,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');

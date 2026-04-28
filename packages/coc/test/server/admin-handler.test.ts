@@ -459,12 +459,12 @@ describe('Admin Handler', () => {
             expect(body.sources['terminal.enabled']).toBe('default');
         });
 
-        it('should return notes.enabled=false by default', async () => {
+        it('should return notes.enabled=true by default', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
-            expect(body.resolved.notes.enabled).toBe(false);
+            expect(body.resolved.notes.enabled).toBe(true);
             expect(body.sources['notes.enabled']).toBe('default');
         });
 

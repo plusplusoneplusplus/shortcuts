@@ -305,7 +305,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     notes: {
-        enabled: false,
+        enabled: true,
     },
     myWork: {
         enabled: false,
