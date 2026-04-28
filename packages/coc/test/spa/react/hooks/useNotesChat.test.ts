@@ -131,8 +131,8 @@ describe('useNotesChat', () => {
             expect(source).toContain("kind: 'chat'");
         });
 
-        it('uses autopilot mode', () => {
-            expect(source).toContain("mode: 'autopilot'");
+        it('accepts ask and autopilot as valid modes', () => {
+            expect(source).toContain("mode: 'ask' | 'autopilot'");
         });
 
         it('includes noteChat context with current note', () => {
@@ -174,7 +174,7 @@ describe('useNotesChat', () => {
         });
 
         it('accepts optional model parameter in createChat signature', () => {
-            expect(source).toContain('createChat: (prompt: string, model?: string | null)');
+            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\')');
         });
 
         it('includes model in payload when provided', () => {

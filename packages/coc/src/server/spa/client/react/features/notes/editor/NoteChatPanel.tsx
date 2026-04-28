@@ -338,7 +338,7 @@ function NoteModeToggle({ mode, onModeChange }: NoteModeToggleProps) {
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'text-[10px] px-1.5 py-0.5 rounded transition-colors ' +
                     (mode === 'ask'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
@@ -347,12 +347,12 @@ function NoteModeToggle({ mode, onModeChange }: NoteModeToggleProps) {
                 data-testid="note-mode-ask"
                 title="Ask mode — conversational Q&A"
             >
-                💡 Ask
+                💡
             </button>
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'text-[10px] px-1.5 py-0.5 rounded transition-colors ' +
                     (mode === 'autopilot'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
@@ -361,7 +361,7 @@ function NoteModeToggle({ mode, onModeChange }: NoteModeToggleProps) {
                 data-testid="note-mode-autopilot"
                 title="Autopilot mode — agentic edits"
             >
-                🤖 Auto
+                🤖
             </button>
         </div>
     );
