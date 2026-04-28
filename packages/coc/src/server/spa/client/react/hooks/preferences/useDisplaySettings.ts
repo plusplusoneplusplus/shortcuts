@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout, isWorkflowsEnabled } from '../../utils/config';
+import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout, isWorkflowsEnabled, isPullRequestsEnabled } from '../../utils/config';
 
 interface DisplaySettings {
     showReportIntent: boolean;
@@ -19,13 +19,14 @@ interface DisplaySettings {
     scratchpadEnabled: boolean;
     scratchpadLayout: 'horizontal' | 'vertical';
     workflowsEnabled: boolean;
+    pullRequestsEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical', workflowsEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical', workflowsEnabled: false, pullRequestsEnabled: false };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
-    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled(), myLifeEnabled: isMyLifeEnabled(), scratchpadEnabled: isScratchpadEnabled(), scratchpadLayout: getScratchpadLayout(), workflowsEnabled: isWorkflowsEnabled() };
+    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled(), myLifeEnabled: isMyLifeEnabled(), scratchpadEnabled: isScratchpadEnabled(), scratchpadLayout: getScratchpadLayout(), workflowsEnabled: isWorkflowsEnabled(), pullRequestsEnabled: isPullRequestsEnabled() };
 }
 
 let cachedSettings: DisplaySettings | null = null;
@@ -49,6 +50,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             scratchpadEnabled: data?.resolved?.scratchpad?.enabled ?? false,
             scratchpadLayout: (data?.resolved?.scratchpad?.layout === 'horizontal' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
             workflowsEnabled: data?.resolved?.workflows?.enabled ?? false,
+            pullRequestsEnabled: data?.resolved?.pullRequests?.enabled ?? false,
         };
     } catch {
         return DEFAULT_SETTINGS;

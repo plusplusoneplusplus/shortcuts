@@ -14,6 +14,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isMyLifeEnabled: () => false,
     isScratchpadEnabled: () => false,
     isWorkflowsEnabled: () => false,
+    isPullRequestsEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
 }));
 
@@ -32,6 +33,7 @@ describe('useScratchpadEnabled', () => {
             isMyLifeEnabled: () => false,
             isScratchpadEnabled: () => false,
             isWorkflowsEnabled: () => false,
+            isPullRequestsEnabled: () => false,
             getScratchpadLayout: () => 'horizontal',
         }));
     });

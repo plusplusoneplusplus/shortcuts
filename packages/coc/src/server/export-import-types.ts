@@ -68,6 +68,9 @@ export interface CLIConfig {
     workflows?: {
         enabled?: boolean;
     };
+    pullRequests?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

@@ -87,6 +87,10 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useWorkf
     useWorkflowsEnabled: () => false,
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequestsEnabled', () => ({
+    usePullRequestsEnabled: () => false,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
     useNotesAutoCommit: () => false,
 }));
@@ -114,6 +118,14 @@ vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => 
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
+    isTerminalEnabled: () => false,
+    isNotesEnabled: () => false,
+    isMyWorkEnabled: () => false,
+    isMyLifeEnabled: () => false,
+    isScratchpadEnabled: () => false,
+    isWorkflowsEnabled: () => false,
+    isPullRequestsEnabled: () => false,
+    getScratchpadLayout: () => 'horizontal',
 }));
 
 // Stub RepoChatTab — render a marker div that captures mode prop

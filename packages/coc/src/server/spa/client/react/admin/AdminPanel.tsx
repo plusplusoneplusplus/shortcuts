@@ -81,6 +81,7 @@ export function AdminPanel() {
     const [scratchpadEnabled, setScratchpadEnabled] = useState(false);
     const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
     const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
+    const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -97,7 +98,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: false, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -190,7 +191,9 @@ export function AdminPanel() {
             setScratchpadLayout(sl);
             const we = resolved.workflows?.enabled ?? false;
             setWorkflowsEnabled(we);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we });
+            const pre = resolved.pullRequests?.enabled ?? false;
+            setPullRequestsEnabled(pre);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre });
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -247,7 +250,8 @@ export function AdminPanel() {
         myLifeEnabled !== featuresSnapshot.myLife ||
         scratchpadEnabled !== featuresSnapshot.scratchpad ||
         scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
-        workflowsEnabled !== featuresSnapshot.workflows;
+        workflowsEnabled !== featuresSnapshot.workflows ||
+        pullRequestsEnabled !== featuresSnapshot.pullRequests;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -402,6 +406,7 @@ export function AdminPanel() {
                     'scratchpad.enabled': scratchpadEnabled,
                     'scratchpad.layout': scratchpadLayout,
                     'workflows.enabled': workflowsEnabled,
+                    'pullRequests.enabled': pullRequestsEnabled,
                 }),
             });
             if (!res.ok) {
@@ -410,13 +415,13 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -426,6 +431,7 @@ export function AdminPanel() {
         setScratchpadEnabled(featuresSnapshot.scratchpad);
         setScratchpadLayout(featuresSnapshot.scratchpadLayout);
         setWorkflowsEnabled(featuresSnapshot.workflows);
+        setPullRequestsEnabled(featuresSnapshot.pullRequests);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1155,6 +1161,25 @@ export function AdminPanel() {
                                                     checked={workflowsEnabled}
                                                     onChange={e => setWorkflowsEnabled(e.target.checked)}
                                                     data-testid="toggle-workflows-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Pull Requests Tab</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Pull request list tab in repo view.</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['pullRequests.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={pullRequestsEnabled}
+                                                    onChange={e => setPullRequestsEnabled(e.target.checked)}
+                                                    data-testid="toggle-pull-requests-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>

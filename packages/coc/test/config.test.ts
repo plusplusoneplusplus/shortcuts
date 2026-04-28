@@ -342,6 +342,7 @@ timeout: 300
                 myLife: { enabled: false },
                 scratchpad: { enabled: false, layout: 'vertical' },
                 workflows: { enabled: false },
+                pullRequests: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -709,6 +710,8 @@ timeout: 300
                 '  enabled: true',
                 '  layout: vertical',
                 'workflows:',
+                '  enabled: true',
+                'pullRequests:',
                 '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);

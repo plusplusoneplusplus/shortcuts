@@ -25,6 +25,8 @@ export interface DashboardOptions {
     scratchpadLayout?: 'horizontal' | 'vertical';
     /** Whether the workflows feature is enabled in server config. */
     workflowsEnabled?: boolean;
+    /** Whether the pull requests feature is enabled in server config. */
+    pullRequestsEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

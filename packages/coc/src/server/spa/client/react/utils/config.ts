@@ -14,6 +14,7 @@ interface DashboardConfig {
     scratchpadEnabled?: boolean;
     scratchpadLayout?: 'horizontal' | 'vertical';
     workflowsEnabled?: boolean;
+    pullRequestsEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -62,4 +63,8 @@ export function getScratchpadLayout(): 'horizontal' | 'vertical' {
 
 export function isWorkflowsEnabled(): boolean {
     return getConfig().workflowsEnabled === true;
+}
+
+export function isPullRequestsEnabled(): boolean {
+    return getConfig().pullRequestsEnabled === true;
 }

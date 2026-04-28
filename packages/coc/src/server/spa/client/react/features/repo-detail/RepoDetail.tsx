@@ -35,6 +35,7 @@ import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
+import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
@@ -110,6 +111,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
+    const pullRequestsEnabled = usePullRequestsEnabled();
 
     // Notes chat panel — per-workspace state so it persists across tab switches
     const [notesChatPanelOpen, setNotesChatPanelOpen] = useState(() => {
@@ -142,6 +144,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const prevTerminalEnabled = useRef(terminalEnabled);
     const prevNotesEnabled = useRef(notesEnabled);
     const prevWorkflowsEnabled = useRef(workflowsEnabled);
+    const prevPullRequestsEnabled = useRef(pullRequestsEnabled);
 
     const visibleSubTabs = useMemo(() => {
         let tabs = VISIBLE_SUB_TABS;
@@ -149,6 +152,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
+        if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
         // Layout mode filtering
         if (uiLayoutMode === 'classic') {
             // Classic: replace Chats with Activity, relabel Tasks as Plans
@@ -182,7 +186,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             tabs = ordered;
         }
         return tabs;
-    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, uiLayoutMode]);
+    }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -214,6 +218,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevWorkflowsEnabled.current = workflowsEnabled;
     }, [activeSubTab, workflowsEnabled, dispatch]);
+
+    // Redirect away from pull-requests tab only when the feature transitions to disabled
+    useEffect(() => {
+        if (activeSubTab === 'pull-requests' && !pullRequestsEnabled && prevPullRequestsEnabled.current) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+        }
+        prevPullRequestsEnabled.current = pullRequestsEnabled;
+    }, [activeSubTab, pullRequestsEnabled, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {

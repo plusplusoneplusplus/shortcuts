@@ -88,6 +88,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         scratchpadEnabled,
         scratchpadLayout,
         workflowsEnabled,
+        pullRequestsEnabled,
         reviewFilePath,
         projectDir,
     } = options;
@@ -128,7 +129,8 @@ ${getBundleCss()}
             myLifeEnabled: ${!!myLifeEnabled},
             scratchpadEnabled: ${!!scratchpadEnabled},
             scratchpadLayout: '${scratchpadLayout || 'horizontal'}',
-            workflowsEnabled: ${!!workflowsEnabled}
+            workflowsEnabled: ${!!workflowsEnabled},
+            pullRequestsEnabled: ${!!pullRequestsEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

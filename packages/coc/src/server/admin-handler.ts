@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -317,6 +317,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('workflows.enabled' in body) {
                 if (typeof body['workflows.enabled'] !== 'boolean') {
                     errors.push('workflows.enabled must be a boolean');
+                }
+            }
+            if ('pullRequests.enabled' in body) {
+                if (typeof body['pullRequests.enabled'] !== 'boolean') {
+                    errors.push('pullRequests.enabled must be a boolean');
                 }
             }
 
@@ -431,6 +436,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('workflows.enabled' in body) {
                 if (!existing.workflows) { existing.workflows = {}; }
                 existing.workflows.enabled = body['workflows.enabled'] as boolean;
+            }
+
+            // Handle nested pullRequests.enabled field
+            if ('pullRequests.enabled' in body) {
+                if (!existing.pullRequests) { existing.pullRequests = {}; }
+                existing.pullRequests.enabled = body['pullRequests.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

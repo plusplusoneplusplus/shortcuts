@@ -100,6 +100,10 @@ export interface CLIConfig {
     workflows?: {
         enabled?: boolean;
     };
+    /** Pull Requests configuration */
+    pullRequests?: {
+        enabled?: boolean;
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -225,6 +229,10 @@ export interface ResolvedCLIConfig {
     workflows: {
         enabled: boolean;
     };
+    /** Pull Requests configuration */
+    pullRequests: {
+        enabled: boolean;
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -312,6 +320,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     workflows: {
         enabled: false,
     },
+    pullRequests: {
+        enabled: false,
+    },
     store: {
         backend: 'sqlite',
     },
@@ -350,6 +361,7 @@ export const CONFIG_SOURCE_KEYS = [
     'scratchpad.enabled',
     'scratchpad.layout',
     'workflows.enabled',
+    'pullRequests.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -506,6 +518,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         workflows: {
             enabled: override.workflows?.enabled ?? base.workflows.enabled,
         },
+        pullRequests: {
+            enabled: override.pullRequests?.enabled ?? base.pullRequests.enabled,
+        },
         store: {
             backend: override.store?.backend ?? base.store.backend,
         },
@@ -595,6 +610,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('workflows.')) {
         const subKey = key.slice('workflows.'.length) as keyof NonNullable<CLIConfig['workflows']>;
         return fileConfig.workflows?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('pullRequests.')) {
+        const subKey = key.slice('pullRequests.'.length) as keyof NonNullable<CLIConfig['pullRequests']>;
+        return fileConfig.pullRequests?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';
