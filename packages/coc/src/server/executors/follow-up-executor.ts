@@ -208,6 +208,26 @@ export class FollowUpExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
+        // Persist most-recent system prompt to process metadata (fire-and-forget, non-blocking)
+        // Re-fetch the process to get the latest metadata (e.g. after any mode update above).
+        if (systemMessage?.content) {
+            const capturedContent = systemMessage.content;
+            (async () => {
+                try {
+                    const proc = await this.store.getProcess(processId);
+                    if (proc) {
+                        await this.store.updateProcess(processId, {
+                            metadata: {
+                                type: proc.metadata?.type ?? 'chat',
+                                ...(proc.metadata ?? {}),
+                                systemPrompt: capturedContent,
+                            } as any,
+                        });
+                    }
+                } catch { /* non-fatal */ }
+            })();
+        }
+
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         let preEditContent: string | undefined;
         if (notePath && wsId) {

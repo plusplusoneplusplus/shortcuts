@@ -330,3 +330,82 @@ describe('buildRows – model default fallback', () => {
         expect(modelRow!.value).toBe('claude-sonnet');
     });
 });
+
+describe('ConversationMetadataPopover – system prompt row', () => {
+    it('shows System Prompt row with char count and view button when systemPrompt is set', async () => {
+        const processWithPrompt = {
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: 'You are a helpful assistant.' },
+        };
+        renderPopover(processWithPrompt);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText('System Prompt')).toBeDefined();
+        const charCount = (processWithPrompt.metadata.systemPrompt as string).length;
+        expect(screen.getByText(`${charCount.toLocaleString()} chars`)).toBeDefined();
+        expect(screen.getByTitle('View full system prompt')).toBeDefined();
+    });
+
+    it('does not show System Prompt row when systemPrompt is absent', async () => {
+        renderPopover(BASE_PROCESS);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.queryByText('System Prompt')).toBeNull();
+    });
+
+    it('opens system prompt dialog on view button click', async () => {
+        const systemPromptText = 'You are a helpful assistant with read-only access.';
+        const processWithPrompt = {
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: systemPromptText },
+        };
+        renderPopover(processWithPrompt);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        const viewBtn = screen.getByTitle('View full system prompt');
+        await act(async () => {
+            fireEvent.click(viewBtn);
+        });
+
+        // Dialog should show the actual system prompt content in a <pre> block
+        expect(screen.getByText(systemPromptText)).toBeDefined();
+    });
+
+    it('closes system prompt dialog on Escape key', async () => {
+        const processWithPrompt = {
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: 'Some system prompt.' },
+        };
+        renderPopover(processWithPrompt);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        const viewBtn = screen.getByTitle('View full system prompt');
+        await act(async () => {
+            fireEvent.click(viewBtn);
+        });
+
+        expect(screen.getByText('Some system prompt.')).toBeDefined();
+
+        await act(async () => {
+            fireEvent.keyDown(document, { key: 'Escape' });
+        });
+
+        expect(screen.queryByText('Some system prompt.')).toBeNull();
+    });
+});

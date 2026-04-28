@@ -208,6 +208,25 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         let { agentMode, systemMessage, tools, effectivePrompt, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
 
+        // Persist system prompt to process metadata (fire-and-forget, non-blocking)
+        if (systemMessage?.content) {
+            const capturedContent = systemMessage.content;
+            (async () => {
+                try {
+                    const proc = await this.store.getProcess(processId);
+                    if (proc) {
+                        await this.store.updateProcess(processId, {
+                            metadata: {
+                                type: proc.metadata?.type ?? task.type,
+                                ...(proc.metadata ?? {}),
+                                systemPrompt: capturedContent,
+                            } as any,
+                        });
+                    }
+                } catch { /* non-fatal */ }
+            })();
+        }
+
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 

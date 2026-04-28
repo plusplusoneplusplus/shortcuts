@@ -512,10 +512,60 @@ describe('FollowUpExecutor', () => {
         const executor = makeExecutor(store);
         await executor.executeFollowUp('proc-same-model', 'msg', undefined, undefined, undefined, undefined, undefined, 'gpt-5.4');
 
-        // Should not have a metadata update with model since it's unchanged
-        const metadataUpdateCall = updateSpy.mock.calls.find(
-            ([, updates]) => 'metadata' in updates && (updates as any).metadata?.model === 'gpt-5.4',
+        // Should not have a metadata update that is solely dedicated to changing the model
+        // (system-prompt persistence calls are expected and also spread model, so we
+        // distinguish by checking that no call contains model but lacks systemPrompt)
+        const modelOnlyUpdateCall = updateSpy.mock.calls.find(
+            ([, updates]) => 'metadata' in updates
+                && (updates as any).metadata?.model === 'gpt-5.4'
+                && (updates as any).metadata?.systemPrompt == null,
         );
-        expect(metadataUpdateCall).toBeUndefined();
+        expect(modelOnlyUpdateCall).toBeUndefined();
+    });
+
+    // -------------------------------------------------------------------------
+    // System prompt persistence
+    // -------------------------------------------------------------------------
+
+    it('persists system prompt to process metadata after follow-up', async () => {
+        const proc = makeProcess({ id: 'proc-sysprompt', metadata: { type: 'chat' } });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-sysprompt', 'msg');
+
+        // Wait for the fire-and-forget IIFE to complete
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const systemPromptCall = vi.mocked(store.updateProcess).mock.calls.find(
+            ([, updates]) => 'metadata' in updates && (updates as any).metadata?.systemPrompt != null,
+        );
+        expect(systemPromptCall).toBeDefined();
+        expect(systemPromptCall![1]).toMatchObject({
+            metadata: expect.objectContaining({ systemPrompt: expect.any(String) }),
+        });
+    });
+
+    it('persists system prompt without overwriting mode update', async () => {
+        const proc = makeProcess({
+            id: 'proc-mode-sysprompt',
+            metadata: { type: 'chat', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        // Transition from ask → autopilot: mode is the 4th parameter
+        await executor.executeFollowUp('proc-mode-sysprompt', 'msg', undefined, 'autopilot');
+
+        // Wait for the fire-and-forget IIFE to complete
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const final = store.processes.get('proc-mode-sysprompt');
+        // Mode update must not be reverted by system prompt persistence
+        expect(final?.metadata?.mode).toBe('autopilot');
+        expect(final?.metadata?.previousMode).toBe('ask');
+        expect(final?.metadata?.systemPrompt).toBeDefined();
     });
 });

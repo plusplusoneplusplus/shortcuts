@@ -4,6 +4,7 @@ import { formatDuration } from '../../../utils/format';
 import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
+import { Dialog } from '../../../ui/Dialog';
 
 interface MetaRow {
     label: string;
@@ -108,6 +109,7 @@ export interface ConversationMetadataPopoverProps {
 
 export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
+    const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +221,24 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                         )}
                     </div>
                 ))}
+                {process?.metadata?.systemPrompt && (
+                    <div className="contents">
+                        <span className="text-[#848484]">System Prompt</span>
+                        <div className="flex flex-wrap items-baseline gap-x-1.5">
+                            <span className="text-[#1e1e1e] dark:text-[#cccccc]">
+                                {(process.metadata.systemPrompt as string).length.toLocaleString()} chars
+                            </span>
+                            <button
+                                type="button"
+                                className="text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
+                                title="View full system prompt"
+                                onClick={() => setSystemPromptOpen(true)}
+                            >
+                                👁 view
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             {(resumeSessionId && onLaunchInteractiveResume || onFork) && (
                 <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-wrap gap-2">
@@ -281,6 +301,17 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                 </div>,
                 document.body
             )}
+
+            <Dialog
+                open={systemPromptOpen}
+                onClose={() => setSystemPromptOpen(false)}
+                title="System Prompt"
+                className="max-w-[700px]"
+            >
+                <pre className="whitespace-pre-wrap break-words text-xs font-mono text-[#1e1e1e] dark:text-[#cccccc] overflow-y-auto max-h-[60vh] p-3 bg-[#f5f5f5] dark:bg-[#1e1e1e] rounded">
+                    {process?.metadata?.systemPrompt as string}
+                </pre>
+            </Dialog>
         </>
     );
 }

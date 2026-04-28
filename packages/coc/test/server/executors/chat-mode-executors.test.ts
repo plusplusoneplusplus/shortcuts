@@ -418,6 +418,74 @@ describe('ChatExecutor ask_user disabled', () => {
     });
 });
 
+// ============================================================================
+// System prompt persistence (chat-base-executor)
+// ============================================================================
+
+describe('ChatExecutor system prompt persistence', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('persists system prompt to process metadata after execute', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask', 'task-sysprompt');
+        const processId = `queue_${task.id}`;
+
+        // Pre-add the process so the fire-and-forget getProcess finds it
+        await store.addProcess({
+            id: processId, type: 'chat', status: 'running',
+            startTime: new Date(), promptPreview: 'Hello',
+        } as any);
+
+        await executor.execute(task, 'Hello');
+
+        // Wait for the fire-and-forget IIFE to settle
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const systemPromptCall = vi.mocked(store.updateProcess).mock.calls.find(
+            ([id, updates]) => id === processId
+                && 'metadata' in updates
+                && (updates as any).metadata?.systemPrompt != null,
+        );
+        expect(systemPromptCall).toBeDefined();
+        expect(systemPromptCall![1]).toMatchObject({
+            metadata: expect.objectContaining({ systemPrompt: expect.any(String) }),
+        });
+    });
+
+    it('does not persist system prompt when system message is absent (autopilot)', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store));
+        const task = makeChatTask('autopilot', 'task-no-sysprompt');
+        const processId = `queue_${task.id}`;
+
+        // Pre-add the process (autopilot has no system message, so persistence should not trigger)
+        await store.addProcess({
+            id: processId, type: 'chat', status: 'running',
+            startTime: new Date(), promptPreview: 'Hello',
+        } as any);
+
+        await executor.execute(task, 'Hello');
+
+        // Wait for any potential fire-and-forget to settle
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const systemPromptCall = vi.mocked(store.updateProcess).mock.calls.find(
+            ([id, updates]) => id === processId
+                && 'metadata' in updates
+                && (updates as any).metadata?.systemPrompt != null,
+        );
+        expect(systemPromptCall).toBeUndefined();
+    });
+});
+
 describe('AutopilotExecutor has no system message', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
