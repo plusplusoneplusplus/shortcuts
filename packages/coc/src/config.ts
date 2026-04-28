@@ -257,6 +257,17 @@ export const COC_DIR = '.coc';
 /** Default configuration file name (within COC_DIR) */
 export const CONFIG_FILE_NAME = 'config.yaml';
 
+/**
+ * Bundled skills that `coc serve` auto-installs into `~/.coc/skills/` on first
+ * startup when they are not already present. Single source of truth — referenced
+ * by `DEFAULT_CONFIG` and the `resolveConfig` fallback.
+ */
+export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
+    'rethink',
+    'kb-refresh',
+    'fresh-written',
+];
+
 /** Default configuration values */
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     parallel: 5,
@@ -314,7 +325,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     skills: {
         autoUpdate: true,
-        defaultSkills: ['rethink', 'kb-refresh', 'fresh-written'],
+        defaultSkills: [...DEFAULT_BUNDLED_SKILLS],
     },
 };
 
@@ -508,7 +519,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         skills: {
             autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
-            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? ['rethink', 'kb-refresh', 'fresh-written'],
+            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? [...DEFAULT_BUNDLED_SKILLS],
         },
     };
 }

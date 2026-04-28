@@ -2,6 +2,7 @@
 name: rethink
 description: Review a bug fix proposal and evaluate whether it is the cleanest solution. Use when you want to critically assess a fix for root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives. If improvements exist, propose a better fix and explain why.
 metadata:
+  author: Yiheng Tao
   version: "0.0.1"
 ---
 

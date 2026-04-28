@@ -2,6 +2,7 @@
 name: fresh-written
 description: Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version. Use whenever you update an existing document, plan, design note, AGENTS.md, README, MEMORY.md, or any persistent text artifact.
 metadata:
+  author: Yiheng Tao
   version: "0.0.1"
 ---
 
