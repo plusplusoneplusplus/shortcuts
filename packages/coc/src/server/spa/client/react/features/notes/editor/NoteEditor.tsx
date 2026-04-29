@@ -23,9 +23,9 @@ import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
-import { FollowPromptDialog } from '../../../shared/FollowPromptDialog';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
 import { notesApi } from '../notesApi';
+import { useQueue } from '../../../contexts/QueueContext';
 
 export type NoteViewMode = 'rich' | 'source';
 
@@ -176,7 +176,10 @@ export function NoteEditor({
 
     // Plan-file skill trigger
     const isPlanFile = notePath?.endsWith('.plan.md') ?? false;
-    const [runSkillsOpen, setRunSkillsOpen] = useState(false);
+    const { dispatch: queueDispatch } = useQueue();
+    const contextFilePath = notesRoot
+        ? notesRoot.replace(/\\/g, '/') + '/' + notePath
+        : notePath!;
 
     // Version history panel
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -1055,7 +1058,12 @@ export function NoteEditor({
                                     title="Run Skill"
                                     aria-label="Run Skill"
                                     data-testid="note-run-skills-btn"
-                                    onClick={() => setRunSkillsOpen(true)}
+                                    onClick={() => queueDispatch({
+                                        type: 'OPEN_DIALOG',
+                                        workspaceId,
+                                        contextFiles: [contextFilePath],
+                                        contextTaskName: notePath!.split('/').pop()?.replace(/\.plan\.md$/, '') ?? '',
+                                    })}
                                 >
                                     <span>⚡</span> Run Skill
                                 </button>
@@ -1328,16 +1336,6 @@ export function NoteEditor({
                     editCount={aiEditCount}
                     onNext={handleAiEditNext}
                     onDismiss={handleAiEditDismiss}
-                />
-            )}
-
-            {/* Run Skill dialog — plan files only */}
-            {runSkillsOpen && notePath && (
-                <FollowPromptDialog
-                    wsId={workspaceId}
-                    taskPath={notesRoot ? notesRoot.replace(/\\/g, '/') + '/' + notePath : notePath}
-                    taskName={notePath.split('/').pop()?.replace(/\.plan\.md$/, '') ?? ''}
-                    onClose={() => setRunSkillsOpen(false)}
                 />
             )}
         </div>
