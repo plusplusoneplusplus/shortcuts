@@ -244,6 +244,7 @@ export function ChatListPane({
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const setSearchQuery = useCallback((q: string) => {
         setSearchQueryRaw(q);
@@ -283,6 +284,8 @@ export function ChatListPane({
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                // Skip interception when this pane is hidden (display:none via parent).
+                if (!containerRef.current || containerRef.current.offsetParent === null) return;
                 if (detailPaneFocusedRef.current) return;
                 e.preventDefault();
                 setSearchVisible(true);
@@ -847,7 +850,7 @@ export function ChatListPane({
 
     return (
         <>
-            <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+            <div ref={containerRef} className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
                 {/* ── Chats tab: flat time-sorted list ── */}
                 {activeTab === 'chats' && (
                     <>

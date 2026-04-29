@@ -219,6 +219,13 @@ describe('ChatListPane', () => {
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
+        // jsdom has no layout engine so offsetParent is always null.
+        // Mock it to return document.body for connected elements so the
+        // visibility guard in ChatListPane's Ctrl+F handler behaves correctly.
+        Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+            get() { return this.isConnected ? document.body : null; },
+            configurable: true,
+        });
     });
 
     // ── Empty state ────────────────────────────────────────────────────

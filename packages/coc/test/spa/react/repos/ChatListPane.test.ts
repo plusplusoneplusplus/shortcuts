@@ -721,7 +721,7 @@ describe('ChatListPane pinned chats', () => {
         it('prevents default browser find on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 300,
+                source.indexOf("e.key === 'f'") + 600,
             );
             expect(handler).toContain('e.preventDefault()');
         });
@@ -729,7 +729,7 @@ describe('ChatListPane pinned chats', () => {
         it('sets searchVisible to true on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 300,
+                source.indexOf("e.key === 'f'") + 600,
             );
             expect(handler).toContain('setSearchVisible(true)');
         });
@@ -746,13 +746,25 @@ describe('ChatListPane pinned chats', () => {
         it('checks detailPaneFocusedRef before intercepting Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 300,
+                source.indexOf("e.key === 'f'") + 600,
             );
             expect(handler).toContain('if (detailPaneFocusedRef.current) return');
             // The ref check must come before preventDefault
             const refIdx = handler.indexOf('detailPaneFocusedRef.current');
             const preventIdx = handler.indexOf('e.preventDefault()');
             expect(refIdx).toBeLessThan(preventIdx);
+        });
+
+        it('bails out when container is hidden (offsetParent === null)', () => {
+            const handler = source.substring(
+                source.indexOf("e.key === 'f'"),
+                source.indexOf("e.key === 'f'") + 600,
+            );
+            // Visibility guard must appear before preventDefault
+            expect(handler).toContain('containerRef.current.offsetParent === null');
+            const visIdx = handler.indexOf('offsetParent === null');
+            const preventIdx = handler.indexOf('e.preventDefault()');
+            expect(visIdx).toBeLessThan(preventIdx);
         });
 
         it('Escape key closes search when visible', () => {
@@ -1559,7 +1571,7 @@ describe('ChatListPane: chat search', () => {
         it('Ctrl+F handler does not gate on activeTab', () => {
             const ctrlFBlock = source.substring(
                 source.indexOf("e.key === 'f'") - 100,
-                source.indexOf("e.key === 'f'") + 300,
+                source.indexOf("e.key === 'f'") + 600,
             );
             // The Ctrl+F handler should set searchVisible and focus — no activeTab check
             expect(ctrlFBlock).toContain('setSearchVisible(true)');
