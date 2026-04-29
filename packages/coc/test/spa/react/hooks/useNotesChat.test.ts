@@ -173,8 +173,12 @@ describe('useNotesChat', () => {
             expect(source).toContain('return null');
         });
 
-        it('accepts optional model parameter in createChat signature', () => {
-            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\')');
+        it('accepts optional model and skills parameters in createChat signature', () => {
+            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\', skills?: string[])');
+        });
+
+        it('includes skills in context when provided', () => {
+            expect(source).toContain("...(skills && skills.length > 0 ? { skills } : {})");
         });
 
         it('includes model in payload when provided', () => {

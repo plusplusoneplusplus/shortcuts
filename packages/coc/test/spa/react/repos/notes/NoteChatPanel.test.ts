@@ -144,8 +144,8 @@ describe('NoteChatPanel', () => {
             expect(source).not.toContain('Binding');
         });
 
-        it('does not use fetchApi', () => {
-            expect(source).not.toContain('fetchApi');
+        it('imports fetchApi for skill fetching', () => {
+            expect(source).toContain('fetchApi');
         });
     });
 
@@ -217,8 +217,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('note-chat-model-badge');
         });
 
-        it('passes modelOverride and selectedMode to createChat', () => {
-            expect(source).toContain('createChat(prompt, modelCommand.modelOverride, selectedMode)');
+        it('passes modelOverride, selectedMode, and extracted skills to createChat', () => {
+            expect(source).toContain('createChat(prompt, modelCommand.modelOverride, selectedMode,');
         });
 
         it('wraps RichTextInput in relative container for menu positioning', () => {
@@ -227,6 +227,51 @@ describe('NoteChatPanel', () => {
             expect(relIdx).toBeGreaterThan(-1);
             const slashMenuIdx = source.indexOf('<SlashCommandMenu', relIdx);
             expect(slashMenuIdx).toBeGreaterThan(relIdx);
+        });
+    });
+
+    describe('skill slash-command support', () => {
+        it('imports SkillItem type from SlashCommandMenu', () => {
+            expect(source).toContain("import type { SkillItem }");
+            expect(source).toContain("from '../../chat/SlashCommandMenu'");
+        });
+
+        it('imports fetchApi for skill fetching', () => {
+            expect(source).toContain("import { fetchApi }");
+            expect(source).toContain("from '../../../hooks/useApi'");
+        });
+
+        it('declares skills state with SkillItem array type', () => {
+            expect(source).toContain('useState<SkillItem[]>([])');
+        });
+
+        it('fetches skills from /skills/all API on workspaceId change', () => {
+            expect(source).toContain('/skills/all');
+            expect(source).toContain('setSkills(data.merged)');
+        });
+
+        it('merges fetched skills into augmentedSkills before model entry', () => {
+            expect(source).toContain('[...skills, { name: \'model\',');
+        });
+
+        it('augmentedSkills depends on skills', () => {
+            expect(source).toContain('[skills]');
+        });
+
+        it('onSelect calls selectSkill for non-model skills', () => {
+            expect(source).toContain('slashCommands.selectSkill(name, input, setInput, richTextRef)');
+        });
+
+        it('keyboard handler calls selectSkill for non-model skills on Enter/Tab', () => {
+            expect(source).toContain('slashCommands.selectSkill(skill.name, input, setInput, richTextRef)');
+        });
+
+        it('handleSend extracts skills via parseAndExtract', () => {
+            expect(source).toContain('slashCommands.parseAndExtract(text)');
+        });
+
+        it('passes extracted skills to createChat when present', () => {
+            expect(source).toContain('extractedSkills.length > 0 ? extractedSkills : undefined');
         });
     });
 });

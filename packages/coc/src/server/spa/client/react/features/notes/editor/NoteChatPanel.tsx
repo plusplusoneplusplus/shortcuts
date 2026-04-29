@@ -10,11 +10,13 @@ import { useModels } from '../../../hooks/useModels';
 import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
 import { useModelCommand } from '../../chat/hooks/useModelCommand';
 import { SlashCommandMenu } from '../../chat/SlashCommandMenu';
+import type { SkillItem } from '../../chat/SlashCommandMenu';
 import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
 import type { ChatMode } from '../../../repos/modeConfig';
+import { fetchApi } from '../../../hooks/useApi';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -49,9 +51,10 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
 
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
+    const [skills, setSkills] = useState<SkillItem[]>([]);
     const augmentedSkills = useMemo(
-        () => [{ name: 'model', description: 'Switch AI model' }],
-        [],
+        () => [...skills, { name: 'model', description: 'Switch AI model' }],
+        [skills],
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
@@ -59,6 +62,20 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     useEffect(() => {
         onHasChatChange?.(!!taskId);
     }, [taskId, onHasChatChange]);
+
+    // Fetch skills when workspaceId changes
+    useEffect(() => {
+        setSkills([]);
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
+            .then((data: any) => {
+                if (data?.merged && Array.isArray(data.merged)) {
+                    setSkills(data.merged);
+                } else if (data?.skills && Array.isArray(data.skills)) {
+                    setSkills(data.skills);
+                }
+            })
+            .catch(() => { /* ignore */ });
+    }, [workspaceId]);
 
     const handleSend = async () => {
         const text = input.trim();
@@ -73,12 +90,13 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
             return;
         }
 
+        const { skills: extractedSkills } = slashCommands.parseAndExtract(text);
         setInput('');
         richTextRef.current?.setValue('');
         await onBeforeSend?.();
         const prompt = formatNoteReferences(activeRefs) + text;
         onClearReferences?.();
-        await createChat(prompt, modelCommand.modelOverride, selectedMode);
+        await createChat(prompt, modelCommand.modelOverride, selectedMode, extractedSkills.length > 0 ? extractedSkills : undefined);
     };
 
     const noNoteSelected = scope === 'per-note' && !notePath;
@@ -163,6 +181,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                                             richTextRef.current?.setValue('');
                                                             slashCommands.dismissMenu();
                                                             modelCommand.showModelMenu();
+                                                        } else if (skill) {
+                                                            slashCommands.selectSkill(skill.name, input, setInput, richTextRef);
                                                         }
                                                     }
                                                     return;
@@ -180,6 +200,10 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                                     richTextRef.current?.setValue('');
                                                     slashCommands.dismissMenu();
                                                     modelCommand.showModelMenu();
+                                                    richTextRef.current?.focus();
+                                                } else {
+                                                    slashCommands.selectSkill(name, input, setInput, richTextRef);
+                                                    slashCommands.dismissMenu();
                                                     richTextRef.current?.focus();
                                                 }
                                             }}

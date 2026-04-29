@@ -31,7 +31,7 @@ describe('NoteChatPanel — mode toggle', () => {
     });
 
     it('passes selectedMode to createChat', () => {
-        expect(source).toMatch(/createChat\(prompt,\s*modelCommand\.modelOverride,\s*selectedMode\)/);
+        expect(source).toMatch(/createChat\(prompt,\s*modelCommand\.modelOverride,\s*selectedMode,/);
     });
 
     it('passes allowedModes to ChatDetail instead of hideModeSelector', () => {
