@@ -5,7 +5,6 @@ import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { useComments } from '../../notes/editor/useComments';
 import { notesApi } from '../../notes/notesApi';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
-import { useQueue } from '../../../contexts/QueueContext';
 import { ScratchpadDivider } from './ScratchpadDivider';
 import type { ScratchpadExpandMode } from './useScratchpadState';
 
@@ -39,15 +38,8 @@ export interface ScratchpadPanelProps {
     headerBar?: ScratchpadHeaderBarProps;
 }
 
-function isPlanFile(notePath: string | null): boolean {
-    if (!notePath) return false;
-    const name = notePath.replace(/\\/g, '/').split('/').pop() ?? '';
-    return name === 'plan.md' || name.endsWith('.plan.md');
-}
 
 export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, parentProcessId, selectedMode, headerBar }: ScratchpadPanelProps) {
-    const { dispatch: queueDispatch } = useQueue();
-
     // ── Comments state (ephemeral — not persisted) ──────────────────────────
     const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
@@ -158,23 +150,6 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
         ? { flex: '1 1 auto', minHeight: 0 }
         : { height, minHeight: 0 };
 
-    const runSkillButton = isPlanFile(notePath) ? (
-        <button
-            type="button"
-            title="Run Skill"
-            data-testid="scratchpad-run-skill"
-            className="h-7 px-2 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
-            onMouseDown={(e) => {
-                e.preventDefault();
-                queueDispatch({
-                    type: 'OPEN_DIALOG',
-                    workspaceId,
-                    contextFiles: [notePath!],
-                });
-            }}
-        >⚡</button>
-    ) : null;
-
     const commentsVisible = commentsPanelOpen && !!notePath;
 
     return (
@@ -205,7 +180,6 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                         workspaceId={workspaceId}
                         notePath={notePath}
                         onNotFound={onNotFound}
-                        toolbarRight={runSkillButton}
                         threads={comments.allThreads}
                         onCommentActivated={setActiveCommentId}
                         onEditorReady={(ed) => { editorRef.current = ed; }}

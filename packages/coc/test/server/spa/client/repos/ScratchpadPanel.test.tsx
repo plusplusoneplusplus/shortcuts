@@ -10,15 +10,6 @@ import userEvent from '@testing-library/user-event';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const mockQueueDispatch = vi.fn();
-
-vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({
-        state: {},
-        dispatch: mockQueueDispatch,
-    }),
-}));
-
 // Mock useComments to provide controllable comment state.
 const mockCreateThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
 const mockDeleteThread = vi.fn().mockResolvedValue(undefined);
@@ -90,21 +81,7 @@ describe('ScratchpadPanel — Run Skill button', () => {
         cleanup();
     });
 
-    // ── isPlanFile detection ───────────────────────────────────────────────
-
-    it('shows Run Skill button for exact "plan.md" filename', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath="/repo/plan.md"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-        expect(screen.getByTestId('scratchpad-run-skill')).toBeTruthy();
-    });
-
-    it('shows Run Skill button for "*.plan.md" pattern', () => {
+    it('does not inject a scratchpad-run-skill button for plan files (button is owned by NoteEditor)', () => {
         render(
             <ScratchpadPanel
                 workspaceId="ws1"
@@ -113,105 +90,19 @@ describe('ScratchpadPanel — Run Skill button', () => {
                 height="auto"
             />
         );
-        expect(screen.getByTestId('scratchpad-run-skill')).toBeTruthy();
-    });
-
-    it('shows Run Skill button for Windows-style backslash path with plan.md', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath="C:\\Users\\user\\.coc\\repos\\ws1\\tasks\\coc\\something.plan.md"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-        expect(screen.getByTestId('scratchpad-run-skill')).toBeTruthy();
-    });
-
-    it('does NOT show Run Skill button for a regular .md file', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath="/repo/notes.md"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
         expect(screen.queryByTestId('scratchpad-run-skill')).toBeNull();
     });
 
-    it('does NOT show Run Skill button for a file containing "plan" but not ending in "plan.md"', () => {
+    it('does not pass toolbarRight to NoteEditor for plan files', () => {
         render(
             <ScratchpadPanel
                 workspaceId="ws1"
-                notePath="/repo/plan-notes.md"
+                notePath="/tasks/my-feature.plan.md"
                 onClose={vi.fn()}
                 height="auto"
             />
         );
-        expect(screen.queryByTestId('scratchpad-run-skill')).toBeNull();
-    });
-
-    it('does NOT show Run Skill button when notePath is null', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath={null}
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-        expect(screen.queryByTestId('scratchpad-run-skill')).toBeNull();
-    });
-
-    it('does NOT show Run Skill button for a non-md file named plan', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath="/repo/plan.ts"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-        expect(screen.queryByTestId('scratchpad-run-skill')).toBeNull();
-    });
-
-    // ── Dispatch behavior ──────────────────────────────────────────────────
-
-    it('dispatches OPEN_DIALOG with correct workspaceId and contextFiles on click', async () => {
-        const user = userEvent.setup();
-        render(
-            <ScratchpadPanel
-                workspaceId="ws-abc"
-                notePath="/tasks/feature.plan.md"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-
-        const btn = screen.getByTestId('scratchpad-run-skill');
-        await user.click(btn);
-
-        expect(mockQueueDispatch).toHaveBeenCalledOnce();
-        expect(mockQueueDispatch).toHaveBeenCalledWith({
-            type: 'OPEN_DIALOG',
-            workspaceId: 'ws-abc',
-            contextFiles: ['/tasks/feature.plan.md'],
-        });
-    });
-
-    it('passes toolbarRight into NoteEditor', () => {
-        render(
-            <ScratchpadPanel
-                workspaceId="ws1"
-                notePath="/repo/plan.md"
-                onClose={vi.fn()}
-                height="auto"
-            />
-        );
-        // The Run Skill button should be rendered inside the (mocked) NoteEditor
-        const editor = screen.getByTestId('note-editor');
-        expect(editor.querySelector('[data-testid="scratchpad-run-skill"]')).toBeTruthy();
+        expect(capturedNoteEditorProps.toolbarRight).toBeUndefined();
     });
 });
 
