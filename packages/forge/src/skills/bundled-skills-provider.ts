@@ -250,9 +250,12 @@ export function parseSkillVersionFromContent(content: string): string | undefine
     const topLevel = frontmatter.match(/^version:\s*["']?(.+?)["']?\s*$/m);
     if (topLevel) return topLevel[1];
 
-    // Try nested metadata.version
-    const nested = frontmatter.match(/^metadata:\s*\r?\n\s+version:\s*["']?(.+?)["']?\s*$/m);
-    if (nested) return nested[1];
+    // Try nested metadata.version — version may appear anywhere within the metadata block
+    const metadataBlock = frontmatter.match(/^metadata:\s*\r?\n((?:[ \t]+[^\r\n]+\r?\n?)*)/m);
+    if (metadataBlock) {
+        const versionInBlock = metadataBlock[1].match(/^[ \t]+version:\s*["']?(.+?)["']?\s*$/m);
+        if (versionInBlock) return versionInBlock[1];
+    }
 
     return undefined;
 }
