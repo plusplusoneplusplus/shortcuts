@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execGitAsync } from '@plusplusoneplusplus/forge/git';
-import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff, NotesGitDiffFile } from './notes-git-types';
+import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff, NotesGitDiffFile, NoteFileVersion } from './notes-git-types';
 
 /** Empty tree hash used for diffing the initial (parentless) commit. */
 const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
@@ -302,5 +302,51 @@ export class NotesGitService {
 
         const hash = await execGitAsync(['rev-parse', 'HEAD'], this.notesDir);
         return { committed: true, hash, message: commitMsg };
+    }
+
+    /**
+     * Return commit history that touched `relPath` (relative to notesDir).
+     * Uses `git log --follow` so renames are tracked.
+     * Returns [] when not initialized or no history exists for the file.
+     */
+    async getFileLog(relPath: string, limit = 50): Promise<NoteFileVersion[]> {
+        if (!(await this.isInitialized())) return [];
+
+        const safeLimit = Math.min(Math.max(1, limit), 200);
+
+        try {
+            const output = await execGitAsync(
+                ['log', '--follow', `--format=%H%x00%h%x00%s%x00%aI`, `-n`, `${safeLimit}`, '--', relPath],
+                this.notesDir,
+            );
+
+            if (!output.trim()) return [];
+
+            const versions: NoteFileVersion[] = [];
+            for (const line of output.split('\n')) {
+                if (!line.includes('\0')) continue;
+                const parts = line.split('\0');
+                if (parts.length < 4) continue;
+                const [hash, shortHash, message, date] = parts;
+                versions.push({
+                    hash: hash.trim(),
+                    shortHash: shortHash.trim(),
+                    message: message.trim(),
+                    date: date.trim(),
+                    isNamedCheckpoint: message.trim().startsWith('[v] '),
+                });
+            }
+            return versions;
+        } catch {
+            return [];
+        }
+    }
+
+    /**
+     * Return the raw content of `relPath` at the given commit `hash`.
+     * Throws when the object does not exist.
+     */
+    async getFileContentAtRevision(hash: string, relPath: string): Promise<string> {
+        return execGitAsync(['show', `${hash}:${relPath}`], this.notesDir);
     }
 }

@@ -260,4 +260,42 @@ export const notesApi = {
             body: JSON.stringify({ intervalMs }),
         });
     },
+
+    // ── Per-file version history endpoints ──────────────────────────
+
+    getFileLog(wsId: string, notePath: string, limit = 50): Promise<{
+        entries: Array<{
+            hash: string; shortHash: string; message: string; date: string; isNamedCheckpoint: boolean;
+        }>;
+        path: string;
+        limit: number;
+    }> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/git/file-log?path=${encodeURIComponent(notePath)}&limit=${limit}`,
+        );
+    },
+
+    getFileContentAtRevision(wsId: string, hash: string, notePath: string): Promise<{
+        content: string; hash: string; path: string;
+    }> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/git/file-content?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(notePath)}`,
+        );
+    },
+
+    saveCheckpoint(wsId: string, notePath: string, name: string): Promise<{ hash: string; message: string }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/save-checkpoint`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, name }),
+        });
+    },
+
+    restoreVersion(wsId: string, notePath: string, hash: string): Promise<{ mtime: number }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/restore-version`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, hash }),
+        });
+    },
 };

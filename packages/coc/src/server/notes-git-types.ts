@@ -71,3 +71,21 @@ export interface NotesGitDiff {
     /** Per-file diff details. */
     files: NotesGitDiffFile[];
 }
+
+/**
+ * A single entry in a per-file version history list.
+ * `isNamedCheckpoint` is true when the commit message starts with `[v] ` —
+ * these are user-saved named checkpoints; all other commits are auto-commits.
+ */
+export interface NoteFileVersion {
+    /** Full commit hash. */
+    hash: string;
+    /** Abbreviated commit hash. */
+    shortHash: string;
+    /** Commit message (first line). */
+    message: string;
+    /** ISO 8601 commit date. */
+    date: string;
+    /** True when message starts with "[v] " (user-saved named checkpoint). */
+    isNamedCheckpoint: boolean;
+}

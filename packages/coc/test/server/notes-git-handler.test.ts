@@ -430,6 +430,292 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // GET /file-log
+    // ========================================================================
+    describe('GET /file-log', () => {
+        it('returns empty entries for untracked file', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await request(gitUrl(srv, 'file-log', 'path=note.md'));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.entries).toEqual([]);
+            expect(data.path).toBe('note.md');
+        });
+
+        it('returns only commits that touched the file', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            writeNote('a.md', 'content a');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'add a' });
+            writeNote('b.md', 'content b');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'add b' });
+
+            const res = await request(gitUrl(srv, 'file-log', 'path=a.md'));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.entries).toHaveLength(1);
+            expect(data.entries[0].message).toBe('add a');
+        });
+
+        it('sets isNamedCheckpoint for [v] prefixed commits', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            writeNote('note.md', 'v1');
+            await postJSON(gitUrl(srv, 'commit'), { message: '[v] My checkpoint' });
+            writeNote('note.md', 'v2');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'auto save' });
+
+            const res = await request(gitUrl(srv, 'file-log', 'path=note.md'));
+            const data = JSON.parse(res.body);
+            const checkpoint = data.entries.find((e: any) => e.message === '[v] My checkpoint');
+            const auto = data.entries.find((e: any) => e.message === 'auto save');
+            expect(checkpoint.isNamedCheckpoint).toBe(true);
+            expect(auto.isNamedCheckpoint).toBe(false);
+        });
+
+        it('returns 400 when path param is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(gitUrl(srv, 'file-log'));
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 403 for path traversal attempt', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await request(gitUrl(srv, 'file-log', `path=${encodeURIComponent('../../etc/passwd')}`));
+            expect(res.status).toBe(403);
+        });
+
+        it('clamps limit to 200', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await request(gitUrl(srv, 'file-log', 'path=note.md&limit=9999'));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.limit).toBe(200);
+        });
+    });
+
+    // ========================================================================
+    // GET /file-content
+    // ========================================================================
+    describe('GET /file-content', () => {
+        it('returns file content at a specific revision', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            writeNote('note.md', 'version 1\n');
+            const commitRes = await postJSON(gitUrl(srv, 'commit'), { message: 'v1' });
+            const { hash } = JSON.parse(commitRes.body);
+
+            writeNote('note.md', 'version 2\n');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'v2' });
+
+            const res = await request(gitUrl(srv, 'file-content', `hash=${hash}&path=note.md`));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.content.trim()).toBe('version 1');
+            expect(data.hash).toBe(hash);
+        });
+
+        it('returns 400 when hash is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(gitUrl(srv, 'file-content', 'path=note.md'));
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when path is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(gitUrl(srv, 'file-content', 'hash=deadbeefdeadbeef'));
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 403 for path traversal attempt', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await request(gitUrl(srv, 'file-content',
+                `hash=deadbeefdeadbeef&path=${encodeURIComponent('../../etc/passwd')}`));
+            expect(res.status).toBe(403);
+        });
+    });
+
+    // ========================================================================
+    // POST /save-checkpoint
+    // ========================================================================
+    describe('POST /save-checkpoint', () => {
+        it('creates a [v] prefixed checkpoint commit', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            writeNote('note.md', 'checkpoint content');
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), {
+                path: 'note.md',
+                name: 'My first checkpoint',
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.message).toBe('[v] My first checkpoint');
+            expect(data.hash).toMatch(/^[a-f0-9]{40}$/);
+
+            // Verify it shows up in file-log with isNamedCheckpoint: true
+            const logRes = await request(gitUrl(srv, 'file-log', 'path=note.md'));
+            const logData = JSON.parse(logRes.body);
+            const cp = logData.entries.find((e: any) => e.isNamedCheckpoint);
+            expect(cp).toBeDefined();
+        });
+
+        it('returns 400 when path is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), { name: 'test' });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when name is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), { path: 'note.md' });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when there are no changes to checkpoint', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            // File already committed — no staged changes
+            writeNote('note.md', 'content');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'committed' });
+
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), {
+                path: 'note.md',
+                name: 'should fail',
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 409 when not initialized', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            fs.mkdirSync(notesRoot(), { recursive: true });
+
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), {
+                path: 'note.md',
+                name: 'test',
+            });
+            expect(res.status).toBe(409);
+        });
+
+        it('returns 403 for path traversal attempt', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await postJSON(gitUrl(srv, 'save-checkpoint'), {
+                path: '../../etc/passwd',
+                name: 'hack',
+            });
+            expect(res.status).toBe(403);
+        });
+    });
+
+    // ========================================================================
+    // POST /restore-version
+    // ========================================================================
+    describe('POST /restore-version', () => {
+        it('restores a file to a previous version', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            writeNote('note.md', 'original content\n');
+            const commitRes = await postJSON(gitUrl(srv, 'commit'), { message: 'original' });
+            const { hash: originalHash } = JSON.parse(commitRes.body);
+
+            writeNote('note.md', 'updated content\n');
+            await postJSON(gitUrl(srv, 'commit'), { message: 'updated' });
+
+            // Restore to original
+            const restoreRes = await postJSON(gitUrl(srv, 'restore-version'), {
+                path: 'note.md',
+                hash: originalHash,
+            });
+            expect(restoreRes.status).toBe(200);
+            const restoreData = JSON.parse(restoreRes.body);
+            expect(typeof restoreData.mtime).toBe('number');
+
+            // Verify file was restored
+            const restoredContent = fs.readFileSync(path.join(notesRoot(), 'note.md'), 'utf-8');
+            expect(restoredContent.trim()).toBe('original content');
+        });
+
+        it('returns 400 when path is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(gitUrl(srv, 'restore-version'), {
+                hash: 'deadbeefdeadbeef',
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when hash is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(gitUrl(srv, 'restore-version'), { path: 'note.md' });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 409 when not initialized', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            fs.mkdirSync(notesRoot(), { recursive: true });
+
+            const res = await postJSON(gitUrl(srv, 'restore-version'), {
+                path: 'note.md',
+                hash: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+            });
+            expect(res.status).toBe(409);
+        });
+
+        it('returns 403 for path traversal attempt', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await postJSON(gitUrl(srv, 'restore-version'), {
+                path: '../../etc/passwd',
+                hash: 'deadbeefdeadbeef',
+            });
+            expect(res.status).toBe(403);
+        });
+    });
+
+    // ========================================================================
     // Workspace resolution
     // ========================================================================
     describe('workspace resolution', () => {

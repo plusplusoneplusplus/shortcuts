@@ -10,7 +10,10 @@
 
 import * as url from 'url';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
@@ -210,6 +213,198 @@ export function registerNotesGitRoutes(
                     return sendError(res, 409, 'Notes git repository is not initialized');
                 }
                 sendError(res, 500, 'Failed to commit notes: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/git/file-log?path=<relPath>&limit=<n>
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/file-log$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const relPath = parsed.query.path as string | undefined;
+            if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+                return sendError(res, 400, 'Missing required query param: path');
+            }
+
+            let limit = parseInt(parsed.query.limit as string, 10);
+            if (isNaN(limit) || limit < 1) limit = 50;
+            if (limit > 200) limit = 200;
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const resolved = path.resolve(notesRoot, relPath);
+            if (!isWithinDirectory(resolved, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            try {
+                const service = new NotesGitService(notesRoot);
+                const entries = await service.getFileLog(relPath, limit);
+                sendJSON(res, 200, { entries, path: relPath, limit });
+            } catch (err: any) {
+                sendError(res, 500, 'Failed to get file log: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/git/file-content?hash=<hash>&path=<relPath>
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/file-content$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const hash = parsed.query.hash as string | undefined;
+            const relPath = parsed.query.path as string | undefined;
+
+            if (!hash || typeof hash !== 'string' || !/^[a-f0-9]{4,40}$/.test(hash)) {
+                return sendError(res, 400, 'Missing or invalid query param: hash (must be 4–40 hex chars)');
+            }
+            if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+                return sendError(res, 400, 'Missing required query param: path');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const resolved = path.resolve(notesRoot, relPath);
+            if (!isWithinDirectory(resolved, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            try {
+                const service = new NotesGitService(notesRoot);
+                const content = await service.getFileContentAtRevision(hash, relPath);
+                sendJSON(res, 200, { content, hash, path: relPath });
+            } catch (err: any) {
+                const msg = err.message || '';
+                if (msg.includes('does not exist') || msg.includes('bad object') ||
+                    msg.includes('unknown revision') || msg.includes('Path') ||
+                    msg.includes('not in \'')) {
+                    return sendError(res, 404, `File not found at revision ${hash}`);
+                }
+                sendError(res, 500, 'Failed to get file content at revision: ' + msg);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/notes/git/save-checkpoint
+    // body: { path: string, name: string }
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/save-checkpoint$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const { path: relPath, name } = body || {};
+            if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+                return sendError(res, 400, 'Missing required field: path');
+            }
+            if (!name || typeof name !== 'string' || !name.trim()) {
+                return sendError(res, 400, 'Missing required field: name');
+            }
+            if (name.trim().length > 200) {
+                return sendError(res, 400, 'Checkpoint name must be at most 200 characters');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const resolved = path.resolve(notesRoot, relPath);
+            if (!isWithinDirectory(resolved, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            try {
+                const service = new NotesGitService(notesRoot);
+                if (!(await service.isInitialized())) {
+                    return sendError(res, 409, 'Notes git repository is not initialized');
+                }
+
+                // Stage only the specified file
+                await execGitAsync(['add', '--', relPath], notesRoot);
+
+                // Check if this file has staged changes
+                const staged = await execGitAsync(['diff', '--cached', '--name-only', '--', relPath], notesRoot);
+                if (!staged.trim()) {
+                    return sendError(res, 400, 'No changes to checkpoint for this file');
+                }
+
+                const commitMsg = `[v] ${name.trim()}`;
+                await execGitAsync(['commit', '-m', commitMsg], notesRoot);
+                const hash = await execGitAsync(['rev-parse', 'HEAD'], notesRoot);
+
+                sendJSON(res, 200, { hash: hash.trim(), message: commitMsg });
+            } catch (err: any) {
+                sendError(res, 500, 'Failed to save checkpoint: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/notes/git/restore-version
+    // body: { path: string, hash: string }
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/restore-version$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const { path: relPath, hash } = body || {};
+            if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+                return sendError(res, 400, 'Missing required field: path');
+            }
+            if (!hash || typeof hash !== 'string' || !/^[a-f0-9]{4,40}$/.test(hash)) {
+                return sendError(res, 400, 'Missing or invalid field: hash (must be 4–40 hex chars)');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const resolved = path.resolve(notesRoot, relPath);
+            if (!isWithinDirectory(resolved, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            try {
+                const service = new NotesGitService(notesRoot);
+                if (!(await service.isInitialized())) {
+                    return sendError(res, 409, 'Notes git repository is not initialized');
+                }
+
+                const content = await service.getFileContentAtRevision(hash, relPath);
+
+                // Atomic write: temp file + rename (same pattern as notes-write-handler)
+                const tmpPath = resolved + '.tmp';
+                await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
+                await fs.promises.writeFile(tmpPath, content, 'utf-8');
+                await fs.promises.rename(tmpPath, resolved);
+
+                const stat = await fs.promises.stat(resolved);
+                sendJSON(res, 200, { mtime: stat.mtimeMs });
+            } catch (err: any) {
+                const msg = err.message || '';
+                if (msg.includes('does not exist') || msg.includes('bad object') ||
+                    msg.includes('unknown revision') || msg.includes('Path') ||
+                    msg.includes('not in \'')) {
+                    return sendError(res, 404, `File not found at revision ${hash}`);
+                }
+                sendError(res, 500, 'Failed to restore version: ' + msg);
             }
         },
     });

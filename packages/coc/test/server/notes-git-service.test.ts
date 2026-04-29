@@ -391,4 +391,122 @@ describe('NotesGitService', { timeout: 60_000 }, () => {
             expect(status.clean).toBe(true);
         });
     });
+
+    // ========================================================================
+    // getFileLog
+    // ========================================================================
+    describe('getFileLog', () => {
+        it('returns empty array when not initialized', async () => {
+            const log = await service.getFileLog('note.md');
+            expect(log).toEqual([]);
+        });
+
+        it('returns empty array for a file with no history', async () => {
+            await service.init();
+            const log = await service.getFileLog('nonexistent.md');
+            expect(log).toEqual([]);
+        });
+
+        it('returns only commits that touched the specified file', async () => {
+            await service.init();
+
+            writeFile('a.md', 'content a');
+            await service.commit('add a.md');
+            writeFile('b.md', 'content b');
+            await service.commit('add b.md');
+
+            const logForA = await service.getFileLog('a.md');
+            const logForB = await service.getFileLog('b.md');
+
+            expect(logForA).toHaveLength(1);
+            expect(logForA[0].message).toBe('add a.md');
+
+            expect(logForB).toHaveLength(1);
+            expect(logForB[0].message).toBe('add b.md');
+        });
+
+        it('entries have correct shape with isNamedCheckpoint flag', async () => {
+            await service.init();
+
+            writeFile('note.md', 'v1');
+            await service.commit('[v] My checkpoint');
+            writeFile('note.md', 'v2');
+            await service.commit('auto save');
+
+            const log = await service.getFileLog('note.md');
+            expect(log).toHaveLength(2);
+
+            // Newest first — auto save is HEAD
+            const autoEntry = log.find(e => e.message === 'auto save');
+            const cpEntry = log.find(e => e.message === '[v] My checkpoint');
+
+            expect(autoEntry).toBeDefined();
+            expect(autoEntry!.isNamedCheckpoint).toBe(false);
+
+            expect(cpEntry).toBeDefined();
+            expect(cpEntry!.isNamedCheckpoint).toBe(true);
+
+            // Shape check
+            expect(cpEntry!.hash).toMatch(/^[a-f0-9]{40}$/);
+            expect(cpEntry!.shortHash.length).toBeGreaterThanOrEqual(7);
+            expect(cpEntry!.date).toBeTruthy();
+        });
+
+        it('respects the limit parameter', async () => {
+            await service.init();
+            for (let i = 0; i < 5; i++) {
+                writeFile('note.md', `version ${i}`);
+                await service.commit(`commit ${i}`);
+            }
+
+            const limited = await service.getFileLog('note.md', 3);
+            expect(limited).toHaveLength(3);
+        });
+
+        it('clamps limit to 200', async () => {
+            await service.init();
+            writeFile('note.md', 'content');
+            await service.commit('one commit');
+
+            // Should not throw even with a very large limit
+            const log = await service.getFileLog('note.md', 9999);
+            expect(Array.isArray(log)).toBe(true);
+        });
+    });
+
+    // ========================================================================
+    // getFileContentAtRevision
+    // ========================================================================
+    describe('getFileContentAtRevision', () => {
+        it('returns content at a specific revision', async () => {
+            await service.init();
+
+            writeFile('note.md', 'version 1\n');
+            const r1 = await service.commit('commit v1');
+            writeFile('note.md', 'version 2\n');
+            await service.commit('commit v2');
+
+            const content = await service.getFileContentAtRevision(r1.hash!, 'note.md');
+            expect(content.trim()).toBe('version 1');
+        });
+
+        it('returns latest content when called with HEAD hash', async () => {
+            await service.init();
+
+            writeFile('note.md', 'latest content\n');
+            const result = await service.commit('add note');
+
+            const content = await service.getFileContentAtRevision(result.hash!, 'note.md');
+            expect(content.trim()).toBe('latest content');
+        });
+
+        it('throws when file does not exist at revision', async () => {
+            await service.init();
+            writeFile('other.md', 'x');
+            const result = await service.commit('only other');
+
+            await expect(service.getFileContentAtRevision(result.hash!, 'nonexistent.md'))
+                .rejects.toThrow();
+        });
+    });
 });
