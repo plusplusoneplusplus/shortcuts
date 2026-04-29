@@ -49,8 +49,31 @@ All three packages (`forge`, `coc`, `deep-wiki`) are published to npm under the 
 - **Lint:** `npm run lint` · **Package:** `npm run vsce:package` · **Publish:** `npm run vsce:publish`
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..` then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..` then `deep-wiki generate <repo>`
+- **Run CoC as a service:** `.\scripts\Manage-CoCService.ps1 install` (see section below)
 
-## VS Code Extension (`packages/vscode-extension/`) — FROZEN
+## CoC Service Management (`scripts/Manage-CoCService.ps1`)
+
+Manages `coc-serve-loop.ps1` as a Windows Task Scheduler task running under the SYSTEM account at startup.
+
+```
+.\scripts\Manage-CoCService.ps1 <Command> [options]
+```
+
+| Command      | Description |
+|--------------|-------------|
+| `install`    | Register the startup task (requires elevation). Runs an initial build by default. |
+| `uninstall`  | Stop and remove the task (requires elevation). |
+| `start`      | Start the task immediately (no reboot required). |
+| `stop`       | Stop the task and kill all CoC-related processes. |
+| `restart`    | `stop` then `start`. |
+| `status`     | Show task state, running PIDs, log file size, and last log line. |
+| `logs`       | Print the last N log lines. Use `-Follow` for continuous tail. |
+
+Key options: `-Port` (default 4000), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`).
+
+**Log file:** `~/.coc/logs/coc-service.log` — rotated automatically at 10 MB.
+
+## VS Code Extension(`packages/vscode-extension/`) — FROZEN
 
 > ⚠️ **This folder is frozen and no longer actively developed. AI agents must NOT read, edit, or reason about code in `packages/vscode-extension/`. It is not an npm workspace.**
 

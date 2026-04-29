@@ -1,0 +1,308 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Manage the CoC server as a Windows scheduled task.
+
+.DESCRIPTION
+    Registers coc-serve-loop.ps1 as a SYSTEM-level startup task and provides
+    day-to-day management: install, uninstall, start, stop, restart, status, logs.
+
+.PARAMETER Command
+    Subcommand to run: install | uninstall | start | stop | restart | status | logs
+
+.PARAMETER Port
+    Port for the CoC server (default: 4000). Used only by install.
+
+.PARAMETER NoBuildSkip
+    install: do NOT pass -SkipInitialBuild to the loop script (forces a fresh build
+    every time the task starts, not just on the first run after registration).
+
+.PARAMETER LogLines
+    logs: number of trailing lines to display (default: 50).
+
+.PARAMETER Follow
+    logs: tail the log file continuously (like `tail -f`).
+
+.PARAMETER TaskName
+    Override the Task Scheduler task name (default: CoCServer).
+
+.EXAMPLE
+    .\scripts\Manage-CoCService.ps1 install
+    .\scripts\Manage-CoCService.ps1 status
+    .\scripts\Manage-CoCService.ps1 logs -Follow
+    .\scripts\Manage-CoCService.ps1 restart
+    .\scripts\Manage-CoCService.ps1 uninstall
+#>
+param(
+    [Parameter(Mandatory, Position = 0)]
+    [ValidateSet('install', 'uninstall', 'start', 'stop', 'restart', 'status', 'logs')]
+    [string]$Command,
+
+    [int]$Port = 4000,
+
+    [switch]$NoBuildSkip,
+
+    [int]$LogLines = 50,
+
+    [switch]$Follow,
+
+    [string]$TaskName = 'CoCServer'
+)
+
+$ErrorActionPreference = 'Stop'
+
+$Script:ScriptPath = $PSCommandPath
+$Script:ScriptDir  = Split-Path -Parent $Script:ScriptPath
+$Script:RepoRoot   = Split-Path -Parent $Script:ScriptDir
+$Script:LoopScript = Join-Path $Script:ScriptDir 'coc-serve-loop.ps1'
+$Script:LogDir     = Join-Path $env:USERPROFILE '.coc\logs'
+$Script:LogFile    = Join-Path $Script:LogDir 'coc-service.log'
+
+# ── Admin guard ────────────────────────────────────────────────────────────────
+# install and uninstall require Task Scheduler access (Administrator).
+# Re-launches the script elevated if needed.
+
+function Assert-Admin {
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
+
+    Write-Host 'Elevation required. Re-launching as administrator...' -ForegroundColor Yellow
+
+    $argParts = @(
+        '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', "`"$Script:ScriptPath`"",
+        '-Command', $Command,
+        '-Port', $Port,
+        '-TaskName', "`"$TaskName`""
+    )
+    if ($NoBuildSkip) { $argParts += '-NoBuildSkip' }
+
+    $proc = Start-Process powershell.exe -Verb RunAs -ArgumentList ($argParts -join ' ') -Wait -PassThru
+    exit $proc.ExitCode
+}
+
+# ── Process helpers ────────────────────────────────────────────────────────────
+
+function Get-CocProcesses {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'coc-serve-loop|coc serve' } |
+        Select-Object ProcessId, Name, CommandLine
+}
+
+function Stop-CocProcesses {
+    $procs = Get-CocProcesses
+    if (-not $procs) {
+        Write-Host '  No CoC processes found.' -ForegroundColor DarkGray
+        return
+    }
+    foreach ($p in $procs) {
+        Write-Host "  Stopping PID $($p.ProcessId) ($($p.Name))" -ForegroundColor Yellow
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ── INSTALL ────────────────────────────────────────────────────────────────────
+
+function Invoke-Install {
+    Assert-Admin
+
+    if (-not (Test-Path $Script:LoopScript)) {
+        Write-Host "ERROR: Loop script not found: $Script:LoopScript" -ForegroundColor Red
+        exit 1
+    }
+
+    # Ensure log directory exists
+    if (-not (Test-Path $Script:LogDir)) {
+        New-Item -ItemType Directory -Path $Script:LogDir -Force | Out-Null
+        Write-Host "Created log dir: $Script:LogDir" -ForegroundColor Green
+    }
+
+    # Resolve powershell.exe (prefer SysNative to avoid WoW64 issues on 64-bit OS)
+    $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (-not (Test-Path $psExe)) {
+        $psExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+    }
+
+    # Build argument string for the loop script
+    $loopArgs = "-NonInteractive -ExecutionPolicy Bypass -File `"$Script:LoopScript`" -Port $Port -LogFile `"$Script:LogFile`""
+    if (-not $NoBuildSkip) { $loopArgs += ' -SkipInitialBuild' }
+
+    # Optionally run initial build now (before registering the task)
+    if (-not $NoBuildSkip) {
+        Write-Host "`n=== Running initial build ===" -ForegroundColor Cyan
+        Push-Location $Script:RepoRoot
+        try {
+            npm install
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host 'npm install failed.' -ForegroundColor Red; exit 1
+            }
+            npm run coc:link
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host 'Build (coc:link) failed.' -ForegroundColor Red; exit 1
+            }
+        } finally {
+            Pop-Location
+        }
+        Write-Host 'Build succeeded.' -ForegroundColor Green
+    }
+
+    # Remove any existing task with the same name
+    if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+        Write-Host "Removing existing task '$TaskName'..." -ForegroundColor Yellow
+        Stop-ScheduledTask  -TaskName $TaskName -ErrorAction SilentlyContinue
+        Stop-CocProcesses
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+
+    $action    = New-ScheduledTaskAction  -Execute $psExe -Argument $loopArgs -WorkingDirectory $Script:RepoRoot
+    $trigger   = New-ScheduledTaskTrigger -AtStartup
+    $settings  = New-ScheduledTaskSettingsSet `
+                     -ExecutionTimeLimit ([TimeSpan]::Zero) `
+                     -RestartCount 3 `
+                     -RestartInterval (New-TimeSpan -Minutes 1) `
+                     -StartWhenAvailable `
+                     -MultipleInstances IgnoreNew
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+
+    Register-ScheduledTask `
+        -TaskName    $TaskName `
+        -Action      $action `
+        -Trigger     $trigger `
+        -Settings    $settings `
+        -Principal   $principal `
+        -Description 'CoC server loop — managed by Manage-CoCService.ps1' |
+        Out-Null
+
+    Write-Host "`n✓ Task '$TaskName' registered (SYSTEM, runs at startup)." -ForegroundColor Green
+    Write-Host "  Log : $Script:LogFile"   -ForegroundColor DarkGray
+    Write-Host "  Run : Manage-CoCService.ps1 start   (to start without rebooting)" -ForegroundColor DarkGray
+}
+
+# ── UNINSTALL ──────────────────────────────────────────────────────────────────
+
+function Invoke-Uninstall {
+    Assert-Admin
+
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        Write-Host "Task '$TaskName' is not registered." -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host "Stopping task '$TaskName' and killing CoC processes..." -ForegroundColor Cyan
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Stop-CocProcesses
+
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    Write-Host "✓ Task '$TaskName' removed." -ForegroundColor Green
+}
+
+# ── START ──────────────────────────────────────────────────────────────────────
+
+function Invoke-Start {
+    if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+        Write-Host "Task '$TaskName' not found. Run 'install' first." -ForegroundColor Red
+        exit 1
+    }
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Host "✓ Task '$TaskName' started." -ForegroundColor Green
+}
+
+# ── STOP ───────────────────────────────────────────────────────────────────────
+
+function Invoke-Stop {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Stop-CocProcesses
+    Write-Host '✓ CoC server stopped.' -ForegroundColor Green
+}
+
+# ── RESTART ────────────────────────────────────────────────────────────────────
+
+function Invoke-Restart {
+    Invoke-Stop
+    Start-Sleep -Seconds 2
+    Invoke-Start
+}
+
+# ── STATUS ─────────────────────────────────────────────────────────────────────
+
+function Invoke-Status {
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        Write-Host "Task '$TaskName' is not registered. Run 'install' first." -ForegroundColor Yellow
+        return
+    }
+
+    $info  = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
+    $state = $task.State
+
+    $stateColor = switch ($state) {
+        'Running' { 'Green' }
+        'Ready'   { 'Cyan'  }
+        default   { 'Yellow' }
+    }
+
+    Write-Host ''
+    Write-Host "  Task      : $TaskName"
+    Write-Host "  State     : $state" -ForegroundColor $stateColor
+
+    if ($info -and $info.LastRunTime -ne [datetime]::MinValue) {
+        Write-Host "  Last run  : $($info.LastRunTime)"
+    }
+    if ($info -and $info.NextRunTime -ne [datetime]::MinValue) {
+        Write-Host "  Next run  : $($info.NextRunTime)"
+    }
+
+    # PIDs
+    $procs = Get-CocProcesses
+    if ($procs) {
+        $pidList = ($procs | ForEach-Object { "$($_.ProcessId) ($($_.Name))" }) -join ', '
+        Write-Host "  PID(s)    : $pidList"
+    } else {
+        Write-Host '  PID(s)    : none'
+    }
+
+    # Log info
+    Write-Host "  Log file  : $Script:LogFile"
+    if (Test-Path $Script:LogFile) {
+        $logSize = [math]::Round((Get-Item $Script:LogFile).Length / 1KB, 1)
+        $lastLine = Get-Content $Script:LogFile -Tail 1 -ErrorAction SilentlyContinue
+        Write-Host "  Log size  : ${logSize} KB"
+        if ($lastLine) {
+            Write-Host "  Last line : $lastLine" -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host '  Log size  : (no log yet)'
+    }
+
+    Write-Host ''
+}
+
+# ── LOGS ───────────────────────────────────────────────────────────────────────
+
+function Invoke-Logs {
+    if (-not (Test-Path $Script:LogFile)) {
+        Write-Host "Log file not found: $Script:LogFile" -ForegroundColor Yellow
+        Write-Host "The server may not have started yet, or logging is not configured." -ForegroundColor DarkGray
+        return
+    }
+
+    if ($Follow) {
+        Write-Host "Tailing $Script:LogFile  (Ctrl+C to stop)" -ForegroundColor DarkGray
+        Get-Content $Script:LogFile -Tail $LogLines -Wait
+    } else {
+        Get-Content $Script:LogFile -Tail $LogLines
+    }
+}
+
+# ── DISPATCH ───────────────────────────────────────────────────────────────────
+
+switch ($Command) {
+    'install'   { Invoke-Install }
+    'uninstall' { Invoke-Uninstall }
+    'start'     { Invoke-Start }
+    'stop'      { Invoke-Stop }
+    'restart'   { Invoke-Restart }
+    'status'    { Invoke-Status }
+    'logs'      { Invoke-Logs }
+}
