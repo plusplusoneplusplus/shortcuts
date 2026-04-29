@@ -217,6 +217,16 @@ export const notesApi = {
         );
     },
 
+    // ── Git status endpoint ──────────────────────────────────────────
+
+    getGitStatus(wsId: string): Promise<{
+        initialized: boolean;
+        branch?: string;
+        clean?: boolean;
+    }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/status`);
+    },
+
     // ── Auto-commit timer endpoints ──────────────────────────────────
 
     getAutoCommitStatus(wsId: string): Promise<{

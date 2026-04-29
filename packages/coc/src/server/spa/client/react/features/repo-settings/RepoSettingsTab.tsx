@@ -22,6 +22,7 @@ import { useRepos } from '../../contexts/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
+import { NotesSettingsSection } from './NotesSettingsSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -39,6 +40,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
     { id: 'tasks', label: 'Plans Folder', icon: '📁' },
+    { id: 'notes', label: 'Notes', icon: '📝' },
 ];
 
 // ── Info section types ──────────────────────────────────────────────────────
@@ -542,6 +544,9 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 )}
                 {activeSection === 'tasks' && (
                     <TasksSettingsSection workspaceId={workspaceId} />
+                )}
+                {activeSection === 'notes' && (
+                    <NotesSettingsSection workspaceId={workspaceId} />
                 )}
             </div>
         </div>
