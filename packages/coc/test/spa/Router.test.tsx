@@ -15,11 +15,20 @@ import {
     parseGitCommitDeepLink,
     parseSettingsSection,
     VALID_REPO_SUB_TABS,
+    VALID_SETTINGS_SECTIONS,
+    VALID_WIKI_PROJECT_TABS,
+    VALID_WIKI_ADMIN_TABS,
     parseAdminSubTab,
     VALID_ADMIN_SUB_TABS,
     parseAdminDatabaseDeepLink,
     buildDbBrowserHash,
 } from '../../src/server/spa/client/react/layout/Router';
+import {
+    SETTINGS_SECTION_VALUES,
+    REPO_SUB_TAB_VALUES,
+    WIKI_PROJECT_TAB_VALUES,
+    WIKI_ADMIN_TAB_VALUES,
+} from '../../src/server/spa/client/react/types/dashboard';
 
 // ── tabFromHash ───────────────────────────────────────────────────────────────
 
@@ -180,6 +189,12 @@ describe('parseSettingsSection', () => {
     it('returns "memory" for #repos/r1/settings/memory', () => {
         expect(parseSettingsSection('#repos/r1/settings/memory')).toBe('memory');
     });
+
+    // Regression: 'notes' was missing from VALID_SETTINGS_SECTIONS — the notes
+    // settings page would always fall back to the default "info" panel.
+    it('returns "notes" for #repos/r1/settings/notes', () => {
+        expect(parseSettingsSection('#repos/r1/settings/notes')).toBe('notes');
+    });
 });
 
 // ── VALID_REPO_SUB_TABS ───────────────────────────────────────────────────────
@@ -195,6 +210,51 @@ describe('VALID_REPO_SUB_TABS', () => {
     it('does not include removed tabs', () => {
         expect(VALID_REPO_SUB_TABS.has('info')).toBe(false);
         expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(false);
+    });
+
+    it('is derived from REPO_SUB_TAB_VALUES — exact same members', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(REPO_SUB_TAB_VALUES.length);
+        for (const v of REPO_SUB_TAB_VALUES) {
+            expect(VALID_REPO_SUB_TABS.has(v)).toBe(true);
+        }
+    });
+});
+
+// ── VALID_SETTINGS_SECTIONS ───────────────────────────────────────────────────
+
+describe('VALID_SETTINGS_SECTIONS', () => {
+    // Regression: 'notes' was missing from the hand-rolled set while present in SettingsSection.
+    it('includes "notes"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('notes')).toBe(true);
+    });
+
+    it('is derived from SETTINGS_SECTION_VALUES — exact same members', () => {
+        expect(VALID_SETTINGS_SECTIONS.size).toBe(SETTINGS_SECTION_VALUES.length);
+        for (const v of SETTINGS_SECTION_VALUES) {
+            expect(VALID_SETTINGS_SECTIONS.has(v)).toBe(true);
+        }
+    });
+});
+
+// ── VALID_WIKI_PROJECT_TABS ───────────────────────────────────────────────────
+
+describe('VALID_WIKI_PROJECT_TABS', () => {
+    it('is derived from WIKI_PROJECT_TAB_VALUES — exact same members', () => {
+        expect(VALID_WIKI_PROJECT_TABS.size).toBe(WIKI_PROJECT_TAB_VALUES.length);
+        for (const v of WIKI_PROJECT_TAB_VALUES) {
+            expect(VALID_WIKI_PROJECT_TABS.has(v)).toBe(true);
+        }
+    });
+});
+
+// ── VALID_WIKI_ADMIN_TABS ─────────────────────────────────────────────────────
+
+describe('VALID_WIKI_ADMIN_TABS', () => {
+    it('is derived from WIKI_ADMIN_TAB_VALUES — exact same members', () => {
+        expect(VALID_WIKI_ADMIN_TABS.size).toBe(WIKI_ADMIN_TAB_VALUES.length);
+        for (const v of WIKI_ADMIN_TAB_VALUES) {
+            expect(VALID_WIKI_ADMIN_TABS.has(v)).toBe(true);
+        }
     });
 });
 

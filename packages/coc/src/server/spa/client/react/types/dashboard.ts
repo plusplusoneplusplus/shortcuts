@@ -19,12 +19,27 @@ export interface ClientTokenUsage {
 }
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models';
-export type RepoSubTab = 'chats' | 'work-items' | 'settings' | 'workflows' | 'templates' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'workflow' | 'explorer' | 'activity' | 'pull-requests' | 'terminal' | 'notes';
-export type SettingsSection = 'info' | 'preferences' | 'mcp' | 'skills' | 'llm-tools' | 'instructions' | 'memory' | 'run-script-template' | 'tasks' | 'notes';
+
+export const REPO_SUB_TAB_VALUES = [
+    'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',
+    'schedules', 'git', 'wiki', 'workflow', 'explorer', 'activity',
+    'pull-requests', 'terminal', 'notes',
+] as const;
+export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
+
+export const SETTINGS_SECTION_VALUES = [
+    'info', 'preferences', 'mcp', 'skills', 'llm-tools',
+    'instructions', 'memory', 'run-script-template', 'tasks', 'notes',
+] as const;
+export type SettingsSection = typeof SETTINGS_SECTION_VALUES[number];
 /** @deprecated Use SettingsSection */
 export type CopilotSection = SettingsSection;
-export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
-export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
+
+export const WIKI_PROJECT_TAB_VALUES = ['browse', 'ask', 'graph', 'admin'] as const;
+export type WikiProjectTab = typeof WIKI_PROJECT_TAB_VALUES[number];
+
+export const WIKI_ADMIN_TAB_VALUES = ['generate', 'seeds', 'config', 'delete'] as const;
+export type WikiAdminTab = typeof WIKI_ADMIN_TAB_VALUES[number];
 export type MemorySubTab = 'bounded' | 'config' | 'files';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database';

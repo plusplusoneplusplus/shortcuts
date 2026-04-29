@@ -12,6 +12,7 @@ import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
+import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../features/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../features/skills/SkillsView').then(m => ({ default: m.SkillsView })));
@@ -38,8 +39,8 @@ export function tabFromHash(hash: string): DashboardTab | null {
     return null;
 }
 
-export const VALID_WIKI_PROJECT_TABS: Set<string> = new Set(['browse', 'ask', 'graph', 'admin']);
-export const VALID_WIKI_ADMIN_TABS: Set<string> = new Set(['generate', 'seeds', 'config', 'delete']);
+export const VALID_WIKI_PROJECT_TABS: Set<string> = new Set(WIKI_PROJECT_TAB_VALUES);
+export const VALID_WIKI_ADMIN_TABS: Set<string> = new Set(WIKI_ADMIN_TAB_VALUES);
 
 export interface WikiDeepLink {
     wikiId: string | null;
@@ -266,10 +267,10 @@ export function buildWorkItemCommitHash(wsId: string, itemId: string, commitHash
     return h;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'chats', 'work-items', 'pull-requests', 'terminal', 'notes']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(REPO_SUB_TAB_VALUES);
 const ACTIVITY_VIRTUAL_WORKSPACE_IDS: Set<string> = new Set(['my_work', 'my_life']);
 
-export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'llm-tools', 'instructions', 'memory', 'run-script-template', 'tasks']);
+export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(SETTINGS_SECTION_VALUES);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
 export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 
