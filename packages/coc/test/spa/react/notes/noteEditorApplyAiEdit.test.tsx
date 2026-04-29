@@ -47,6 +47,10 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
     },
 }));
 
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
+
 // ── Mock editor with ProseMirror-like doc structure ─────────────────────────
 
 let currentDocText = '';

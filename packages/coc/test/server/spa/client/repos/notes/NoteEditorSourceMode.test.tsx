@@ -16,10 +16,15 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi',
         uploadImage: vi.fn(async () => ({ path: '.attachments/img.png' })),
         getComments: vi.fn(async () => ({ noteId: 'test', threads: {} })),
         updateThread: vi.fn(async () => ({})),
+        getGitStatus: vi.fn(async () => ({ initialized: false })),
     },
 }));
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
+
+vi.mock('../../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
 
 // Stable mock editor object — must be the SAME reference across renders
 // to prevent infinite useEffect re-fires.

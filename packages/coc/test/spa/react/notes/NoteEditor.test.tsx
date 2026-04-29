@@ -1195,6 +1195,31 @@ describe('NoteEditor', () => {
             expect(screen.getByTestId('note-run-skills-btn')).toBeDefined();
         });
 
+        it('shows Run Skill button for a file named exactly plan.md', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'tasks/plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="tasks/plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.getByTestId('note-run-skills-btn')).toBeDefined();
+        });
+
+        it('derives contextTaskName as "plan" for a file named plan.md', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'tasks/plan.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="tasks/plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            expect(mockQueueDispatch).toHaveBeenCalledWith(
+                expect.objectContaining({ contextTaskName: 'plan' }),
+            );
+        });
+
         it('clicking Run Skill button dispatches OPEN_DIALOG to QueueContext', async () => {
             mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/coc/my-feature.plan.md' });
             await act(async () => {

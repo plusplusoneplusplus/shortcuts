@@ -42,6 +42,9 @@ vi.mock(
     }),
 );
 
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
 const mockSetContent = vi.fn();
 const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');

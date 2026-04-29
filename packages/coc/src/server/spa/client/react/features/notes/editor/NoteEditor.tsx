@@ -174,12 +174,21 @@ export function NoteEditor({
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
 
-    // Plan-file skill trigger
-    const isPlanFile = notePath?.endsWith('.plan.md') ?? false;
+    // Plan-file skill trigger — matches both "plan.md" exactly and "*.plan.md"
+    const isPlanFile = (() => {
+        if (!notePath) return false;
+        const name = notePath.replace(/\\/g, '/').split('/').pop() ?? '';
+        return name === 'plan.md' || name.endsWith('.plan.md');
+    })();
     const { dispatch: queueDispatch } = useQueue();
-    const contextFilePath = notesRoot
+    const contextFilePath = !notePath ? '' : notesRoot
         ? notesRoot.replace(/\\/g, '/') + '/' + notePath
-        : notePath!;
+        : notePath.replace(/\\/g, '/');
+    const contextTaskName = (() => {
+        if (!notePath) return '';
+        const filename = notePath.replace(/\\/g, '/').split('/').pop() ?? '';
+        return filename.replace(/\.plan\.md$/, '').replace(/\.md$/, '');
+    })();
 
     // Version history panel
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -1058,11 +1067,12 @@ export function NoteEditor({
                                     title="Run Skill"
                                     aria-label="Run Skill"
                                     data-testid="note-run-skills-btn"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => queueDispatch({
                                         type: 'OPEN_DIALOG',
                                         workspaceId,
                                         contextFiles: [contextFilePath],
-                                        contextTaskName: notePath!.split('/').pop()?.replace(/\.plan\.md$/, '') ?? '',
+                                        contextTaskName,
                                     })}
                                 >
                                     <span>⚡</span> Run Skill

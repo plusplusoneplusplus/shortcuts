@@ -14,6 +14,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
         getComments: vi.fn(() => Promise.resolve({ noteId: '', threads: {} })),
         updateThread: vi.fn(() => Promise.resolve()),
         uploadImage: vi.fn(() => Promise.resolve({ path: 'img/test.png' })),
+        getGitStatus: vi.fn(() => Promise.resolve({ initialized: false })),
     },
 }));
 
@@ -27,7 +28,9 @@ vi.mock(
     }),
 );
 
-// Track ContextMenu renders
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
 let contextMenuProps: { position: { x: number; y: number }; items: { label: string; disabled?: boolean; onClick: () => void }[]; onClose: () => void } | null = null;
 
 vi.mock(
