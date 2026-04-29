@@ -15,6 +15,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
         getComments: (...args: unknown[]) => mockGetComments(...args),
         updateThread: (...args: unknown[]) => mockUpdateThread(...args),
         uploadImage: vi.fn(() => Promise.resolve({ path: 'img/test.png' })),
+        getGitStatus: vi.fn(() => Promise.resolve({ initialized: false })),
     },
 }));
 
