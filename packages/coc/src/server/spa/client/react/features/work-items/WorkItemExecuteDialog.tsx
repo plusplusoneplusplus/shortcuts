@@ -51,7 +51,7 @@ export function WorkItemExecuteDialog({
         (async () => {
             try {
                 const data = await fetchApi(
-                    '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all',
+                    '/workspaces/' + encodeURIComponent(workspaceId) + '/skills',
                 );
                 if (cancelled) return;
                 setSkills(data?.skills ?? []);
