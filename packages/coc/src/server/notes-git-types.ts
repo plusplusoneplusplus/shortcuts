@@ -10,8 +10,8 @@
 export interface NotesGitAutoCommitConfig {
     /** Whether periodic auto-commit is enabled. */
     enabled: boolean;
-    /** Links to a schedule entry ID in schedules.json (set by the scheduler commit). */
-    scheduleId?: string;
+    /** Interval between auto-commits in milliseconds (default: 1 800 000 = 30 min). */
+    intervalMs?: number;
 }
 
 /** Per-repo preference block for notes git tracking. */

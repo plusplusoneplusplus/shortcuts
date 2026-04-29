@@ -18,10 +18,6 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
     },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/utils/cron', () => ({
-    describeCron: vi.fn((expr: string) => `desc(${expr})`),
-}));
-
 import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 import { useNotesAutoCommit } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit';
 
@@ -35,14 +31,9 @@ const mockUpdateAutoCommitInterval = notesApi.updateAutoCommitInterval as Return
 function makeEnabledStatus(overrides: Record<string, any> = {}) {
     return {
         enabled: true,
-        schedule: {
-            id: 'sched-1',
-            cron: '*/30 * * * *',
-            status: 'active',
-            nextRun: '2025-01-01T01:00:00Z',
-            ...overrides.schedule,
-        },
-        lastRun: overrides.lastRun ?? { status: 'completed' },
+        intervalMs: 1_800_000,
+        lastCommittedAt: '2025-01-01T01:00:00Z',
+        lastError: null,
         ...overrides,
     };
 }
@@ -68,12 +59,9 @@ describe('useNotesAutoCommit', () => {
         });
 
         expect(result.current.autoCommitEnabled).toBe(true);
-        expect(result.current.scheduleId).toBe('sched-1');
-        expect(result.current.cron).toBe('*/30 * * * *');
-        expect(result.current.cronDescription).toBe('desc(*/30 * * * *)');
-        expect(result.current.nextRun).toBe('2025-01-01T01:00:00Z');
-        expect(result.current.status).toBe('active');
-        expect(result.current.lastRunStatus).toBe('completed');
+        expect(result.current.intervalMs).toBe(1_800_000);
+        expect(result.current.lastCommittedAt).toBe('2025-01-01T01:00:00Z');
+        expect(result.current.lastError).toBeNull();
     });
 
     it('returns autoCommitEnabled: false when GET returns { enabled: false }', async () => {
@@ -86,20 +74,19 @@ describe('useNotesAutoCommit', () => {
         });
 
         expect(result.current.autoCommitEnabled).toBe(false);
-        expect(result.current.scheduleId).toBeNull();
-        expect(result.current.cron).toBeNull();
-        expect(result.current.cronDescription).toBeNull();
-        expect(result.current.status).toBeNull();
+        expect(result.current.intervalMs).toBeNull();
+        expect(result.current.lastCommittedAt).toBeNull();
+        expect(result.current.lastError).toBeNull();
     });
 
-    it('enable() calls POST endpoint with default cron, refetches status', async () => {
+    it('enable() calls POST endpoint with default intervalMs, refetches status', async () => {
         mockGetAutoCommitStatus.mockResolvedValueOnce({ enabled: false });
 
         const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        mockEnableAutoCommit.mockResolvedValueOnce({ schedule: {}, scriptPath: '/tmp/script.sh' });
+        mockEnableAutoCommit.mockResolvedValueOnce({ enabled: true, intervalMs: 1_800_000 });
         mockGetAutoCommitStatus.mockResolvedValueOnce(makeEnabledStatus());
 
         await act(async () => {
@@ -110,23 +97,21 @@ describe('useNotesAutoCommit', () => {
         expect(result.current.autoCommitEnabled).toBe(true);
     });
 
-    it('enable() sends custom cron when provided', async () => {
+    it('enable() sends custom intervalMs when provided', async () => {
         mockGetAutoCommitStatus.mockResolvedValueOnce({ enabled: false });
 
         const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        mockEnableAutoCommit.mockResolvedValueOnce({ schedule: {}, scriptPath: '/tmp/script.sh' });
-        mockGetAutoCommitStatus.mockResolvedValueOnce(
-            makeEnabledStatus({ schedule: { id: 'sched-2', cron: '*/15 * * * *', status: 'active', nextRun: null } }),
-        );
+        mockEnableAutoCommit.mockResolvedValueOnce({ enabled: true, intervalMs: 900_000 });
+        mockGetAutoCommitStatus.mockResolvedValueOnce(makeEnabledStatus({ intervalMs: 900_000 }));
 
         await act(async () => {
-            await result.current.enable('*/15 * * * *');
+            await result.current.enable(900_000);
         });
 
-        expect(mockEnableAutoCommit).toHaveBeenCalledWith('ws-1', '*/15 * * * *');
+        expect(mockEnableAutoCommit).toHaveBeenCalledWith('ws-1', 900_000);
     });
 
     it('disable() calls DELETE endpoint, resets state', async () => {
@@ -146,49 +131,25 @@ describe('useNotesAutoCommit', () => {
 
         expect(mockDisableAutoCommit).toHaveBeenCalledWith('ws-1');
         expect(result.current.autoCommitEnabled).toBe(false);
-        expect(result.current.scheduleId).toBeNull();
+        expect(result.current.intervalMs).toBeNull();
     });
 
-    it('updateInterval() calls PATCH, refetches status', async () => {
+    it('updateInterval() calls POST with new intervalMs, refetches status', async () => {
         mockGetAutoCommitStatus.mockResolvedValueOnce(makeEnabledStatus());
 
         const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        mockUpdateAutoCommitInterval.mockResolvedValueOnce({ schedule: {} });
-        mockGetAutoCommitStatus.mockResolvedValueOnce(
-            makeEnabledStatus({ schedule: { id: 'sched-1', cron: '*/10 * * * *', status: 'active', nextRun: null } }),
-        );
+        mockUpdateAutoCommitInterval.mockResolvedValueOnce({ enabled: true, intervalMs: 600_000 });
+        mockGetAutoCommitStatus.mockResolvedValueOnce(makeEnabledStatus({ intervalMs: 600_000 }));
 
         await act(async () => {
-            await result.current.updateInterval('*/10 * * * *');
+            await result.current.updateInterval(600_000);
         });
 
-        expect(mockUpdateAutoCommitInterval).toHaveBeenCalledWith('ws-1', '*/10 * * * *');
-        expect(result.current.cron).toBe('*/10 * * * *');
-    });
-
-    it('refreshes on schedule-changed window event', async () => {
-        mockGetAutoCommitStatus.mockResolvedValueOnce({ enabled: false });
-
-        const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
-
-        await waitFor(() => expect(result.current.loading).toBe(false));
-
-        // Mock the refetch
-        mockGetAutoCommitStatus.mockResolvedValueOnce(makeEnabledStatus());
-
-        act(() => {
-            window.dispatchEvent(new Event('schedule-changed'));
-        });
-
-        await waitFor(() => {
-            expect(result.current.autoCommitEnabled).toBe(true);
-        });
-
-        // getAutoCommitStatus called on mount + on event
-        expect(mockGetAutoCommitStatus).toHaveBeenCalledTimes(2);
+        expect(mockUpdateAutoCommitInterval).toHaveBeenCalledWith('ws-1', 600_000);
+        expect(result.current.intervalMs).toBe(600_000);
     });
 
     it('sets enabling: true during enable call, resets after', async () => {
@@ -200,7 +161,7 @@ describe('useNotesAutoCommit', () => {
 
         let resolveEnable!: () => void;
         mockEnableAutoCommit.mockReturnValueOnce(
-            new Promise<any>((resolve) => { resolveEnable = () => resolve({ schedule: {}, scriptPath: '' }); }),
+            new Promise<any>((resolve) => { resolveEnable = () => resolve({ enabled: true, intervalMs: 1_800_000 }); }),
         );
 
         expect(result.current.enabling).toBe(false);
@@ -234,7 +195,7 @@ describe('useNotesAutoCommit', () => {
         });
 
         expect(result.current.autoCommitEnabled).toBe(false);
-        expect(result.current.scheduleId).toBeNull();
+        expect(result.current.intervalMs).toBeNull();
     });
 
     it('handles enable error gracefully', async () => {
@@ -244,7 +205,7 @@ describe('useNotesAutoCommit', () => {
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        mockEnableAutoCommit.mockRejectedValueOnce(new Error('409 Conflict'));
+        mockEnableAutoCommit.mockRejectedValueOnce(new Error('500 Internal'));
 
         await act(async () => {
             await result.current.enable();
@@ -255,28 +216,27 @@ describe('useNotesAutoCommit', () => {
         expect(result.current.autoCommitEnabled).toBe(false);
     });
 
-    it('returns null lastRunStatus for unknown statuses', async () => {
+    it('exposes lastCommittedAt from status response', async () => {
         mockGetAutoCommitStatus.mockResolvedValueOnce(
-            makeEnabledStatus({ lastRun: { status: 'running' } }),
+            makeEnabledStatus({ lastCommittedAt: '2025-06-01T12:00:00Z' }),
         );
 
         const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(result.current.lastRunStatus).toBeNull();
+        expect(result.current.lastCommittedAt).toBe('2025-06-01T12:00:00Z');
     });
 
-    it('handles paused status', async () => {
+    it('exposes lastError from status response', async () => {
         mockGetAutoCommitStatus.mockResolvedValueOnce(
-            makeEnabledStatus({ schedule: { id: 'sched-1', cron: '*/30 * * * *', status: 'paused', nextRun: null } }),
+            makeEnabledStatus({ lastError: 'nothing to commit' }),
         );
 
         const { result } = renderHook(() => useNotesAutoCommit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(result.current.status).toBe('paused');
-        expect(result.current.nextRun).toBeNull();
+        expect(result.current.lastError).toBe('nothing to commit');
     });
 });

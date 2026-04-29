@@ -1,8 +1,8 @@
 /**
  * Notes Git Auto-Commit Handler Tests
  *
- * Tests for the four REST API endpoints: enable (POST), disable (DELETE),
- * update (PATCH), and status (GET).
+ * Tests for the three REST API endpoints: enable/update (POST), disable (DELETE),
+ * and status (GET).
  *
  * Uses a real HTTP server with OS-assigned port for test isolation.
  */
@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
 
 // ============================================================================
@@ -58,17 +58,6 @@ function postJSON(
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
     return request(reqUrl, {
         method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-    });
-}
-
-function patchJSON(
-    reqUrl: string,
-    data: unknown,
-): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
-    return request(reqUrl, {
-        method: 'PATCH',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
     });
@@ -124,61 +113,62 @@ describe('Notes Git Auto-Commit Handler', () => {
     }
 
     // ========================================================================
-    // POST — Enable
+    // POST — Enable / update
     // ========================================================================
 
     describe('POST /api/workspaces/:id/notes/git/auto-commit — Enable', () => {
-        it('creates schedule and script, returns 201', async () => {
+        it('enables auto-commit with default interval, returns 200', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
             const res = await postJSON(autoCommitUrl(srv), {});
-            expect(res.status).toBe(201);
+            expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
-            expect(body.schedule).toBeDefined();
-            expect(body.schedule.id).toMatch(/^sch_/);
-            expect(body.schedule.name).toBe('Notes Auto-Commit');
-            expect(body.schedule.targetType).toBe('script');
-            expect(body.schedule.cron).toBe('*/30 * * * *');
-            expect(body.schedule.status).toBe('active');
-            expect(body.scriptPath).toBeDefined();
-            expect(typeof body.scriptPath).toBe('string');
+            expect(body.enabled).toBe(true);
+            expect(body.intervalMs).toBe(1_800_000);
         });
 
-        it('uses custom cron when provided', async () => {
+        it('uses custom intervalMs when provided', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
-            const res = await postJSON(autoCommitUrl(srv), { cron: '0 */2 * * *' });
-            expect(res.status).toBe(201);
+            const res = await postJSON(autoCommitUrl(srv), { intervalMs: 300_000 });
+            expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
-            expect(body.schedule.cron).toBe('0 */2 * * *');
+            expect(body.intervalMs).toBe(300_000);
         });
 
-        it('returns 400 for invalid cron', async () => {
+        it('is idempotent — calling POST twice updates the interval', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
-            const res = await postJSON(autoCommitUrl(srv), { cron: 'not-a-cron' });
-            expect(res.status).toBe(400);
-
-            const body = JSON.parse(res.body);
-            expect(body.error).toContain('Invalid cron');
+            await postJSON(autoCommitUrl(srv), { intervalMs: 600_000 });
+            const second = await postJSON(autoCommitUrl(srv), { intervalMs: 900_000 });
+            expect(second.status).toBe(200);
+            expect(JSON.parse(second.body).intervalMs).toBe(900_000);
         });
 
-        it('returns 409 when schedule already exists', async () => {
+        it('ignores invalid intervalMs (≤0) and falls back to default', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
-            // Enable once
-            const first = await postJSON(autoCommitUrl(srv), {});
-            expect(first.status).toBe(201);
+            const res = await postJSON(autoCommitUrl(srv), { intervalMs: -1 });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).intervalMs).toBe(1_800_000);
+        });
 
-            // Enable again — conflict
-            const second = await postJSON(autoCommitUrl(srv), {});
-            expect(second.status).toBe(409);
+        it('persists preference so GET /status reflects enabled state', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            await postJSON(autoCommitUrl(srv), { intervalMs: 600_000 });
+
+            const statusRes = await request(autoCommitUrl(srv, '/status'));
+            const body = JSON.parse(statusRes.body);
+            expect(body.enabled).toBe(true);
+            expect(body.intervalMs).toBe(600_000);
         });
     });
 
@@ -187,102 +177,34 @@ describe('Notes Git Auto-Commit Handler', () => {
     // ========================================================================
 
     describe('DELETE /api/workspaces/:id/notes/git/auto-commit — Disable', () => {
-        it('removes schedule and script, returns 200', async () => {
+        it('disables auto-commit, returns 200', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
-            // Enable first
-            const enableRes = await postJSON(autoCommitUrl(srv), {});
-            expect(enableRes.status).toBe(201);
-            const scriptPath = JSON.parse(enableRes.body).scriptPath;
-            expect(fs.existsSync(scriptPath)).toBe(true);
+            await postJSON(autoCommitUrl(srv), {});
 
-            // Disable
             const deleteRes = await deleteRequest(autoCommitUrl(srv));
             expect(deleteRes.status).toBe(200);
-            const body = JSON.parse(deleteRes.body);
-            expect(body.deleted).toBe(true);
-
-            // Script should be cleaned up
-            expect(fs.existsSync(scriptPath)).toBe(false);
+            expect(JSON.parse(deleteRes.body).deleted).toBe(true);
         });
 
-        it('returns 404 when no schedule exists', async () => {
+        it('GET /status returns enabled=false after disable', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            await postJSON(autoCommitUrl(srv), {});
+            await deleteRequest(autoCommitUrl(srv));
+
+            const statusRes = await request(autoCommitUrl(srv, '/status'));
+            expect(JSON.parse(statusRes.body).enabled).toBe(false);
+        });
+
+        it('is idempotent — disable on never-enabled workspace returns 200', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
             const res = await deleteRequest(autoCommitUrl(srv));
-            expect(res.status).toBe(404);
-        });
-    });
-
-    // ========================================================================
-    // PATCH — Update
-    // ========================================================================
-
-    describe('PATCH /api/workspaces/:id/notes/git/auto-commit — Update', () => {
-        it('updates cron on existing schedule', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await patchJSON(autoCommitUrl(srv), { cron: '0 * * * *' });
             expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.schedule.cron).toBe('0 * * * *');
-        });
-
-        it('updates status to paused', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await patchJSON(autoCommitUrl(srv), { status: 'paused' });
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.schedule.status).toBe('paused');
-        });
-
-        it('returns 404 when no schedule exists', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            const res = await patchJSON(autoCommitUrl(srv), { cron: '0 * * * *' });
-            expect(res.status).toBe(404);
-        });
-
-        it('returns 400 for invalid cron', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await patchJSON(autoCommitUrl(srv), { cron: 'bad' });
-            expect(res.status).toBe(400);
-        });
-
-        it('returns 400 for invalid status', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await patchJSON(autoCommitUrl(srv), { status: 'stopped' });
-            expect(res.status).toBe(400);
-        });
-
-        it('returns 400 when no valid fields provided', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await patchJSON(autoCommitUrl(srv), { foo: 'bar' });
-            expect(res.status).toBe(400);
         });
     });
 
@@ -291,7 +213,32 @@ describe('Notes Git Auto-Commit Handler', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/notes/git/auto-commit/status — Status', () => {
-        it('returns enabled=true with schedule when enabled', async () => {
+        it('returns enabled=false when never enabled', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const res = await request(autoCommitUrl(srv, '/status'));
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).enabled).toBe(false);
+        });
+
+        it('returns enabled=true with intervalMs and nulled result fields when enabled', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            await postJSON(autoCommitUrl(srv), { intervalMs: 600_000 });
+
+            const res = await request(autoCommitUrl(srv, '/status'));
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.enabled).toBe(true);
+            expect(body.intervalMs).toBe(600_000);
+            expect(body.lastCommittedAt).toBeNull();
+            expect(body.lastError).toBeNull();
+        });
+
+        it('includes warning when notes git is not initialized', async () => {
             const srv = await startServer();
             await registerWorkspace(srv);
 
@@ -302,34 +249,6 @@ describe('Notes Git Auto-Commit Handler', () => {
 
             const body = JSON.parse(res.body);
             expect(body.enabled).toBe(true);
-            expect(body.schedule).toBeDefined();
-            expect(body.schedule.name).toBe('Notes Auto-Commit');
-            expect(body.lastRun).toBeNull();
-        });
-
-        it('returns enabled=false when no schedule exists', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            const res = await request(autoCommitUrl(srv, '/status'));
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.enabled).toBe(false);
-        });
-
-        it('includes warning when git is not initialized', async () => {
-            const srv = await startServer();
-            await registerWorkspace(srv);
-
-            await postJSON(autoCommitUrl(srv), {});
-
-            const res = await request(autoCommitUrl(srv, '/status'));
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.enabled).toBe(true);
-            // Notes dir exists but .git is not initialized
             expect(body.warning).toContain('not initialized');
         });
     });

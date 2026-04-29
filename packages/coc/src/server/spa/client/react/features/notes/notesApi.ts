@@ -217,22 +217,23 @@ export const notesApi = {
         );
     },
 
-    // ── Auto-commit schedule endpoints ──────────────────────────────────
+    // ── Auto-commit timer endpoints ──────────────────────────────────
 
     getAutoCommitStatus(wsId: string): Promise<{
         enabled: boolean;
-        schedule?: { id: string; cron: string; status: string; nextRun: string | null; cronDescription?: string };
-        lastRun?: { status: string } | null;
+        intervalMs?: number;
+        lastCommittedAt?: string | null;
+        lastError?: string | null;
         warning?: string;
     }> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit/status`);
     },
 
-    enableAutoCommit(wsId: string, cron?: string): Promise<{ schedule: any; scriptPath: string }> {
+    enableAutoCommit(wsId: string, intervalMs?: number): Promise<{ enabled: boolean; intervalMs: number }> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cron: cron ?? '*/30 * * * *' }),
+            body: JSON.stringify({ intervalMs: intervalMs ?? 1_800_000 }),
         });
     },
 
@@ -242,11 +243,11 @@ export const notesApi = {
         });
     },
 
-    updateAutoCommitInterval(wsId: string, cron: string): Promise<{ schedule: any }> {
+    updateAutoCommitInterval(wsId: string, intervalMs: number): Promise<{ enabled: boolean; intervalMs: number }> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
-            method: 'PATCH',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cron }),
+            body: JSON.stringify({ intervalMs }),
         });
     },
 };

@@ -48,6 +48,7 @@ import { registerSeenStateRoutes } from '../seen-state-handler';
 import { registerPinArchiveRoutes } from '../pin-archive-handler';
 import { registerTurnActionRoutes } from '../turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
+import type { NotesGitTimerManager } from '../notes-git-timer-manager';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { registerMyWorkRoutes } from '../my-work-handler';
@@ -91,6 +92,7 @@ export interface RegisterRoutesOptions {
     bridge: MultiRepoQueueExecutorBridge;
     queueFacade: TaskQueueManager;
     scheduleManager: ScheduleManager;
+    notesGitTimerManager: NotesGitTimerManager;
     dataDir: string;
     configPath: string | undefined;
     tokenTtlMs: number | undefined;
@@ -107,6 +109,7 @@ export interface RegisterRoutesOptions {
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
     const {
         store, bridge, queueFacade, scheduleManager,
+        notesGitTimerManager,
         dataDir, configPath, tokenTtlMs, globalWorkspaceRootPath,
         resolvedAiService, getWsServer, queuePersistence, wikiOptions,
         aiInvoker,
@@ -136,7 +139,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesCommentsRoutes(routes, store, dataDir, bridge);
     registerNotesImageRoutes(routes, store, dataDir);
     registerNotesGitRoutes(routes, store, dataDir);
-    registerNotesGitAutoCommitRoutes(routes, store, dataDir, scheduleManager);
+    registerNotesGitAutoCommitRoutes(routes, store, dataDir, notesGitTimerManager, scheduleManager);
     registerNotesFilePreviewRoutes(routes, store, dataDir);
     registerNotesEditsRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);

@@ -1,37 +1,31 @@
 /**
- * useNotesAutoCommit — custom hook encapsulating auto-commit schedule
+ * useNotesAutoCommit — custom hook encapsulating auto-commit timer
  * state and actions for the notes git feature.
  *
  * Single source of truth: calls the dedicated GET auto-commit/status
- * endpoint rather than parsing the local schedules array.
+ * endpoint rather than parsing local state.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { notesApi } from '../notesApi';
-import { describeCron } from '../../../utils/cron';
 
 export interface UseNotesAutoCommitReturn {
     autoCommitEnabled: boolean;
-    scheduleId: string | null;
-    cron: string | null;
-    cronDescription: string | null;
-    nextRun: string | null;
-    status: 'active' | 'paused' | null;
-    lastRunStatus: 'completed' | 'failed' | null;
+    intervalMs: number | null;
+    lastCommittedAt: string | null;
+    lastError: string | null;
     loading: boolean;
     enabling: boolean;
-    enable: (cron?: string) => Promise<void>;
+    enable: (intervalMs?: number) => Promise<void>;
     disable: () => Promise<void>;
-    updateInterval: (cron: string) => Promise<void>;
+    updateInterval: (intervalMs: number) => Promise<void>;
 }
 
 export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitReturn {
     const [autoCommitEnabled, setAutoCommitEnabled] = useState(false);
-    const [scheduleId, setScheduleId] = useState<string | null>(null);
-    const [cron, setCron] = useState<string | null>(null);
-    const [nextRun, setNextRun] = useState<string | null>(null);
-    const [status, setStatus] = useState<'active' | 'paused' | null>(null);
-    const [lastRunStatus, setLastRunStatus] = useState<'completed' | 'failed' | null>(null);
+    const [intervalMs, setIntervalMs] = useState<number | null>(null);
+    const [lastCommittedAt, setLastCommittedAt] = useState<string | null>(null);
+    const [lastError, setLastError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [enabling, setEnabling] = useState(false);
 
@@ -42,33 +36,23 @@ export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitRetur
             const data = await notesApi.getAutoCommitStatus(workspaceId);
             if (cancelledRef.current) return;
 
-            if (data.enabled && data.schedule) {
+            if (data.enabled) {
                 setAutoCommitEnabled(true);
-                setScheduleId(data.schedule.id);
-                setCron(data.schedule.cron);
-                setNextRun(data.schedule.nextRun ?? null);
-                setStatus((data.schedule.status as 'active' | 'paused') ?? null);
-                setLastRunStatus(
-                    data.lastRun?.status === 'completed' || data.lastRun?.status === 'failed'
-                        ? data.lastRun.status
-                        : null,
-                );
+                setIntervalMs(data.intervalMs ?? null);
+                setLastCommittedAt(data.lastCommittedAt ?? null);
+                setLastError(data.lastError ?? null);
             } else {
                 setAutoCommitEnabled(false);
-                setScheduleId(null);
-                setCron(null);
-                setNextRun(null);
-                setStatus(null);
-                setLastRunStatus(null);
+                setIntervalMs(null);
+                setLastCommittedAt(null);
+                setLastError(null);
             }
         } catch {
             if (cancelledRef.current) return;
             setAutoCommitEnabled(false);
-            setScheduleId(null);
-            setCron(null);
-            setNextRun(null);
-            setStatus(null);
-            setLastRunStatus(null);
+            setIntervalMs(null);
+            setLastCommittedAt(null);
+            setLastError(null);
         }
     }, [workspaceId]);
 
@@ -82,17 +66,10 @@ export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitRetur
         return () => { cancelledRef.current = true; };
     }, [workspaceId, fetchStatus]);
 
-    // Listen for schedule-changed events (from WebSocket)
-    useEffect(() => {
-        const handler = () => { fetchStatus(); };
-        window.addEventListener('schedule-changed', handler);
-        return () => window.removeEventListener('schedule-changed', handler);
-    }, [fetchStatus]);
-
-    const enable = useCallback(async (cronExpr?: string) => {
+    const enable = useCallback(async (ms?: number) => {
         setEnabling(true);
         try {
-            await notesApi.enableAutoCommit(workspaceId, cronExpr);
+            await notesApi.enableAutoCommit(workspaceId, ms);
             await fetchStatus();
         } catch {
             // Error handled silently — state remains unchanged
@@ -110,9 +87,9 @@ export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitRetur
         }
     }, [workspaceId, fetchStatus]);
 
-    const updateInterval = useCallback(async (cronExpr: string) => {
+    const updateInterval = useCallback(async (ms: number) => {
         try {
-            await notesApi.updateAutoCommitInterval(workspaceId, cronExpr);
+            await notesApi.updateAutoCommitInterval(workspaceId, ms);
             await fetchStatus();
         } catch {
             // Error handled silently
@@ -121,12 +98,9 @@ export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitRetur
 
     return {
         autoCommitEnabled,
-        scheduleId,
-        cron,
-        cronDescription: cron ? describeCron(cron) : null,
-        nextRun,
-        status,
-        lastRunStatus,
+        intervalMs,
+        lastCommittedAt,
+        lastError,
         loading,
         enabling,
         enable,

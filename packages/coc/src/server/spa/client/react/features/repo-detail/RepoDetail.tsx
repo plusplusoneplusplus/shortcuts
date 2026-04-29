@@ -454,16 +454,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             title="Needs attention"
                                         />
                                     )}
-                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && notesAutoCommit.status === 'active' && (
+                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && (
                                         <span className="ml-1 text-[10px] bg-amber-600 text-white px-1 py-px rounded-full"
                                               data-testid="notes-autocommit-badge" title="Auto-commit active">
                                             ⏰
-                                        </span>
-                                    )}
-                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && notesAutoCommit.status === 'paused' && (
-                                        <span className="ml-1 text-[10px] bg-yellow-500 text-white px-1 py-px rounded-full"
-                                              data-testid="notes-autocommit-paused-badge" title="Auto-commit paused">
-                                            ⏸
                                         </span>
                                     )}
                                     {activeSubTab === t.key && (

@@ -395,8 +395,8 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 const ac = ng.autoCommit as Record<string, unknown>;
                 if (typeof ac.enabled === 'boolean') {
                     validated.autoCommit = { enabled: ac.enabled };
-                    if (typeof ac.scheduleId === 'string' && ac.scheduleId.length > 0) {
-                        validated.autoCommit.scheduleId = ac.scheduleId;
+                    if (typeof ac.intervalMs === 'number' && ac.intervalMs > 0) {
+                        validated.autoCommit.intervalMs = ac.intervalMs;
                     }
                 }
             }

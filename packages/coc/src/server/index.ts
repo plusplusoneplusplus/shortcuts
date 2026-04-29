@@ -41,6 +41,7 @@ import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './hostname-utils';
 import { gitInfoCache } from './git-info-cache';
+import { NotesGitTimerManager } from './notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './startup-process-migration';
 
@@ -59,6 +60,7 @@ interface CloseHandlerDeps {
     wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
     scheduleInfraDispose: () => void;
+    notesGitTimerManager: NotesGitTimerManager;
     bridge: MultiRepoQueueExecutorBridge;
     queuePersistence: { dispose(): void };
     wsServer: ProcessWebSocketServer;
@@ -84,6 +86,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
         gitInfoCache.dispose();
+        deps.notesGitTimerManager.dispose();
 
         let drainOutcome: 'completed' | 'timeout' | undefined;
         if (closeOptions?.drain) {
@@ -205,9 +208,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;
+    const notesGitTimerManager = new NotesGitTimerManager();
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
+        notesGitTimerManager,
         dataDir, configPath: options.configPath,
         tokenTtlMs: options.tokenTtlMs,
         globalWorkspaceRootPath: globalWorkspace.rootPath,
@@ -217,6 +222,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
     });
+    // Restore auto-commit timers for all workspaces that had it enabled
+    notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
 
     const rawHostname = os.hostname();
     const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
@@ -253,7 +260,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
-            wikiManager, scheduleManager, scheduleInfraDispose, bridge, queuePersistence, wsServer,
+            wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             activeSockets, server,

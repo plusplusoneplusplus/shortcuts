@@ -1551,13 +1551,13 @@ describe('Per-Repo Preferences REST API', () => {
 
     it('validates notesGit with full autoCommit', async () => {
         await putJSON(repoUrl(repoId), {
-            notesGit: { enabled: true, autoCommit: { enabled: true, scheduleId: 'abc' } },
+            notesGit: { enabled: true, autoCommit: { enabled: true, intervalMs: 1_800_000 } },
         });
         const res = await getJSON(repoUrl(repoId));
         const body = JSON.parse(res.body);
         expect(body.notesGit).toEqual({
             enabled: true,
-            autoCommit: { enabled: true, scheduleId: 'abc' },
+            autoCommit: { enabled: true, intervalMs: 1_800_000 },
         });
     });
 

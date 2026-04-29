@@ -234,7 +234,7 @@ describe('notesApi', () => {
 
     describe('auto-commit endpoints', () => {
         it('getAutoCommitStatus — calls GET /workspaces/:id/notes/git/auto-commit/status', async () => {
-            const data = { enabled: true, schedule: { id: 'sched-1', cron: '*/30 * * * *', status: 'active', nextRun: null }, lastRun: null };
+            const data = { enabled: true, intervalMs: 1_800_000, lastCommittedAt: '2025-01-01T01:00:00Z', lastError: null };
             mockOk(data);
             const result = await notesApi.getAutoCommitStatus('ws-1');
             expect(result).toEqual(data);
@@ -244,28 +244,28 @@ describe('notesApi', () => {
             );
         });
 
-        it('enableAutoCommit — sends POST with cron body', async () => {
-            const data = { schedule: { id: 'sched-1' }, scriptPath: '/tmp/script.sh' };
+        it('enableAutoCommit — sends POST with intervalMs body', async () => {
+            const data = { enabled: true, intervalMs: 900_000 };
             mockOk(data);
-            const result = await notesApi.enableAutoCommit('ws-1', '*/15 * * * *');
+            const result = await notesApi.enableAutoCommit('ws-1', 900_000);
             expect(result).toEqual(data);
             expect(mockFetch).toHaveBeenCalledWith(
                 '/api/workspaces/ws-1/notes/git/auto-commit',
                 expect.objectContaining({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cron: '*/15 * * * *' }),
+                    body: JSON.stringify({ intervalMs: 900_000 }),
                 }),
             );
         });
 
-        it('enableAutoCommit — uses default cron when none provided', async () => {
-            mockOk({ schedule: {}, scriptPath: '' });
+        it('enableAutoCommit — uses default intervalMs (30 min) when none provided', async () => {
+            mockOk({ enabled: true, intervalMs: 1_800_000 });
             await notesApi.enableAutoCommit('ws-1');
             expect(mockFetch).toHaveBeenCalledWith(
                 '/api/workspaces/ws-1/notes/git/auto-commit',
                 expect.objectContaining({
-                    body: JSON.stringify({ cron: '*/30 * * * *' }),
+                    body: JSON.stringify({ intervalMs: 1_800_000 }),
                 }),
             );
         });
@@ -280,17 +280,17 @@ describe('notesApi', () => {
             );
         });
 
-        it('updateAutoCommitInterval — sends PATCH with cron body', async () => {
-            const data = { schedule: { id: 'sched-1' } };
+        it('updateAutoCommitInterval — sends POST with intervalMs body', async () => {
+            const data = { enabled: true, intervalMs: 600_000 };
             mockOk(data);
-            const result = await notesApi.updateAutoCommitInterval('ws-1', '*/10 * * * *');
+            const result = await notesApi.updateAutoCommitInterval('ws-1', 600_000);
             expect(result).toEqual(data);
             expect(mockFetch).toHaveBeenCalledWith(
                 '/api/workspaces/ws-1/notes/git/auto-commit',
                 expect.objectContaining({
-                    method: 'PATCH',
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cron: '*/10 * * * *' }),
+                    body: JSON.stringify({ intervalMs: 600_000 }),
                 }),
             );
         });
