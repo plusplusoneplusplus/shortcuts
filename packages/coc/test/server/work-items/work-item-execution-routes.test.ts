@@ -129,6 +129,55 @@ describe('Work Item Execution Routes', () => {
         });
     });
 
+    describe('POST /execute with skillNames', () => {
+        let enqueueMock: ReturnType<typeof vi.fn>;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-skill-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            enqueueMock = vi.fn().mockResolvedValue('task-skill');
+            server = makeServer(enqueueMock);
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        it('forwards skillNames to the executor', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'With skill' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                skillNames: ['impl', 'code-review'],
+                model: 'gpt-4',
+            });
+
+            expect(res.status).toBe(200);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.payload.context.skills).toEqual(['impl', 'code-review']);
+            expect(call.config.model).toBe('gpt-4');
+        });
+
+        it('filters out non-string and empty skillNames', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Filter test' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                skillNames: ['impl', '', 42, null, 'test'],
+            });
+
+            expect(res.status).toBe(200);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.payload.context.skills).toEqual(['impl', 'test']);
+        });
+    });
+
     describe('POST /from-chat', () => {
         beforeEach(async () => {
             tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-fromchat-'));

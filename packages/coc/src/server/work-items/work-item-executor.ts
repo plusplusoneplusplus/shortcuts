@@ -28,6 +28,8 @@ export interface ExecuteWorkItemOptions {
      * for this work item while it is executing.
      */
     taskFilePath?: string;
+    /** Skill names selected by the user for this execution. */
+    skillNames?: string[];
 }
 
 export interface EnqueueFunction {
@@ -92,6 +94,15 @@ export async function executeWorkItem(
     const mode = options?.mode ?? 'autopilot';
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
 
+    const contextFiles = options?.taskFilePath ? [options.taskFilePath] : [];
+    const contextSkills = options?.skillNames ?? [];
+    const context = contextFiles.length || contextSkills.length
+        ? {
+            ...(contextFiles.length ? { files: contextFiles } : {}),
+            ...(contextSkills.length ? { skills: contextSkills } : {}),
+        }
+        : undefined;
+
     const taskId = await enqueue({
         type: 'run-workflow',
         priority: item.priority ?? 'normal',
@@ -102,9 +113,7 @@ export async function executeWorkItem(
             workspaceId: item.repoId,
             sessionCategory: 'generating-code' satisfies SessionCategory,
             workItemId: item.id,
-            ...(options?.taskFilePath
-                ? { context: { files: [options.taskFilePath] } }
-                : {}),
+            ...(context ? { context } : {}),
         },
         config: {
             ...(options?.model ? { model: options.model } : {}),

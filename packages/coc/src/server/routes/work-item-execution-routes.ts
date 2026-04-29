@@ -92,11 +92,16 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             }
 
             try {
+                const skillNames: string[] | undefined = Array.isArray(body.skillNames)
+                    ? body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+                    : undefined;
+
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
                     mode: body.mode,
                     headBefore,
                     taskFilePath,
+                    skillNames: skillNames?.length ? skillNames : undefined,
                 });
                 const updatedItem = await workItemStore.getWorkItem(workItemId);
                 if (updatedItem) {

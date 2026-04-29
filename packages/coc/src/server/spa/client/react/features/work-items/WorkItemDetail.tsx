@@ -9,6 +9,7 @@ import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
+import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../comments/diff-comment-types';
@@ -77,7 +78,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [executing, setExecuting] = useState(false);
+    const [showExecuteDialog, setShowExecuteDialog] = useState(false);
     const [reviewComment, setReviewComment] = useState('');
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
@@ -143,18 +144,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     }, [contextItem, onBack]);
 
-    const handleExecute = async () => {
-        setExecuting(true);
-        try {
-            await fetchApi(basePath + '/execute', { method: 'POST' });
-            await fetchItem();
-            onExecuted?.();
-        } catch (err: any) {
-            setError(err.message || 'Failed to execute');
-        } finally {
-            setExecuting(false);
-        }
-    };
+    const handleExecuteDialogDone = useCallback(async () => {
+        setShowExecuteDialog(false);
+        await fetchItem();
+        onExecuted?.();
+    }, [fetchItem, onExecuted]);
 
     const handleStatusChange = async (newStatus: string) => {
         try {
@@ -420,12 +414,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </label>
                     <Button
                         variant="primary" size="sm"
-                        onClick={handleExecute}
-                        disabled={!canExecute || executing}
-                        loading={executing}
+                        onClick={() => setShowExecuteDialog(true)}
+                        disabled={!canExecute}
                         data-testid="work-item-execute-btn"
                     >
-                        ▶ Execute
+                        ⚡ Start Implementing
                     </Button>
                     <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
@@ -806,6 +799,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </div>
                 </section>
             </div>
+
+            {showExecuteDialog && (
+                <WorkItemExecuteDialog
+                    open={showExecuteDialog}
+                    workspaceId={workspaceId}
+                    workItemId={workItemId}
+                    workItemTitle={item.title}
+                    onClose={() => setShowExecuteDialog(false)}
+                    onExecuted={handleExecuteDialogDone}
+                />
+            )}
         </div>
     );
 }

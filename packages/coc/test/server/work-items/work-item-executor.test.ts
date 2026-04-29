@@ -121,6 +121,48 @@ describe('executeWorkItem', () => {
         const call = enqueue.mock.calls[0][0];
         expect(call.config.model).toBe('gpt-4');
     });
+
+    it('includes context.skills when skillNames provided', async () => {
+        const item = makeWorkItem({ id: 'wi-skills', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-sk1');
+        await executeWorkItem('wi-skills', store, enqueue, {
+            skillNames: ['impl', 'code-review'],
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toBeDefined();
+        expect(call.payload.context.skills).toEqual(['impl', 'code-review']);
+        expect(call.payload.context.files).toBeUndefined();
+    });
+
+    it('includes both context.files and context.skills when both provided', async () => {
+        const item = makeWorkItem({ id: 'wi-both', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-both');
+        await executeWorkItem('wi-both', store, enqueue, {
+            taskFilePath: '/tmp/task.md',
+            skillNames: ['impl'],
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toBeDefined();
+        expect(call.payload.context.files).toEqual(['/tmp/task.md']);
+        expect(call.payload.context.skills).toEqual(['impl']);
+    });
+
+    it('omits context when no taskFilePath or skillNames', async () => {
+        const item = makeWorkItem({ id: 'wi-no-ctx', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-noctx');
+        await executeWorkItem('wi-no-ctx', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toBeUndefined();
+    });
 });
 
 describe('handleWorkItemTaskComplete', () => {

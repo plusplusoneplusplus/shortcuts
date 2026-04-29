@@ -6,4 +6,6 @@ export { WorkItemPlanSection } from './WorkItemPlanSection';
 export { WorkItemExecutionSession } from './WorkItemExecutionSession';
 export { CreateWorkItemDialog } from './CreateWorkItemDialog';
 export type { CreateWorkItemDialogProps } from './CreateWorkItemDialog';
+export { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
+export type { WorkItemExecuteDialogProps } from './WorkItemExecuteDialog';
 export { useWorkItemSearch } from './hooks/useWorkItemSearch';
