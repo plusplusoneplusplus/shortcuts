@@ -5,8 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Dialog, Spinner } from '../ui';
-import { Button } from '../ui/Button';
+import { Dialog } from '../ui';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../contexts/AppContext';
@@ -15,11 +14,8 @@ import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { TaskFolder } from '../tasks/hooks/useTaskTree';
 import { isContextFile } from '../tasks/hooks/useTaskTree';
-
-interface SkillItem {
-    name: string;
-    description?: string;
-}
+import { RunSkillPanel } from './RunSkillPanel';
+import type { SkillItem } from './RunSkillPanel';
 
 export interface BulkFollowPromptDialogProps {
     wsId: string;
@@ -117,10 +113,12 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         return () => { cancelled = true; };
     }, [selectedWsId]);
 
-    const handleSubmit = useCallback(async (name: string, description?: string) => {
+    const handleSubmit = useCallback(async (skillNames: string[]) => {
+        if (skillNames.length === 0) return;
+        const name = skillNames[0];
         setSubmitting(true);
         try {
-            trackUsage(name, description);
+            trackUsage(name);
 
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
@@ -206,103 +204,38 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                     <strong>{folder.name}</strong> — {taskFiles.length} task{taskFiles.length !== 1 ? 's' : ''} will be queued
                 </div>
 
-                {/* Model select */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">
-                        Model <span className="text-[#848484]">(optional)</span>
-                    </label>
-                    <select
-                        id="bfp-model"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={model}
-                        onChange={e => setModel('task', e.target.value)}
-                    >
-                        <option value="">Default</option>
-                        {models.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                </div>
-
-                {/* Workspace select */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">Workspace</label>
-                    <select
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={selectedWsId}
-                        onChange={e => setSelectedWsId(e.target.value)}
-                    >
-                        {state.workspaces.map((ws: any) => (
-                            <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Additional info */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">
-                        Additional info <span className="text-[#848484]">(optional)</span>
-                    </label>
-                    <textarea
-                        id="bfp-additional-info"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y"
-                        rows={3}
-                        placeholder="Extra context for the AI (e.g. &quot;focus on auth module&quot;)"
-                        value={additionalInfo}
-                        onChange={e => setAdditionalInfo(e.target.value)}
-                        disabled={submitting}
-                    />
-                </div>
-
-                {/* Last Used section */}
-                {recentItems.length > 0 && !loading && (
-                    <div>
-                        <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
-                        {recentItems.map(item => (
-                            <button
-                                key={`skill-${item.name}`}
-                                className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                data-name={item.name}
-                                disabled={submitting || taskFiles.length === 0}
-                                onClick={() => handleSubmit(item.name, item.description)}
+                <RunSkillPanel
+                    skills={skills}
+                    recentItems={recentItems}
+                    models={models}
+                    loading={loading}
+                    selectedSkills={[]}
+                    additionalInfo={additionalInfo}
+                    model={model}
+                    submitting={submitting}
+                    disabled={taskFiles.length === 0}
+                    onSkillToggle={() => {}}
+                    onSubmitSkills={handleSubmit}
+                    onAdditionalInfoChange={setAdditionalInfo}
+                    onModelChange={val => setModel('task', val)}
+                    selectionMode="single"
+                    modelSelectId="bfp-model"
+                    additionalInfoId="bfp-additional-info"
+                    afterModelContent={
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-[#616161] dark:text-[#999]">Workspace</label>
+                            <select
+                                className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                value={selectedWsId}
+                                onChange={e => setSelectedWsId(e.target.value)}
                             >
-                                <span>⚡</span>
-                                <span className="truncate">{item.name}</span>
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {/* Skills list */}
-                {loading ? (
-                    <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
-                        <Spinner size="sm" /> Loading skills…
-                    </div>
-                ) : skills.length === 0 ? (
-                    <div className="text-xs text-[#848484] py-2">
-                        <p>No skills found in this workspace.</p>
-                        <p className="mt-1 text-[10px]">Create skills in .github/skills/</p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                        <div>
-                            <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
-                            {skills.map(s => (
-                                <button
-                                    key={s.name}
-                                    className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                    data-name={s.name}
-                                    disabled={submitting || taskFiles.length === 0}
-                                    onClick={() => handleSubmit(s.name, s.description)}
-                                >
-                                    <span>⚡</span>
-                                    <span className="flex-shrink-0 font-medium">{s.name}</span>
-                                    {s.description && (
-                                        <span className="text-xs text-[#848484] truncate">{s.description}</span>
-                                    )}
-                                </button>
-                            ))}
+                                {state.workspaces.map((ws: any) => (
+                                    <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
+                                ))}
+                            </select>
                         </div>
-                    </div>
-                )}
+                    }
+                />
             </div>
         </Dialog>
     );

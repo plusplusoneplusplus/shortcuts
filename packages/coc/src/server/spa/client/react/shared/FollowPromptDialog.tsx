@@ -4,8 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { FloatingDialog, Spinner } from '../ui';
-import { Button } from '../ui/Button';
+import { FloatingDialog } from '../ui';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
@@ -13,11 +12,8 @@ import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
-
-interface SkillItem {
-    name: string;
-    description?: string;
-}
+import { RunSkillPanel } from './RunSkillPanel';
+import type { SkillItem } from './RunSkillPanel';
 
 export interface FollowPromptDialogProps {
     wsId: string;
@@ -87,12 +83,12 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         );
     }, []);
 
-    const handleSubmitSkills = useCallback(async (skillNames: string[], description?: string) => {
+    const handleSubmitSkills = useCallback(async (skillNames: string[]) => {
         if (skillNames.length === 0) return;
         setSubmitting(true);
         try {
             for (const name of skillNames) {
-                trackUsage(name, description);
+                trackUsage(name);
                 if (selectedWsId) {
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
                         method: 'PATCH',
@@ -170,123 +166,37 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         <>
             <FloatingDialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu" closeButtonId="fp-close" resizable minWidth={360} minHeight={200}>
                 <div className="flex flex-col gap-4">
-                    {/* Model select */}
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-[#616161] dark:text-[#999]">
-                            Model <span className="text-[#848484]">(optional)</span>
-                        </label>
-                        <select
-                            id="fp-model"
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                            value={model}
-                            onChange={e => setModel('task', e.target.value)}
-                        >
-                            <option value="">Default</option>
-                            {models.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Workspace select */}
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-[#616161] dark:text-[#999]">Workspace</label>
-                        <select
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                            value={selectedWsId}
-                            onChange={e => setSelectedWsId(e.target.value)}
-                        >
-                            {state.workspaces.map((ws: any) => (
-                                <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Additional info */}
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-[#616161] dark:text-[#999]">
-                            Additional info <span className="text-[#848484]">(optional)</span>
-                        </label>
-                        <textarea
-                            id="fp-additional-info"
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y"
-                            rows={3}
-                            placeholder="Extra context for the AI (e.g. &quot;focus on auth module&quot;)"
-                            value={additionalInfo}
-                            onChange={e => setAdditionalInfo(e.target.value)}
-                            disabled={submitting}
-                        />
-                    </div>
-
-                    {/* Last Used section */}
-                    {recentItems.length > 0 && !loading && (
-                        <div>
-                            <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
-                            {recentItems.map(item => (
-                                <button
-                                    key={`skill-${item.name}`}
-                                    className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                    data-name={item.name}
-                                    disabled={submitting}
-                                    onClick={() => handleSubmitSkills([item.name], item.description)}
+                    <RunSkillPanel
+                        skills={skills}
+                        recentItems={recentItems}
+                        models={models}
+                        loading={loading}
+                        selectedSkills={selectedSkills}
+                        additionalInfo={additionalInfo}
+                        model={model}
+                        submitting={submitting}
+                        onSkillToggle={toggleSkill}
+                        onSubmitSkills={handleSubmitSkills}
+                        onAdditionalInfoChange={setAdditionalInfo}
+                        onModelChange={val => setModel('task', val)}
+                        selectionMode="multi"
+                        modelSelectId="fp-model"
+                        additionalInfoId="fp-additional-info"
+                        afterModelContent={
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-[#616161] dark:text-[#999]">Workspace</label>
+                                <select
+                                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    value={selectedWsId}
+                                    onChange={e => setSelectedWsId(e.target.value)}
                                 >
-                                    <span>⚡</span>
-                                    <span className="truncate">{item.name}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Skills list */}
-                    {loading ? (
-                        <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
-                            <Spinner size="sm" /> Loading…
-                        </div>
-                    ) : skills.length === 0 ? (
-                        <div className="text-xs text-[#848484] py-2">
-                            <p>No skills found in this workspace.</p>
-                            <p className="mt-1 text-[10px]">Create skills in .github/skills/</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                            <div>
-                                <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
-                                <div className="flex flex-wrap gap-1.5 mb-2" data-testid="fp-skill-chips">
-                                    {skills.map(s => {
-                                        const isActive = selectedSkills.includes(s.name);
-                                        return (
-                                            <button
-                                                key={s.name}
-                                                type="button"
-                                                className={`fp-item inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
-                                                    isActive
-                                                        ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                                        : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
-                                                }`}
-                                                data-name={s.name}
-                                                disabled={submitting}
-                                                onClick={() => toggleSkill(s.name)}
-                                                title={s.description || s.name}
-                                            >
-                                                <span>⚡</span>
-                                                <span className="font-medium">{s.name}</span>
-                                                {isActive && <span className="ml-0.5">✕</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                {selectedSkills.length > 0 && (
-                                    <button
-                                        type="button"
-                                        className="w-full px-3 py-1.5 text-xs font-medium text-white bg-[#0078d4] rounded hover:bg-[#006cc1] disabled:opacity-50"
-                                        disabled={submitting}
-                                        onClick={() => handleSubmitSkills(selectedSkills)}
-                                        data-testid="fp-submit-skills"
-                                    >
-                                        {submitting ? 'Submitting…' : `Submit with ${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''}`}
-                                    </button>
-                                )}
+                                    {state.workspaces.map((ws: any) => (
+                                        <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
+                                    ))}
+                                </select>
                             </div>
-                        </div>
-                    )}
+                        }
+                    />
                 </div>
             </FloatingDialog>
         </>

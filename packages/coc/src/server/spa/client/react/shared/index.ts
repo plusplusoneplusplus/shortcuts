@@ -9,6 +9,8 @@ export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
 export { SourceEditor } from './SourceEditor';
 export type { SourceEditorProps } from './SourceEditor';
+export { RunSkillPanel } from './RunSkillPanel';
+export type { RunSkillPanelProps, SkillItem } from './RunSkillPanel';
 export { FollowPromptDialog } from './FollowPromptDialog';
 export type { FollowPromptDialogProps } from './FollowPromptDialog';
 export { BulkFollowPromptDialog } from './BulkFollowPromptDialog';
