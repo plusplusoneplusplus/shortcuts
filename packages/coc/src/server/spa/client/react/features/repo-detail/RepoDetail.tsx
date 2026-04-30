@@ -559,11 +559,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden")}>
+            <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
+                    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
+                    </div>
                 ) : activeSubTab === 'tasks' ? (
-                    <div className="h-full min-w-0 overflow-hidden">
+                    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         {uiLayoutMode === 'classic' ? (
                             <TasksPanel
                                 key={ws.id}
@@ -578,28 +580,28 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </div>
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {uiLayoutMode === 'classic' && (
-                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
                         {isChatBackedLayoutMode(uiLayoutMode) && (
-                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                             </div>
                         )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <RepoGitTab key={ws.id} workspaceId={ws.id} />
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <ExplorerPanel key={ws.id} workspaceId={ws.id} />
                         </div>
-                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <PullRequestsTab
                                 repoId={ws.id}
                                 workspaceId={ws.id}
@@ -607,12 +609,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             />
                         </div>}
                         {terminalEnabled && (
-                            <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <TerminalView key={ws.id} workspaceId={ws.id} />
                             </div>
                         )}
                         {notesEnabled && (
-                            <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <NotesView
                                     key={ws.id}
                                     workspaceId={ws.id}

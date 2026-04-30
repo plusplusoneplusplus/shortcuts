@@ -185,6 +185,12 @@ function renderDetail(repo = makeRepo()) {
     return render(<RepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} />);
 }
 
+function expectClassTokens(element: Element, tokens: string[]) {
+    for (const token of tokens) {
+        expect(element.classList.contains(token)).toBe(true);
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RepoDetail — layout mode chat tab mounting', () => {
@@ -298,6 +304,44 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
 
         const workItemsTab = container.querySelector('[data-subtab="work-items"]');
         expect(workItemsTab).toBeTruthy();
+    });
+
+    it('mobile classic Activity tab keeps a flex height chain through display-toggled wrappers', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'activity';
+        mockIsMobile = true;
+        const { container } = renderDetail();
+
+        const subTabContent = container.querySelector('#repo-sub-tab-content')!;
+        expectClassTokens(subTabContent, ['flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-hidden']);
+
+        const activityWrapper = screen.getByTestId('repo-chat-tab-activity').parentElement!;
+        expect(activityWrapper.style.display).toBe('');
+        expectClassTokens(activityWrapper, ['flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-hidden']);
+
+        const branchWrapper = activityWrapper.parentElement!;
+        expectClassTokens(branchWrapper, ['flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-hidden']);
+    });
+
+    it('mobile hidden Activity wrapper preserves flex sizing for later tab restore', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'settings';
+        mockIsMobile = true;
+        renderDetail();
+
+        const activityWrapper = screen.getByTestId('repo-chat-tab-activity').parentElement!;
+        expect(activityWrapper.style.display).toBe('none');
+        expectClassTokens(activityWrapper, ['flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-hidden']);
+    });
+
+    it('mobile dev-workflow Tasks chat tab uses a flex-1 content wrapper', () => {
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'tasks';
+        mockIsMobile = true;
+        renderDetail();
+
+        const tasksWrapper = screen.getByTestId('repo-chat-tab-tasks').parentElement!;
+        expectClassTokens(tasksWrapper, ['flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-hidden']);
     });
 
     it('dev-workflow mode: Work Items tab button is present in the tab strip', () => {

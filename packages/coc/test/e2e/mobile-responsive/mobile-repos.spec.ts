@@ -2,7 +2,7 @@
  * Mobile Repos Tests — verify repo list and detail at 375×812.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace } from '../fixtures/seed';
+import { seedProcess, seedWorkspace } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
@@ -136,5 +136,39 @@ test.describe('Mobile Repos', () => {
         await activityTab.tap();
 
         await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('mobile portrait: Activity content keeps non-zero height and renders chat list', async ({ page, serverUrl }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        const workspaceId = 'ws-mob-portrait-activity';
+        await seedWorkspace(serverUrl, workspaceId, 'mob-portrait-activity-repo');
+        await seedProcess(serverUrl, 'portrait-activity-chat-1', {
+            status: 'completed',
+            type: 'chat',
+            title: 'Portrait Activity Chat',
+            promptPreview: 'Portrait Activity Chat',
+            workspaceId,
+            metadata: { workspaceId },
+        });
+
+        await page.goto(`${serverUrl}/#repos/${workspaceId}/activity`);
+
+        const subTabContent = page.locator('#repo-sub-tab-content');
+        const splitPanel = page.locator('[data-testid="activity-split-panel"]');
+        const mobileList = page.locator('[data-testid="activity-mobile-list"]');
+
+        await expect(subTabContent).toBeVisible({ timeout: 10000 });
+        await expect(splitPanel).toBeVisible({ timeout: 10000 });
+        await expect(mobileList).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText('Portrait Activity Chat')).toBeVisible({ timeout: 10000 });
+
+        const heights = await Promise.all([
+            subTabContent.boundingBox(),
+            splitPanel.boundingBox(),
+            mobileList.boundingBox(),
+        ]);
+        for (const box of heights) {
+            expect(box?.height ?? 0).toBeGreaterThan(100);
+        }
     });
 });
