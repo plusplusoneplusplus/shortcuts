@@ -10,9 +10,9 @@ import { Dialog, FloatingDialog, Button } from '../ui';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
-import { useImagePaste } from '../features/chat/hooks/useImagePaste';
+import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { ImagePreviews } from '../ui/ImagePreviews';
+import { AttachmentPreviews } from '../ui/AttachmentPreviews';
 import { filterGitMetadataFolders } from '../tasks/hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
@@ -106,8 +106,10 @@ export function EnqueueDialog() {
     const updateHook = (id: string, updates: Partial<HookEntry>) =>
         setHooks(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h));
 
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, clearError: clearAttachmentError } = useFileAttachments();
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
     const slashCommands = useSlashCommands(skills);
     const [contextFiles, setContextFiles] = useState<string[]>([]);
     const isBulkMode = queueState.dialogBulkMode && contextFiles.length > 1;
@@ -252,7 +254,7 @@ export function EnqueueDialog() {
             richTextRef.current?.setValue('');
             setSelectedSkills([]);
             setHooks([]);
-            clearImages();
+            clearAttachments();
             queueDispatch({ type: 'CLOSE_DIALOG' });
             return;
         }
@@ -406,14 +408,14 @@ export function EnqueueDialog() {
                     }).catch(() => { /* ignore */ });
                 }
             }
-            clearImages();
+            clearAttachments();
             if (!appState.onboardingProgress?.hasRunWorkflow) {
                 appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
             }
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -433,6 +435,27 @@ export function EnqueueDialog() {
             handleSubmit();
         }
     }, [submitting, handleSubmit, slashCommands, handleSlashSelect]);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(true);
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+            addFromFileInput(e.dataTransfer.files);
+        }
+    }, [addFromFileInput]);
 
     // When the dialog opens (or templates finish loading while open),
     // pick the default tab: Templates if mode-filtered templates exist, else Advanced.
@@ -523,31 +546,82 @@ export function EnqueueDialog() {
             {/* Prompt — always visible */}
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">{isResolveMode ? 'Additional context (optional)' : 'Prompt'}</label>
-                <div className="relative">
-                    <RichTextInput
-                        ref={richTextRef}
-                        value={prompt}
-                        onChange={(text, cursorPos) => {
-                            setPrompt(text);
-                            slashCommands.handleInputChange(text, cursorPos);
-                        }}
-                        onPaste={submitting ? undefined : addFromPaste}
-                        onKeyDown={handleKeyDown}
-                        disabled={submitting}
-                        placeholder={isResolveMode ? 'Additional context… Type / for skills' : selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] min-h-[6rem]"
-                        data-testid="prompt-input"
-                    />
-                    <SlashCommandMenu
-                        skills={skills}
-                        filter={slashCommands.menuFilter}
-                        onSelect={handleSlashSelect}
-                        onDismiss={slashCommands.dismissMenu}
-                        visible={slashCommands.menuVisible}
-                        highlightIndex={slashCommands.highlightIndex}
-                    />
+                {/* Hidden file input for the attach button */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    data-testid="enqueue-file-input-hidden"
+                    onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                            addFromFileInput(e.target.files);
+                        }
+                        e.target.value = '';
+                    }}
+                />
+                {attachmentError && (
+                    <div className="text-xs text-[#f14c4c] mb-1" data-testid="enqueue-attachment-error">{attachmentError}</div>
+                )}
+                <div
+                    className={`relative rounded border-2 border-dashed transition-colors ${
+                        isDragOver
+                            ? 'border-[#0078d4] bg-[#0078d4]/5 dark:bg-[#0078d4]/10'
+                            : 'border-transparent'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    data-testid="enqueue-drop-zone"
+                >
+                    {isDragOver && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-[#0078d4]/5 dark:bg-[#0078d4]/10 rounded pointer-events-none z-10" data-testid="drop-zone-overlay">
+                            <span className="text-sm font-medium text-[#0078d4]">📎 Drop files here</span>
+                        </div>
+                    )}
+                    <div className="relative">
+                        <RichTextInput
+                            ref={richTextRef}
+                            value={prompt}
+                            onChange={(text, cursorPos) => {
+                                setPrompt(text);
+                                slashCommands.handleInputChange(text, cursorPos);
+                            }}
+                            onPaste={submitting ? undefined : addFromPaste}
+                            onKeyDown={handleKeyDown}
+                            disabled={submitting}
+                            placeholder={isResolveMode ? 'Additional context… Type / for skills' : selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] min-h-[6rem]"
+                            data-testid="prompt-input"
+                        />
+                        <SlashCommandMenu
+                            skills={skills}
+                            filter={slashCommands.menuFilter}
+                            onSelect={handleSlashSelect}
+                            onDismiss={slashCommands.dismissMenu}
+                            visible={slashCommands.menuVisible}
+                            highlightIndex={slashCommands.highlightIndex}
+                        />
+                    </div>
                 </div>
-                <ImagePreviews images={images} onRemove={removeImage} showHint />
+                <div className="flex items-center gap-2 mt-1.5">
+                    <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        data-testid="enqueue-attach-btn"
+                        aria-label="Attach image"
+                        title="Attach images or drag & drop"
+                    >
+                        📎 Attach
+                    </button>
+                    <span className="text-[11px] text-[#a0a0a0] dark:text-[#666]">
+                        or paste images (Ctrl+V) / drag & drop
+                    </span>
+                </div>
+                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} data-testid="enqueue-attachment-previews" />
             </div>
 
             {/* Lower section tab bar: Templates | Advanced */}

@@ -647,7 +647,7 @@ describe('EnqueueDialog', () => {
         expect(enqueueBtn.disabled).toBe(false);
     });
 
-    it('renders ImagePreviews paste hint below the prompt input', async () => {
+    it('renders attachment hint below the prompt input', async () => {
         render(
             <Wrap>
                 <DialogOpener />
@@ -657,8 +657,9 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
-        // The ImagePreviews component shows a paste hint when showHint is true and no images
-        expect(screen.getByText(/Paste images/)).toBeTruthy();
+        // The attach button and hint text are shown
+        expect(screen.getByTestId('enqueue-attach-btn')).toBeTruthy();
+        expect(screen.getByText(/paste images.*drag.*drop/i)).toBeTruthy();
     });
 
     it('includes images in freeform POST body when present', async () => {
