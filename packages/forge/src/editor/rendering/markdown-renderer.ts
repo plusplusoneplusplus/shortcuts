@@ -6,6 +6,7 @@
  */
 
 import { toForwardSlashes } from '../../utils/path-utils';
+import { isEmbeddableHtmlPath, parseHtmlEmbedTitle } from './html-embed';
 
 /**
  * Result of applying markdown highlighting to a line
@@ -18,6 +19,10 @@ export interface MarkdownLineResult {
     isCodeFenceEnd?: boolean;
     /** Anchor ID for headings (used for ToC navigation) */
     anchorId?: string;
+}
+
+export interface MarkdownRenderInlineOptions {
+    htmlEmbedEnabled?: boolean;
 }
 
 /**
@@ -235,7 +240,7 @@ export function applySourceModeInlineHighlighting(text: string): string {
  * @param text - The text to format
  * @returns HTML with inline markdown rendered
  */
-export function applyInlineMarkdown(text: string): string {
+export function applyInlineMarkdown(text: string, options?: MarkdownRenderInlineOptions): string {
     if (!text) return '';
     
     let html = escapeHtml(text);
@@ -276,14 +281,29 @@ export function applyInlineMarkdown(text: string): string {
         `</span>`;
     });
     
-    // Links [text](url)
+    // Links [text](url "optional title")
     // Add special class for anchor links (starting with #) to enable ToC navigation
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    html = html.replace(/\[([^\]]+)\]\((\S+?)(?:\s+(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;|&#039;([^&]*)&#039;))?\)/g, (
+        _match,
+        text,
+        url,
+        doubleTitle,
+        singleTitle,
+        escapedDoubleTitle,
+        escapedSingleTitle,
+    ) => {
+        const title = doubleTitle ?? singleTitle ?? escapedDoubleTitle ?? escapedSingleTitle;
         const isAnchorLink = url.startsWith('#');
         const linkClass = isAnchorLink ? 'md-link md-anchor-link' : 'md-link';
         const dataAttr = isAnchorLink ? ` data-anchor="${escapeHtml(url.substring(1))}"` : '';
         const hrefAttr = isAnchorLink ? '' : ` data-href="${escapeHtml(url)}"`;
-        return `<span class="${linkClass}"${dataAttr}${hrefAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url})</span></span>`;
+        const titleText = title ? ` &quot;${escapeHtml(title)}&quot;` : '';
+        const linkHtml = `<span class="${linkClass}"${dataAttr}${hrefAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url}${titleText})</span></span>`;
+        const embed = options?.htmlEmbedEnabled ? parseHtmlEmbedTitle(title) : null;
+        if (!embed || !isEmbeddableHtmlPath(url)) {
+            return linkHtml;
+        }
+        return `${linkHtml}<div class="md-html-embed" data-html-path="${escapeHtml(url)}" data-embed-height="${embed.height}"></div>`;
     });
     
     // Bold + Italic (***text*** or ___text___)
@@ -354,7 +374,8 @@ export function applyMarkdownHighlighting(
     line: string,
     lineNum: number,
     inCodeBlock: boolean,
-    codeBlockLang: string | null
+    codeBlockLang: string | null,
+    options?: MarkdownRenderInlineOptions,
 ): MarkdownLineResult {
     // Strip trailing \r from Windows line endings (CRLF)
     // When content is split by \n, the \r remains at the end of each line
@@ -414,7 +435,7 @@ export function applyMarkdownHighlighting(
         const level = headingMatch[1].length;
         const hashes = escapeHtml(headingMatch[1]);
         const headingText = headingMatch[2];
-        const content = applyInlineMarkdown(headingText);
+        const content = applyInlineMarkdown(headingText, options);
         const anchorId = generateAnchorId(headingText);
         html = `<span class="md-h${level}" data-anchor-id="${anchorId}"><span class="md-hash">${hashes}</span> ${content}</span>`;
         return { html, inCodeBlock: false, codeBlockLang: null, anchorId };
@@ -424,7 +445,7 @@ export function applyMarkdownHighlighting(
     if (/^>\s*/.test(cleanLine)) {
         const content = cleanLine.replace(/^>\s*/, '');
         html = '<span class="md-blockquote"><span class="md-blockquote-marker">&gt;</span> ' +
-            applyInlineMarkdown(content) + '</span>';
+            applyInlineMarkdown(content, options) + '</span>';
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
 
@@ -447,9 +468,9 @@ export function applyMarkdownHighlighting(
                     : 'md-checkbox md-checkbox-clickable';
             const checkbox = state === 'checked' ? '[x]' : state === 'in-progress' ? '[~]' : '[ ]';
             // Add data attributes for click handling: line number and current state
-            content = `<span class="${checkboxClass}" data-line="${lineNum}" data-state="${state}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2]);
+            content = `<span class="${checkboxClass}" data-line="${lineNum}" data-state="${state}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2], options);
         } else {
-            content = applyInlineMarkdown(content);
+            content = applyInlineMarkdown(content, options);
         }
 
         html = `<span class="md-list-item">${indent}<span class="md-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
@@ -461,13 +482,13 @@ export function applyMarkdownHighlighting(
     if (olMatch) {
         const indent = olMatch[1];
         const marker = olMatch[2];
-        const content = applyInlineMarkdown(olMatch[3]);
+        const content = applyInlineMarkdown(olMatch[3], options);
         html = `<span class="md-list-item">${indent}<span class="md-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
 
     // Apply inline markdown (bold, italic, code, links, etc.)
-    html = applyInlineMarkdown(cleanLine);
+    html = applyInlineMarkdown(cleanLine, options);
 
     return { html, inCodeBlock: false, codeBlockLang: null };
 }

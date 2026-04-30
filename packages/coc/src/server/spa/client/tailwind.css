@@ -90,6 +90,119 @@
     color: #7bbef3;
 }
 
+/* Sandboxed HTML previews rendered from opted-in markdown links */
+.md-html-embed {
+    margin-top: 0.5rem;
+}
+
+.md-html-embed-shell {
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dark .md-html-embed-shell {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.md-html-embed-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f3f3f3;
+    font-size: 11px;
+}
+
+.dark .md-html-embed-toolbar {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+}
+
+.md-html-embed-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #616161;
+}
+
+.dark .md-html-embed-title {
+    color: #cccccc;
+}
+
+.md-html-embed-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.4rem;
+}
+
+.md-html-embed-actions button {
+    color: #0078d4;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+
+.md-html-embed-actions button:hover {
+    text-decoration: underline;
+}
+
+.md-html-embed-frame-wrap {
+    position: relative;
+    min-height: 120px;
+    max-height: 2000px;
+    background: #ffffff;
+}
+
+.md-html-embed-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #ffffff;
+}
+
+.md-html-embed-loading,
+.md-html-embed-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    color: #848484;
+    font-size: 12px;
+    background: #ffffff;
+}
+
+.md-html-embed-error {
+    position: static;
+    min-height: 120px;
+    color: #f14c4c;
+}
+
+.md-html-embed-error a {
+    color: #0078d4;
+    margin-left: 0.25rem;
+}
+
+.md-html-embed-resize {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    cursor: ns-resize;
+    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.08));
+}
+
 /* Hover tooltip for file preview */
 .file-preview-tooltip {
     position: fixed;

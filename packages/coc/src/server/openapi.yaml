@@ -1177,6 +1177,13 @@ components:
               enum: [low, medium, high]
               default: medium
               description: Controls how aggressively the AI writes memory entries.
+        htmlEmbed:
+          type: object
+          description: Sandboxed inline previews for local .html/.htm links whose markdown title is "embed".
+          properties:
+            enabled:
+              type: boolean
+              default: false
 
     SkillUsageRequest:
       type: object

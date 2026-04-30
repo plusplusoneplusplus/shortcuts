@@ -28,7 +28,7 @@ export const REPO_SUB_TAB_VALUES = [
 export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
 
 export const SETTINGS_SECTION_VALUES = [
-    'info', 'preferences', 'mcp', 'skills', 'llm-tools',
+    'info', 'preferences', 'display', 'mcp', 'skills', 'llm-tools',
     'instructions', 'memory', 'run-script-template', 'tasks', 'notes',
 ] as const;
 export type SettingsSection = typeof SETTINGS_SECTION_VALUES[number];

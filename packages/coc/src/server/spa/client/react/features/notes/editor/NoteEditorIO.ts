@@ -50,33 +50,17 @@ export const defaultNoteEditorIO: NoteEditorIO = {
 export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId: string): string {
     if (!html) return html;
 
-    // 1) Rewrite .attachments/ relative paths
-    let result = html.replace(
-        /(<img\s[^>]*?)src="(\.attachments\/[^"]+)"/gi,
-        (_match, prefix: string, relPath: string) => {
-            return `${prefix}src="${io.imageApiUrl(workspaceId, relPath)}"`;
+    return html.replace(
+        /(<img\s[^>]*?)src="([^"]+)"/gi,
+        (_match, prefix: string, src: string) => {
+            if (/^\.attachments\//i.test(src)) {
+                return `${prefix}src="${io.imageApiUrl(workspaceId, src)}"`;
+            }
+            if (/^[A-Za-z]:/.test(src) || /^\/(?!api\/)/.test(src)) {
+                const decoded = decodeURIComponent(src);
+                return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
+            }
+            return `${prefix}src="${src}"`;
         },
     );
-
-    // 2) Rewrite Windows absolute paths (e.g. C:\foo\bar.png or C:/foo/bar.png)
-    //    marked.js may percent-encode backslashes, so decode first to normalize
-    result = result.replace(
-        /(<img\s[^>]*?)src="([A-Za-z]:[^"]+)"/gi,
-        (_match, prefix: string, absPath: string) => {
-            const decoded = decodeURIComponent(absPath);
-            return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
-        },
-    );
-
-    // 3) Rewrite Unix absolute paths (e.g. /home/user/img.png)
-    //    Guard: skip paths starting with /api/ to avoid double-rewriting
-    result = result.replace(
-        /(<img\s[^>]*?)src="(\/(?!api\/)[^"]+)"/gi,
-        (_match, prefix: string, absPath: string) => {
-            const decoded = decodeURIComponent(absPath);
-            return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
-        },
-    );
-
-    return result;
 }

@@ -155,7 +155,7 @@ describe('RepoMemorySection', () => {
                 ([url, init]) => String(url).includes('/preferences') && init?.method === 'PATCH'
             );
             expect(patchCall).toBeTruthy();
-            expect(patchCall?.[1]?.body).toBe(JSON.stringify({ boundedMemory: { enabled: true } }));
+            expect(patchCall?.[1]?.body).toBe(JSON.stringify({ boundedMemory: { enabled: true, writeFrequency: 'medium' } }));
             expect(screen.getByTestId('memory-enabled-toggle').getAttribute('aria-checked')).toBe('true');
         });
     });
@@ -171,7 +171,7 @@ describe('RepoMemorySection', () => {
             const patchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
                 ([url, init]) => String(url).includes('/preferences') && init?.method === 'PATCH'
             );
-            expect(patchCall?.[1]?.body).toBe(JSON.stringify({ boundedMemory: { enabled: true, charLimit: 4096 } }));
+            expect(patchCall?.[1]?.body).toBe(JSON.stringify({ boundedMemory: { enabled: true, charLimit: 4096, writeFrequency: 'medium' } }));
         });
     });
 

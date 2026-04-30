@@ -48,6 +48,8 @@ export interface RenderOptions {
     stripFrontmatter?: boolean;
     /** Comments to inject as highlights into rendered lines. */
     comments?: RenderCommentInfo[];
+    /** Emit placeholders for opted-in local .html/.htm links. */
+    htmlEmbedEnabled?: boolean;
 }
 
 /**
@@ -165,7 +167,9 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
         }
 
         // Regular line-level rendering
-        const result = applyMarkdownHighlighting(lines[i], lineNum, inCodeBlock, codeBlockLang);
+        const result = applyMarkdownHighlighting(lines[i], lineNum, inCodeBlock, codeBlockLang, {
+            htmlEmbedEnabled: options?.htmlEmbedEnabled === true,
+        });
         inCodeBlock = result.inCodeBlock;
         codeBlockLang = result.codeBlockLang;
 

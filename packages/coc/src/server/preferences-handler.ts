@@ -134,6 +134,10 @@ export interface PerRepoPreferences {
         /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
         writeFrequency?: 'low' | 'medium' | 'high';
     };
+    /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
+    htmlEmbed?: {
+        enabled: boolean;
+    };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
     /** Per-repo activity filter selections (status and type filters). */
@@ -389,6 +393,13 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 validated.writeFrequency = bm.writeFrequency;
             }
             result.boundedMemory = validated;
+        }
+    }
+
+    if (typeof obj.htmlEmbed === 'object' && obj.htmlEmbed !== null) {
+        const he = obj.htmlEmbed as Record<string, unknown>;
+        if (typeof he.enabled === 'boolean') {
+            result.htmlEmbed = { enabled: he.enabled };
         }
     }
 

@@ -384,6 +384,9 @@ describe('Notes Write Handler — PUT /notes/content mtime optimistic locking', 
         // External writer changes the file to V2
         const res2 = await putJSON(contentUrl(srv), { path: 'conflict.md', content: '# V2 (external)' });
         expect(res2.status).toBe(200);
+        const notePath = path.join(dataDir, 'repos', wsId, 'notes', 'conflict.md');
+        const future = new Date(Date.now() + 5_000);
+        fs.utimesSync(notePath, future, future);
 
         // User tries to save with the old (stale) mtime
         const res3 = await putJSON(contentUrl(srv), {

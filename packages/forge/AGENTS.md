@@ -20,7 +20,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Published to npm as `@
 | **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
 | **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |
-| **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, file state, message transport |
+| **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, opt-in HTML embed title parsing, file state, message transport |
 | **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader (`csv-reader.ts`), prompt resolver (`prompt-resolver.ts`), pipeline template (`pipeline-template.ts`), filter executor (`filter-executor.ts`), input generator (`input-generator.ts`) |
 | **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
 | **templates** | `src/templates/` | `replicateCommit()`, prompt builder, result parser — commit template replication service |

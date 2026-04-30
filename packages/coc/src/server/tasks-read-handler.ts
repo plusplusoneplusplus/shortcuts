@@ -19,6 +19,66 @@ import type { Route } from './types';
 import { resolveTaskRoot } from './task-root-resolver';
 import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 import { taskCache } from './task-cache';
+import { getRepoDataPath } from './paths';
+
+const HTML_EMBED_MAX_BYTES = 4 * 1024 * 1024;
+const HTML_EMBED_TYPES = new Set(['.html', '.htm']);
+
+function htmlEmbedContentSecurityPolicy(): string {
+    return [
+        'sandbox allow-scripts',
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:",
+        'img-src * data: blob:',
+        "style-src * 'unsafe-inline'",
+        "script-src * 'unsafe-inline' 'unsafe-eval'",
+    ].join('; ');
+}
+
+async function realpathIfExists(p: string): Promise<string | null> {
+    try {
+        return await fs.promises.realpath(p);
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return null;
+        throw err;
+    }
+}
+
+async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPath: string }, dataDir: string): Promise<{ path?: string; status?: number; message?: string }> {
+    const requestedPath = filePath.split(/[?#]/, 1)[0];
+    if (!HTML_EMBED_TYPES.has(path.extname(requestedPath).toLowerCase())) {
+        return { status: 415, message: 'Unsupported HTML type' };
+    }
+
+    const wsRoot = path.resolve(ws.rootPath);
+    const outputsRoot = getRepoDataPath(dataDir, ws.id, 'outputs');
+    const candidate = path.isAbsolute(filePath)
+        ? path.resolve(requestedPath)
+        : path.resolve(wsRoot, requestedPath);
+
+    if (!path.isAbsolute(filePath) && !isWithinDirectory(candidate, wsRoot)) {
+        return { status: 403, message: 'Access denied: path is outside workspace' };
+    }
+
+    const realCandidate = await realpathIfExists(candidate);
+    if (!realCandidate) {
+        return { status: 404, message: 'HTML file not found' };
+    }
+    if (!HTML_EMBED_TYPES.has(path.extname(realCandidate).toLowerCase())) {
+        return { status: 415, message: 'Unsupported HTML type' };
+    }
+
+    const realWsRoot = await fs.promises.realpath(wsRoot);
+    if (isWithinDirectory(realCandidate, realWsRoot)) {
+        return { path: realCandidate };
+    }
+
+    const realOutputsRoot = await realpathIfExists(outputsRoot);
+    if (realOutputsRoot && isWithinDirectory(realCandidate, realOutputsRoot)) {
+        return { path: realCandidate };
+    }
+
+    return { status: 403, message: 'Access denied: path is outside allowed HTML roots' };
+}
 
 // ============================================================================
 // Route Registration
@@ -180,6 +240,47 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendError(res, 404, 'File not found');
                 }
                 return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/files/html — Serve opted-in local HTML previews in sandboxed iframes.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/files\/html$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            if (!filePath) return sendError(res, 400, 'Missing required query parameter: path');
+
+            try {
+                const resolved = await resolveAllowedHtmlPath(filePath, ws, dataDir);
+                if (!resolved.path) {
+                    return sendError(res, resolved.status ?? 403, resolved.message ?? 'Access denied');
+                }
+
+                const stat = await fs.promises.stat(resolved.path);
+                if (!stat.isFile()) return sendError(res, 404, 'Not a file');
+                if (stat.size > HTML_EMBED_MAX_BYTES) {
+                    return sendError(res, 413, 'HTML file too large (max 4MB)');
+                }
+
+                const data = await fs.promises.readFile(resolved.path);
+                res.writeHead(200, {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Content-Length': data.length,
+                    'Content-Security-Policy': htmlEmbedContentSecurityPolicy(),
+                    'Cache-Control': 'private, max-age=60',
+                    'X-Content-Type-Options': 'nosniff',
+                    'Referrer-Policy': 'no-referrer',
+                });
+                res.end(data);
+            } catch (err: any) {
+                if (err.code === 'ENOENT') return sendError(res, 404, 'HTML file not found');
+                return sendError(res, 500, 'Failed to read HTML file: ' + (err.message || 'Unknown error'));
             }
         },
     });

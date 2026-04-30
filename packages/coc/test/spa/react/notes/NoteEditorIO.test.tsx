@@ -106,6 +106,7 @@ describe('NoteEditorIO', () => {
                 saveContent: vi.fn(),
                 uploadImage: vi.fn(),
                 imageApiUrl: (_ws, relPath) => `/custom/images/${relPath}`,
+                localImageApiUrl: (_ws, absolutePath) => `/custom/local-images/${absolutePath}`,
             };
             const html = '<img src=".attachments/uuid.png">';
             const result = rewriteHtmlImageSrc(html, customIo, 'ws1');

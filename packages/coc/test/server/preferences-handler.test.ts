@@ -113,6 +113,12 @@ describe('readPreferences / writePreferences', () => {
         expect(result.lastModel).toBe('claude-sonnet-4.6');
     });
 
+    it('round-trips per-repo HTML embed preference', () => {
+        writeRepoPreferences(tmpDir, 'repo-1', { htmlEmbed: { enabled: true } });
+        const result = readRepoPreferences(tmpDir, 'repo-1');
+        expect(result.htmlEmbed).toEqual({ enabled: true });
+    });
+
     it('round-trips global preferences', () => {
         const data: PreferencesFile = { global: { theme: 'dark' } };
         writePreferences(tmpDir, data);
@@ -201,6 +207,14 @@ describe('readPreferences / writePreferences', () => {
         const prefs = readRepoPreferences(tmpDir, 'repo-1');
         expect(prefs).toEqual({ lastModel: 'gpt-5.4' });
         expect((prefs as any)?.unknownKey).toBeUndefined();
+    });
+
+    it('drops invalid HTML embed preference shapes during read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'repo-1', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(repoPrefsPath, JSON.stringify({ htmlEmbed: { enabled: 'yes' } }), 'utf-8');
+        const prefs = readRepoPreferences(tmpDir, 'repo-1');
+        expect(prefs.htmlEmbed).toBeUndefined();
     });
 
     it('strips unknown keys in global during read', () => {

@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { CopySectionBtn } from '../ui/CopySectionBtn';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
+import { mountHtmlEmbeds } from './htmlEmbedMount';
 
 export interface MarkdownSectionData {
     heading: string;
@@ -49,7 +50,10 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                 hljs.highlightElement(block);
             });
         }
-    }, [html]);
+        if (!hideSectionCopy) {
+            mountHtmlEmbeds(containerRef.current);
+        }
+    }, [html, hideSectionCopy]);
 
     // Build a single portal on the first H2/H3 heading to copy the full article.
     useEffect(() => {

@@ -36,6 +36,7 @@ export {
 // Markdown rendering
 export {
     MarkdownLineResult,
+    MarkdownRenderInlineOptions,
     applyInlineMarkdown,
     applyMarkdownHighlighting,
     applySourceModeHighlighting,
@@ -44,6 +45,15 @@ export {
     generateAnchorId,
     resolveImagePath
 } from './markdown-renderer';
+
+export {
+    DEFAULT_HTML_EMBED_HEIGHT,
+    MAX_HTML_EMBED_HEIGHT,
+    MIN_HTML_EMBED_HEIGHT,
+    isEmbeddableHtmlPath,
+    parseHtmlEmbedTitle,
+    type HtmlEmbedOptions,
+} from './html-embed';
 
 // Cursor management
 export {

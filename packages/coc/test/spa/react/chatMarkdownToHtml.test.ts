@@ -152,6 +152,35 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('target="_blank"');
     });
 
+    it('emits an HTML embed placeholder for opted-in local HTML links when enabled', () => {
+        const html = chatMarkdownToHtml('[Chart](outputs/chart.html "embed")', 'ws1', { htmlEmbedEnabled: true });
+        expect(html).toContain('href="outputs/chart.html"');
+        expect(html).toContain('class="md-html-embed"');
+        expect(html).toContain('data-html-path="outputs/chart.html"');
+        expect(html).toContain('data-embed-height="480"');
+    });
+
+    it('does not emit an HTML embed placeholder when disabled', () => {
+        const html = chatMarkdownToHtml('[Chart](outputs/chart.html "embed")', 'ws1');
+        expect(html).toContain('href="outputs/chart.html"');
+        expect(html).not.toContain('md-html-embed');
+    });
+
+    it('uses clamped explicit HTML embed heights', () => {
+        const tall = chatMarkdownToHtml('[Chart](outputs/chart.html "embed:5000")', 'ws1', { htmlEmbedEnabled: true });
+        const short = chatMarkdownToHtml('[Chart](outputs/chart.html "embed:20")', 'ws1', { htmlEmbedEnabled: true });
+        expect(tall).toContain('data-embed-height="2000"');
+        expect(short).toContain('data-embed-height="120"');
+    });
+
+    it('does not embed non-HTML or remote HTML links', () => {
+        const nonHtml = chatMarkdownToHtml('[Data](outputs/data.json "embed")', 'ws1', { htmlEmbedEnabled: true });
+        const remote = chatMarkdownToHtml('[Remote](https://example.com/chart.html "embed")', 'ws1', { htmlEmbedEnabled: true });
+        expect(nonHtml).not.toContain('md-html-embed');
+        expect(remote).not.toContain('md-html-embed');
+        expect(remote).toContain('target="_blank"');
+    });
+
     // --- Tables ---
 
     it('renders tables', () => {

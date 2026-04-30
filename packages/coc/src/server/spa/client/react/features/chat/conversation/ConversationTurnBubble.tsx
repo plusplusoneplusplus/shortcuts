@@ -13,10 +13,12 @@ import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
+import { usePreferences } from '../../../hooks/preferences/usePreferences';
 import { fetchApi } from '../../../hooks/useApi';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { isEmbeddableHtmlPath, parseHtmlEmbedTitle } from '@plusplusoneplusplus/forge/editor/rendering';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
@@ -27,36 +29,50 @@ import { detectCommitsInToolGroup } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 
-const chatMarked = new Marked({
-    gfm: true,
-    breaks: true,
-    renderer: {
-        html(raw: string) {
-            return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+function escapeAttr(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function createChatMarked(htmlEmbedEnabled: boolean): Marked {
+    return new Marked({
+        gfm: true,
+        breaks: true,
+        renderer: {
+            html(raw: string) {
+                return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+            },
+            link(href: string, title: string | null | undefined, text: string): string {
+                const safeHref = escapeAttr(href ?? '');
+                const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
+                const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+                const linkHtml = isExternal
+                    ? `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
+                    : `<a href="${safeHref}"${titleAttr}>${text}</a>`;
+                const embed = htmlEmbedEnabled ? parseHtmlEmbedTitle(title) : null;
+                if (!embed || !isEmbeddableHtmlPath(href)) {
+                    return linkHtml;
+                }
+                return `${linkHtml}<div class="md-html-embed" data-html-path="${safeHref}" data-embed-height="${embed.height}"></div>`;
+            },
+            image(href: string, title: string | null | undefined, text: string): string {
+                const alt = text || title || 'Image';
+                const escapedAlt = escapeAttr(alt);
+                const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+                const isExternal = /^https?:\/\//i.test(href ?? '');
+                if (isExternal) {
+                    return `<img src="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image" loading="lazy" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.alt='⚠\uFE0F Image failed to load';">`;
+                }
+                // Local path: store in data-local-path; rewriteLocalImagePaths() will
+                // convert this to the proxy URL once wsId is known (post-parse step).
+                return `<img data-local-path="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
+            },
         },
-        link(href: string, title: string | null | undefined, text: string): string {
-            const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
-            const titleAttr = title ? ` title="${title}"` : '';
-            if (isExternal) {
-                return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
-            }
-            return `<a href="${href}"${titleAttr}>${text}</a>`;
-        },
-        image(href: string, title: string | null | undefined, text: string): string {
-            const alt = text || title || 'Image';
-            const escapedAlt = alt.replace(/"/g, '&quot;');
-            const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
-            const isExternal = /^https?:\/\//i.test(href ?? '');
-            if (isExternal) {
-                return `<img src="${href}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image" loading="lazy" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.alt='⚠\uFE0F Image failed to load';">`;
-            }
-            // Local path: store in data-local-path; rewriteLocalImagePaths() will
-            // convert this to the proxy URL once wsId is known (post-parse step).
-            const escapedHref = href.replace(/"/g, '&quot;');
-            return `<img data-local-path="${escapedHref}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
-        },
-    },
-});
+    });
+}
 
 /**
  * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown
@@ -87,10 +103,10 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
  * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
  * File paths are linkified for hover previews.
  */
-export function chatMarkdownToHtml(content: string, wsId?: string): string {
+export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
     if (!content || !content.trim()) return '';
     const normalized = normalizeWindowsPathsInText(content);
-    let html = linkifyFilePaths(chatMarked.parse(normalized) as string);
+    let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true).parse(normalized) as string);
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
     }
@@ -166,8 +182,8 @@ type RenderChunk =
         parentToolId?: string;
       };
 
-export function toContentHtml(content: string, wsId?: string): string {
-    return chatMarkdownToHtml(content, wsId);
+export function toContentHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
+    return chatMarkdownToHtml(content, wsId, options);
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
@@ -381,7 +397,7 @@ function buildToolDepthMap(calls: RenderToolCall[]): Map<string, number> {
     return depthMap;
 }
 
-function buildAssistantRender(turn: ClientConversationTurn, wsId?: string): {
+function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): {
     chunks: RenderChunk[];
     chunksByParent: Map<string, RenderChunk[]>;
     toolById: Map<string, RenderToolCall>;
@@ -407,7 +423,7 @@ function buildAssistantRender(turn: ClientConversationTurn, wsId?: string): {
         if (!item) continue;
 
         if (item.type === 'content') {
-            const html = toContentHtml(item.content || '', wsId);
+            const html = toContentHtml(item.content || '', wsId, options);
             if (html) {
                 const parentToolId = activeTaskStack.length > 0
                     ? activeTaskStack[activeTaskStack.length - 1]
@@ -503,7 +519,7 @@ function buildAssistantRender(turn: ClientConversationTurn, wsId?: string): {
     }
 
     if (!hasContent) {
-        const fallbackHtml = toContentHtml(turn.content || '', wsId);
+        const fallbackHtml = toContentHtml(turn.content || '', wsId, options);
         if (fallbackHtml) {
             chunks.unshift({ kind: 'content', key: 'content-fallback', html: fallbackHtml });
         }
@@ -649,14 +665,16 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
 export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
-    const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
-    const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId) : '';
+    const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
+    const { htmlEmbed } = usePreferences(wsId);
+    const htmlEmbedEnabled = htmlEmbed?.enabled === true && !turn.streaming;
+    const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
+    const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId, { htmlEmbedEnabled }) : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
     const [copiedHtml, setCopiedHtml] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-    const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -693,7 +711,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             icon: '📄',
             onClick: async () => {
                 try {
-                    const html = chatMarkdownToHtml(turn.content || '', wsId);
+                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled });
                     await copyHtmlToClipboard(html);
                 } catch {}
             },
@@ -971,7 +989,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
-                                    const html = chatMarkdownToHtml(turn.content || '', wsId);
+                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled });
                                     await copyHtmlToClipboard(html);
                                     setCopiedHtml(true);
                                     setTimeout(() => setCopiedHtml(false), 1500);

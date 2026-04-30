@@ -166,6 +166,27 @@ describe('applyInlineMarkdown', () => {
         expect(html).not.toContain('md-anchor-link');
     });
 
+    it('renders opted-in HTML embed placeholders when enabled', () => {
+        const html = applyInlineMarkdown('[chart](outputs/chart.html "embed:600")', { htmlEmbedEnabled: true });
+        expect(html).toContain('md-link');
+        expect(html).toContain('class="md-html-embed"');
+        expect(html).toContain('data-html-path="outputs/chart.html"');
+        expect(html).toContain('data-embed-height="600"');
+    });
+
+    it('does not render HTML embed placeholders by default', () => {
+        const html = applyInlineMarkdown('[chart](outputs/chart.html "embed")');
+        expect(html).toContain('md-link');
+        expect(html).not.toContain('md-html-embed');
+    });
+
+    it('clamps HTML embed heights', () => {
+        const short = applyInlineMarkdown('[chart](outputs/chart.html "embed:1")', { htmlEmbedEnabled: true });
+        const tall = applyInlineMarkdown('[chart](outputs/chart.html "embed:3000")', { htmlEmbedEnabled: true });
+        expect(short).toContain('data-embed-height="120"');
+        expect(tall).toContain('data-embed-height="2000"');
+    });
+
     it('does not add data-href to anchor links', () => {
         const html = applyInlineMarkdown('[section](#heading)');
         expect(html).toContain('md-anchor-link');
