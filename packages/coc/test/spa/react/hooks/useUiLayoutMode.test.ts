@@ -45,6 +45,18 @@ describe('useUiLayoutMode', () => {
         });
     });
 
+    it('updates state after server returns notes-centric', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ uiLayoutMode: 'notes-centric' }),
+        });
+        const { result } = renderHook(() => useUiLayoutMode());
+
+        await waitFor(() => {
+            expect(result.current[0]).toBe('notes-centric');
+        });
+    });
+
     it('updates state after server returns classic', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
@@ -111,10 +123,10 @@ describe('useUiLayoutMode', () => {
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
         act(() => {
-            result.current[1]('dev-workflow');
+            result.current[1]('notes-centric');
         });
 
-        expect(result.current[0]).toBe('dev-workflow');
+        expect(result.current[0]).toBe('notes-centric');
 
         // Verify PATCH was called
         expect(mockFetch).toHaveBeenCalledWith(
@@ -122,7 +134,7 @@ describe('useUiLayoutMode', () => {
             expect.objectContaining({
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uiLayoutMode: 'dev-workflow' }),
+                body: JSON.stringify({ uiLayoutMode: 'notes-centric' }),
             }),
         );
     });
