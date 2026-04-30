@@ -31,6 +31,12 @@ export function RepoManagementPopover({ open, onClose, repos, onRefresh }: RepoM
             if (target.id === 'hamburger-btn' || target.closest('#hamburger-btn')) {
                 return;
             }
+            // Don't close when clicking inside a dialog portal (e.g., AddRepoDialog).
+            // Dialogs render via createPortal to document.body, placing their DOM
+            // outside this container, but they are logically children of the popover.
+            if (target.closest('[data-testid="dialog-overlay"]')) {
+                return;
+            }
             if (containerRef.current && !containerRef.current.contains(target)) {
                 onClose();
             }

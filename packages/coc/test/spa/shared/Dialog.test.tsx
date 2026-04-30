@@ -191,4 +191,39 @@ describe('Dialog', () => {
         expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).not.toBeNull();
         expect(document.querySelector('[data-testid="dialog-close-btn"]')).not.toBeNull();
     });
+
+    // ── mousedown propagation tests ─────────────────────────────────────────
+
+    it('mousedown inside dialog does not propagate to document-level handlers', () => {
+        const documentHandler = vi.fn();
+        document.addEventListener('mousedown', documentHandler);
+        try {
+            render(
+                <Dialog open={true} onClose={vi.fn()} title="Test">
+                    <span>Inner Content</span>
+                </Dialog>
+            );
+            fireEvent.mouseDown(screen.getByText('Inner Content'));
+            expect(documentHandler).not.toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('mousedown', documentHandler);
+        }
+    });
+
+    it('mousedown on dialog overlay does not propagate to document-level handlers', () => {
+        const documentHandler = vi.fn();
+        document.addEventListener('mousedown', documentHandler);
+        try {
+            render(
+                <Dialog open={true} onClose={vi.fn()} title="Test">
+                    Content
+                </Dialog>
+            );
+            const overlay = document.querySelector('[data-testid="dialog-overlay"]') as HTMLElement;
+            fireEvent.mouseDown(overlay);
+            expect(documentHandler).not.toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('mousedown', documentHandler);
+        }
+    });
 });

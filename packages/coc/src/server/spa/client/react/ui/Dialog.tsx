@@ -65,6 +65,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
             data-testid="dialog-overlay"
             className={overlayClass}
             onClick={isMobile ? undefined : (onMinimize ?? onClose)}
+            onMouseDown={e => e.stopPropagation()}
             style={hidden ? { display: 'none' } : undefined}
             aria-hidden={hidden || undefined}
         >
