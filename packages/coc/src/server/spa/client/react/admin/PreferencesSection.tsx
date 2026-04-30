@@ -9,11 +9,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
 import { getApiBase } from '../utils/config';
+import type { UiLayoutMode } from '../types/dashboard';
 
 interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     reposSidebarCollapsed?: boolean;
-    uiLayoutMode?: 'classic' | 'dev-workflow';
+    uiLayoutMode?: UiLayoutMode;
 }
 
 interface PreferencesSectionProps {
@@ -105,8 +106,12 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
                             data-testid="pref-ui-layout-mode"
                         >
                             <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
+                            <option value="notes-centric">Notes Centric (Notes + Git + Work Items)</option>
                             <option value="classic">Classic (Activity)</option>
                         </select>
+                        <div className="text-xs text-[#616161] dark:text-[#999] md:ml-24">
+                            Notes Centric starts each repo from Notes and keeps Git and Work Items nearby.
+                        </div>
                     </div>
 
                     {/* Repos Sidebar Collapsed */}

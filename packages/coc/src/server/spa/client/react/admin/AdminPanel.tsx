@@ -16,7 +16,7 @@ import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { getLinkHandlersMeta } from '../utils/link-handler';
-import type { AdminSubTab } from '../types/dashboard';
+import type { AdminSubTab, UiLayoutMode } from '../types/dashboard';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 
@@ -36,6 +36,10 @@ interface Stats {
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database' };
+
+function isUiLayoutMode(value: unknown): value is UiLayoutMode {
+    return value === 'classic' || value === 'dev-workflow' || value === 'notes-centric';
+}
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -88,7 +92,7 @@ export function AdminPanel() {
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
-    const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
+    const [uiLayoutMode, setUiLayoutMode] = useState<UiLayoutMode>('classic');
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
@@ -102,7 +106,7 @@ export function AdminPanel() {
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as UiLayoutMode, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
 
     // Export
@@ -213,7 +217,7 @@ export function AdminPanel() {
             const data = await res.json();
             const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
             const r = data.reposSidebarCollapsed ?? false;
-            const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
+            const u = isUiLayoutMode(data.uiLayoutMode) ? data.uiLayoutMode : 'classic';
             setTheme(t);
             setReposSidebarCollapsed(r);
             setUiLayoutMode(u);
@@ -391,7 +395,7 @@ export function AdminPanel() {
     const handleCancelAppearance = useCallback(() => {
         setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
         setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
-        setUiLayoutMode(appearanceSnapshot.uiLayoutMode as 'classic' | 'dev-workflow');
+        setUiLayoutMode(appearanceSnapshot.uiLayoutMode);
         setTaskCardDensity(appearanceSnapshot.taskCardDensity);
         setHistoryGrouping(appearanceSnapshot.historyGrouping);
     }, [appearanceSnapshot]);
@@ -948,12 +952,16 @@ export function AdminPanel() {
                                         <select
                                             className={inputClass}
                                             value={uiLayoutMode}
-                                            onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
+                                            onChange={e => setUiLayoutMode(e.target.value as UiLayoutMode)}
                                             data-testid="pref-ui-layout-mode"
                                         >
                                             <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
+                                            <option value="notes-centric">Notes Centric (Notes + Git + Work Items)</option>
                                             <option value="classic">Classic (Activity)</option>
                                         </select>
+                                        <div className="text-xs text-[#616161] dark:text-[#999] md:ml-24">
+                                            Notes Centric starts each repo from Notes and keeps Git and Work Items nearby.
+                                        </div>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <div>
