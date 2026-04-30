@@ -41,6 +41,7 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
+import { getRepoTabsForLayout } from './repoLayoutModeConfig';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -153,39 +154,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
-        // Layout mode filtering
-        if (uiLayoutMode === 'classic') {
-            // Classic: replace Chats with Activity, relabel Tasks as Plans
-            tabs = tabs
-                .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
-        } else {
-            // Dev-workflow: relabel and reorder tabs
-            const devWorkflowRelabels: Record<string, string> = {
-                'schedules': 'Jobs',
-                'pull-requests': 'Full Requests',
-            };
-            const devWorkflowOrder: RepoSubTab[] = [
-                'chats', 'work-items', 'schedules', 'explorer',
-                'workflows', 'git', 'pull-requests', 'tasks', 'settings',
-            ];
-            const tabMap = new Map(tabs.map(t => [t.key, t]));
-            const ordered: typeof tabs = [];
-            for (const key of devWorkflowOrder) {
-                const tab = tabMap.get(key);
-                if (tab) {
-                    const newLabel = devWorkflowRelabels[key];
-                    ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
-                    tabMap.delete(key);
-                }
-            }
-            // Append dynamic tabs (terminal, notes, wiki) that aren't in the fixed order
-            for (const [, tab] of tabMap) {
-                ordered.push(tab);
-            }
-            tabs = ordered;
-        }
-        return tabs;
+        const layoutModeForVisibleTabs = uiLayoutMode === 'notes-centric' ? 'dev-workflow' : uiLayoutMode;
+        return getRepoTabsForLayout(tabs, layoutModeForVisibleTabs);
     }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, uiLayoutMode]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo

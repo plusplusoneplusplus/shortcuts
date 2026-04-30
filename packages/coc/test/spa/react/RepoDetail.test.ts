@@ -6,6 +6,12 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
+import {
+    getDefaultRepoSubTabForLayout,
+    getMobilePinnedTabsForLayout,
+    getRepoTabsForLayout,
+    isChatBackedLayoutMode,
+} from '../../../src/server/spa/client/react/features/repo-detail/repoLayoutModeConfig';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
@@ -648,44 +654,54 @@ describe('RepoDetail PullRequestsTab always-mounted', () => {
     });
 });
 
-describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
-    it('dev-workflow branch relabels schedules to "Jobs"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'schedules': 'Jobs'");
+describe('RepoDetail layout mode helpers', () => {
+    it('classic maps chats to activity and labels tasks as Plans', () => {
+        const tabs = getRepoTabsForLayout(SUB_TABS, 'classic');
+        expect(tabs[0]).toMatchObject({ key: 'activity', label: 'Activity' });
+        expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Plans (Dep.)');
     });
 
-    it('dev-workflow branch relabels pull-requests to "Full Requests"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'pull-requests': 'Full Requests'");
+    it('dev-workflow preserves current order and relabels Jobs and Full Requests', () => {
+        const tabs = getRepoTabsForLayout(SUB_TABS, 'dev-workflow');
+        expect(tabs.map(t => t.key).slice(0, 9)).toEqual([
+            'chats', 'work-items', 'schedules', 'explorer',
+            'workflows', 'git', 'pull-requests', 'tasks', 'settings',
+        ]);
+        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
+        expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('Full Requests');
     });
 
-    it('dev-workflow branch defines the correct tab order', () => {
-        expect(REPO_DETAIL_SOURCE).toContain(
-            "'chats', 'work-items', 'schedules', 'explorer',",
-        );
-        expect(REPO_DETAIL_SOURCE).toContain(
-            "'workflows', 'git', 'pull-requests', 'tasks', 'settings',",
-        );
+    it('notes-centric orders Notes, Git, and Work Items first', () => {
+        const tabs = getRepoTabsForLayout(SUB_TABS, 'notes-centric');
+        expect(tabs.map(t => t.key).slice(0, 3)).toEqual(['notes', 'git', 'work-items']);
+        expect(tabs.find(t => t.key === 'chats')?.label).toBe('Activity');
+        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
     });
 
-    it('classic branch does NOT apply dev-workflow relabels', () => {
-        // Classic branch relabels Tasks as Plans, not Jobs/Full Requests
-        const classicBlock = REPO_DETAIL_SOURCE.split("if (uiLayoutMode === 'classic')")[1]?.split('} else {')[0] ?? '';
-        expect(classicBlock).not.toContain("'Jobs'");
-        expect(classicBlock).not.toContain("'Full Requests'");
+    it('notes-centric omits unavailable tabs instead of inserting placeholders', () => {
+        const sourceTabs = SUB_TABS.filter(t => t.key !== 'notes' && t.key !== 'git');
+        const tabs = getRepoTabsForLayout(sourceTabs, 'notes-centric');
+        expect(tabs.map(t => t.key).slice(0, 2)).toEqual(['work-items', 'chats']);
+        expect(tabs.find(t => t.key === 'notes')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
     });
 
-    it('dev-workflow appends dynamic tabs after the fixed order', () => {
-        // The else branch must iterate tabMap leftovers (terminal, notes, wiki) after the ordered array
-        expect(REPO_DETAIL_SOURCE).toContain("// Append dynamic tabs");
-        expect(REPO_DETAIL_SOURCE).toContain("for (const [, tab] of tabMap)");
+    it('returns layout-specific mobile pinned tabs', () => {
+        expect(getMobilePinnedTabsForLayout('classic')).toEqual(['activity', 'tasks', 'git']);
+        expect(getMobilePinnedTabsForLayout('dev-workflow')).toEqual(['chats', 'work-items', 'schedules']);
+        expect(getMobilePinnedTabsForLayout('notes-centric')).toEqual(['notes', 'git', 'work-items']);
     });
 
-    it('tab keys are unchanged — only labels differ', () => {
-        // devWorkflowOrder uses the same keys as SUB_TABS
-        const devOrderMatch = REPO_DETAIL_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
-        expect(devOrderMatch).toBeTruthy();
-        const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
-        for (const key of keys) {
-            expect(SUB_TABS.find(t => t.key === key)).toBeDefined();
-        }
+    it('returns layout-specific default tabs from available tabs', () => {
+        const notesCentricTabs = getRepoTabsForLayout(SUB_TABS.filter(t => t.key !== 'notes'), 'notes-centric');
+        expect(getDefaultRepoSubTabForLayout('classic', getRepoTabsForLayout(SUB_TABS, 'classic'))).toBe('activity');
+        expect(getDefaultRepoSubTabForLayout('dev-workflow', getRepoTabsForLayout(SUB_TABS, 'dev-workflow'))).toBe('chats');
+        expect(getDefaultRepoSubTabForLayout('notes-centric', notesCentricTabs)).toBe('git');
+    });
+
+    it('marks dev-workflow and notes-centric as chat-backed modes', () => {
+        expect(isChatBackedLayoutMode('classic')).toBe(false);
+        expect(isChatBackedLayoutMode('dev-workflow')).toBe(true);
+        expect(isChatBackedLayoutMode('notes-centric')).toBe(true);
     });
 });
