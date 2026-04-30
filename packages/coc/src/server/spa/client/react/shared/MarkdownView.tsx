@@ -4,11 +4,18 @@
  *
  * When `sectionMarkdown` is provided and there are H2/H3 headings, a single
  * copy button is placed on the first heading to copy the entire article.
+ *
+ * Tables with ≥ 5 rows and ≥ 2 columns are progressively upgraded to
+ * interactive TanStack Table instances with sort, filter, pagination, and
+ * numeric aggregation (sum/avg). The original static table is hidden but
+ * kept in the DOM for snapshot copy and accessibility fallback.
  */
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CopySectionBtn } from '../ui/CopySectionBtn';
+import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
+import { InteractiveTable } from './InteractiveTable';
 
 export interface MarkdownSectionData {
     heading: string;
@@ -16,7 +23,7 @@ export interface MarkdownSectionData {
     body: string;
 }
 
-interface MarkdownViewProps {
+export interface MarkdownViewProps {
     html: string;
     /** Per-section markdown slices — when present, a copy button is shown on the first heading. */
     sectionMarkdown?: MarkdownSectionData[];
@@ -30,6 +37,9 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const containerRef = useRef<HTMLDivElement>(null);
     const [headingPortals, setHeadingPortals] = React.useState<
         { element: HTMLElement; markdown: string; key: string }[]
+    >([]);
+    const [tablePortals, setTablePortals] = React.useState<
+        { mountEl: HTMLElement; table: ExtractedTable; key: string }[]
     >([]);
 
     useEffect(() => {
@@ -66,6 +76,54 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         setHeadingPortals([{ element: firstEl, markdown: fullText, key: 'article-copy' }]);
     }, [html, sectionMarkdown, fullMarkdown, hideSectionCopy]);
 
+    // Upgrade eligible static tables to interactive TanStack Table instances.
+    useEffect(() => {
+        if (!containerRef.current || hideSectionCopy) {
+            setTablePortals([]);
+            return;
+        }
+
+        const extracted = extractTablesFromHtml(containerRef.current);
+        if (extracted.length === 0) {
+            setTablePortals([]);
+            return;
+        }
+
+        const portals: typeof tablePortals = [];
+        for (let i = 0; i < extracted.length; i++) {
+            const ex = extracted[i];
+            const tableId = ex.containerEl.getAttribute('data-table-id') ?? String(i);
+
+            // Check if we already inserted a mount node (re-render guard)
+            const existingMount = ex.containerEl.parentElement?.querySelector(
+                `.interactive-table-mount[data-for-table="${tableId}"]`,
+            );
+            if (existingMount) {
+                portals.push({ mountEl: existingMount as HTMLElement, table: ex, key: tableId });
+                continue;
+            }
+
+            // Create a mount node before the container and hide the original
+            const mountEl = document.createElement('div');
+            mountEl.className = 'interactive-table-mount';
+            mountEl.setAttribute('data-for-table', tableId);
+            ex.containerEl.parentElement?.insertBefore(mountEl, ex.containerEl);
+            ex.containerEl.style.display = 'none';
+
+            portals.push({ mountEl, table: ex, key: tableId });
+        }
+
+        setTablePortals(portals);
+
+        // Cleanup: restore original tables when effect re-runs
+        return () => {
+            for (const { mountEl, table } of portals) {
+                table.containerEl.style.display = '';
+                mountEl.remove();
+            }
+        };
+    }, [html, hideSectionCopy]);
+
     return (
         <>
             <div
@@ -77,6 +135,16 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                 createPortal(
                     <CopySectionBtn key={p.key} sectionMarkdown={p.markdown} />,
                     p.element
+                )
+            )}
+            {tablePortals.map(({ mountEl, table, key }) =>
+                createPortal(
+                    <InteractiveTable
+                        key={key}
+                        tableKey={key}
+                        {...table.data}
+                    />,
+                    mountEl
                 )
             )}
         </>

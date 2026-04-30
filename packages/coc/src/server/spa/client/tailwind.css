@@ -636,6 +636,215 @@
     color: #d4d4d4;
 }
 
+/* ── Interactive Table (TanStack) ── */
+.interactive-table-mount {
+    margin: 0.8rem 0;
+}
+
+.interactive-table {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.dark .interactive-table {
+    border-color: #3c3c3c;
+}
+
+.interactive-table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 0.75rem;
+    gap: 8px;
+}
+
+.dark .interactive-table-toolbar {
+    background: #1e1e1e;
+    border-color: #3c3c3c;
+}
+
+.interactive-table-row-count {
+    color: #666;
+    white-space: nowrap;
+}
+
+.dark .interactive-table-row-count {
+    color: #999;
+}
+
+.interactive-table-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.interactive-table-btn {
+    border: 1px solid #d0d0d0;
+    background: #fff;
+    color: #555;
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.interactive-table-btn:hover {
+    background: #e8e8e8;
+    color: #333;
+}
+
+.dark .interactive-table-btn {
+    border-color: #4a4a4a;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.dark .interactive-table-btn:hover {
+    background: #3a3a3a;
+    color: #fff;
+}
+
+.interactive-table-scroll {
+    overflow-x: auto;
+}
+
+.interactive-md-table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 380px;
+    table-layout: auto;
+}
+
+.interactive-table-th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f3f3f3;
+    font-weight: 600;
+}
+
+.dark .interactive-table-th {
+    background: #252526;
+}
+
+.interactive-table-header-content {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.interactive-table-sort-indicator {
+    font-size: 0.65rem;
+    opacity: 0.7;
+}
+
+.interactive-table-filter-input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 2px 4px;
+    font-size: 0.7rem;
+    border: 1px solid #d0d0d0;
+    border-radius: 3px;
+    background: #fff;
+    color: #333;
+    outline: none;
+}
+
+.interactive-table-filter-input:focus {
+    border-color: #0078d4;
+}
+
+.dark .interactive-table-filter-input {
+    border-color: #4a4a4a;
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+
+.dark .interactive-table-filter-input:focus {
+    border-color: #0078d4;
+}
+
+.interactive-table-agg-row {
+    background: #f0f4ff;
+    font-size: 0.75rem;
+}
+
+.dark .interactive-table-agg-row {
+    background: #1a2233;
+}
+
+.interactive-table-agg-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+.interactive-table-agg-label {
+    font-weight: 600;
+    color: #0078d4;
+}
+
+.interactive-table-agg-sep {
+    color: #999;
+}
+
+.interactive-table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-top: 1px solid #e0e0e0;
+    font-size: 0.75rem;
+}
+
+.dark .interactive-table-pagination {
+    border-color: #3c3c3c;
+}
+
+.interactive-table-page-btn {
+    border: 1px solid #d0d0d0;
+    background: #fff;
+    border-radius: 3px;
+    padding: 1px 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: #555;
+}
+
+.interactive-table-page-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.interactive-table-page-btn:not(:disabled):hover {
+    background: #e8e8e8;
+}
+
+.dark .interactive-table-page-btn {
+    border-color: #4a4a4a;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.dark .interactive-table-page-btn:not(:disabled):hover {
+    background: #3a3a3a;
+}
+
+.interactive-table-page-info {
+    color: #666;
+    white-space: nowrap;
+}
+
+.dark .interactive-table-page-info {
+    color: #999;
+}
+
 /* Wiki article prose — targets standard HTML tags emitted by marked.parse() */
 .wiki-body {
     line-height: 1.65;
