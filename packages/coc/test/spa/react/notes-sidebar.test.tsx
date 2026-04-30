@@ -12,6 +12,11 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 
+const mockFetchApi = vi.fn().mockResolvedValue({});
+vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
 const mockGetTree = vi.fn<[], Promise<{ tree: NoteTreeNode[]; notesRoot: string }>>();
 const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
@@ -520,8 +525,13 @@ describe('NotesSidebar', () => {
         const { findByTestId } = renderSidebar();
         await findByTestId('notes-tree');
 
-        const btn = await findByTestId('new-notebook-btn');
-        fireEvent.click(btn);
+        // Click the add dropdown button
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+
+        // Click "New Notebook" in the dropdown
+        const newNotebookBtn = await findByTestId('add-note-new-notebook');
+        fireEvent.click(newNotebookBtn);
 
         await waitFor(() => {
             const dialog = document.querySelector('[data-testid="dialog-overlay"]');
@@ -604,5 +614,80 @@ describe('NotesSidebar', () => {
         // An empty string is falsy — callback should not fire
         await new Promise(r => setTimeout(r, 50));
         expect(onNotesRootReady).not.toHaveBeenCalled();
+    });
+
+    // ── Add dropdown tests ────────────────────────────────────────────────
+
+    it('renders add dropdown with 3 options when + button is clicked', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        // Dropdown should not be visible initially
+        expect(queryByTestId('add-note-dropdown')).toBeNull();
+
+        // Click the + ▾ button
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+
+        // Dropdown should appear with 3 options
+        const dropdown = await findByTestId('add-note-dropdown');
+        expect(dropdown).toBeTruthy();
+        expect(queryByTestId('add-note-new-notebook')).toBeTruthy();
+        expect(queryByTestId('add-note-new-page')).toBeTruthy();
+        expect(queryByTestId('add-note-ai-create')).toBeTruthy();
+    });
+
+    it('"New Page" is disabled when no notebook is selected', async () => {
+        const { findByTestId } = renderSidebar(null);
+        await findByTestId('notes-tree');
+
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+
+        const newPageBtn = await findByTestId('add-note-new-page') as HTMLButtonElement;
+        expect(newPageBtn.disabled).toBe(true);
+    });
+
+    it('"New Page" is enabled when a page inside a notebook is selected', async () => {
+        const { findByTestId } = renderSidebar('Notebook1/TopPage');
+        await findByTestId('notes-tree');
+
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+
+        const newPageBtn = await findByTestId('add-note-new-page') as HTMLButtonElement;
+        expect(newPageBtn.disabled).toBe(false);
+    });
+
+    it('"New Page with AI" opens the AI create dialog', async () => {
+        const { findByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+
+        const aiBtn = await findByTestId('add-note-ai-create');
+        fireEvent.click(aiBtn);
+
+        await waitFor(() => {
+            const dialog = document.querySelector('[data-testid="dialog-overlay"]');
+            expect(dialog).toBeTruthy();
+            expect(dialog!.textContent).toContain('Create Note with AI');
+        });
+    });
+
+    it('dropdown closes when clicking outside', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+        expect(queryByTestId('add-note-dropdown')).toBeTruthy();
+
+        // Click outside
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => {
+            expect(queryByTestId('add-note-dropdown')).toBeNull();
+        });
     });
 });

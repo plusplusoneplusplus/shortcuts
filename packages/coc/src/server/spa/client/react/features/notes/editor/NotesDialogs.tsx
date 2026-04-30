@@ -15,6 +15,7 @@ export interface NotesDialogsProps {
     onCreateNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<void>;
     onRenameNode: (oldPath: string, newPath: string) => Promise<void>;
     onDeleteNode: (path: string) => Promise<void>;
+    onAICreateNote?: (prompt: string) => Promise<void>;
     setSubmitting: (submitting: boolean) => void;
 }
 
@@ -24,11 +25,30 @@ export function NotesDialogs({
     onCreateNode,
     onRenameNode,
     onDeleteNode,
+    onAICreateNote,
     setSubmitting,
 }: NotesDialogsProps) {
     if (!dialog) return null;
 
     const { action, node } = dialog;
+
+    if (action === 'create-page-ai') {
+        return (
+            <AICreateNoteDialog
+                submitting={dialog.submitting}
+                onClose={onClose}
+                onConfirm={async (prompt: string) => {
+                    setSubmitting(true);
+                    try {
+                        await onAICreateNote?.(prompt);
+                        onClose();
+                    } catch {
+                        setSubmitting(false);
+                    }
+                }}
+            />
+        );
+    }
 
     if (action === 'delete') {
         return (
@@ -317,6 +337,81 @@ export function AddCommentDialog({ open, quotedText, onConfirm, onClose }: AddCo
                     onKeyDown={handleKeyDown}
                     data-testid="add-comment-dialog-textarea"
                 />
+            </div>
+        </Dialog>
+    );
+}
+
+/* ── AI Create Note Dialog ───────────────────────────────────────────── */
+
+interface AICreateNoteDialogProps {
+    submitting: boolean;
+    onClose: () => void;
+    onConfirm: (prompt: string) => void;
+}
+
+function AICreateNoteDialog({ submitting, onClose, onConfirm }: AICreateNoteDialogProps) {
+    const [prompt, setPrompt] = useState('');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        setTimeout(() => textareaRef.current?.focus(), 0);
+    }, []);
+
+    const trimmed = prompt.trim();
+    const isValid = trimmed.length > 0;
+
+    const handleConfirm = useCallback(() => {
+        if (isValid) onConfirm(trimmed);
+    }, [isValid, trimmed, onConfirm]);
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleConfirm();
+            }
+        },
+        [handleConfirm],
+    );
+
+    return (
+        <Dialog
+            open
+            onClose={onClose}
+            title="Create Note with AI"
+            footer={
+                <>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button
+                        variant="primary"
+                        loading={submitting}
+                        disabled={!isValid}
+                        onClick={handleConfirm}
+                        data-testid="ai-create-note-confirm"
+                    >
+                        Create
+                    </Button>
+                </>
+            }
+        >
+            <div className="flex flex-col gap-2">
+                <label className="text-xs text-[#616161] dark:text-[#999]">
+                    What would you like to write about?
+                </label>
+                <textarea
+                    ref={textareaRef}
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-none"
+                    rows={3}
+                    placeholder="e.g., Meeting notes about the Q4 roadmap discussion"
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    data-testid="ai-create-note-textarea"
+                />
+                <span className="text-xs text-[#848484] dark:text-[#666] italic">
+                    AI will create a note with a title and place it in the best notebook.
+                </span>
             </div>
         </Dialog>
     );

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 
-export type NoteDialogAction = 'create-page' | 'create-section' | 'create-notebook' | 'rename' | 'delete';
+export type NoteDialogAction = 'create-page' | 'create-section' | 'create-notebook' | 'create-page-ai' | 'rename' | 'delete';
 
 export interface NoteCtxMenu {
     node: NoteTreeNode;

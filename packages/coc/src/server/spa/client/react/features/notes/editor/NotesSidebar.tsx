@@ -9,6 +9,7 @@ import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
+import { fetchApi } from '../../../hooks/useApi';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -42,6 +43,30 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
     const dragDrop = useNotesDragDrop();
+    const [addDropdownOpen, setAddDropdownOpen] = useState(false);
+    const addDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        if (!addDropdownOpen) return;
+        function handleClickOutside(e: MouseEvent) {
+            if (addDropdownRef.current && !addDropdownRef.current.contains(e.target as Node)) {
+                setAddDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [addDropdownOpen]);
+
+    // Close dropdown on Escape
+    useEffect(() => {
+        if (!addDropdownOpen) return;
+        function handleKeyDown(e: KeyboardEvent) {
+            if (e.key === 'Escape') setAddDropdownOpen(false);
+        }
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [addDropdownOpen]);
 
     // Auto-expand tree when selectedPath changes (deep-link or selection)
     useEffect(() => {
@@ -95,8 +120,93 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     }, [openContextMenu]);
 
     const handleNewNotebook = useCallback(() => {
+        setAddDropdownOpen(false);
         openDialog('create-notebook', { name: '', path: '', type: 'notebook' });
     }, [openDialog]);
+
+    /** Find the current notebook/section from selectedPath for "New Page". */
+    const findCurrentNotebook = useCallback((): NoteTreeNode | null => {
+        if (!selectedPath || !tree) return null;
+        // If selectedPath is a page (.md file), use its parent directory
+        const isPage = selectedPath.endsWith('.md');
+        const targetPath = isPage && selectedPath.includes('/')
+            ? selectedPath.substring(0, selectedPath.lastIndexOf('/'))
+            : isPage ? '' : selectedPath;
+
+        if (!targetPath) return null;
+
+        // Walk the tree to find the node at targetPath
+        const findNode = (nodes: NoteTreeNode[], path: string): NoteTreeNode | null => {
+            for (const n of nodes) {
+                if (n.path === path) return n;
+                if (n.children) {
+                    const found = findNode(n.children, path);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        return findNode(tree, targetPath);
+    }, [selectedPath, tree]);
+
+    const handleNewPage = useCallback(() => {
+        setAddDropdownOpen(false);
+        const notebook = findCurrentNotebook();
+        if (notebook) {
+            openDialog('create-page', notebook);
+        }
+    }, [findCurrentNotebook, openDialog]);
+
+    const handleNewPageWithAI = useCallback(() => {
+        setAddDropdownOpen(false);
+        openDialog('create-page-ai', ROOT_NODE);
+    }, [openDialog]);
+
+    const handleAICreateNote = useCallback(async (prompt: string) => {
+        try {
+            const res = await fetchApi(`/workspaces/${workspaceId}/notes/ai-create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt }),
+            });
+            const taskId = res?.taskId;
+            if (!taskId) return;
+
+            // Poll for task completion and navigate to the new note
+            const pollInterval = setInterval(async () => {
+                try {
+                    const taskRes = await fetchApi(`/queue/tasks/${taskId}`);
+                    if (taskRes?.status === 'completed') {
+                        clearInterval(pollInterval);
+                        // Read the process to get the note path from metadata
+                        const processId = `queue-${taskId}`;
+                        try {
+                            const proc = await fetchApi(`/processes/${processId}`);
+                            const noteCreate = proc?.metadata?.noteCreate;
+                            if (noteCreate?.path) {
+                                await refresh();
+                                onSelectPage(noteCreate.path);
+                                onNoteCreated?.(noteCreate.path);
+                            } else {
+                                await refresh();
+                            }
+                        } catch {
+                            await refresh();
+                        }
+                    } else if (taskRes?.status === 'failed' || taskRes?.status === 'cancelled') {
+                        clearInterval(pollInterval);
+                    }
+                } catch {
+                    clearInterval(pollInterval);
+                }
+            }, 2000);
+
+            // Safety timeout after 2 minutes
+            setTimeout(() => clearInterval(pollInterval), 120_000);
+        } catch {
+            // Error handled silently — the dialog already closed
+        }
+    }, [workspaceId, refresh, onSelectPage, onNoteCreated]);
 
     const handleCreateNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
         await createNode(parentPath, name, type);
@@ -280,16 +390,51 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 >
                     ↻
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNewNotebook}
-                    data-testid="new-notebook-btn"
-                    aria-label="New Notebook"
-                    title="New Notebook"
-                >
-                    + Notebook
-                </Button>
+                <div className="relative" ref={addDropdownRef}>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAddDropdownOpen(prev => !prev)}
+                        data-testid="add-note-btn"
+                        aria-label="Add"
+                        title="Add"
+                    >
+                        + ▾
+                    </Button>
+                    {addDropdownOpen && (
+                        <div
+                            className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                            data-testid="add-note-dropdown"
+                        >
+                            <button
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                                onClick={handleNewNotebook}
+                                data-testid="add-note-new-notebook"
+                            >
+                                📓 New Notebook
+                            </button>
+                            <button
+                                className={`w-full text-left px-3 py-1.5 text-xs ${
+                                    findCurrentNotebook()
+                                        ? 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
+                                        : 'text-[#999] dark:text-[#555] cursor-not-allowed'
+                                }`}
+                                onClick={handleNewPage}
+                                disabled={!findCurrentNotebook()}
+                                data-testid="add-note-new-page"
+                            >
+                                📄 New Page
+                            </button>
+                            <button
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                                onClick={handleNewPageWithAI}
+                                data-testid="add-note-ai-create"
+                            >
+                                🤖 New Page with AI…
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Tree area */}
@@ -352,6 +497,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 onCreateNode={handleCreateNode}
                 onRenameNode={handleRenameNode}
                 onDeleteNode={handleDeleteNode}
+                onAICreateNote={handleAICreateNote}
                 setSubmitting={setSubmitting}
             />
         </div>

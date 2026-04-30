@@ -163,6 +163,11 @@ export interface ChatContext {
         notePath: string;
         noteTitle?: string;
     };
+    /** Note-create preset (AI-generated title + placement for a new note). */
+    noteCreate?: {
+        prompt: string;
+        chatTaskId?: string;
+    };
     /** Schedule-specific metadata. */
     scheduleId?: string;
     scheduleParams?: Record<string, string>;
@@ -304,4 +309,9 @@ export function hasCommitChatContext(payload: Record<string, unknown>): boolean 
 /** Check whether a chat payload carries note-chat context. */
 export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteChat;
+}
+
+/** Check whether a chat payload carries note-create context. */
+export function hasNoteCreateContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.noteCreate;
 }

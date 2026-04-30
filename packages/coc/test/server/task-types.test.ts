@@ -17,6 +17,7 @@ import {
     hasResolveDiffCommentsMultiContext,
     hasReplicationContext,
     hasCommitChatContext,
+    hasNoteCreateContext,
     TaskDefs,
     getTaskDef,
     VISIBLE_TASK_TYPE_LABELS,
@@ -264,6 +265,45 @@ describe('hasCommitChatContext', () => {
             context: { commitChat: { commitHash: 'abc', commitMessage: 'fix: update validation' } },
         };
         expect(hasCommitChatContext(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// hasNoteCreateContext
+// ============================================================================
+
+describe('hasNoteCreateContext', () => {
+    it('returns true for chat payload with context.noteCreate', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'Create note',
+            context: { noteCreate: { prompt: 'Meeting notes about Q4 roadmap' } },
+        };
+        expect(hasNoteCreateContext(payload)).toBe(true);
+    });
+
+    it('returns true when noteCreate includes chatTaskId', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'Create note',
+            context: { noteCreate: { prompt: 'Meeting notes', chatTaskId: 'task-123' } },
+        };
+        expect(hasNoteCreateContext(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload without noteCreate', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasNoteCreateContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            context: { noteCreate: { prompt: 'test' } },
+        };
+        expect(hasNoteCreateContext(payload)).toBe(false);
     });
 });
 

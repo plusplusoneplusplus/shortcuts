@@ -37,7 +37,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes } from '../notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes } from '../notes-handler';
 import { registerNotesEditsRoutes } from '../notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
@@ -141,6 +141,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesGitRoutes(routes, store, dataDir);
     registerNotesGitAutoCommitRoutes(routes, store, dataDir, notesGitTimerManager, scheduleManager);
     registerNotesFilePreviewRoutes(routes, store, dataDir);
+    registerNotesAICreateRoutes(routes, store, dataDir, bridge);
     registerNotesEditsRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
