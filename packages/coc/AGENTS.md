@@ -201,6 +201,7 @@ src/
 │               ├── contexts/            # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
 │               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
+│               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)

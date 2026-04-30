@@ -1173,17 +1173,17 @@ describe('NoteEditor', () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
-    // Run Skill button (plan files)
+    // Run Skill button
     // ══════════════════════════════════════════════════════════════════════
 
     describe('Run Skill button', () => {
-        it('does NOT show Run Skill button for a regular .md file', async () => {
+        it('shows Run Skill button for a regular .md file', async () => {
             mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'regular.md' });
             await act(async () => {
                 render(<NoteEditor workspaceId="ws1" notePath="regular.md" io={mockIo} />);
             });
             await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
-            expect(screen.queryByTestId('note-run-skills-btn')).toBeNull();
+            expect(screen.getByTestId('note-run-skills-btn')).toBeDefined();
         });
 
         it('shows Run Skill button for a .plan.md file', async () => {
@@ -1257,6 +1257,25 @@ describe('NoteEditor', () => {
             });
         });
 
+        it('dispatches a regular note with a filename-derived contextTaskName', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Copilot SDK', path: 'Knowledge/copilot-sdk.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Knowledge/copilot-sdk.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-skills-btn'));
+            });
+
+            expect(mockQueueDispatch).toHaveBeenCalledWith({
+                type: 'OPEN_DIALOG',
+                workspaceId: 'ws1',
+                contextFiles: ['Knowledge/copilot-sdk.md'],
+                contextTaskName: 'copilot-sdk',
+            });
+        });
+
         it('dispatches absolute path as contextFiles when notesRoot is provided (Unix)', async () => {
             mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/coc/feat.plan.md' });
             await act(async () => {
@@ -1283,13 +1302,13 @@ describe('NoteEditor', () => {
             );
         });
 
-        it('dispatches absolute path as contextFiles when notesRoot is provided (Windows backslash)', async () => {
-            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans/feat.plan.md' });
+        it('dispatches absolute path as contextFiles when notesRoot and notePath use Windows backslashes', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plan', path: 'Plans\\feat.plan.md' });
             await act(async () => {
                 render(
                     <NoteEditor
                         workspaceId="ws1"
-                        notePath="Plans/feat.plan.md"
+                        notePath={"Plans\\feat.plan.md"}
                         notesRoot={"C:\\Users\\user\\.coc\\repos\\ws1\\notes"}
                         io={mockIo}
                     />,

@@ -53,8 +53,7 @@ export interface NoteEditorProps {
     onNotFound?: () => void;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: React.ReactNode;
-    /** Absolute path to the notes root directory. When provided and the note is a .plan.md file,
-     *  a ⚡ Run Skill button appears in the toolbar. */
+    /** Absolute path to the notes root directory. When provided, Run Skill context uses an absolute note path. */
     notesRoot?: string;
     /** Whether the AI chat panel is currently open. */
     chatPanelOpen?: boolean;
@@ -174,19 +173,15 @@ export function NoteEditor({
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
 
-    // Plan-file skill trigger — matches both "plan.md" exactly and "*.plan.md"
-    const isPlanFile = (() => {
-        if (!notePath) return false;
-        const name = notePath.replace(/\\/g, '/').split('/').pop() ?? '';
-        return name === 'plan.md' || name.endsWith('.plan.md');
-    })();
+    const canRunSkill = Boolean(notePath);
     const { dispatch: queueDispatch } = useQueue();
-    const contextFilePath = !notePath ? '' : notesRoot
-        ? notesRoot.replace(/\\/g, '/') + '/' + notePath
-        : notePath.replace(/\\/g, '/');
+    const normalizedNotePath = notePath?.replace(/\\/g, '/') ?? '';
+    const contextFilePath = !normalizedNotePath ? '' : notesRoot
+        ? notesRoot.replace(/\\/g, '/') + '/' + normalizedNotePath
+        : normalizedNotePath;
     const contextTaskName = (() => {
-        if (!notePath) return '';
-        const filename = notePath.replace(/\\/g, '/').split('/').pop() ?? '';
+        if (!normalizedNotePath) return '';
+        const filename = normalizedNotePath.split('/').pop() ?? '';
         return filename.replace(/\.plan\.md$/, '').replace(/\.md$/, '');
     })();
 
@@ -1060,7 +1055,7 @@ export function NoteEditor({
                     onToggleAiEdits={handleAiEditToggle}
                     toolbarRight={
                         <>
-                            {isPlanFile && (
+                            {canRunSkill && (
                                 <button
                                     type="button"
                                     className="h-7 px-2 rounded flex items-center gap-1 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
