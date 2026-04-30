@@ -246,6 +246,7 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
         expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
         expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
         expect(REPO_DETAIL_SOURCE).toContain('workItemCount={');
+        expect(REPO_DETAIL_SOURCE).toContain('gitPendingCount={gitAhead + gitBehind}');
     });
 
     it('hides top tab strip on mobile', () => {

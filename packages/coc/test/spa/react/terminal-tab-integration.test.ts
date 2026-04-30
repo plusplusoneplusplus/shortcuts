@@ -101,7 +101,7 @@ describe('RepoDetail terminal redirect', () => {
 
     it('redirect dispatches SET_REPO_SUB_TAB with chats', () => {
         // Verify the redirect pattern matches the git redirect pattern
-        expect(REPO_DETAIL_SOURCE).toContain("[activeSubTab, terminalEnabled, dispatch]");
+        expect(REPO_DETAIL_SOURCE).toContain("[activeSubTab, terminalEnabled, fallbackSubTab, dispatch]");
     });
 });
 

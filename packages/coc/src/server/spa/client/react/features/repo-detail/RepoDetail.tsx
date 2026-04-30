@@ -41,7 +41,12 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
-import { getRepoTabsForLayout } from './repoLayoutModeConfig';
+import {
+    getDefaultRepoSubTabForLayout,
+    getMobilePinnedTabsForLayout,
+    getRepoTabsForLayout,
+    isChatBackedLayoutMode,
+} from './repoLayoutModeConfig';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -154,57 +159,80 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
-        const layoutModeForVisibleTabs = uiLayoutMode === 'notes-centric' ? 'dev-workflow' : uiLayoutMode;
-        return getRepoTabsForLayout(tabs, layoutModeForVisibleTabs);
+        return getRepoTabsForLayout(tabs, uiLayoutMode);
     }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, uiLayoutMode]);
+
+    const fallbackSubTab = useMemo(
+        () => getDefaultRepoSubTabForLayout(uiLayoutMode, visibleSubTabs) ?? 'chats',
+        [uiLayoutMode, visibleSubTabs],
+    );
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
         if ((activeSubTab === 'git' || activeSubTab === 'pull-requests') && !isGitRepo) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
         }
-    }, [activeSubTab, isGitRepo, dispatch]);
+    }, [activeSubTab, isGitRepo, fallbackSubTab, dispatch]);
 
     // Redirect away from terminal tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'terminal' && !terminalEnabled && prevTerminalEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
         }
         prevTerminalEnabled.current = terminalEnabled;
-    }, [activeSubTab, terminalEnabled, dispatch]);
+    }, [activeSubTab, terminalEnabled, fallbackSubTab, dispatch]);
 
     // Redirect away from notes tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'notes' && !notesEnabled && prevNotesEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
         }
         prevNotesEnabled.current = notesEnabled;
-    }, [activeSubTab, notesEnabled, dispatch]);
+    }, [activeSubTab, notesEnabled, fallbackSubTab, dispatch]);
 
     // Redirect away from workflows tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'workflows' && !workflowsEnabled && prevWorkflowsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
         }
         prevWorkflowsEnabled.current = workflowsEnabled;
-    }, [activeSubTab, workflowsEnabled, dispatch]);
+    }, [activeSubTab, workflowsEnabled, fallbackSubTab, dispatch]);
 
     // Redirect away from pull-requests tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'pull-requests' && !pullRequestsEnabled && prevPullRequestsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
         }
         prevPullRequestsEnabled.current = pullRequestsEnabled;
-    }, [activeSubTab, pullRequestsEnabled, dispatch]);
+    }, [activeSubTab, pullRequestsEnabled, fallbackSubTab, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {
         if (uiLayoutMode === 'classic' && activeSubTab === 'chats') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-        } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
+        } else if (isChatBackedLayoutMode(uiLayoutMode) && activeSubTab === 'activity') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
     }, [uiLayoutMode, activeSubTab, dispatch]);
+
+    useEffect(() => {
+        if (uiLayoutMode !== 'notes-centric') return;
+        if (state.repoTabState[ws.id] !== undefined) return;
+
+        const parts = location.hash.replace(/^#/, '').split('/');
+        const isCurrentRepoHash = parts[0] === 'repos' && decodeURIComponent(parts[1] ?? '') === ws.id;
+        if (!isCurrentRepoHash) return;
+
+        const hashSubTab = parts[2] as RepoSubTab | undefined;
+        const hasExplicitValidSubTab = hashSubTab !== undefined && visibleSubTabs.some(t => t.key === hashSubTab);
+        if (hasExplicitValidSubTab) return;
+
+        const defaultSubTab = getDefaultRepoSubTabForLayout('notes-centric', visibleSubTabs);
+        if (!defaultSubTab || activeSubTab === defaultSubTab) return;
+
+        dispatch({ type: 'SET_REPO_SUB_TAB', tab: defaultSubTab });
+        location.replace('#repos/' + encodeURIComponent(ws.id) + getTabSuffix(defaultSubTab, state));
+    }, [uiLayoutMode, ws.id, visibleSubTabs, activeSubTab, state, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -513,10 +541,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={visibleSubTabs}
-                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'tasks', 'git'] : undefined}
+                    pinnedTabs={getMobilePinnedTabsForLayout(uiLayoutMode)}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
+                    gitPendingCount={gitAhead + gitBehind}
                     actions={[
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
@@ -557,7 +586,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
-                        {uiLayoutMode === 'dev-workflow' && (
+                        {isChatBackedLayoutMode(uiLayoutMode) && (
                             <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                             </div>

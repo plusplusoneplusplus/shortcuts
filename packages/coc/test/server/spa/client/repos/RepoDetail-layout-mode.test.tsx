@@ -19,12 +19,17 @@ beforeAll(() => {
 const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
+let mockRepoTabState: Record<string, string> = {};
+let mockIsMobile = false;
+let mockNotesEnabled = false;
+let mockGitInfo = { ahead: 0, behind: 0 };
+let lastMobileTabBarProps: any = null;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeRepoSubTab: mockActiveRepoSubTab,
-            repoTabState: {},
+            repoTabState: mockRepoTabState,
             wikis: [],
             settingsSection: 'info',
             selectedGitCommitHash: null,
@@ -64,7 +69,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useUiLayou
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ isMobile: false, isTablet: false }),
+    useBreakpoint: () => ({ isMobile: mockIsMobile, isTablet: false }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
@@ -72,7 +77,7 @@ vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStat
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({
-    useGitInfo: () => ({ ahead: 0, behind: 0 }),
+    useGitInfo: () => mockGitInfo,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({
@@ -80,7 +85,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useTermi
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({
-    useNotesEnabled: () => false,
+    useNotesEnabled: () => mockNotesEnabled,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
@@ -113,7 +118,10 @@ vi.mock('../../../../../src/server/spa/client/react/layout/TopBar', () => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => ({
-    MobileTabBar: () => null,
+    MobileTabBar: (props: any) => {
+        lastMobileTabBarProps = props;
+        return <div data-testid="mobile-tab-bar" />;
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
@@ -183,6 +191,11 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     beforeEach(() => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
+        mockRepoTabState = {};
+        mockIsMobile = false;
+        mockNotesEnabled = false;
+        mockGitInfo = { ahead: 0, behind: 0 };
+        lastMobileTabBarProps = null;
         location.hash = '';
     });
 
@@ -295,12 +308,110 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         const workItemsTab = container.querySelector('[data-subtab="work-items"]');
         expect(workItemsTab).toBeTruthy();
     });
+
+    it('notes-centric mode: orders Notes, Git, and Work Items first when notes are enabled', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'notes';
+        mockNotesEnabled = true;
+        const { container } = renderDetail();
+
+        const keys = [...container.querySelectorAll('[data-subtab]')].map(el => el.getAttribute('data-subtab'));
+        expect(keys.slice(0, 3)).toEqual(['notes', 'git', 'work-items']);
+    });
+
+    it('notes-centric mode: labels the chats-backed tab as Activity while keeping the chats key', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'chats';
+        mockNotesEnabled = true;
+        const { container } = renderDetail();
+
+        const chatsTab = container.querySelector('[data-subtab="chats"]');
+        expect(chatsTab).toBeTruthy();
+        expect(chatsTab?.textContent).toContain('Activity');
+    });
+
+    it('notes-centric mode: mounts Chats RepoChatTab and does NOT mount Activity RepoChatTab', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'chats';
+        mockNotesEnabled = true;
+        renderDetail();
+
+        expect(screen.getByTestId('repo-chat-tab-chats')).toBeTruthy();
+        expect(screen.queryByTestId('repo-chat-tab-activity')).toBeNull();
+    });
+
+    it('notes-centric mode: Tasks tab mounts its own RepoChatTab with mode="tasks"', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'tasks';
+        mockNotesEnabled = true;
+        renderDetail();
+
+        expect(screen.getByTestId('repo-chat-tab-tasks')).toBeTruthy();
+    });
+
+    it('notes-centric mode: mobile pins Notes, Git, and Work Items and forwards git badge count', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'notes';
+        mockNotesEnabled = true;
+        mockIsMobile = true;
+        mockGitInfo = { ahead: 2, behind: 1 };
+        renderDetail();
+
+        expect(lastMobileTabBarProps.pinnedTabs).toEqual(['notes', 'git', 'work-items']);
+        expect(lastMobileTabBarProps.gitPendingCount).toBe(3);
+    });
+
+    it('notes-centric mode: root repo hash lands on Notes when no saved tab exists', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'chats';
+        mockNotesEnabled = true;
+        location.hash = '#repos/ws-1';
+        renderDetail();
+
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
+    });
+
+    it('notes-centric mode: falls back to Git when Notes are disabled', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'chats';
+        mockNotesEnabled = false;
+        location.hash = '#repos/ws-1';
+        renderDetail();
+
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+    });
+
+    it('notes-centric mode: explicit Git deep link is not overridden', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'git';
+        mockNotesEnabled = true;
+        location.hash = '#repos/ws-1/git';
+        renderDetail();
+
+        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
+    });
+
+    it('notes-centric mode: saved per-repo tab state wins over default landing', () => {
+        mockUiLayoutMode = 'notes-centric';
+        mockActiveRepoSubTab = 'work-items';
+        mockNotesEnabled = true;
+        mockRepoTabState = { 'ws-1': 'work-items' };
+        location.hash = '#repos/ws-1';
+        renderDetail();
+
+        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
+    });
 });
 
 describe('RepoDetail — header action buttons by layout mode', () => {
     beforeEach(() => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
+        mockRepoTabState = {};
+        mockIsMobile = false;
+        mockNotesEnabled = false;
+        mockGitInfo = { ahead: 0, behind: 0 };
+        lastMobileTabBarProps = null;
         location.hash = '';
     });
 
