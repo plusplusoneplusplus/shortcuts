@@ -172,28 +172,24 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             const taskId = res?.taskId;
             if (!taskId) return;
 
-            // Poll for task completion and navigate to the new note
+            // Poll the process for completion and navigate to the new note
+            const processId = `queue_${taskId}`;
             const pollInterval = setInterval(async () => {
                 try {
-                    const taskRes = await fetchApi(`/queue/tasks/${taskId}`);
-                    if (taskRes?.status === 'completed') {
+                    const procRes = await fetchApi(`/processes/${processId}`);
+                    const proc = procRes?.process ?? procRes;
+                    const status = proc?.status;
+                    if (status === 'completed') {
                         clearInterval(pollInterval);
-                        // Read the process to get the note path from metadata
-                        const processId = `queue-${taskId}`;
-                        try {
-                            const proc = await fetchApi(`/processes/${processId}`);
-                            const noteCreate = proc?.metadata?.noteCreate;
-                            if (noteCreate?.path) {
-                                await refresh();
-                                onSelectPage(noteCreate.path);
-                                onNoteCreated?.(noteCreate.path);
-                            } else {
-                                await refresh();
-                            }
-                        } catch {
+                        const noteCreate = proc?.metadata?.noteCreate;
+                        if (noteCreate?.path) {
+                            await refresh();
+                            onSelectPage(noteCreate.path);
+                            onNoteCreated?.(noteCreate.path);
+                        } else {
                             await refresh();
                         }
-                    } else if (taskRes?.status === 'failed' || taskRes?.status === 'cancelled') {
+                    } else if (status === 'failed' || status === 'cancelled') {
                         clearInterval(pollInterval);
                     }
                 } catch {

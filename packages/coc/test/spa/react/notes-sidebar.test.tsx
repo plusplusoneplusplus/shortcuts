@@ -690,4 +690,56 @@ describe('NotesSidebar', () => {
             expect(queryByTestId('add-note-dropdown')).toBeNull();
         });
     });
+
+    it('AI create polls process with queue_ prefix (not queue-)', async () => {
+        // Regression test: process IDs use queue_ prefix, not queue-
+        const onCreated = vi.fn();
+        const onSelect = vi.fn();
+        const fetchedUrls: string[] = [];
+
+        // Set up fetchApi to record calls
+        mockFetchApi.mockImplementation(async (url: string) => {
+            fetchedUrls.push(url);
+            if (url?.includes('/notes/ai-create')) {
+                return { taskId: 'abc-123' };
+            }
+            if (url?.includes('/processes/queue_abc-123')) {
+                return {
+                    process: {
+                        status: 'completed',
+                        metadata: { noteCreate: { path: 'Notebook1/My Note.md', title: 'My Note', notebook: 'Notebook1' } },
+                    },
+                };
+            }
+            return {};
+        });
+
+        const { findByTestId } = render(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={onSelect} onNoteCreated={onCreated} />,
+        );
+        await findByTestId('notes-tree');
+
+        // Open dropdown and click AI create
+        const addBtn = await findByTestId('add-note-btn');
+        fireEvent.click(addBtn);
+        const aiBtn = await findByTestId('add-note-ai-create');
+        fireEvent.click(aiBtn);
+
+        // Fill in the dialog and submit
+        await waitFor(() => {
+            expect(document.querySelector('[data-testid="ai-create-note-textarea"]')).toBeTruthy();
+        });
+        const textarea = document.querySelector('[data-testid="ai-create-note-textarea"]') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'My test note' } });
+        const confirmBtn = document.querySelector('[data-testid="ai-create-note-confirm"]') as HTMLButtonElement;
+        fireEvent.click(confirmBtn);
+
+        // Wait for the 2s poll interval to fire and the process request to complete
+        await waitFor(() => {
+            expect(fetchedUrls.some(u => u.includes('/processes/queue_abc-123'))).toBe(true);
+        }, { timeout: 5000 });
+
+        // Verify no call with wrong prefix (queue- hyphen)
+        expect(fetchedUrls.some(u => u.includes('/processes/queue-abc-123'))).toBe(false);
+    });
 });
