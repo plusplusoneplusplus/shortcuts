@@ -928,6 +928,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     mode: 'autopilot',
                     prompt: promptContent,
                     workingDirectory: ws?.rootPath || '',
+                    workspaceId,
                     context: {
                         skills: [pendingSkillRun.skillName],
                     },
@@ -1005,6 +1006,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         mode: 'autopilot',
                         prompt: promptContent,
                         workingDirectory: ws?.rootPath || '',
+                        workspaceId,
                     },
                 }),
             });
@@ -1040,6 +1042,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         mode: 'autopilot',
                         prompt: promptContent,
                         workingDirectory: ws?.rootPath || '',
+                        workspaceId,
                     },
                 }),
             });

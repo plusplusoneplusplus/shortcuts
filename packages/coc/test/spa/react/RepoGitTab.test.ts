@@ -969,6 +969,12 @@ describe('RepoGitTab', () => {
             expect(block![0]).toContain('non-contiguous');
         });
 
+        it('handleSquashCommits includes workspaceId in payload so extra skill folders are resolved', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('workspaceId');
+        });
+
         it('defines handleEnqueueSkill callback that opens dialog', () => {
             expect(source).toContain('const handleEnqueueSkill = useCallback(');
         });
@@ -1027,6 +1033,12 @@ describe('RepoGitTab', () => {
             const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setPendingSkillRun(null)');
+        });
+
+        it('handleConfirmSkillRun includes workspaceId in payload so extra skill folders are resolved', () => {
+            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('workspaceId');
         });
 
         it('renders SkillContextDialog component', () => {
@@ -1649,6 +1661,26 @@ describe('RepoGitTab', () => {
 
         it('initial-load effect includes retryKey in deps', () => {
             expect(source).toContain(', [workspaceId, fetchCommits, fetchBranchRange, retryKey]');
+        });
+    });
+
+    describe('task payload workspaceId regression', () => {
+        it('handleConfirmSkillRun includes workspaceId in queue task payload', () => {
+            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('workspaceId');
+        });
+
+        it('handleSquashCommits includes workspaceId in queue task payload', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('workspaceId');
+        });
+
+        it('handleConflictResolveAI includes workspaceId in queue task payload', () => {
+            const block = source.match(/const handleConflictResolveAI = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('workspaceId');
         });
     });
 });
