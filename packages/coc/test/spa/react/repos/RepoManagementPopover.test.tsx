@@ -82,6 +82,23 @@ describe('RepoManagementPopover', () => {
         addSpy.mockRestore();
     });
 
+    it('does not call onClose when clicking inside a dialog portal', () => {
+        const onClose = vi.fn();
+        render(
+            <div>
+                <RepoManagementPopover open={true} onClose={onClose} repos={[]} onRefresh={vi.fn()} />
+                {/* Simulate a dialog portal rendered to document.body (outside the popover) */}
+                <div data-testid="dialog-overlay">
+                    <div data-testid="dialog-panel">
+                        <span data-testid="dialog-content">Dialog content</span>
+                    </div>
+                </div>
+            </div>
+        );
+        fireEvent.mouseDown(screen.getByTestId('dialog-content'));
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('has role=dialog and aria-modal=true for accessibility', () => {
         render(
             <RepoManagementPopover open={true} onClose={vi.fn()} repos={[]} onRefresh={vi.fn()} />
