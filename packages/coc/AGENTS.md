@@ -10,6 +10,7 @@ npm run test:run     # Run tests (Vitest)
 ```
 
 Git commit file clicks in the repo dashboard use `RepoGitTab` split-view routing: full commits render `CommitDetail` diffs, while single commit files render `CommitFileContent` with full-file markdown/source content in the right panel.
+Global `uiLayoutMode` supports `classic`, `dev-workflow`, and `notes-centric`; Notes Centric makes Notes the primary repo tab, keeps Git and Work Items next, labels the chat-backed tab as Activity, and pins Notes/Git/Work Items on mobile.
 Repo Settings → Memory exposes a per-repo **Enable Memory for this Repo** switch backed by `boundedMemory.enabled` in `/api/workspaces/:id/preferences`; disabling it preserves `MEMORY.md` content but stops future bounded-memory injection.
 Repo Settings → Display exposes per-repo inline HTML preview controls backed by `htmlEmbed.enabled` in `/api/workspaces/:id/preferences`; when enabled, local `.html`/`.htm` markdown links with title `"embed"` render as sandboxed iframe previews through `/api/workspaces/:id/files/html`.
 Repo Settings → LLM Tools exposes per-repo enable/disable toggles for AI chat tools backed by `disabledLlmTools` in `/api/workspaces/:id/preferences`. Dedicated API: `GET/PUT /api/workspaces/:id/llm-tools-config`. All tools enabled by default except `tavily_web_search`. Tool registry in `llm-tools/llm-tool-registry.ts`.
