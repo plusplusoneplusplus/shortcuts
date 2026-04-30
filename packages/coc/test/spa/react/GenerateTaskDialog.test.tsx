@@ -18,24 +18,31 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/usePreferences',
     usePreferences: vi.fn(),
 }));
 
-const mockClearImages = vi.fn();
+const mockClearAttachments = vi.fn();
 const mockAddFromPaste = vi.fn();
-const mockRemoveImage = vi.fn();
+const mockRemoveAttachment = vi.fn();
+const mockAddFromFileInput = vi.fn();
+const mockClearError = vi.fn();
 
-vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useImagePaste', () => ({
-    useImagePaste: vi.fn(() => ({
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
+    useFileAttachments: vi.fn(() => ({
+        attachments: [],
         images: [],
         addFromPaste: mockAddFromPaste,
-        removeImage: mockRemoveImage,
-        clearImages: mockClearImages,
+        addFromFileInput: mockAddFromFileInput,
+        removeAttachment: mockRemoveAttachment,
+        clearAttachments: mockClearAttachments,
+        error: null,
+        clearError: mockClearError,
+        toPayload: vi.fn(() => []),
     })),
 }));
 
-import { useImagePaste } from '../../../src/server/spa/client/react/features/chat/hooks/useImagePaste';
+import { useFileAttachments } from '../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments';
 
 const mockUseQueueTaskGeneration = useQueueTaskGeneration as Mock;
 const mockUsePreferences = usePreferences as Mock;
-const mockUseImagePaste = useImagePaste as Mock;
+const mockUseFileAttachments = useFileAttachments as Mock;
 
 function makeHookReturn(overrides: Record<string, unknown> = {}) {
     return {
@@ -62,9 +69,11 @@ beforeEach(() => {
     mockPersistModel.mockReset();
     mockPersistDepth.mockReset();
     mockPersistEffort.mockReset();
-    mockClearImages.mockReset();
+    mockClearAttachments.mockReset();
     mockAddFromPaste.mockReset();
-    mockRemoveImage.mockReset();
+    mockRemoveAttachment.mockReset();
+    mockAddFromFileInput.mockReset();
+    mockClearError.mockReset();
     global.fetch = mockFetch;
     mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn());
     mockUsePreferences.mockReturnValue({
@@ -77,11 +86,16 @@ beforeEach(() => {
         setEffort: mockPersistEffort,
         loaded: true,
     });
-    mockUseImagePaste.mockReturnValue({
+    mockUseFileAttachments.mockReturnValue({
+        attachments: [],
         images: [],
         addFromPaste: mockAddFromPaste,
-        removeImage: mockRemoveImage,
-        clearImages: mockClearImages,
+        addFromFileInput: mockAddFromFileInput,
+        removeAttachment: mockRemoveAttachment,
+        clearAttachments: mockClearAttachments,
+        error: null,
+        clearError: mockClearError,
+        toPayload: vi.fn(() => []),
     });
 
     // Default fetch: models + tasks
@@ -1189,40 +1203,53 @@ describe('GenerateTaskDialog', () => {
         expect(lowBtn.className).toContain('bg-[#0078d4]/10');
     });
 
-    // ── image paste tests ────────────────────────────────────────────────────
+    // ── attachment tests ─────────────────────────────────────────────────────
 
-    it('renders image previews when images are present', async () => {
-        mockUseImagePaste.mockReturnValue({
+    it('renders attachment previews when attachments are present', async () => {
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [
+                { id: 'a1', name: 'img1.png', mimeType: 'image/png', size: 100, dataUrl: 'data:image/png;base64,abc', category: 'image' },
+                { id: 'a2', name: 'img2.jpeg', mimeType: 'image/jpeg', size: 200, dataUrl: 'data:image/jpeg;base64,def', category: 'image' },
+            ],
             images: ['data:image/png;base64,abc', 'data:image/jpeg;base64,def'],
             addFromPaste: mockAddFromPaste,
-            removeImage: mockRemoveImage,
-            clearImages: mockClearImages,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: null,
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
         });
 
         await act(async () => { renderDialog(); });
 
-        const imagesContainer = document.getElementById('gen-task-images');
-        expect(imagesContainer).toBeDefined();
-        expect(imagesContainer).not.toBeNull();
-        const imgs = imagesContainer!.querySelectorAll('img');
+        const previewContainer = screen.getByTestId('gen-task-attachment-previews');
+        expect(previewContainer).toBeTruthy();
+        const imgs = previewContainer.querySelectorAll('[data-testid="attachment-preview-image"]');
         expect(imgs).toHaveLength(2);
     });
 
-    it('does not render image previews when no images', async () => {
+    it('does not render attachment previews when no attachments', async () => {
         await act(async () => { renderDialog(); });
 
-        const imagesContainer = document.getElementById('gen-task-images');
-        expect(imagesContainer).toBeNull();
+        expect(screen.queryByTestId('gen-task-attachment-previews')).toBeNull();
     });
 
     it('submit sends images in enqueue payload', async () => {
         const enqueueSpy = vi.fn();
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
-        mockUseImagePaste.mockReturnValue({
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [
+                { id: 'a1', name: 'img1.png', mimeType: 'image/png', size: 100, dataUrl: 'data:image/png;base64,abc', category: 'image' },
+            ],
             images: ['data:image/png;base64,abc'],
             addFromPaste: mockAddFromPaste,
-            removeImage: mockRemoveImage,
-            clearImages: mockClearImages,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: null,
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
         });
 
         await act(async () => { renderDialog(); });
@@ -1263,7 +1290,7 @@ describe('GenerateTaskDialog', () => {
         );
     });
 
-    it('clears images after successful queue', async () => {
+    it('clears attachments after successful queue', async () => {
         mockUseQueueTaskGeneration.mockReturnValue(
             makeHookReturn({
                 status: 'queued',
@@ -1273,39 +1300,54 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        expect(mockClearImages).toHaveBeenCalled();
+        expect(mockClearAttachments).toHaveBeenCalled();
     });
 
-    it('remove button calls removeImage with correct index', async () => {
-        mockUseImagePaste.mockReturnValue({
+    it('remove button calls removeAttachment with correct id', async () => {
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [
+                { id: 'a1', name: 'img1.png', mimeType: 'image/png', size: 100, dataUrl: 'data:image/png;base64,abc', category: 'image' },
+                { id: 'a2', name: 'img2.jpeg', mimeType: 'image/jpeg', size: 200, dataUrl: 'data:image/jpeg;base64,def', category: 'image' },
+            ],
             images: ['data:image/png;base64,abc', 'data:image/jpeg;base64,def'],
             addFromPaste: mockAddFromPaste,
-            removeImage: mockRemoveImage,
-            clearImages: mockClearImages,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: null,
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
         });
 
         await act(async () => { renderDialog(); });
 
-        const removeButtons = document.querySelectorAll('[aria-label^="Remove image"]');
+        const removeButtons = screen.getAllByTestId(/^remove-attachment-/);
         expect(removeButtons).toHaveLength(2);
 
         fireEvent.click(removeButtons[1]);
-        expect(mockRemoveImage).toHaveBeenCalledWith(1);
+        expect(mockRemoveAttachment).toHaveBeenCalledWith('a2');
     });
 
     it('clicking a thumbnail opens the lightbox', async () => {
-        mockUseImagePaste.mockReturnValue({
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [
+                { id: 'a1', name: 'img1.png', mimeType: 'image/png', size: 100, dataUrl: 'data:image/png;base64,abc', category: 'image' },
+            ],
             images: ['data:image/png;base64,abc'],
             addFromPaste: mockAddFromPaste,
-            removeImage: mockRemoveImage,
-            clearImages: mockClearImages,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: null,
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
         });
 
         await act(async () => { renderDialog(); });
 
         expect(screen.queryByTestId('image-lightbox')).toBeNull();
 
-        const img = document.querySelector('#gen-task-images img')!;
+        const img = screen.getByTestId('gen-task-attachment-previews').querySelector('img')!;
         fireEvent.click(img);
 
         expect(screen.getByTestId('image-lightbox')).toBeTruthy();
@@ -1314,19 +1356,87 @@ describe('GenerateTaskDialog', () => {
     });
 
     it('remove button does not open the lightbox', async () => {
-        mockUseImagePaste.mockReturnValue({
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [
+                { id: 'a1', name: 'img1.png', mimeType: 'image/png', size: 100, dataUrl: 'data:image/png;base64,abc', category: 'image' },
+            ],
             images: ['data:image/png;base64,abc'],
             addFromPaste: mockAddFromPaste,
-            removeImage: mockRemoveImage,
-            clearImages: mockClearImages,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: null,
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
         });
 
         await act(async () => { renderDialog(); });
 
-        const removeBtn = document.querySelector('[aria-label="Remove image 1"]')!;
+        const removeBtn = screen.getByTestId('remove-attachment-a1');
         fireEvent.click(removeBtn);
 
         expect(screen.queryByTestId('image-lightbox')).toBeNull();
+    });
+
+    it('renders attach button that opens file picker', async () => {
+        await act(async () => { renderDialog(); });
+
+        const attachBtn = screen.getByTestId('gen-task-attach-btn');
+        expect(attachBtn).toBeTruthy();
+        expect(attachBtn.textContent).toContain('Attach');
+    });
+
+    it('renders drag-and-drop zone', async () => {
+        await act(async () => { renderDialog(); });
+
+        const dropZone = screen.getByTestId('gen-task-drop-zone');
+        expect(dropZone).toBeTruthy();
+    });
+
+    it('shows drop overlay on dragOver and hides on dragLeave', async () => {
+        await act(async () => { renderDialog(); });
+
+        const dropZone = screen.getByTestId('gen-task-drop-zone');
+
+        expect(screen.queryByTestId('gen-task-drop-zone-overlay')).toBeNull();
+
+        fireEvent.dragOver(dropZone);
+        expect(screen.getByTestId('gen-task-drop-zone-overlay')).toBeTruthy();
+
+        fireEvent.dragLeave(dropZone);
+        expect(screen.queryByTestId('gen-task-drop-zone-overlay')).toBeNull();
+    });
+
+    it('displays attachment error when present', async () => {
+        mockUseFileAttachments.mockReturnValue({
+            attachments: [],
+            images: [],
+            addFromPaste: mockAddFromPaste,
+            addFromFileInput: mockAddFromFileInput,
+            removeAttachment: mockRemoveAttachment,
+            clearAttachments: mockClearAttachments,
+            error: 'File too large!',
+            clearError: mockClearError,
+            toPayload: vi.fn(() => []),
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const errorEl = screen.getByTestId('gen-task-attachment-error');
+        expect(errorEl).toBeTruthy();
+        expect(errorEl.textContent).toBe('File too large!');
+    });
+
+    it('does not display attachment error when null', async () => {
+        await act(async () => { renderDialog(); });
+
+        expect(screen.queryByTestId('gen-task-attachment-error')).toBeNull();
+    });
+
+    it('renders hint text for paste/drag instructions', async () => {
+        await act(async () => { renderDialog(); });
+
+        expect(screen.getByText(/paste images/)).toBeTruthy();
     });
 
     // ── Ctrl+Enter keyboard shortcut tests ──────────────────────────────────

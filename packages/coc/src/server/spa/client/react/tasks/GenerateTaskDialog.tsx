@@ -6,13 +6,14 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Dialog, FloatingDialog, Button, ImageLightbox } from '../ui';
+import { Dialog, FloatingDialog, Button } from '../ui';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useQueueTaskGeneration } from '../queue/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/preferences/usePreferences';
-import { useImagePaste } from '../features/chat/hooks/useImagePaste';
+import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
+import { AttachmentPreviews } from '../ui/AttachmentPreviews';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
@@ -143,11 +144,10 @@ export function GenerateTaskDialog({
     const { status, taskId, error, enqueue, reset } =
         useQueueTaskGeneration(wsId);
 
-    // --- image paste ---
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
-
-    // --- image lightbox ---
-    const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
+    // --- file attachments (images + arbitrary files via paste / file-picker / drag-drop) ---
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, clearError: clearAttachmentError } = useFileAttachments();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
 
     // --- fetch models on mount ---
     useEffect(() => {
@@ -182,10 +182,32 @@ export function GenerateTaskDialog({
     useEffect(() => {
         if (status === 'queued') {
             addToast(`Task queued${taskId ? ` (${taskId.slice(0, 8)})` : ''}`, 'success');
-            clearImages();
+            clearAttachments();
             onSuccess(taskId || '');
         }
-    }, [status, taskId, addToast, clearImages, onSuccess]);
+    }, [status, taskId, addToast, clearAttachments, onSuccess]);
+
+    // --- drag & drop ---
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(true);
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+            addFromFileInput(e.dataTransfer.files);
+        }
+    }, [addFromFileInput]);
 
     const handleGenerate = useCallback(() => {
         let finalModel = model;
@@ -252,45 +274,74 @@ export function GenerateTaskDialog({
         <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
-                    <RichTextInput
-                        ref={richTextRef}
-                        id="gen-task-prompt"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[80px]"
-                        onChange={(value) => setPrompt(value)}
-                        onKeyDown={e => {
-                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim() && !isSubmitting && !isQueued) {
-                                e.preventDefault();
-                                handleGenerate();
+                    {/* Hidden file input for the attach button */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        className="hidden"
+                        data-testid="gen-task-file-input-hidden"
+                        onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                                addFromFileInput(e.target.files);
                             }
+                            e.target.value = '';
                         }}
-                        onPaste={isSubmitting || isQueued ? undefined : addFromPaste}
-                        disabled={isSubmitting || isQueued}
-                        placeholder="Describe the task to generate…"
-                        data-testid="gen-task-prompt-input"
                     />
-                    {/* Image preview strip */}
-                    {images.length > 0 && (
-                        <div id="gen-task-images" className="flex flex-wrap gap-2 mt-1">
-                            {images.map((img, i) => (
-                                <div key={i} className="relative group">
-                                    <img
-                                        src={img}
-                                        alt={`Attachment ${i + 1}`}
-                                        className="w-[80px] h-[80px] object-cover rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-zoom-in"
-                                        onClick={() => setViewImageIndex(i)}
-                                    />
-                                    <button
-                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-80 hover:opacity-100"
-                                        onClick={() => removeImage(i)}
-                                        aria-label={`Remove image ${i + 1}`}
-                                        disabled={isSubmitting || isQueued}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
+                    {attachmentError && (
+                        <div className="text-xs text-[#f14c4c] mb-1" data-testid="gen-task-attachment-error">{attachmentError}</div>
                     )}
+                    <div
+                        className={`relative rounded border-2 border-dashed transition-colors ${
+                            isDragOver
+                                ? 'border-[#0078d4] bg-[#0078d4]/5 dark:bg-[#0078d4]/10'
+                                : 'border-transparent'
+                        }`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        data-testid="gen-task-drop-zone"
+                    >
+                        {isDragOver && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-[#0078d4]/5 dark:bg-[#0078d4]/10 rounded pointer-events-none z-10" data-testid="gen-task-drop-zone-overlay">
+                                <span className="text-sm font-medium text-[#0078d4]">📎 Drop files here</span>
+                            </div>
+                        )}
+                        <RichTextInput
+                            ref={richTextRef}
+                            id="gen-task-prompt"
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[80px]"
+                            onChange={(value) => setPrompt(value)}
+                            onKeyDown={e => {
+                                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim() && !isSubmitting && !isQueued) {
+                                    e.preventDefault();
+                                    handleGenerate();
+                                }
+                            }}
+                            onPaste={isSubmitting || isQueued ? undefined : addFromPaste}
+                            disabled={isSubmitting || isQueued}
+                            placeholder="Describe the task to generate…"
+                            data-testid="gen-task-prompt-input"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                        <button
+                            type="button"
+                            disabled={isSubmitting || isQueued}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            data-testid="gen-task-attach-btn"
+                            aria-label="Attach image"
+                            title="Attach images or drag & drop"
+                        >
+                            📎 Attach
+                        </button>
+                        <span className="text-[11px] text-[#a0a0a0] dark:text-[#666]">
+                            or paste images (Ctrl+V) / drag &amp; drop
+                        </span>
+                    </div>
+                    <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} data-testid="gen-task-attachment-previews" />
                 </div>
 
                 {/* Task name (optional) */}
@@ -477,13 +528,6 @@ export function GenerateTaskDialog({
                         </div>
                     )}
                 </div>
-
-                {/* Image lightbox */}
-                <ImageLightbox
-                    src={viewImageIndex !== null ? images[viewImageIndex] : null}
-                    alt={viewImageIndex !== null ? `Attachment ${viewImageIndex + 1}` : undefined}
-                    onClose={() => setViewImageIndex(null)}
-                />
 
                 {/* Error banner with Retry */}
                 {isError && (
