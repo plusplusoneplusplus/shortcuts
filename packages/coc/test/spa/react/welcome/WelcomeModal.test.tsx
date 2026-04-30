@@ -88,7 +88,7 @@ describe('WelcomeModal', () => {
             expect(screen.getByTestId('welcome-get-started')).toBeTruthy();
         });
         fireEvent.click(screen.getByTestId('welcome-get-started'));
-        expect(onGetStarted).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(onGetStarted).toHaveBeenCalledTimes(1));
     });
 
     it('"Skip tour" dismisses modal and marks onboarding dismissed', async () => {
@@ -105,10 +105,17 @@ describe('WelcomeModal', () => {
             ([, opts]) => (opts as any)?.method === 'PATCH',
         );
         const bodies = patchCalls.map(([, opts]) => JSON.parse((opts as any).body));
-        expect(bodies).toContainEqual({ hasSeenWelcome: true });
-        const onboardingPatch = bodies.find((b: any) => b.onboardingProgress);
-        expect(onboardingPatch).toBeTruthy();
-        expect(onboardingPatch.onboardingProgress.dismissed).toBe(true);
+        expect(bodies).toContainEqual({
+            hasSeenWelcome: true,
+            onboardingProgress: {
+                hasRunWorkflow: false,
+                hasOpenedWiki: false,
+                hasUsedChat: false,
+                settingsVisited: false,
+                dismissed: true,
+                hasCompletedTour: false,
+            },
+        });
     });
 
     it('"Skip tour" does NOT call onGetStarted callback', async () => {
@@ -136,6 +143,25 @@ describe('WelcomeModal', () => {
         );
         const bodies = patchCalls.map(([, opts]) => JSON.parse((opts as any).body));
         expect(bodies).toContainEqual({ hasSeenWelcome: true });
+    });
+
+    it('"Get Started" keeps the modal open when persistence fails', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failure')));
+        render(
+            <AppProvider>
+                <PrefsLoader prefs={{}}>
+                    <WelcomeModal />
+                </PrefsLoader>
+            </AppProvider>,
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('welcome-get-started')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('welcome-get-started'));
+
+        await waitFor(() => expect(screen.getByText(/Failed to save onboarding preferences/)).toBeTruthy());
+        expect(document.getElementById('welcome-modal')).toBeTruthy();
     });
 
     it('renders all four feature cards', async () => {

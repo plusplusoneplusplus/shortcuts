@@ -45,6 +45,11 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         notePathState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
+        hasSeenWelcome: false,
+        onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false },
+        dismissedTips: [],
+        preferencesLoaded: false,
+        preferencesLoadFailed: false,
         ...overrides,
     };
 }
@@ -1070,6 +1075,7 @@ describe('AppContext reducer', () => {
             });
             expect(result.workspace).toBe('ws-1');
             expect(result.preferencesLoaded).toBe(true);
+            expect(result.preferencesLoadFailed).toBe(false);
         });
 
         it('statusFilter and typeFilter are NOT restored from global activityFilters', () => {
@@ -1084,6 +1090,7 @@ describe('AppContext reducer', () => {
             expect(result.statusFilter).toBe('__all');
             expect(result.typeFilter).toBe('__all');
             expect(result.preferencesLoaded).toBe(true);
+            expect(result.preferencesLoadFailed).toBe(false);
         });
 
         it('keeps defaults when activityFilters is undefined', () => {
@@ -1096,6 +1103,7 @@ describe('AppContext reducer', () => {
             expect(result.workspace).toBe('__all');
             expect(result.typeFilter).toBe('__all');
             expect(result.preferencesLoaded).toBe(true);
+            expect(result.preferencesLoadFailed).toBe(false);
         });
 
         it('restores workspace from partial activityFilters', () => {
@@ -1110,6 +1118,14 @@ describe('AppContext reducer', () => {
             // statusFilter and typeFilter are not touched by global prefs
             expect(result.statusFilter).toBe('failed');
             expect(result.typeFilter).toBe('run-script');
+        });
+
+        it('marks preferences as loaded but failed when preference loading fails', () => {
+            const state = makeState({ preferencesLoaded: false, preferencesLoadFailed: false });
+            const result = appReducer(state, { type: 'SET_PREFERENCES_LOAD_FAILED' });
+            expect(result.preferencesLoaded).toBe(true);
+            expect(result.preferencesLoadFailed).toBe(true);
+            expect(result.hasSeenWelcome).toBe(false);
         });
     });
 });

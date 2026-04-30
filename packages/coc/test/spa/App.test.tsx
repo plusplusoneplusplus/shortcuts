@@ -138,6 +138,7 @@ function makeAppState(overrides: Record<string, any> = {}): Record<string, any> 
         reposSidebarCollapsed: false,
         hasSeenWelcome: false,
         preferencesLoaded: false,
+        preferencesLoadFailed: false,
         ...overrides,
     };
 }
@@ -197,28 +198,44 @@ describe('App bootstrap', () => {
         spy.mockRestore();
     });
 
-    it('dispatches empty SET_WELCOME_PREFERENCES when /preferences returns null so UI does not stall', async () => {
+    it('dispatches SET_WELCOME_PREFERENCES for an empty successful preferences response', async () => {
+        mockFetchApi.mockResolvedValueOnce({});
+
+        render(<App />);
+
+        await waitFor(() =>
+            expect(mockAppDispatch).toHaveBeenCalledWith({
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    hasSeenWelcome: undefined,
+                    onboardingProgress: undefined,
+                    dismissedTips: undefined,
+                    activityFilters: undefined,
+                },
+            }),
+        );
+    });
+
+    it('dispatches SET_PREFERENCES_LOAD_FAILED when /preferences returns null so UI does not stall', async () => {
         mockFetchApi.mockResolvedValueOnce(null);
 
         render(<App />);
 
         await waitFor(() =>
             expect(mockAppDispatch).toHaveBeenCalledWith({
-                type: 'SET_WELCOME_PREFERENCES',
-                payload: {},
+                type: 'SET_PREFERENCES_LOAD_FAILED',
             }),
         );
     });
 
-    it('dispatches empty SET_WELCOME_PREFERENCES on network failure so UI does not stall', async () => {
+    it('dispatches SET_PREFERENCES_LOAD_FAILED on network failure so UI does not stall', async () => {
         mockFetchApi.mockRejectedValueOnce(new Error('network failure'));
 
         render(<App />);
 
         await waitFor(() =>
             expect(mockAppDispatch).toHaveBeenCalledWith({
-                type: 'SET_WELCOME_PREFERENCES',
-                payload: {},
+                type: 'SET_PREFERENCES_LOAD_FAILED',
             }),
         );
     });

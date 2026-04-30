@@ -58,6 +58,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
         dismissedTips: [],
         preferencesLoaded: false,
+        preferencesLoadFailed: false,
         ...overrides,
     } as AppContextState;
 }
@@ -138,7 +139,7 @@ describe('AppContext reducer', () => {
             expect(result.activeTab).toBe('processes');
         });
 
-        it('sets hasOpenedWiki and fires PATCH when switching to wiki tab', () => {
+        it('sets hasOpenedWiki without performing persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({
@@ -147,17 +148,11 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
             expect(result.activeTab).toBe('wiki');
             expect(result.onboardingProgress.hasOpenedWiki).toBe(true);
-            expect(fetchSpy).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false } }),
-                }),
-            );
+            expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
 
-        it('does not fire PATCH when hasOpenedWiki is already true', () => {
+        it('does not perform persistence when hasOpenedWiki is already true', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({
@@ -250,18 +245,12 @@ describe('AppContext reducer', () => {
             expect(result.hasSeenWelcome).toBe(true);
         });
 
-        it('fires a PATCH fetch to /preferences', () => {
+        it('does not perform persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState();
             appReducer(state, { type: 'DISMISS_WELCOME' });
-            expect(fetchSpy).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ hasSeenWelcome: true }),
-                }),
-            );
+            expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
     });
@@ -275,20 +264,14 @@ describe('AppContext reducer', () => {
             expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
         });
 
-        it('fires a PATCH fetch with the merged progress', () => {
+        it('does not perform persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({
                 onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
             });
             appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
-            expect(fetchSpy).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: true } }),
-                }),
-            );
+            expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
     });
@@ -300,18 +283,12 @@ describe('AppContext reducer', () => {
             expect(result.dismissedTips).toEqual(['tip-a', 'tip-b']);
         });
 
-        it('fires a PATCH fetch with the updated tips', () => {
+        it('does not perform persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({ dismissedTips: [] });
             appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-x' } });
-            expect(fetchSpy).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ dismissedTips: ['tip-x'] }),
-                }),
-            );
+            expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
 
@@ -441,18 +418,12 @@ describe('AppContext reducer', () => {
             expect(result.onboardingProgress.hasCompletedTour).toBe(true);
         });
 
-        it('fires a PATCH fetch with the merged onboardingProgress', () => {
+        it('does not perform persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState();
             appReducer(state, { type: 'COMPLETE_TOUR' });
-            expect(fetchSpy).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: expect.stringContaining('"hasCompletedTour":true'),
-                }),
-            );
+            expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
     });

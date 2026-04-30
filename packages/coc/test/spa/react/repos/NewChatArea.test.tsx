@@ -110,6 +110,7 @@ beforeEach(() => {
     mockModelCommand.modelOverride = null;
     mockModelCommand.modelMenuVisible = false;
     globalThis.fetch = mockFetch;
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
 });
 
 afterEach(() => {
@@ -189,8 +190,9 @@ describe('NewChatArea', () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
-        expect(mockFetch).toHaveBeenCalledTimes(1);
-        const [url, opts] = mockFetch.mock.calls[0];
+        const queueCalls = mockFetch.mock.calls.filter(([url]) => url === '/api/queue/tasks');
+        expect(queueCalls).toHaveLength(1);
+        const [url, opts] = queueCalls[0];
         expect(url).toBe('/api/queue/tasks');
         expect(opts.method).toBe('POST');
 
@@ -293,7 +295,8 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Enter' });
         });
 
-        expect(mockFetch).toHaveBeenCalledTimes(1);
+        const queueCalls = mockFetch.mock.calls.filter(([url]) => url === '/api/queue/tasks');
+        expect(queueCalls).toHaveLength(1);
     });
 
     it('Shift+Enter does not trigger send', async () => {

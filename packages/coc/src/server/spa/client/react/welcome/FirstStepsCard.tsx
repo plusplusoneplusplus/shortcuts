@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp, type OnboardingProgress } from '../contexts/AppContext';
 import { Button, Card, cn } from '../ui';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 interface Step {
     id: string;
@@ -45,6 +46,7 @@ export interface FirstStepsCardProps {
 
 export function FirstStepsCard({ onAddRepo }: FirstStepsCardProps) {
     const { state, dispatch } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
     const { workspaces, onboardingProgress } = state;
 
     const isStepDone = (step: Step): boolean => {
@@ -63,15 +65,15 @@ export function FirstStepsCard({ onAddRepo }: FirstStepsCardProps) {
             celebratingRef.current = true;
             setCelebrating(true);
             const timer = setTimeout(() => {
-                dispatch({ type: 'UPDATE_ONBOARDING', payload: { dismissed: true } });
+                void updateOnboarding({ dismissed: true }).catch(() => {});
             }, 3000);
             return () => clearTimeout(timer);
         }
-    }, [allDone, dispatch]);
+    }, [allDone, updateOnboarding]);
 
     const handleDismiss = useCallback(() => {
-        dispatch({ type: 'UPDATE_ONBOARDING', payload: { dismissed: true } });
-    }, [dispatch]);
+        void updateOnboarding({ dismissed: true }).catch(() => {});
+    }, [updateOnboarding]);
 
     if (celebrating) {
         return (
@@ -155,9 +157,10 @@ export function FirstStepsCard({ onAddRepo }: FirstStepsCardProps) {
                                         size="sm"
                                         className="mt-1"
                                         data-testid="first-steps-open-wiki"
-                                        onClick={() => dispatch({
-                                            type: 'SET_ACTIVE_TAB', tab: 'wiki'
-                                        })}
+                                        onClick={() => {
+                                            dispatch({ type: 'SET_ACTIVE_TAB', tab: 'wiki' });
+                                            void updateOnboarding({ hasOpenedWiki: true }).catch(() => {});
+                                        }}
                                     >
                                         Open Wiki
                                     </Button>

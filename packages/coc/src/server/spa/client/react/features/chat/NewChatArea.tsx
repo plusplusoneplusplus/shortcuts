@@ -20,6 +20,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -38,7 +39,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     const { dispatch: queueDispatch } = useQueue();
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
 
     // Model command support
     const { models: availableModels } = useModels();
@@ -90,7 +92,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
             if (!appState.onboardingProgress?.hasUsedChat) {
-                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
+                await updateOnboarding({ hasUsedChat: true }).catch(() => {});
             }
             setInput('');
             richTextRef.current?.setValue('');

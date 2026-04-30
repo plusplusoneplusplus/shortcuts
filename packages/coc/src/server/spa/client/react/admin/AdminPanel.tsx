@@ -17,6 +17,8 @@ import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { getLinkHandlersMeta } from '../utils/link-handler';
 import type { AdminSubTab, UiLayoutMode } from '../types/dashboard';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
+import { patchGlobalPreferences } from '../utils/preferencesApi';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 
@@ -36,6 +38,7 @@ interface Stats {
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database' };
+const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
 function isUiLayoutMode(value: unknown): value is UiLayoutMode {
     return value === 'classic' || value === 'dev-workflow' || value === 'notes-centric';
@@ -44,6 +47,7 @@ function isUiLayoutMode(value: unknown): value is UiLayoutMode {
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
     const { state, dispatch } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
     const activeTab = state.activeAdminSubTab;
     const handleTabChange = (tab: AdminSubTab) => {
         dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
@@ -52,7 +56,7 @@ export function AdminPanel() {
 
     useEffect(() => {
         if (!state.onboardingProgress?.settingsVisited) {
-            dispatch({ type: 'UPDATE_ONBOARDING', payload: { settingsVisited: true } });
+            void updateOnboarding({ settingsVisited: true }).catch(() => {});
         }
     }, []);
 
@@ -638,27 +642,26 @@ export function AdminPanel() {
     const handleRelaunchWelcome = useCallback(async () => {
         setRelaunchingWelcome(true);
         try {
-            const res = await fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    hasSeenWelcome: false,
-                    onboardingProgress: {},
-                    dismissedTips: [],
-                }),
+            await patchGlobalPreferences({
+                hasSeenWelcome: false,
+                onboardingProgress: WELCOME_RESET_PROGRESS,
+                dismissedTips: [],
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error((body as any).error || 'Reset failed');
-            }
-            dispatch({ type: 'SET_WELCOME_PREFERENCES', payload: { hasSeenWelcome: false, onboardingProgress: {}, dismissedTips: [] } });
+            dispatch({
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    hasSeenWelcome: false,
+                    onboardingProgress: WELCOME_RESET_PROGRESS,
+                    dismissedTips: [],
+                },
+            });
             addToast('Welcome tour will appear on next page load', 'success');
         } catch (err: any) {
             addToast(err.message || 'Failed to reset welcome tour', 'error');
         } finally {
             setRelaunchingWelcome(false);
         }
-    }, [dispatch, addToast]);
+    }, [addToast, dispatch]);
 
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};

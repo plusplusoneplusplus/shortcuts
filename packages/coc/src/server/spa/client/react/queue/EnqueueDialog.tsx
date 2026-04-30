@@ -25,6 +25,7 @@ import { SkillPicker } from './SkillPicker';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import type { PostAction } from '../../../task-types';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 interface HookEntry {
     id: string;
@@ -53,7 +54,8 @@ export function flattenFolders(node: any, depth = 0): FolderOption[] {
 
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
     const { isMobile } = useBreakpoint();
     const { floatChat } = useFloatingChats();
     const isAskMode = queueState.dialogMode === 'ask';
@@ -410,12 +412,12 @@ export function EnqueueDialog() {
             }
             clearAttachments();
             if (!appState.onboardingProgress?.hasRunWorkflow) {
-                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+                await updateOnboarding({ hasRunWorkflow: true }).catch(() => {});
             }
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);

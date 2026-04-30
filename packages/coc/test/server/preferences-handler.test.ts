@@ -1293,6 +1293,18 @@ describe('Preferences REST API', () => {
         expect(body.hasSeenWelcome).toBe(true);
     });
 
+    it('persists hasSeenWelcome across server restart', async () => {
+        const patch = await patchJSON(`${baseUrl}/api/preferences`, { hasSeenWelcome: true });
+        expect(patch.status).toBe(200);
+
+        await server.close();
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).hasSeenWelcome).toBe(true);
+    });
+
     // -- onboardingProgress persistence via API --
 
     it('PATCH with onboardingProgress replaces wholesale', async () => {
@@ -1302,6 +1314,32 @@ describe('Preferences REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.onboardingProgress).toEqual({ hasRunWorkflow: true });
         expect(body.onboardingProgress.hasUsedChat).toBeUndefined();
+    });
+
+    it('PATCH with welcome skip payload persists hasSeenWelcome and dismissed progress together', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, {
+            hasSeenWelcome: true,
+            onboardingProgress: { dismissed: true },
+        });
+        expect(res.status).toBe(200);
+
+        const body = JSON.parse(res.body);
+        expect(body.hasSeenWelcome).toBe(true);
+        expect(body.onboardingProgress).toEqual({ dismissed: true });
+    });
+
+    it('persists completed tour progress across server restart', async () => {
+        const patch = await patchJSON(`${baseUrl}/api/preferences`, {
+            onboardingProgress: { hasCompletedTour: true },
+        });
+        expect(patch.status).toBe(200);
+
+        await server.close();
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).onboardingProgress).toEqual({ hasCompletedTour: true });
     });
 
     it('PUT strips unknown onboardingProgress sub-fields', async () => {

@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { cn } from '../ui/cn';
 import { TIPS } from './tips';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 interface FeatureTipProps {
     tipId: string;
@@ -11,7 +12,8 @@ interface FeatureTipProps {
 
 export function FeatureTip({ tipId, className }: FeatureTipProps) {
     if (!SHOW_WELCOME_TUTORIAL) return null;
-    const { state, dispatch } = useApp();
+    const { state } = useApp();
+    const { dismissTip } = useOnboardingPreferences();
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
@@ -42,7 +44,7 @@ export function FeatureTip({ tipId, className }: FeatureTipProps) {
             </div>
 
             <button
-                onClick={() => dispatch({ type: 'DISMISS_TIP', payload: { tipId } })}
+                onClick={() => { void dismissTip(tipId).catch(() => {}); }}
                 className="shrink-0 text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-base leading-none p-0.5"
                 aria-label={`Dismiss ${tip.title} tip`}
                 data-testid={`dismiss-tip-${tipId}`}

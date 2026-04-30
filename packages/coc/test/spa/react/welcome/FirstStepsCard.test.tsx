@@ -124,9 +124,13 @@ describe('FirstStepsCard', () => {
     });
 
     // 6. "Dismiss" button dispatches UPDATE_ONBOARDING with dismissed:true
-    it('"Dismiss" dispatches UPDATE_ONBOARDING with dismissed:true', () => {
+    it('"Dismiss" persists dismissed:true', async () => {
         renderCard();
-        fireEvent.click(screen.getByTestId('first-steps-dismiss'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('first-steps-dismiss'));
+            await Promise.resolve();
+            await Promise.resolve();
+        });
         // UPDATE_ONBOARDING triggers a PATCH fetch
         const fetchMock = vi.mocked(globalThis.fetch);
         const patchCalls = fetchMock.mock.calls.filter(
@@ -156,7 +160,7 @@ describe('FirstStepsCard', () => {
     });
 
     // 8. Celebration auto-dismisses after 3 seconds
-    it('celebration auto-dismisses after 3 seconds', () => {
+    it('celebration auto-dismisses after 3 seconds', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 
         function DismissedIndicator() {
@@ -185,8 +189,10 @@ describe('FirstStepsCard', () => {
         expect(screen.getByTestId('first-steps-celebration')).toBeTruthy();
         expect(screen.getByTestId('dismissed').textContent).toBe('false');
 
-        act(() => {
+        await act(async () => {
             vi.runAllTimers();
+            await Promise.resolve();
+            await Promise.resolve();
         });
 
         expect(screen.getByTestId('dismissed').textContent).toBe('true');

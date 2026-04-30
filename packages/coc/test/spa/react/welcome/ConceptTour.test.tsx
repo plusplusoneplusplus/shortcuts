@@ -237,6 +237,25 @@ describe('ConceptTour', () => {
         });
     });
 
+    it('keeps the tour open when completion persistence fails', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failure')));
+        render(
+            <AppProvider>
+                <PrefsLoader prefs={{ hasSeenWelcome: true }}>
+                    <ConceptTour />
+                </PrefsLoader>
+            </AppProvider>,
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('tour-skip')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('tour-skip'));
+
+        await waitFor(() => expect(screen.getByText(/Failed to save onboarding preferences/)).toBeTruthy());
+        expect(document.getElementById('concept-tour')).toBeTruthy();
+    });
+
     // ── Slide content ───────────────────────────────────────────────
 
     it('renders emoji icon with correct aria-label', async () => {

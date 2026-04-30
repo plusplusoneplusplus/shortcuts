@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { ToastContainer, useToast } from '../ui/Toast';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 export interface WelcomeModalProps {
     /** Called after the modal is dismissed via "Get Started". Parent may use this to scroll to FirstStepsCard. */
@@ -17,28 +19,47 @@ const FEATURES = [
 ] as const;
 
 export function WelcomeModal({ onGetStarted }: WelcomeModalProps) {
-    const { state, dispatch } = useApp();
+    const { state } = useApp();
+    const { toasts, addToast, removeToast } = useToast();
+    const { markWelcomeSeen, skipWelcomeTour } = useOnboardingPreferences((message) => addToast(message, 'error'));
+    const [saving, setSaving] = useState(false);
 
-    const open = SHOW_WELCOME_TUTORIAL && state.preferencesLoaded && !state.hasSeenWelcome;
+    const open = SHOW_WELCOME_TUTORIAL && state.preferencesLoaded && !state.preferencesLoadFailed && !state.hasSeenWelcome;
 
-    const handleGetStarted = useCallback(() => {
-        dispatch({ type: 'DISMISS_WELCOME' });
-        onGetStarted?.();
-    }, [dispatch, onGetStarted]);
+    const handleGetStarted = useCallback(async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            await markWelcomeSeen();
+            onGetStarted?.();
+        } catch {
+            // The persistence helper already reports the failure.
+        } finally {
+            setSaving(false);
+        }
+    }, [markWelcomeSeen, onGetStarted, saving]);
 
-    const handleSkipTour = useCallback(() => {
-        dispatch({ type: 'DISMISS_WELCOME' });
-        dispatch({ type: 'UPDATE_ONBOARDING', payload: { dismissed: true } });
-    }, [dispatch]);
+    const handleSkipTour = useCallback(async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            await skipWelcomeTour();
+        } catch {
+            // The persistence helper already reports the failure.
+        } finally {
+            setSaving(false);
+        }
+    }, [saving, skipWelcomeTour]);
 
     return (
-        <Dialog
-            open={open}
-            onClose={handleGetStarted}
-            id="welcome-modal"
-            renderHeader={() => null}
-        >
-            <div className="flex flex-col items-center text-center gap-6 py-2">
+        <>
+            <Dialog
+                open={open}
+                onClose={() => { void handleGetStarted(); }}
+                id="welcome-modal"
+                renderHeader={() => null}
+            >
+                <div className="flex flex-col items-center text-center gap-6 py-2">
                 {/* Hero */}
                 <div className="flex flex-col items-center gap-2">
                     <span className="text-4xl" role="img" aria-label="CoC logo">🚀</span>
@@ -78,20 +99,24 @@ export function WelcomeModal({ onGetStarted }: WelcomeModalProps) {
                         variant="primary"
                         size="lg"
                         data-testid="welcome-get-started"
-                        onClick={handleGetStarted}
+                        onClick={() => { void handleGetStarted(); }}
+                        loading={saving}
                         className="w-full sm:w-auto sm:min-w-[200px]"
                     >
                         Get Started →
                     </Button>
                     <button
                         data-testid="welcome-skip-tour"
-                        className="text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] bg-transparent border-none cursor-pointer py-1"
-                        onClick={handleSkipTour}
+                        className="text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed bg-transparent border-none cursor-pointer py-1"
+                        onClick={() => { void handleSkipTour(); }}
+                        disabled={saving}
                     >
                         Skip tour
                     </button>
                 </div>
-            </div>
-        </Dialog>
+                </div>
+            </Dialog>
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
+        </>
     );
 }

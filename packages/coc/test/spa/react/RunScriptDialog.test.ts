@@ -150,15 +150,16 @@ describe('RunScriptDialog Ctrl+Enter submit shortcut', () => {
 });
 
 describe('RunScriptDialog onboarding hasRunWorkflow', () => {
-    it('destructures dispatch from useApp as appDispatch', () => {
-        expect(RUN_SCRIPT_SOURCE).toContain('dispatch: appDispatch');
+    it('uses the onboarding persistence hook', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useOnboardingPreferences');
+        expect(RUN_SCRIPT_SOURCE).toContain('const { updateOnboarding } = useOnboardingPreferences();');
     });
 
     it('guards dispatch with onboardingProgress check', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('!appState.onboardingProgress?.hasRunWorkflow');
     });
 
-    it('dispatches UPDATE_ONBOARDING with hasRunWorkflow true', () => {
-        expect(RUN_SCRIPT_SOURCE).toContain("appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } })");
+    it('persists hasRunWorkflow through updateOnboarding', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('await updateOnboarding({ hasRunWorkflow: true })');
     });
 });

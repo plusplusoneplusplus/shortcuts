@@ -293,7 +293,7 @@ skills:
 
 **Welcome/Onboarding preferences (in `GlobalPreferences`):**
 - `hasSeenWelcome?: boolean` — tracks whether the welcome modal has been dismissed
-- `onboardingProgress?: { repoAdded, firstChatSent, workflowsVisited, settingsVisited, dismissed }` — first-steps checklist progress
+- `onboardingProgress?: { hasRunWorkflow, hasOpenedWiki, hasUsedChat, settingsVisited, dismissed, hasCompletedTour }` — welcome tour and first-steps checklist progress
 - `dismissedTips?: string[]` — IDs of contextual feature tips the user has dismissed
 
 ## Testing

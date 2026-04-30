@@ -275,10 +275,12 @@ function AppInner() {
                         try { localStorage.setItem('coc-repos-sidebar-collapsed', String(prefRes.reposSidebarCollapsed)); } catch { /* SSR / test */ }
                     }
                 } else {
-                    // Even on fetch failure, mark preferences as loaded so UI doesn't wait forever
-                    appDispatch({ type: 'SET_WELCOME_PREFERENCES', payload: {} });
+                    // Even on fetch failure, unblock the UI without treating this as a first launch.
+                    appDispatch({ type: 'SET_PREFERENCES_LOAD_FAILED' });
                 }
-            } catch { /* ignore */ }
+            } catch {
+                appDispatch({ type: 'SET_PREFERENCES_LOAD_FAILED' });
+            }
             connect();
         }
         bootstrap();

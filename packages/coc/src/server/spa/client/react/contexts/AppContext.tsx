@@ -100,6 +100,7 @@ export interface AppContextState {
     onboardingProgress: OnboardingProgress;
     dismissedTips: string[];
     preferencesLoaded: boolean;
+    preferencesLoadFailed: boolean;
 }
 
 const initialState: AppContextState = {
@@ -163,6 +164,7 @@ const initialState: AppContextState = {
     onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false },
     dismissedTips: [],
     preferencesLoaded: false,
+    preferencesLoadFailed: false,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -234,6 +236,7 @@ export type AppAction =
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
     | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { workspace?: string; myWorkExcludedTypes?: string[] } } }
+    | { type: 'SET_PREFERENCES_LOAD_FAILED' }
     | { type: 'DISMISS_WELCOME' }
     | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
     | { type: 'DISMISS_TIP'; payload: { tipId: string } }
@@ -305,11 +308,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const newState = { ...state, activeTab: action.tab };
             if (action.tab === 'wiki' && !state.onboardingProgress.hasOpenedWiki) {
                 const merged = { ...state.onboardingProgress, hasOpenedWiki: true };
-                fetch(getApiBase() + '/preferences', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ onboardingProgress: merged }),
-                }).catch(() => {});
                 return { ...newState, onboardingProgress: merged };
             }
             return newState;
@@ -526,42 +524,25 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 workspace: activityFilters?.workspace ?? state.workspace,
                 myWorkExcludedTypes: activityFilters?.myWorkExcludedTypes ?? state.myWorkExcludedTypes,
                 preferencesLoaded: true,
+                preferencesLoadFailed: false,
             };
         }
+        case 'SET_PREFERENCES_LOAD_FAILED':
+            return { ...state, preferencesLoaded: true, preferencesLoadFailed: true };
         case 'DISMISS_WELCOME': {
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hasSeenWelcome: true }),
-            }).catch(() => {});
             return { ...state, hasSeenWelcome: true };
         }
         case 'UPDATE_ONBOARDING': {
             const merged = { ...state.onboardingProgress, ...action.payload };
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ onboardingProgress: merged }),
-            }).catch(() => {});
             return { ...state, onboardingProgress: merged };
         }
         case 'DISMISS_TIP': {
             if (state.dismissedTips.includes(action.payload.tipId)) return state;
             const updated = [...state.dismissedTips, action.payload.tipId];
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dismissedTips: updated }),
-            }).catch(() => {});
             return { ...state, dismissedTips: updated };
         }
         case 'COMPLETE_TOUR': {
             const merged = { ...state.onboardingProgress, hasCompletedTour: true };
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ onboardingProgress: merged }),
-            }).catch(() => {});
             return { ...state, onboardingProgress: merged };
         }
         default:

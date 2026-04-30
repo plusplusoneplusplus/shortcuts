@@ -15,10 +15,12 @@ import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { TaskDefs } from '../../../../task-types';
+import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 export function RunScriptDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
+    const { updateOnboarding } = useOnboardingPreferences();
     const { isMobile } = useBreakpoint();
     const open = queueState.showScriptDialog;
 
@@ -121,13 +123,13 @@ export function RunScriptDialog() {
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             reset();
             if (!appState.onboardingProgress?.hasRunWorkflow) {
-                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+                await updateOnboarding({ hasRunWorkflow: true }).catch(() => {});
             }
             close();
         } finally {
             setSubmitting(false);
         }
-    }, [script, args, workingDir, model, pauseOnFailure, workspaceId, queueDispatch, close, reset, appState.onboardingProgress, appDispatch]);
+    }, [script, args, workingDir, model, pauseOnFailure, workspaceId, queueDispatch, close, reset, appState.onboardingProgress, updateOnboarding]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {

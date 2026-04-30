@@ -690,7 +690,14 @@ describe('AdminPanel', () => {
                 const body = JSON.parse(patchCalls[0][1].body);
                 expect(body).toEqual({
                     hasSeenWelcome: false,
-                    onboardingProgress: {},
+                    onboardingProgress: {
+                        hasRunWorkflow: false,
+                        hasOpenedWiki: false,
+                        hasUsedChat: false,
+                        settingsVisited: false,
+                        dismissed: false,
+                        hasCompletedTour: false,
+                    },
                     dismissedTips: [],
                 });
             });
