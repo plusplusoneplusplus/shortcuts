@@ -18,9 +18,9 @@ export { BoundedMemoryStore } from './bounded-memory-store';
 export type { BoundedMemoryStoreOptions, MemoryMutationResult, MemoryUsage, MemoryScanResult, ThreatPatternId } from './bounded-memory-types';
 export { ENTRY_DELIMITER, DEFAULT_CHAR_LIMIT } from './bounded-memory-types';
 export { scanMemoryContent, SECURITY_PATTERNS_DESCRIPTION } from './memory-security-scanner';
-export { MemoryPromptBuilder, MEMORY_GUIDANCE } from './memory-prompt-builder';
+export { MemoryPromptBuilder, MEMORY_GUIDANCE, getMemoryGuidance } from './memory-prompt-builder';
 export type { MemoryPromptBuilderOptions } from './memory-prompt-builder';
-export { createMemoryTool, MEMORY_SCHEMA } from './memory-tool';
+export { createMemoryTool, MEMORY_SCHEMA, getMemorySchema } from './memory-tool';
 export type {
     MemoryToolOptions,
     MemoryToolArgs,
@@ -29,6 +29,7 @@ export type {
     MemoryToolRawStores,
     MemoryToolCaptureContext,
     MemoryToolCaptureResult,
+    MemoryWriteFrequency,
 } from './memory-tool';
 
 // Tool call cache

@@ -13,6 +13,7 @@ export interface PerRepoPrefsClient {
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;
+    writeFrequency?: 'low' | 'medium' | 'high';
   };
   /** Notes directory git tracking settings. */
   notesGit?: NotesGitConfig;

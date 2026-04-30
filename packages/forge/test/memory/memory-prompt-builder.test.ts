@@ -7,6 +7,7 @@ import {
     MemoryPromptBuilder,
     MEMORY_GUIDANCE,
     ENTRY_DELIMITER,
+    getMemoryGuidance,
 } from '../../src/memory/memory-prompt-builder';
 
 function makeTempDir(): string {
@@ -194,5 +195,89 @@ describe('MemoryPromptBuilder', () => {
         expect(block).toContain(entries[2]);
         // Ends with guidance
         expect(block).toContain(MEMORY_GUIDANCE);
+    });
+
+    // -----------------------------------------------------------------------
+    // Write frequency support
+    // -----------------------------------------------------------------------
+
+    describe('write frequency', () => {
+        it('default (no writeFrequency) → uses medium guidance', async () => {
+            const filePath = writeMemory(tmpDir, 'fact');
+            const store = await loadedStore(filePath, 3000);
+            const builder = new MemoryPromptBuilder({ store });
+
+            const block = builder.getSystemPromptBlock()!;
+            expect(block).toContain(MEMORY_GUIDANCE);
+            expect(builder.getGuidance()).toBe(MEMORY_GUIDANCE);
+        });
+
+        it('writeFrequency "medium" → uses default MEMORY_GUIDANCE', async () => {
+            const filePath = writeMemory(tmpDir, 'fact');
+            const store = await loadedStore(filePath, 3000);
+            const builder = new MemoryPromptBuilder({ store, writeFrequency: 'medium' });
+
+            const block = builder.getSystemPromptBlock()!;
+            expect(block).toContain(MEMORY_GUIDANCE);
+            expect(builder.getGuidance()).toBe(MEMORY_GUIDANCE);
+        });
+
+        it('writeFrequency "low" → uses low guidance', async () => {
+            const filePath = writeMemory(tmpDir, 'fact');
+            const store = await loadedStore(filePath, 3000);
+            const builder = new MemoryPromptBuilder({ store, writeFrequency: 'low' });
+
+            const block = builder.getSystemPromptBlock()!;
+            expect(block).toContain('sparingly');
+            expect(block).not.toContain(MEMORY_GUIDANCE);
+            expect(builder.getGuidance()).toContain('sparingly');
+        });
+
+        it('writeFrequency "high" → uses high guidance', async () => {
+            const filePath = writeMemory(tmpDir, 'fact');
+            const store = await loadedStore(filePath, 3000);
+            const builder = new MemoryPromptBuilder({ store, writeFrequency: 'high' });
+
+            const block = builder.getSystemPromptBlock()!;
+            expect(block).toContain('Actively capture');
+            expect(block).not.toContain(MEMORY_GUIDANCE);
+            expect(builder.getGuidance()).toContain('Actively capture');
+        });
+
+        it('frozen guidance — writeFrequency does not change after construction', async () => {
+            const filePath = writeMemory(tmpDir, 'fact');
+            const store = await loadedStore(filePath, 3000);
+            const builder = new MemoryPromptBuilder({ store, writeFrequency: 'high' });
+
+            const block1 = builder.getSystemPromptBlock();
+            const block2 = builder.getSystemPromptBlock();
+            expect(block1).toBe(block2);
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// getMemoryGuidance tests
+// ---------------------------------------------------------------------------
+
+describe('getMemoryGuidance', () => {
+    it('returns MEMORY_GUIDANCE for undefined', () => {
+        expect(getMemoryGuidance()).toBe(MEMORY_GUIDANCE);
+    });
+
+    it('returns MEMORY_GUIDANCE for medium', () => {
+        expect(getMemoryGuidance('medium')).toBe(MEMORY_GUIDANCE);
+    });
+
+    it('returns low guidance for low', () => {
+        const g = getMemoryGuidance('low');
+        expect(g).toContain('sparingly');
+        expect(g).not.toBe(MEMORY_GUIDANCE);
+    });
+
+    it('returns high guidance for high', () => {
+        const g = getMemoryGuidance('high');
+        expect(g).toContain('Actively capture');
+        expect(g).not.toBe(MEMORY_GUIDANCE);
     });
 });

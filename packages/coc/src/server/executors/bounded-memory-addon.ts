@@ -13,7 +13,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { MemoryToolCaptureContext, Tool } from '@plusplusoneplusplus/forge';
+import type { MemoryToolCaptureContext, MemoryWriteFrequency, Tool } from '@plusplusoneplusplus/forge';
 import {
     BoundedMemoryStore,
     createMemoryTool,
@@ -79,6 +79,7 @@ export async function buildBoundedMemoryAddon(
         if (!prefs.boundedMemory?.enabled) return EMPTY_ADDON;
 
         const charLimit = prefs.boundedMemory.charLimit;
+        const writeFrequency = prefs.boundedMemory.writeFrequency as MemoryWriteFrequency | undefined;
         const memoryPath = getRepoDataPath(dataDir, workspaceId, 'memory/MEMORY.md');
 
         const store = new BoundedMemoryStore({
@@ -95,7 +96,7 @@ export async function buildBoundedMemoryAddon(
         await systemStore.load();
 
         // Prompt injection always reads bounded MEMORY.md (unchanged)
-        const builder = new MemoryPromptBuilder({ store, systemStore });
+        const builder = new MemoryPromptBuilder({ store, systemStore, writeFrequency });
         const systemMessageSuffix = builder.getSystemPromptBlock() ?? undefined;
 
         // Determine mode and build the tool
@@ -124,7 +125,7 @@ export async function buildBoundedMemoryAddon(
 
         const { tool } = createMemoryTool(
             { repo: store, system: systemStore },
-            { source: 'coc-chat', mode: useCapture ? 'capture' : 'bounded' },
+            { source: 'coc-chat', mode: useCapture ? 'capture' : 'bounded', writeFrequency },
             captureConfig,
         );
 

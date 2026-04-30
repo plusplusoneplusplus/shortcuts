@@ -1172,6 +1172,11 @@ components:
               minimum: 1024
               default: 16384
               description: Max characters for MEMORY.md content.
+            writeFrequency:
+              type: string
+              enum: [low, medium, high]
+              default: medium
+              description: Controls how aggressively the AI writes memory entries.
 
     SkillUsageRequest:
       type: object

@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildBoundedMemoryAddon } from '../../../src/server/executors/bounded-memory-addon';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
-import { ENTRY_DELIMITER } from '@plusplusoneplusplus/forge';
+import { ENTRY_DELIMITER, MEMORY_SCHEMA, getMemorySchema } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -157,5 +157,57 @@ describe('buildBoundedMemoryAddon', () => {
         const tool = addon.tools[0] as any;
         const result = await tool.handler({ action: 'add', target: 'repo', content: 'test repo fact' });
         expect(result.success).toBe(true);
+    });
+
+    // -----------------------------------------------------------------------
+    // Write frequency passthrough
+    // -----------------------------------------------------------------------
+
+    describe('writeFrequency passthrough', () => {
+        it('uses default (medium) schema when writeFrequency is not set', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
+            const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+            expect(addon.tools).toHaveLength(1);
+            expect(addon.tools[0].description).toBe(MEMORY_SCHEMA);
+        });
+
+        it('uses low schema when writeFrequency is "low"', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true, writeFrequency: 'low' } });
+            const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+            expect(addon.tools).toHaveLength(1);
+            expect(addon.tools[0].description).toBe(getMemorySchema('low'));
+            expect(addon.tools[0].description).toContain('only on explicit request');
+        });
+
+        it('uses high schema when writeFrequency is "high"', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true, writeFrequency: 'high' } });
+            const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+            expect(addon.tools).toHaveLength(1);
+            expect(addon.tools[0].description).toBe(getMemorySchema('high'));
+            expect(addon.tools[0].description).toContain('err on the side of saving');
+        });
+
+        it('passes writeFrequency to MemoryPromptBuilder (guidance in systemMessageSuffix)', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true, writeFrequency: 'low' } });
+            writeMemoryFile(tmpDir, WORKSPACE_ID, 'some fact');
+
+            const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+            expect(addon.systemMessageSuffix).toBeDefined();
+            expect(addon.systemMessageSuffix).toContain('sparingly');
+        });
+
+        it('high frequency guidance appears in systemMessageSuffix', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true, writeFrequency: 'high' } });
+            writeMemoryFile(tmpDir, WORKSPACE_ID, 'some fact');
+
+            const addon = await buildBoundedMemoryAddon(tmpDir, WORKSPACE_ID);
+
+            expect(addon.systemMessageSuffix).toBeDefined();
+            expect(addon.systemMessageSuffix).toContain('Actively capture');
+        });
     });
 });

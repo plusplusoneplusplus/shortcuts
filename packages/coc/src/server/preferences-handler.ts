@@ -131,6 +131,8 @@ export interface PerRepoPreferences {
         enabled: boolean;
         /** Max characters for MEMORY.md content. Default: 16384. */
         charLimit?: number;
+        /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
+        writeFrequency?: 'low' | 'medium' | 'high';
     };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
@@ -379,9 +381,12 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
     if (typeof obj.boundedMemory === 'object' && obj.boundedMemory !== null) {
         const bm = obj.boundedMemory as Record<string, unknown>;
         if (typeof bm.enabled === 'boolean') {
-            const validated: { enabled: boolean; charLimit?: number } = { enabled: bm.enabled };
+            const validated: NonNullable<PerRepoPreferences['boundedMemory']> = { enabled: bm.enabled };
             if (typeof bm.charLimit === 'number' && bm.charLimit > 0) {
                 validated.charLimit = bm.charLimit;
+            }
+            if (bm.writeFrequency === 'low' || bm.writeFrequency === 'medium' || bm.writeFrequency === 'high') {
+                validated.writeFrequency = bm.writeFrequency;
             }
             result.boundedMemory = validated;
         }

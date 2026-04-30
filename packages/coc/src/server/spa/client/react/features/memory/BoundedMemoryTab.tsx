@@ -29,6 +29,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [enabled, setEnabled] = useState(false);
     const [prefCharLimit, setPrefCharLimit] = useState<number | undefined>(undefined);
+    const [writeFrequency, setWriteFrequency] = useState<'low' | 'medium' | 'high'>('medium');
     const [toggleSaving, setToggleSaving] = useState(false);
     const [toggleError, setToggleError] = useState<string | null>(null);
 
@@ -71,6 +72,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                     ? prefs.boundedMemory.charLimit
                     : undefined
             );
+            setWriteFrequency(prefs.boundedMemory?.writeFrequency ?? 'medium');
         } catch (e: any) {
             setError(e?.message ?? 'Failed to load memory');
         } finally {
@@ -105,6 +107,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 boundedMemory: {
                     enabled: nextEnabled,
                     ...(typeof prefCharLimit === 'number' ? { charLimit: prefCharLimit } : {}),
+                    writeFrequency,
                 },
             });
             toastCtx?.addToast(
@@ -118,6 +121,24 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
             toastCtx?.addToast(message, 'error');
         } finally {
             setToggleSaving(false);
+        }
+    };
+
+    const handleWriteFrequencyChange = async (level: 'low' | 'medium' | 'high') => {
+        const prev = writeFrequency;
+        setWriteFrequency(level);
+        try {
+            await patchWorkspacePreferences(repoId, {
+                boundedMemory: {
+                    enabled,
+                    ...(typeof prefCharLimit === 'number' ? { charLimit: prefCharLimit } : {}),
+                    writeFrequency: level,
+                },
+            });
+            toastCtx?.addToast(`Memory write frequency set to ${level}`, 'success');
+        } catch (e: any) {
+            setWriteFrequency(prev);
+            toastCtx?.addToast(e?.message ?? 'Failed to save frequency setting', 'error');
         }
     };
 
@@ -215,6 +236,34 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                         {toggleError}
                     </p>
                 )}
+
+                {/* Write frequency selector */}
+                <div className={`mt-3 ${!enabled ? 'opacity-50 pointer-events-none' : ''}`} data-testid="write-frequency-section">
+                    <label className="block text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1.5">
+                        Write Frequency
+                    </label>
+                    <p className="text-xs text-[#616161] dark:text-[#999] mb-2">
+                        How aggressively the AI saves facts to memory during conversations.
+                    </p>
+                    <div className="inline-flex rounded border border-[#c8c8c8] dark:border-[#555] overflow-hidden" data-testid="write-frequency-selector">
+                        {(['low', 'medium', 'high'] as const).map((level) => (
+                            <button
+                                key={level}
+                                type="button"
+                                onClick={() => handleWriteFrequencyChange(level)}
+                                disabled={!enabled}
+                                className={`px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                                    writeFrequency === level
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'bg-white dark:bg-[#1e1e1e] text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
+                                } ${level !== 'low' ? 'border-l border-[#c8c8c8] dark:border-[#555]' : ''}`}
+                                data-testid={`write-frequency-${level}`}
+                            >
+                                {level}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {/* Pipeline status strip */}

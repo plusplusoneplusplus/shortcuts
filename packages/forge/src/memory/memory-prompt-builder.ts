@@ -9,6 +9,7 @@
  */
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { ENTRY_DELIMITER } from './bounded-memory-types';
+import type { MemoryWriteFrequency } from './memory-tool';
 
 export { ENTRY_DELIMITER };
 
@@ -24,6 +25,25 @@ facts worth keeping for future sessions — see the tool description for the ful
 The most valuable memory prevents the user from repeating themselves and prevents you from \
 re-deriving the same fact next session.`;
 
+const MEMORY_GUIDANCE_LOW = `You have a persistent \`memory\` tool. Use memory sparingly — only when \
+the user explicitly asks you to remember something or corrects you. Do not proactively save facts.`;
+
+const MEMORY_GUIDANCE_HIGH = `You have a persistent \`memory\` tool. Actively capture facts, preferences, \
+and patterns you discover during this session. When in doubt, save it — storage is cheap and \
+forgetting is expensive.`;
+
+/**
+ * Returns the level-specific guidance text for the system prompt.
+ * Falls back to `MEMORY_GUIDANCE` (medium) when frequency is undefined.
+ */
+export function getMemoryGuidance(frequency?: MemoryWriteFrequency): string {
+    switch (frequency) {
+        case 'low': return MEMORY_GUIDANCE_LOW;
+        case 'high': return MEMORY_GUIDANCE_HIGH;
+        default: return MEMORY_GUIDANCE;
+    }
+}
+
 export interface MemoryPromptBuilderOptions {
     /** BoundedMemoryStore to read MEMORY.md from. */
     store: BoundedMemoryStore;
@@ -32,6 +52,8 @@ export interface MemoryPromptBuilderOptions {
      * When provided, both repo and system blocks are rendered.
      */
     systemStore?: BoundedMemoryStore;
+    /** Controls which guidance text is injected. Default: 'medium'. */
+    writeFrequency?: MemoryWriteFrequency;
 }
 
 export class MemoryPromptBuilder {
@@ -39,8 +61,12 @@ export class MemoryPromptBuilder {
     private readonly repoBlock: string;
     /** Frozen rendered block for system-level memory. Empty string if no entries. */
     private readonly systemBlock: string;
+    /** Frozen guidance text selected at construction. */
+    private readonly guidance: string;
 
     constructor(options: MemoryPromptBuilderOptions) {
+        this.guidance = getMemoryGuidance(options.writeFrequency);
+
         const repoEntries = options.store.read();
         const repoLimit = options.store.getUsage().limit;
         this.repoBlock = MemoryPromptBuilder.renderBlock(
@@ -76,7 +102,7 @@ export class MemoryPromptBuilder {
     getSystemPromptBlock(): string | null {
         const blocks = [this.repoBlock, this.systemBlock].filter(Boolean);
         if (blocks.length === 0) return null;
-        return blocks.join('\n\n') + '\n\n' + MEMORY_GUIDANCE;
+        return blocks.join('\n\n') + '\n\n' + this.guidance;
     }
 
     /**
@@ -84,7 +110,7 @@ export class MemoryPromptBuilder {
      * Useful when memory is empty but guidance should still be injected.
      */
     getGuidance(): string {
-        return MEMORY_GUIDANCE;
+        return this.guidance;
     }
 
     /**

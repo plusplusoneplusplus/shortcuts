@@ -20,6 +20,9 @@ import type { RawMemoryRecordStore } from './raw-memory-record-store';
 // Option & argument interfaces
 // ---------------------------------------------------------------------------
 
+/** How aggressively the AI should write memory entries. */
+export type MemoryWriteFrequency = 'low' | 'medium' | 'high';
+
 /** Mode for the memory tool — determines how `add` is handled. */
 export type MemoryToolMode = 'bounded' | 'capture';
 
@@ -30,6 +33,8 @@ export interface MemoryToolOptions {
     allowedTargets?: Array<'repo' | 'system'>;
     /** Operating mode. Default: 'bounded'. */
     mode?: MemoryToolMode;
+    /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
+    writeFrequency?: MemoryWriteFrequency;
 }
 
 /** Extra context for capture mode — attached as metadata to raw records. */
@@ -98,6 +103,63 @@ export const MEMORY_SCHEMA =
     + 'ACTIONS: add | replace (old_text identifies entry) | remove (old_text identifies entry).';
 
 // ---------------------------------------------------------------------------
+// Frequency-specific prompt text
+// ---------------------------------------------------------------------------
+
+const MEMORY_SCHEMA_LOW =
+    'Save facts to persistent memory that survives across sessions.\n'
+    + 'Memory is injected into every future turn — keep entries compact and high-signal.\n'
+    + '\n'
+    + 'WHEN TO SAVE (only on explicit request):\n'
+    + '- User explicitly says \'remember this\', \'save this\', or \'don\'t do that again\'\n'
+    + '- User corrects you and the correction matters for future sessions\n'
+    + '\n'
+    + 'SKIP everything else: preferences you infer, environment facts you discover,\n'
+    + 'conventions, workflow patterns, project structure, debugging strategies,\n'
+    + 'task progress, completed-work logs, trivia, one-shot ephemera, things already\n'
+    + 'in context files, or facts that are easily re-derived. Do NOT proactively\n'
+    + 'save facts the user did not explicitly ask you to remember.\n'
+    + '\n'
+    + 'TARGETS: \'repo\' = current project/workspace. \'system\' = cross-project / user-wide.\n'
+    + 'ACTIONS: add | replace (old_text identifies entry) | remove (old_text identifies entry).';
+
+const MEMORY_SCHEMA_HIGH =
+    'Save durable facts to persistent memory that survives across sessions.\n'
+    + 'Memory is injected into every future turn — keep entries compact and high-signal.\n'
+    + '\n'
+    + 'WHEN TO SAVE (actively capture; err on the side of saving):\n'
+    + '- User corrects you, says \'remember this\', or \'don\'t do that again\'\n'
+    + '- User shares a preference, habit, or personal detail (name, role, timezone, style)\n'
+    + '- You discover something stable about the environment (OS, tools, layout, key paths)\n'
+    + '- You learn a convention, quirk, or workflow specific to this user\'s setup\n'
+    + '- A failure has a non-obvious fix worth keeping for next time\n'
+    + '- Any fact that took >1 tool call to discover and will clearly be useful again\n'
+    + '- Workflow patterns, recurring tool configurations, project structure insights\n'
+    + '- Dependency choices, debugging strategies, naming conventions observed in code\n'
+    + '- Architectural decisions discussed during the conversation\n'
+    + '\n'
+    + 'PRIORITY: user corrections > preferences > environment facts > patterns > procedure.\n'
+    + 'When in doubt, save it — storage is cheap and forgetting is expensive.\n'
+    + '\n'
+    + 'SKIP only: exact duplicates of existing entries, raw task progress/status,\n'
+    + 'and content already in AGENTS.md or MEMORY.md.\n'
+    + '\n'
+    + 'TARGETS: \'repo\' = current project/workspace. \'system\' = cross-project / user-wide.\n'
+    + 'ACTIONS: add | replace (old_text identifies entry) | remove (old_text identifies entry).';
+
+/**
+ * Returns the level-specific tool description for the memory tool.
+ * Falls back to `MEMORY_SCHEMA` (medium) when frequency is undefined.
+ */
+export function getMemorySchema(frequency?: MemoryWriteFrequency): string {
+    switch (frequency) {
+        case 'low': return MEMORY_SCHEMA_LOW;
+        case 'high': return MEMORY_SCHEMA_HIGH;
+        default: return MEMORY_SCHEMA;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Capture-mode result shape
 // ---------------------------------------------------------------------------
 
@@ -126,7 +188,7 @@ export function createMemoryTool(
     const mode: MemoryToolMode = options.mode ?? 'bounded';
 
     const tool = defineTool<MemoryToolArgs>('memory', {
-        description: MEMORY_SCHEMA,
+        description: getMemorySchema(options.writeFrequency),
         parameters: {
             type: 'object',
             properties: {

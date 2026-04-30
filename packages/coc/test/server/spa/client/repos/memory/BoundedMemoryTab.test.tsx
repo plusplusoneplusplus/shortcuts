@@ -24,7 +24,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi
 }));
 
 vi.mock('../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
-    getWorkspacePreferences: vi.fn(async () => ({ boundedMemory: { enabled: true } })),
+    getWorkspacePreferences: vi.fn(async () => ({ boundedMemory: { enabled: true, writeFrequency: 'medium' } })),
     patchWorkspacePreferences: vi.fn(async () => ({})),
 }));
 
@@ -147,5 +147,70 @@ describe('BoundedMemoryTab — Aggregate Now button', () => {
 
         expect(screen.getByTestId('dialog')).toBeTruthy();
         expect(screen.getByTestId('aggregate-panel')).toBeTruthy();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Write frequency selector
+// ---------------------------------------------------------------------------
+
+describe('BoundedMemoryTab — write frequency selector', () => {
+    it('renders frequency selector with Low / Medium / High buttons', async () => {
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('write-frequency-selector')).toBeTruthy();
+        });
+
+        expect(screen.getByTestId('write-frequency-low')).toBeTruthy();
+        expect(screen.getByTestId('write-frequency-medium')).toBeTruthy();
+        expect(screen.getByTestId('write-frequency-high')).toBeTruthy();
+    });
+
+    it('highlights medium by default', async () => {
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('write-frequency-medium')).toBeTruthy();
+        });
+
+        const mediumBtn = screen.getByTestId('write-frequency-medium');
+        expect(mediumBtn.className).toContain('bg-[#0078d4]');
+    });
+
+    it('calls patchWorkspacePreferences on frequency change', async () => {
+        const { patchWorkspacePreferences } = await import(
+            '../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi'
+        );
+
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('write-frequency-high')).toBeTruthy();
+        });
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('write-frequency-high'));
+        });
+
+        expect(patchWorkspacePreferences).toHaveBeenCalledWith('repo-1', expect.objectContaining({
+            boundedMemory: expect.objectContaining({ writeFrequency: 'high' }),
+        }));
+    });
+
+    it('dims frequency selector when memory is disabled', async () => {
+        const { getWorkspacePreferences } = await import(
+            '../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi'
+        );
+        (getWorkspacePreferences as any).mockResolvedValue({ boundedMemory: { enabled: false } });
+
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('write-frequency-section')).toBeTruthy();
+        });
+
+        const section = screen.getByTestId('write-frequency-section');
+        expect(section.className).toContain('opacity-50');
     });
 });

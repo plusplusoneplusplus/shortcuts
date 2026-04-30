@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createMemoryTool, MemoryToolOptions, MemoryToolStores } from '../../src/memory/memory-tool';
+import { createMemoryTool, MemoryToolOptions, MemoryToolStores, getMemorySchema, MEMORY_SCHEMA } from '../../src/memory/memory-tool';
 import type { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
 import type { MemoryMutationResult, MemoryUsage } from '../../src/memory/bounded-memory-types';
 import { ToolInvocation } from '../../src/copilot-sdk-wrapper/types';
@@ -375,5 +375,69 @@ describe('createMemoryTool', () => {
             expect(r1).toEqual({ success: false, error: "No store configured for target 'repo'." });
             expect(r2).toEqual({ success: false, error: "No store configured for target 'system'." });
         });
+    });
+
+    // -----------------------------------------------------------------------
+    // Write frequency
+    // -----------------------------------------------------------------------
+
+    describe('write frequency', () => {
+        it('uses medium (default MEMORY_SCHEMA) when writeFrequency is undefined', () => {
+            const { tool } = createMemoryTool(stores, baseOptions);
+            expect(tool.description).toBe(MEMORY_SCHEMA);
+        });
+
+        it('uses medium schema when writeFrequency is "medium"', () => {
+            const { tool } = createMemoryTool(stores, { ...baseOptions, writeFrequency: 'medium' });
+            expect(tool.description).toBe(MEMORY_SCHEMA);
+        });
+
+        it('uses low schema when writeFrequency is "low"', () => {
+            const { tool } = createMemoryTool(stores, { ...baseOptions, writeFrequency: 'low' });
+            expect(tool.description).toContain('only on explicit request');
+            expect(tool.description).toContain('Do NOT proactively');
+        });
+
+        it('uses high schema when writeFrequency is "high"', () => {
+            const { tool } = createMemoryTool(stores, { ...baseOptions, writeFrequency: 'high' });
+            expect(tool.description).toContain('err on the side of saving');
+            expect(tool.description).toContain('Workflow patterns');
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// getMemorySchema tests
+// ---------------------------------------------------------------------------
+
+describe('getMemorySchema', () => {
+    it('returns MEMORY_SCHEMA for undefined frequency', () => {
+        expect(getMemorySchema()).toBe(MEMORY_SCHEMA);
+    });
+
+    it('returns MEMORY_SCHEMA for medium frequency', () => {
+        expect(getMemorySchema('medium')).toBe(MEMORY_SCHEMA);
+    });
+
+    it('returns low schema for low frequency', () => {
+        const schema = getMemorySchema('low');
+        expect(schema).toContain('only on explicit request');
+        expect(schema).toContain('Do NOT proactively');
+        expect(schema).not.toContain('WHEN TO SAVE (proactively');
+    });
+
+    it('returns high schema for high frequency', () => {
+        const schema = getMemorySchema('high');
+        expect(schema).toContain('err on the side of saving');
+        expect(schema).toContain('Workflow patterns');
+        expect(schema).toContain('Architectural decisions');
+    });
+
+    it('all levels include TARGETS and ACTIONS sections', () => {
+        for (const level of ['low', 'medium', 'high'] as const) {
+            const schema = getMemorySchema(level);
+            expect(schema).toContain('TARGETS');
+            expect(schema).toContain('ACTIONS');
+        }
     });
 });
