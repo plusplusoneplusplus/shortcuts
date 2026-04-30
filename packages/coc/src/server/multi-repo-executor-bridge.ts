@@ -516,6 +516,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                 const manager = resolveManager(input);
                 return manager.enqueue(input);
             },
+            getAll: (): QueuedTask[] => allManagers().flatMap(m => m.getAll()),
             getQueued: (): QueuedTask[] => allManagers().flatMap(m => m.getQueued()),
             getRunning: (): QueuedTask[] => allManagers().flatMap(m => m.getRunning()),
             getHistory: (): QueuedTask[] => allManagers().flatMap(m => m.getHistory()),

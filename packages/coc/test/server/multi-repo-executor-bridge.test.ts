@@ -788,6 +788,37 @@ describe('MultiRepoQueueExecutorBridge', () => {
     });
 
     // ========================================================================
+    // aggregate facade getAll() (regression: was missing, caused 500 on
+    // repo-memory-handler overview/aggregate endpoints)
+    // ========================================================================
+
+    describe('aggregate facade getAll', () => {
+        it('aggregates tasks from all per-repo managers', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/ga-a');
+            bridge.getOrCreateBridge('/repo/ga-b');
+            const mgrA = bridge.registry.getQueueForRepo('/repo/ga-a');
+            const mgrB = bridge.registry.getQueueForRepo('/repo/ga-b');
+
+            mgrA.enqueue({ type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'ask', prompt: 'a' }, config: {} });
+            mgrB.enqueue({ type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'ask', prompt: 'b' }, config: {} });
+
+            const facade = bridge.createAggregateFacade();
+            const all = facade.getAll();
+            expect(all).toHaveLength(2);
+
+            bridge.dispose();
+        });
+
+        it('returns empty array when no managers exist', () => {
+            const { bridge } = createBridge();
+            const facade = bridge.createAggregateFacade();
+            expect(facade.getAll()).toEqual([]);
+            bridge.dispose();
+        });
+    });
+
+    // ========================================================================
     // enqueue() — workspaceId-to-rootPath routing
     // ========================================================================
 
