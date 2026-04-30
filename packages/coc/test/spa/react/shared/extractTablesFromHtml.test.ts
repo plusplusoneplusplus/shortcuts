@@ -19,11 +19,16 @@ function makeTable(opts: {
     markdown?: string;
     tableId?: string;
     insideCodeBlock?: boolean;
+    /** When true, emit a bare `<table>` (marked output) instead of a forge-wrapped table. */
+    bare?: boolean;
 }): string {
-    const { headers, rows, alignments, markdown, tableId, insideCodeBlock } = opts;
+    const { headers, rows, alignments, markdown, tableId, insideCodeBlock, bare } = opts;
     const tid = tableId ?? 'test-table';
 
-    let html = `<div class="md-table-container" data-table-id="${tid}">`;
+    let html = '';
+    if (!bare) {
+        html += `<div class="md-table-container" data-table-id="${tid}">`;
+    }
     html += '<table class="md-table"><thead><tr>';
     headers.forEach((h, i) => {
         const align = alignments?.[i] ?? '';
@@ -38,7 +43,7 @@ function makeTable(opts: {
     });
     html += '</tbody></table>';
 
-    if (markdown) {
+    if (markdown && !bare) {
         const escaped = markdown
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
@@ -47,11 +52,43 @@ function makeTable(opts: {
             .replace(/\n/g, '&#10;');
         html += `<button class="md-table-copy-btn" data-table-markdown="${escaped}">⧉ Copy</button>`;
     }
-    html += '</div>';
+    if (!bare) {
+        html += '</div>';
+    }
 
     if (insideCodeBlock) {
         return `<div class="code-block-container">${html}</div>`;
     }
+    return html;
+}
+
+/**
+ * Build a bare `<table>` with inline `style="text-align: ..."` on header
+ * cells — mimicking `marked` library output.
+ */
+function makeMarkedTable(opts: {
+    headers: string[];
+    rows: string[][];
+    alignments?: ('left' | 'center' | 'right')[];
+}): string {
+    const { headers, rows, alignments } = opts;
+    let html = '<table><thead><tr>';
+    headers.forEach((h, i) => {
+        const align = alignments?.[i] ?? 'left';
+        const style = align !== 'left' ? ` style="text-align: ${align}"` : '';
+        html += `<th${style}>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    rows.forEach(row => {
+        html += '<tr>';
+        row.forEach((cell, i) => {
+            const align = alignments?.[i] ?? 'left';
+            const style = align !== 'left' ? ` style="text-align: ${align}"` : '';
+            html += `<td${style}>${cell}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
     return html;
 }
 
@@ -197,6 +234,84 @@ describe('extractTablesFromHtml', () => {
             const result = extractTablesFromHtml(container);
             expect(result[0].containerEl).toBeDefined();
             expect(result[0].containerEl.getAttribute('data-table-id')).toBe('my-table');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Bare <table> (marked library output)
+    // -----------------------------------------------------------------------
+    describe('bare tables (marked output)', () => {
+        it('extracts a bare table with enough rows and columns', () => {
+            const rows = generateRows(MIN_ROWS, MIN_COLS);
+            const html = makeMarkedTable({ headers: ['A', 'B'], rows });
+            const container = createContainer(html);
+
+            const result = extractTablesFromHtml(container);
+            expect(result).toHaveLength(1);
+            expect(result[0].data.headers).toEqual(['A', 'B']);
+            expect(result[0].data.rows).toHaveLength(MIN_ROWS);
+        });
+
+        it('skips bare tables that are too small', () => {
+            const rows = generateRows(MIN_ROWS - 1, MIN_COLS);
+            const html = makeMarkedTable({ headers: ['A', 'B'], rows });
+            const container = createContainer(html);
+
+            expect(extractTablesFromHtml(container)).toHaveLength(0);
+        });
+
+        it('infers alignment from inline style attributes', () => {
+            const rows = generateRows(MIN_ROWS, 3);
+            const html = makeMarkedTable({
+                headers: ['Left', 'Center', 'Right'],
+                rows,
+                alignments: ['left', 'center', 'right'],
+            });
+            const container = createContainer(html);
+
+            const result = extractTablesFromHtml(container);
+            expect(result[0].data.alignments).toEqual(['left', 'center', 'right']);
+        });
+
+        it('reconstructs markdown for bare tables (no copy button)', () => {
+            const rows = [['Alice', '90'], ['Bob', '85'], ['Charlie', '95'], ['Diana', '70'], ['Eve', '88']];
+            const html = makeMarkedTable({ headers: ['Name', 'Score'], rows });
+            const container = createContainer(html);
+
+            const result = extractTablesFromHtml(container);
+            expect(result[0].data.originalMarkdown).toContain('| Name | Score |');
+            expect(result[0].data.originalMarkdown).toContain('| --- | --- |');
+            expect(result[0].data.originalMarkdown).toContain('| Alice | 90 |');
+        });
+
+        it('uses the table element itself as containerEl for bare tables', () => {
+            const rows = generateRows(MIN_ROWS);
+            const html = makeMarkedTable({ headers: ['X', 'Y'], rows });
+            const container = createContainer(html);
+
+            const result = extractTablesFromHtml(container);
+            expect(result[0].containerEl.tagName).toBe('TABLE');
+        });
+
+        it('handles a mix of forge-wrapped and bare tables', () => {
+            const rows = generateRows(MIN_ROWS);
+            const forgeHtml = makeTable({ headers: ['A', 'B'], rows, tableId: 'forge-t' });
+            const bareHtml = makeMarkedTable({ headers: ['X', 'Y'], rows });
+            const container = createContainer(forgeHtml + '<p>text</p>' + bareHtml);
+
+            const result = extractTablesFromHtml(container);
+            expect(result).toHaveLength(2);
+            expect(result[0].data.headers).toEqual(['A', 'B']);
+            expect(result[1].data.headers).toEqual(['X', 'Y']);
+        });
+
+        it('does not double-count forge-wrapped tables in bare pass', () => {
+            const rows = generateRows(MIN_ROWS);
+            const html = makeTable({ headers: ['A', 'B'], rows });
+            const container = createContainer(html);
+
+            const result = extractTablesFromHtml(container);
+            expect(result).toHaveLength(1);
         });
     });
 });
