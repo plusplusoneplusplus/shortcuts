@@ -805,6 +805,100 @@ describe('NoteEditor', () => {
             });
         });
 
+        it('uses the refreshed mtime when saving after a notes-changed reload', async () => {
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            mockLoadContent.mockResolvedValueOnce({ content: '# Updated by AI', path: 'page.md', mtime: 200 });
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+            await waitFor(() => {
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>', { emitUpdate: false });
+            });
+
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 300 });
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+        });
+
+        it('advances the mtime baseline for identical-content notes-changed reloads', async () => {
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 200 });
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md'));
+            expect(mockSetContent).not.toHaveBeenCalled();
+
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 300 });
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+        });
+
+        it('keeps conflict detection after a refreshed baseline when a later external write wins', async () => {
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            mockLoadContent.mockResolvedValueOnce({ content: '# Updated by AI', path: 'page.md', mtime: 200 });
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+            await waitFor(() => {
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>', { emitUpdate: false });
+            });
+
+            mockIOSaveContent.mockRejectedValue(
+                Object.assign(new Error('mtime_mismatch'), { status: 409, currentContent: '# Later external write' }),
+            );
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(screen.getByTestId('note-conflict-banner')).toBeDefined();
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+        });
+
         it('ignores notes-changed event for different workspace', async () => {
             mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
 
@@ -868,6 +962,43 @@ describe('NoteEditor', () => {
 
             // Should not reload because there are unsaved edits
             expect(mockLoadContent).not.toHaveBeenCalled();
+        });
+
+        it('does not overwrite pending source-mode edits on notes-changed', async () => {
+            mockLoadContent
+                .mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 90 })
+                .mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            await act(async () => {
+                screen.getByTestId('note-mode-source').click();
+            });
+            await waitFor(() => expect(screen.getByTestId('note-source-container')).toBeDefined());
+
+            mockLoadContent.mockClear();
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 150 });
+
+            vi.useFakeTimers();
+            const textarea = screen.getByTestId('note-source-container').querySelector('textarea')!;
+            fireEvent.change(textarea, { target: { value: '# User draft' } });
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+
+            expect(mockLoadContent).not.toHaveBeenCalled();
+            expect(textarea.value).toBe('# User draft');
+
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', '# User draft', 100);
         });
 
         it('does not listen when notePath is null', () => {

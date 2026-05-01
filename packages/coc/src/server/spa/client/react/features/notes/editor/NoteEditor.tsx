@@ -877,7 +877,9 @@ export function NoteEditor({
             if (Date.now() - lastSaveAtRef.current < 1000) return;
             // Skip reload if user has unsaved edits
             if (pendingContentRef.current !== null) return;
-            ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content }) => {
+            if (pendingSourceContentRef.current !== null) return;
+            ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content, mtime }) => {
+                mtimeRef.current = mtime;
                 // Skip redundant reload — content already matches what's displayed
                 if (content === rawMarkdownRef.current) return;
 
