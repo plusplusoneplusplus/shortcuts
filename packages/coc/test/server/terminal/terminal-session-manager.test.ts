@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { clearWorkspaceExecutionCaches } from '@plusplusoneplusplus/forge';
 import type { IPty } from '../../../src/server/terminal/types';
 import { TerminalSessionManager, toSessionInfo } from '../../../src/server/terminal';
 
@@ -140,6 +141,53 @@ describe('TerminalSessionManager', () => {
                 [],
                 expect.objectContaining({ cwd: 'C:\\projects' }),
             );
+        });
+
+        it('should spawn WSL bash for WSL UNC roots on Windows', () => {
+            const origSystemRoot = process.env.SystemRoot;
+            process.env.SystemRoot = 'C:\\Windows';
+            try {
+                manager = createManager({ platform: 'win32' });
+                const rootPath = String.raw`\\wsl$\Ubuntu\home\user\project`;
+                manager.createSession('ws-abc', rootPath);
+
+                expect(mockSpawn).toHaveBeenCalledWith(
+                    'C:\\Windows\\System32\\wsl.exe',
+                    ['-d', 'Ubuntu', '--cd', '/home/user/project', '--', 'bash', '--login'],
+                    expect.objectContaining({ cwd: rootPath }),
+                );
+            } finally {
+                if (origSystemRoot !== undefined) {
+                    process.env.SystemRoot = origSystemRoot;
+                } else {
+                    delete process.env.SystemRoot;
+                }
+            }
+        });
+
+        it('should spawn WSL bash without a distro flag for Linux roots with no default distro on Windows', () => {
+            const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+            const origSystemRoot = process.env.SystemRoot;
+            process.env.SystemRoot = 'Z:\\DefinitelyMissingSystemRoot';
+            clearWorkspaceExecutionCaches();
+            try {
+                manager = createManager({ platform: 'win32' });
+                manager.createSession('ws-abc', '/home/user/project');
+
+                expect(mockSpawn).toHaveBeenCalledWith(
+                    'Z:\\DefinitelyMissingSystemRoot\\System32\\wsl.exe',
+                    ['--cd', '/home/user/project', '--', 'bash', '--login'],
+                    expect.objectContaining({ cwd: '/home/user/project' }),
+                );
+            } finally {
+                if (origSystemRoot !== undefined) {
+                    process.env.SystemRoot = origSystemRoot;
+                } else {
+                    delete process.env.SystemRoot;
+                }
+                clearWorkspaceExecutionCaches();
+                platformSpy.mockRestore();
+            }
         });
 
         it('should spawn $SHELL on Linux', () => {

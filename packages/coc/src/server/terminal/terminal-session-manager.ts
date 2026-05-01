@@ -13,6 +13,11 @@
  *   - Per-session event callbacks for output and exit
  */
 
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+} from '@plusplusoneplusplus/forge';
 import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
 
 // ============================================================================
@@ -154,7 +159,7 @@ export class TerminalSessionManager {
             throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
         }
 
-        const { shell, args } = this.detectShell();
+        const { shell, args } = this.detectShell(rootPath);
         const pty: IPty = this.nodePty.spawn(shell, args, {
             name: 'xterm-256color',
             cols,
@@ -270,8 +275,15 @@ export class TerminalSessionManager {
     // Private
     // --------------------------------------------------------------------
 
-    private detectShell(): { shell: string; args: string[] } {
+    private detectShell(rootPath: string): { shell: string; args: string[] } {
         if (this.options.platform === 'win32') {
+            const executionContext = resolveWorkspaceExecutionContext(rootPath);
+            if (executionContext.kind === 'wsl') {
+                return {
+                    shell: getWslExecutablePath(),
+                    args: buildWslCommandArgs(executionContext, ['bash', '--login']),
+                };
+            }
             return { shell: 'powershell.exe', args: [] };
         }
         // macOS/Linux: use $SHELL or fallback to /bin/bash
