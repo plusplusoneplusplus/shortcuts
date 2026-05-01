@@ -526,7 +526,7 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { CommitDetail }");
         });
 
-        it('no longer imports CommitFileContent (replaced by CommitDetail with filePath)', () => {
+        it('no longer imports CommitFileContent (replaced by FileDiffPanel)', () => {
             expect(source).not.toContain("import { CommitFileContent }");
         });
 

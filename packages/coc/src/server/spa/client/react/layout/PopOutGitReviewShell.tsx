@@ -17,6 +17,8 @@ import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../ui';
 import { CommitDetail } from '../features/git/commits/CommitDetail';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
+import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
+import { createCommitDiffSource, createBranchRangeDiffSource } from '../features/git/diff/diffSource';
 import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../ui';
 import { fetchApi } from '../hooks/useApi';
@@ -70,10 +72,22 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     const [commit, setCommit] = useState<GitCommitItem | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
 
     const handleFileSelect = useCallback((filePath: string) => {
+        setHunkTarget(undefined);
         setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
+
+    const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setSelectedFilePath(filePath);
+        setHunkTarget(target);
+    }, []);
+
+    const handleBack = useCallback(() => {
+        setSelectedFilePath(null);
+        setHunkTarget(undefined);
     }, []);
 
     useEffect(() => {
@@ -132,14 +146,28 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
                 fileCommentMap={fileCommentMap}
             />
             <div className="flex-1 min-w-0 overflow-hidden">
-                <CommitDetail
-                    workspaceId={workspaceId}
-                    hash={commitHash}
-                    commit={commit ?? undefined}
-                    isPopOut
-                    focusedFilePath={selectedFilePath}
-                    onClearFocus={() => setSelectedFilePath(null)}
-                />
+                {selectedFilePath ? (
+                    <FileDiffPanel
+                        key={`${commitHash}-${selectedFilePath}`}
+                        workspaceId={workspaceId}
+                        filePath={selectedFilePath}
+                        source={createCommitDiffSource(workspaceId, commitHash, {
+                            commit: commit ?? undefined,
+                            files: fileList.map(file => file.path),
+                        })}
+                        onNavigateToFile={handleNavigateToFile}
+                        initialHunkTarget={hunkTarget}
+                        onBack={handleBack}
+                        backLabel="All files"
+                    />
+                ) : (
+                    <CommitDetail
+                        workspaceId={workspaceId}
+                        hash={commitHash}
+                        commit={commit ?? undefined}
+                        isPopOut
+                    />
+                )}
             </div>
         </div>
     );
@@ -154,10 +182,22 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
 
     const handleFileSelect = useCallback((filePath: string) => {
+        setHunkTarget(undefined);
         setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
+
+    const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setSelectedFilePath(filePath);
+        setHunkTarget(target);
+    }, []);
+
+    const handleBack = useCallback(() => {
+        setSelectedFilePath(null);
+        setHunkTarget(undefined);
     }, []);
 
     useEffect(() => {
@@ -235,15 +275,28 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
                 fileCommentMap={fileCommentMap}
             />
             <div className="flex-1 min-w-0 overflow-hidden">
-                <BranchRangeOverview
-                    workspaceId={workspaceId}
-                    range={range}
-                    commits={commits}
-                    files={files}
-                    isPopOut
-                    focusedFilePath={selectedFilePath}
-                    onClearFocus={() => setSelectedFilePath(null)}
-                />
+                {selectedFilePath ? (
+                    <FileDiffPanel
+                        key={selectedFilePath}
+                        workspaceId={workspaceId}
+                        filePath={selectedFilePath}
+                        source={createBranchRangeDiffSource(workspaceId, {
+                            files: files.map(file => file.path).sort(),
+                        })}
+                        onNavigateToFile={handleNavigateToFile}
+                        initialHunkTarget={hunkTarget}
+                        onBack={handleBack}
+                        backLabel="All files"
+                    />
+                ) : (
+                    <BranchRangeOverview
+                        workspaceId={workspaceId}
+                        range={range}
+                        commits={commits}
+                        files={files}
+                        isPopOut
+                    />
+                )}
             </div>
         </div>
     );

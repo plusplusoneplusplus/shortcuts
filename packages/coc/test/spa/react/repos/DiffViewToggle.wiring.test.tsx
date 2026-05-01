@@ -1,5 +1,5 @@
 /**
- * Tests for diff view toggle wiring across all four diff container components.
+ * Tests for diff view toggle wiring across the git diff container components.
  * Verifies that DiffViewToggle is rendered, switching to "Split" renders
  * SideBySideDiffViewer, and switching back to "Unified" renders UnifiedDiffViewer.
  */
@@ -76,7 +76,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
-import { CommitFileContent } from '../../../../src/server/spa/client/react/features/git/commits/CommitFileContent';
 import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
@@ -98,6 +97,17 @@ const makeCommit = (overrides: Partial<GitCommitItem> = {}): GitCommitItem => ({
     body: '',
     ...overrides,
 });
+
+const branchSource = {
+    label: 'Branch diff',
+    fileDiffUrl: (fp: string) => `/workspaces/ws1/git/branch-range/files/${encodeURIComponent(fp)}/diff`,
+    fullDiffUrl: () => null,
+    commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'branch-base', newRef: 'branch-head' }),
+    files: [],
+    chat: null,
+    supportsTruncation: true,
+    cacheKey: 'branch-range',
+};
 
 // ─── CommitDetail ────────────────────────────────────────────────────────────
 
@@ -133,44 +143,9 @@ describe('CommitDetail — diff view toggle wiring', () => {
     });
 });
 
-// ─── CommitFileContent ───────────────────────────────────────────────────────
-
-describe('CommitFileContent — diff view toggle wiring', () => {
-    it('shows DiffViewToggle in toolbar', async () => {
-        render(<CommitFileContent workspaceId="ws1" hash="abc123" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
-    });
-
-    it('clicking Split renders SideBySideDiffViewer', async () => {
-        render(<CommitFileContent workspaceId="ws1" hash="abc123" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('commit-file-diff-content')).toBeTruthy());
-        expect(screen.getByTestId('commit-file-diff-content').getAttribute('data-viewer')).toBe('unified');
-
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
-        expect(screen.getByTestId('commit-file-diff-content').getAttribute('data-viewer')).toBe('split');
-    });
-
-    it('hunk nav buttons are present alongside the toggle', async () => {
-        render(<CommitFileContent workspaceId="ws1" hash="abc123" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
-        expect(screen.getByTestId('hunk-nav-buttons')).toBeTruthy();
-    });
-});
-
 // ─── FileDiffPanel (branch-range source) ─────────────────────────────────────
 
 describe('FileDiffPanel — diff view toggle wiring', () => {
-    const branchSource = {
-        label: 'Branch diff',
-        fileDiffUrl: (fp: string) => `/workspaces/ws1/git/branch-range/files/${encodeURIComponent(fp)}/diff`,
-        fullDiffUrl: () => null,
-        commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'branch-base', newRef: 'branch-head' }),
-        files: [],
-        chat: null,
-        supportsTruncation: true,
-        cacheKey: 'branch-range',
-    };
-
     it('shows DiffViewToggle in toolbar', async () => {
         render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
@@ -233,7 +208,7 @@ describe('WorkingTreeFileDiff — diff view toggle wiring', () => {
 
 describe('DiffViewMode — localStorage persistence', () => {
     it('persists mode to localStorage key coc-diff-view-mode on toggle', async () => {
-        render(<CommitFileContent workspaceId="ws1" hash="abc123" filePath="src/app.ts" />);
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
@@ -242,8 +217,8 @@ describe('DiffViewMode — localStorage persistence', () => {
 
     it('reads persisted mode from localStorage on mount', async () => {
         localStorage.setItem('coc-diff-view-mode', 'split');
-        render(<CommitFileContent workspaceId="ws1" hash="abc123" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('commit-file-diff-content')).toBeTruthy());
-        expect(screen.getByTestId('commit-file-diff-content').getAttribute('data-viewer')).toBe('split');
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('split');
     });
 });

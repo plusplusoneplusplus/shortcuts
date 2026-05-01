@@ -435,6 +435,65 @@ describe('FileDiffPanel', () => {
         expect(screen.getByTestId('truncated-path').textContent).toBe('src/foo.ts');
     });
 
+    it('does not render a back button by default', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
+
+        expect(screen.queryByTestId('file-diff-back-btn')).toBeNull();
+    });
+
+    it('renders and invokes optional back button', () => {
+        const onBack = vi.fn();
+
+        render(
+            <FileDiffPanel
+                workspaceId="ws1"
+                filePath="src/foo.ts"
+                source={makeBranchSource()}
+                onBack={onBack}
+            />,
+        );
+
+        const button = screen.getByTestId('file-diff-back-btn');
+        expect(button.textContent).toContain('All files');
+        fireEvent.click(button);
+        expect(onBack).toHaveBeenCalledOnce();
+    });
+
+    it('supports custom back label and test id', () => {
+        render(
+            <FileDiffPanel
+                workspaceId="ws1"
+                filePath="src/foo.ts"
+                source={makeBranchSource()}
+                onBack={() => {}}
+                backLabel="Back to overview"
+                backTestId="custom-back-btn"
+            />,
+        );
+
+        expect(screen.getByTestId('custom-back-btn').textContent).toContain('Back to overview');
+        expect(screen.queryByTestId('file-diff-back-btn')).toBeNull();
+    });
+
+    it('keeps existing header controls when back button is shown', () => {
+        render(
+            <FileDiffPanel
+                workspaceId="ws1"
+                filePath="src/foo.ts"
+                source={makeCommitSource({ files: ['src/foo.ts', 'src/bar.ts'] })}
+                onBack={() => {}}
+            />,
+        );
+
+        expect(screen.getByTestId('file-diff-back-btn')).toBeTruthy();
+        expect(screen.getByTestId('truncated-path')).toBeTruthy();
+        expect(screen.getByTestId('file-position-indicator').textContent).toBe('1/2');
+        expect(screen.getByTestId('hunk-nav-buttons')).toBeTruthy();
+        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
+        expect(screen.getByTestId('toggle-comments-btn')).toBeTruthy();
+        expect(screen.getByTestId('toggle-chat-btn')).toBeTruthy();
+    });
+
     // ── DiffMiniMap ──
 
     it('renders DiffMiniMap when diff is loaded', () => {

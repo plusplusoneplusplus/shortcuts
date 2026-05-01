@@ -2,7 +2,7 @@
  * Tests for CommitDetail component source structure.
  *
  * Validates exports, props (diff + optional metadata), diff-only rendering,
- * commit info header section, per-file diff support, error handling with retry,
+ * commit info header section, overview-only diff support, error handling with retry,
  * and the API integration.
  */
 
@@ -92,8 +92,9 @@ describe('CommitDetail', () => {
             expect(source).toContain('/git/commits/${hash}/diff');
         });
 
-        it('constructs per-file diff URL when focusedFilePath is set', () => {
-            expect(source).toContain('/files/${encodeURIComponent(focusedFilePath)}/diff');
+        it('does not construct per-file diff URLs', () => {
+            expect(source).not.toContain('/files/${encodeURIComponent(focusedFilePath)}/diff');
+            expect(source).not.toContain('/files/');
         });
     });
 
@@ -154,42 +155,21 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('focused-file mode', () => {
-        it('accepts optional focusedFilePath prop', () => {
-            expect(source).toContain('focusedFilePath?: string | null');
+    describe('overview-only responsibility', () => {
+        it('does not accept focused-file props', () => {
+            expect(source).not.toContain('focusedFilePath?: string | null');
+            expect(source).not.toContain('onClearFocus?: () => void');
         });
 
-        it('accepts optional onClearFocus prop', () => {
-            expect(source).toContain('onClearFocus?: () => void');
+        it('does not render focused-file breadcrumb controls', () => {
+            expect(source).not.toContain('data-testid="focused-file-breadcrumb"');
+            expect(source).not.toContain('data-testid="focused-file-back-btn"');
+            expect(source).not.toContain('data-testid="focused-file-path"');
         });
 
-        it('has focused-file breadcrumb bar', () => {
-            expect(source).toContain('data-testid="focused-file-breadcrumb"');
-        });
-
-        it('has back button to clear focus', () => {
-            expect(source).toContain('data-testid="focused-file-back-btn"');
-            expect(source).toContain('← All files');
-        });
-
-        it('displays focused file path', () => {
-            expect(source).toContain('data-testid="focused-file-path"');
-        });
-
-        it('calls onClearFocus when back button is clicked', () => {
-            expect(source).toContain('onClick={onClearFocus}');
-        });
-
-        it('skips scrollToFilePath effect when focusedFilePath is set', () => {
-            expect(source).toContain('if (!scrollToFilePath || focusedFilePath) return');
-        });
-
-        it('passes fileName to diff viewers from focusedFilePath', () => {
-            expect(source).toContain('fileName={focusedFilePath ?? undefined}');
-        });
-
-        it('enables showLineNumbers only when a single file is focused', () => {
-            expect(source).toContain('showLineNumbers={!!focusedFilePath}');
+        it('scrollToFilePath stays available for overview diff sections', () => {
+            expect(source).toContain('if (!scrollToFilePath) return');
+            expect(source).toContain('viewerRef.current?.scrollToFile(scrollToFilePath)');
         });
     });
 

@@ -16,8 +16,6 @@ import type { GitCommitItem } from '../commits/CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
-import { Spinner } from '../../../ui';
-import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -46,53 +44,9 @@ export interface BranchRangeOverviewProps {
     isPopOut?: boolean;
     /** When set, scrolls the file list to the given file. */
     scrollToFilePath?: string | null;
-    /** When set, shows full-file diff for only the focused file. */
-    focusedFilePath?: string | null;
-    /** Called when the user wants to return to the all-files view. */
-    onClearFocus?: () => void;
 }
 
-/** Single-file diff viewer for focused branch-range file. */
-function FocusedBranchFileDiff({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
-    const [diff, setDiff] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        setDiff(null);
-        setLoading(true);
-        setError(null);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`)
-            .then((data: { diff?: string }) => setDiff(data.diff ?? ''))
-            .catch((err: Error) => setError(err.message || 'Failed to load diff'))
-            .finally(() => setLoading(false));
-    }, [workspaceId, filePath]);
-
-    if (loading) {
-        return (
-            <div className="flex items-center gap-2 text-xs text-[#848484] p-4" data-testid="focused-branch-diff-loading">
-                <Spinner size="sm" /> Loading diff…
-            </div>
-        );
-    }
-    if (error) {
-        return (
-            <div className="text-xs text-[#d32f2f] dark:text-[#f48771] p-4" data-testid="focused-branch-diff-error">
-                {error}
-            </div>
-        );
-    }
-    if (!diff) {
-        return <div className="text-xs text-[#848484] p-4" data-testid="focused-branch-diff-empty">(empty diff)</div>;
-    }
-    return (
-        <div className="px-1 py-1" data-testid="focused-branch-diff-content">
-            <UnifiedDiffViewer diff={diff} fileName={filePath} showLineNumbers />
-        </div>
-    );
-}
-
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, focusedFilePath, onClearFocus }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
@@ -226,34 +180,17 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                 tabIndex={0}
             />
 
-            {/* Lower panel — focused file or all files diff */}
+            {/* Lower panel — all files diff */}
             <div
                 className="flex-1 min-h-0 overflow-y-auto"
                 data-testid="branch-range-overview-lower"
             >
-                {focusedFilePath ? (
-                    <>
-                        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fdf6e3]/50 dark:bg-[#3c3520]/30" data-testid="focused-file-breadcrumb">
-                            <button
-                                onClick={onClearFocus}
-                                className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline flex-shrink-0"
-                                data-testid="focused-file-back-btn"
-                            >
-                                ← All files
-                            </button>
-                            <span className="text-xs text-[#848484]">·</span>
-                            <span className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate" data-testid="focused-file-path">{focusedFilePath}</span>
-                        </div>
-                        <FocusedBranchFileDiff workspaceId={workspaceId} filePath={focusedFilePath} />
-                    </>
-                ) : (
-                    <BranchAllFilesDiff
-                        workspaceId={workspaceId}
-                        files={rangeFiles ?? []}
-                        onFileSelect={onFileSelect ?? (() => {})}
-                        scrollToFilePath={scrollToFilePath}
-                    />
-                )}
+                <BranchAllFilesDiff
+                    workspaceId={workspaceId}
+                    files={rangeFiles ?? []}
+                    onFileSelect={onFileSelect ?? (() => {})}
+                    scrollToFilePath={scrollToFilePath}
+                />
             </div>
         </div>
     );

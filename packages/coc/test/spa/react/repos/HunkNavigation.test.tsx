@@ -428,36 +428,10 @@ describe('UnifiedDiffViewerHandle', () => {
     });
 });
 
-// ============================================================================
-// CommitFileContent — nav buttons presence
-// ============================================================================
-
-import { CommitFileContent } from '../../../../src/server/spa/client/react/features/git/commits/CommitFileContent';
-
 const mockFetchApi = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: unknown[]) => mockFetchApi(...args),
 }));
-
-describe('CommitFileContent — hunk navigation buttons', () => {
-    afterEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it('renders prev and next hunk buttons in the header', async () => {
-        mockFetchApi.mockResolvedValue({
-            diff: '@@ -1,2 +1,2 @@\n-old\n+new',
-        });
-
-        render(<CommitFileContent workspaceId="ws-1" hash="abc" filePath="src/app.ts" />);
-
-        // Wait for diff to load
-        await screen.findByTestId('commit-file-diff-content');
-
-        expect(screen.getByTestId('prev-hunk-btn')).toBeTruthy();
-        expect(screen.getByTestId('next-hunk-btn')).toBeTruthy();
-    });
-});
 
 // ============================================================================
 // SideBySideDiffViewer — navigation handle (regression for Bug 1 & 3)

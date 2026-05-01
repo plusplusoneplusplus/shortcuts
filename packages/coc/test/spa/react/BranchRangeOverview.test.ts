@@ -52,12 +52,12 @@ describe('BranchRangeOverview', () => {
             expect(source).toContain("BranchRangeFile");
         });
 
-        it('imports UnifiedDiffViewer for focused file mode', () => {
-            expect(source).toContain("UnifiedDiffViewer");
+        it('does not import UnifiedDiffViewer for focused file mode', () => {
+            expect(source).not.toContain("UnifiedDiffViewer");
         });
 
-        it('imports Spinner for focused file loading state', () => {
-            expect(source).toContain("Spinner");
+        it('does not import Spinner for focused file loading state', () => {
+            expect(source).not.toContain("Spinner");
         });
     });
 
@@ -111,48 +111,27 @@ describe('BranchRangeOverview', () => {
         });
     });
 
-    describe('focused-file mode', () => {
-        it('accepts optional focusedFilePath prop', () => {
-            expect(source).toContain('focusedFilePath?: string | null');
+    describe('overview-only responsibility', () => {
+        it('does not accept focused-file props', () => {
+            expect(source).not.toContain('focusedFilePath?: string | null');
+            expect(source).not.toContain('onClearFocus?: () => void');
         });
 
-        it('accepts optional onClearFocus prop', () => {
-            expect(source).toContain('onClearFocus?: () => void');
+        it('does not render focused-file breadcrumb controls', () => {
+            expect(source).not.toContain('data-testid="focused-file-breadcrumb"');
+            expect(source).not.toContain('data-testid="focused-file-back-btn"');
+            expect(source).not.toContain('data-testid="focused-file-path"');
         });
 
-        it('has focused-file breadcrumb bar', () => {
-            expect(source).toContain('data-testid="focused-file-breadcrumb"');
+        it('does not contain duplicate focused branch file diff component', () => {
+            expect(source).not.toContain('function FocusedBranchFileDiff');
+            expect(source).not.toContain('<FocusedBranchFileDiff');
+            expect(source).not.toContain('/git/branch-range/files/');
         });
 
-        it('has back button to clear focus', () => {
-            expect(source).toContain('data-testid="focused-file-back-btn"');
-            expect(source).toContain('← All files');
-        });
-
-        it('displays focused file path', () => {
-            expect(source).toContain('data-testid="focused-file-path"');
-        });
-
-        it('has FocusedBranchFileDiff component', () => {
-            expect(source).toContain('function FocusedBranchFileDiff');
-        });
-
-        it('fetches per-file diff for branch range', () => {
-            expect(source).toContain('/git/branch-range/files/');
-        });
-
-        it('conditionally renders FocusedBranchFileDiff or BranchAllFilesDiff', () => {
-            expect(source).toContain('focusedFilePath ?');
-            expect(source).toContain('<FocusedBranchFileDiff');
-        });
-
-        it('passes fileName and showLineNumbers to UnifiedDiffViewer in FocusedBranchFileDiff', () => {
-            const focusedFn = source.slice(
-                source.indexOf('function FocusedBranchFileDiff'),
-                source.indexOf('export function BranchRangeOverview')
-            );
-            expect(focusedFn).toContain('fileName={filePath}');
-            expect(focusedFn).toContain('showLineNumbers');
+        it('always renders BranchAllFilesDiff in the lower panel', () => {
+            expect(source).toContain('<BranchAllFilesDiff');
+            expect(source).not.toContain('focusedFilePath ?');
         });
     });
 

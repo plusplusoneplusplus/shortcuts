@@ -39,6 +39,10 @@ export interface FileDiffPanelProps {
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
     /** Auto-scroll to first or last hunk after diff loads. */
     initialHunkTarget?: 'first' | 'last';
+    /** Optional local return action for embedded file-review surfaces. */
+    onBack?: () => void;
+    backLabel?: string;
+    backTestId?: string;
 }
 
 type PopupState = {
@@ -53,6 +57,9 @@ export function FileDiffPanel({
     source,
     onNavigateToFile,
     initialHunkTarget,
+    onBack,
+    backLabel = 'All files',
+    backTestId = 'file-diff-back-btn',
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -270,6 +277,15 @@ export function FileDiffPanel({
                 data-testid="file-diff-header"
             >
                 <div className="flex items-center gap-2 min-w-0">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline flex-shrink-0"
+                            data-testid={backTestId}
+                        >
+                            ← {backLabel}
+                        </button>
+                    )}
                     <TruncatedPath
                         path={filePath}
                         className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate"

@@ -24,6 +24,15 @@ describe('PopOutGitReviewShell: file panel integration', () => {
         expect(SOURCE).toContain("useCachedDiff");
     });
 
+    it('imports FileDiffPanel for selected-file review', () => {
+        expect(SOURCE).toContain("FileDiffPanel");
+    });
+
+    it('imports diff source factories for selected-file review', () => {
+        expect(SOURCE).toContain("createCommitDiffSource");
+        expect(SOURCE).toContain("createBranchRangeDiffSource");
+    });
+
     it('imports useFileCommentCounts for comment badges', () => {
         expect(SOURCE).toContain("useFileCommentCounts");
     });
@@ -45,20 +54,49 @@ describe('PopOutGitReviewShell: file panel integration', () => {
         expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?isPopOut/);
     });
 
-    it('passes focusedFilePath to CommitDetail', () => {
-        expect(SOURCE).toContain('focusedFilePath={selectedFilePath}');
+    it('renders CommitDetail only for commit overview', () => {
+        const commitSection = SOURCE.slice(
+            SOURCE.indexOf('function CommitReviewContent'),
+            SOURCE.indexOf('// ── Branch range review content'),
+        );
+        expect(commitSection).toMatch(/selectedFilePath \? \(/);
+        expect(commitSection).toMatch(/: \(\s*<CommitDetail/);
+        expect(commitSection).toMatch(/<CommitDetail[\s\S]*?isPopOut/);
     });
 
-    it('passes onClearFocus to CommitDetail', () => {
-        expect(SOURCE).toMatch(/CommitDetail[\s\S]*?onClearFocus/);
+    it('renders FileDiffPanel for selected commit files', () => {
+        const commitSection = SOURCE.slice(
+            SOURCE.indexOf('function CommitReviewContent'),
+            SOURCE.indexOf('// ── Branch range review content'),
+        );
+        expect(commitSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
+        expect(commitSection).toContain('createCommitDiffSource(workspaceId, commitHash');
+        expect(commitSection).toContain('onBack={handleBack}');
     });
 
-    it('passes focusedFilePath to BranchRangeOverview', () => {
-        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?focusedFilePath/);
+    it('renders BranchRangeOverview only for branch overview', () => {
+        const branchSection = SOURCE.slice(
+            SOURCE.indexOf('function BranchRangeReviewContent'),
+            SOURCE.indexOf('// ── Inner content'),
+        );
+        expect(branchSection).toMatch(/selectedFilePath \? \(/);
+        expect(branchSection).toMatch(/: \(\s*<BranchRangeOverview/);
+        expect(branchSection).toMatch(/<BranchRangeOverview[\s\S]*?isPopOut/);
     });
 
-    it('passes onClearFocus to BranchRangeOverview', () => {
-        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?onClearFocus/);
+    it('renders FileDiffPanel for selected branch-range files', () => {
+        const branchSection = SOURCE.slice(
+            SOURCE.indexOf('function BranchRangeReviewContent'),
+            SOURCE.indexOf('// ── Inner content'),
+        );
+        expect(branchSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
+        expect(branchSection).toContain('createBranchRangeDiffSource(workspaceId');
+        expect(branchSection).toContain('onBack={handleBack}');
+    });
+
+    it('does not pass focused-file props into overview components', () => {
+        expect(SOURCE).not.toContain('focusedFilePath=');
+        expect(SOURCE).not.toContain('onClearFocus=');
     });
 
     it('uses toggle-deselect handler for file selection', () => {
