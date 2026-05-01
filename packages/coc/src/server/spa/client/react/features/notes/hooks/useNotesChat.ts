@@ -81,6 +81,26 @@ function loadNoteMap(workspaceId: string): Record<string, string> {
     }
 }
 
+function encodeMarkdownLinkPathSegment(value: string): string {
+    return encodeURIComponent(value).replace(/[!'()*]/g, char =>
+        `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+}
+
+function escapeMarkdownLinkText(value: string): string {
+    return value.replace(/([\\\[\]])/g, '\\$1');
+}
+
+export function formatNoteAttachmentLink(workspaceId: string, notePath: string): string {
+    const encodedWorkspaceId = encodeMarkdownLinkPathSegment(workspaceId);
+    const encodedNotePath = notePath.split('/').map(encodeMarkdownLinkPathSegment).join('/');
+    return `[📝 Note: ${escapeMarkdownLinkText(notePath)}](#repos/${encodedWorkspaceId}/notes/${encodedNotePath})`;
+}
+
+export function formatNoteAttachmentPrompt(prompt: string, workspaceId: string, notePath: string | null): string {
+    return notePath ? `${formatNoteAttachmentLink(workspaceId, notePath)}\n\n${prompt}` : prompt;
+}
+
 /**
  * Dual-scope chat hook for the Notes view.
  *
@@ -176,7 +196,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                     payload: {
                         kind: 'chat',
                         mode,
-                        prompt: notePath ? `📝 Note: ${notePath}\n\n${prompt}` : prompt,
+                        prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
                         workspaceId,
                         ...(model ? { model } : {}),
                         ...(attachments && attachments.length > 0 ? { attachments } : {}),

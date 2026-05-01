@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { formatNoteAttachmentLink, formatNoteAttachmentPrompt } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
 
 const HOOK_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'hooks', 'useNotesChat.ts'
@@ -142,7 +143,7 @@ describe('useNotesChat', () => {
         });
 
         it('prepends note path to prompt when notePath is set', () => {
-            expect(source).toContain('notePath ? `📝 Note: ${notePath}\\n\\n${prompt}` : prompt');
+            expect(source).toContain('prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath)');
         });
 
         it('handles missing notePath gracefully (undefined context)', () => {
@@ -183,6 +184,32 @@ describe('useNotesChat', () => {
 
         it('includes model in payload when provided', () => {
             expect(source).toContain('...(model ? { model } : {})');
+        });
+    });
+
+    describe('note attachment link formatting', () => {
+        it('formats note attachment as a markdown deep-link', () => {
+            expect(formatNoteAttachmentLink('workspace-a', 'Features/Memory.md'))
+                .toBe('[📝 Note: Features/Memory.md](#repos/workspace-a/notes/Features/Memory.md)');
+        });
+
+        it('encodes route segments while preserving readable link text', () => {
+            expect(formatNoteAttachmentLink('my workspace', 'New Features/Memory (draft).md'))
+                .toBe('[📝 Note: New Features/Memory (draft).md](#repos/my%20workspace/notes/New%20Features/Memory%20%28draft%29.md)');
+        });
+
+        it('escapes markdown metacharacters in the link text', () => {
+            expect(formatNoteAttachmentLink('ws', 'Notes/[Memory]\\Plan.md'))
+                .toBe('[📝 Note: Notes/\\[Memory\\]\\\\Plan.md](#repos/ws/notes/Notes/%5BMemory%5D%5CPlan.md)');
+        });
+
+        it('prepends the linked note attachment before the prompt', () => {
+            expect(formatNoteAttachmentPrompt('Summarize this', 'ws', 'Features/Memory.md'))
+                .toBe('[📝 Note: Features/Memory.md](#repos/ws/notes/Features/Memory.md)\n\nSummarize this');
+        });
+
+        it('returns the original prompt when no note is attached', () => {
+            expect(formatNoteAttachmentPrompt('Summarize this', 'ws', null)).toBe('Summarize this');
         });
     });
 
