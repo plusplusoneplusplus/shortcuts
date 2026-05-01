@@ -10,6 +10,7 @@ import { setLogger, nullLogger } from '../../src/logger';
 import { RequestRunner } from '../../src/copilot-sdk-wrapper/request-runner';
 import { SessionManager } from '../../src/copilot-sdk-wrapper/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
+import { DEFAULT_AI_TIMEOUT_MS } from '../../src/config/defaults';
 
 setLogger(nullLogger);
 
@@ -40,7 +41,7 @@ function makeRunner(overrides?: {
     const isAvailable = overrides?.isAvailable ?? vi.fn().mockResolvedValue({ available: true, sdkPath: '/fake/sdk' });
     const createClient = overrides?.createClient ?? vi.fn().mockResolvedValue(mockClient);
 
-    const runner = new RequestRunner(isAvailable, createClient, sessionManager, 4 * 60 * 60 * 1000, 3_600_000);
+    const runner = new RequestRunner(isAvailable, createClient, sessionManager, DEFAULT_AI_TIMEOUT_MS, 3_600_000);
     return { runner, sessionManager, mockClient, mockSession, isAvailable, createClient };
 }
 

@@ -349,7 +349,7 @@ export interface SendMessageOptions {
     sessionId?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
-    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 4 hours) */
+    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 6 hours) */
     timeoutMs?: number;
     /**
      * Idle timeout in milliseconds. Resets every time a streaming chunk or
