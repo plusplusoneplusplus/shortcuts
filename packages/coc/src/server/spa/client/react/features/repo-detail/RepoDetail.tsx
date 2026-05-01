@@ -41,12 +41,6 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
-import {
-    getDefaultRepoSubTabForLayout,
-    getMobilePinnedTabsForLayout,
-    getRepoTabsForLayout,
-    isChatBackedLayoutMode,
-} from './repoLayoutModeConfig';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -159,80 +153,88 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
         if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
-        return getRepoTabsForLayout(tabs, uiLayoutMode);
+        // Layout mode filtering
+        if (uiLayoutMode === 'classic') {
+            // Classic: replace Chats with Activity, relabel Tasks as Plans
+            tabs = tabs
+                .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
+                .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
+        } else {
+            // Dev-workflow: relabel and reorder tabs
+            const devWorkflowRelabels: Record<string, string> = {
+                'schedules': 'Jobs',
+                'pull-requests': 'Full Requests',
+            };
+            const devWorkflowOrder: RepoSubTab[] = [
+                'chats', 'work-items', 'schedules', 'explorer',
+                'workflows', 'git', 'pull-requests', 'tasks', 'settings',
+            ];
+            const tabMap = new Map(tabs.map(t => [t.key, t]));
+            const ordered: typeof tabs = [];
+            for (const key of devWorkflowOrder) {
+                const tab = tabMap.get(key);
+                if (tab) {
+                    const newLabel = devWorkflowRelabels[key];
+                    ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
+                    tabMap.delete(key);
+                }
+            }
+            // Append dynamic tabs (terminal, notes, wiki) that aren't in the fixed order
+            for (const [, tab] of tabMap) {
+                ordered.push(tab);
+            }
+            tabs = ordered;
+        }
+        return tabs;
     }, [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, uiLayoutMode]);
-
-    const fallbackSubTab = useMemo(
-        () => getDefaultRepoSubTabForLayout(uiLayoutMode, visibleSubTabs) ?? 'chats',
-        [uiLayoutMode, visibleSubTabs],
-    );
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
         if ((activeSubTab === 'git' || activeSubTab === 'pull-requests') && !isGitRepo) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
-    }, [activeSubTab, isGitRepo, fallbackSubTab, dispatch]);
+    }, [activeSubTab, isGitRepo, dispatch]);
 
     // Redirect away from terminal tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'terminal' && !terminalEnabled && prevTerminalEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
         prevTerminalEnabled.current = terminalEnabled;
-    }, [activeSubTab, terminalEnabled, fallbackSubTab, dispatch]);
+    }, [activeSubTab, terminalEnabled, dispatch]);
 
     // Redirect away from notes tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'notes' && !notesEnabled && prevNotesEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
         prevNotesEnabled.current = notesEnabled;
-    }, [activeSubTab, notesEnabled, fallbackSubTab, dispatch]);
+    }, [activeSubTab, notesEnabled, dispatch]);
 
     // Redirect away from workflows tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'workflows' && !workflowsEnabled && prevWorkflowsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
         prevWorkflowsEnabled.current = workflowsEnabled;
-    }, [activeSubTab, workflowsEnabled, fallbackSubTab, dispatch]);
+    }, [activeSubTab, workflowsEnabled, dispatch]);
 
     // Redirect away from pull-requests tab only when the feature transitions to disabled
     useEffect(() => {
         if (activeSubTab === 'pull-requests' && !pullRequestsEnabled && prevPullRequestsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: fallbackSubTab });
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
         prevPullRequestsEnabled.current = pullRequestsEnabled;
-    }, [activeSubTab, pullRequestsEnabled, fallbackSubTab, dispatch]);
+    }, [activeSubTab, pullRequestsEnabled, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {
         if (uiLayoutMode === 'classic' && activeSubTab === 'chats') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-        } else if (isChatBackedLayoutMode(uiLayoutMode) && activeSubTab === 'activity') {
+        } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
     }, [uiLayoutMode, activeSubTab, dispatch]);
-
-    useEffect(() => {
-        if (uiLayoutMode !== 'notes-centric') return;
-        if (state.repoTabState[ws.id] !== undefined) return;
-
-        const parts = location.hash.replace(/^#/, '').split('/');
-        const isCurrentRepoHash = parts[0] === 'repos' && decodeURIComponent(parts[1] ?? '') === ws.id;
-        if (!isCurrentRepoHash) return;
-
-        const hashSubTab = parts[2] as RepoSubTab | undefined;
-        const hasExplicitValidSubTab = hashSubTab !== undefined && visibleSubTabs.some(t => t.key === hashSubTab);
-        if (hasExplicitValidSubTab) return;
-
-        const defaultSubTab = getDefaultRepoSubTabForLayout('notes-centric', visibleSubTabs);
-        if (!defaultSubTab || activeSubTab === defaultSubTab) return;
-
-        dispatch({ type: 'SET_REPO_SUB_TAB', tab: defaultSubTab });
-        location.replace('#repos/' + encodeURIComponent(ws.id) + getTabSuffix(defaultSubTab, state));
-    }, [uiLayoutMode, ws.id, visibleSubTabs, activeSubTab, state, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -541,11 +543,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={visibleSubTabs}
-                    pinnedTabs={getMobilePinnedTabsForLayout(uiLayoutMode)}
+                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'tasks', 'git'] : undefined}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
-                    gitPendingCount={gitAhead + gitBehind}
                     actions={[
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
@@ -559,13 +560,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
-                    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                        <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
-                    </div>
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
-                    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                    <div className="h-full min-w-0 overflow-hidden">
                         {uiLayoutMode === 'classic' ? (
                             <TasksPanel
                                 key={ws.id}
@@ -580,28 +579,28 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         {uiLayoutMode === 'classic' && (
-                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
-                        {isChatBackedLayoutMode(uiLayoutMode) && (
-                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {uiLayoutMode === 'dev-workflow' && (
+                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                             </div>
                         )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <RepoGitTab key={ws.id} workspaceId={ws.id} />
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <ExplorerPanel key={ws.id} workspaceId={ws.id} />
                         </div>
-                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <PullRequestsTab
                                 repoId={ws.id}
                                 workspaceId={ws.id}
@@ -609,12 +608,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             />
                         </div>}
                         {terminalEnabled && (
-                            <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                                 <TerminalView key={ws.id} workspaceId={ws.id} />
                             </div>
                         )}
                         {notesEnabled && (
-                            <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                                 <NotesView
                                     key={ws.id}
                                     workspaceId={ws.id}

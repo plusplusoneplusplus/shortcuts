@@ -93,8 +93,8 @@ export interface GlobalPreferences {
         myWorkExcludedTypes?: string[];
     };
 
-    /** Persisted UI layout mode ('classic' | 'dev-workflow' | 'notes-centric'). */
-    uiLayoutMode?: 'classic' | 'dev-workflow' | 'notes-centric';
+    /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
+    uiLayoutMode?: 'classic' | 'dev-workflow';
 
     /**
      * Per-handler enabled/disabled overrides for the link-handler feature.
@@ -236,7 +236,7 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         }
     }
 
-    if (obj.uiLayoutMode === 'classic' || obj.uiLayoutMode === 'dev-workflow' || obj.uiLayoutMode === 'notes-centric') {
+    if (obj.uiLayoutMode === 'classic' || obj.uiLayoutMode === 'dev-workflow') {
         result.uiLayoutMode = obj.uiLayoutMode;
     }
 

@@ -953,10 +953,6 @@ describe('validateGlobalPreferences', () => {
         expect(validateGlobalPreferences({ uiLayoutMode: 'dev-workflow' })).toEqual({ uiLayoutMode: 'dev-workflow' });
     });
 
-    it('accepts uiLayoutMode notes-centric', () => {
-        expect(validateGlobalPreferences({ uiLayoutMode: 'notes-centric' })).toEqual({ uiLayoutMode: 'notes-centric' });
-    });
-
     it('drops invalid uiLayoutMode values', () => {
         expect(validateGlobalPreferences({ uiLayoutMode: 'unknown' })).toEqual({});
         expect(validateGlobalPreferences({ uiLayoutMode: 42 })).toEqual({});
@@ -966,9 +962,9 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('accepts uiLayoutMode alongside other global fields', () => {
-        const result = validateGlobalPreferences({ theme: 'dark', uiLayoutMode: 'notes-centric' });
+        const result = validateGlobalPreferences({ theme: 'dark', uiLayoutMode: 'dev-workflow' });
         expect(result.theme).toBe('dark');
-        expect(result.uiLayoutMode).toBe('notes-centric');
+        expect(result.uiLayoutMode).toBe('dev-workflow');
     });
 
     // -- linkHandlers field --

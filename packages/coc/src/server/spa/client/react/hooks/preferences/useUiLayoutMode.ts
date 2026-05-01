@@ -3,7 +3,6 @@
  *
  * 'classic'      → unified Activity tab (all processes in one view)
  * 'dev-workflow'  → split Chats + Work Items + Tasks tabs
- * 'notes-centric' → Notes first, with Git and Work Items nearby
  *
  * Backed by server-side GlobalPreferences (GET/PATCH /api/preferences).
  * All hook instances share state via a module-level store so that
@@ -15,10 +14,6 @@ import type { UiLayoutMode } from '../../types/dashboard';
 import { getApiBase } from '../../utils/config';
 
 const DEFAULT_MODE: UiLayoutMode = 'classic';
-
-function isUiLayoutMode(value: unknown): value is UiLayoutMode {
-    return value === 'classic' || value === 'dev-workflow' || value === 'notes-centric';
-}
 
 // ── Module-level shared store ────────────────────────────────────────────────
 let currentMode: UiLayoutMode = DEFAULT_MODE;
@@ -71,7 +66,7 @@ export function useUiLayoutMode(): [UiLayoutMode, (mode: UiLayoutMode) => void] 
                 if (!res.ok) return;
                 const prefs = await res.json();
                 const serverMode = prefs.uiLayoutMode;
-                if (isUiLayoutMode(serverMode) && serverMode !== currentMode) {
+                if ((serverMode === 'classic' || serverMode === 'dev-workflow') && serverMode !== currentMode) {
                     currentMode = serverMode;
                     notifyAll();
                 }

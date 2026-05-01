@@ -830,16 +830,6 @@ describe('AdminPanel', () => {
             expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(true);
         });
 
-        it('renders Notes Centric in the UI Mode selector', async () => {
-            mockFullConfig();
-            await act(async () => { renderWithProviders(); });
-            await waitFor(() => {
-                const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
-                expect([...select.options].map(option => option.value)).toContain('notes-centric');
-                expect(screen.getByText('Notes Centric (Notes + Git + Work Items)')).toBeDefined();
-            });
-        });
-
         it('AI & Execution Save enables when model is changed', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });

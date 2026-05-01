@@ -13,7 +13,6 @@ import { useRepos } from '../../contexts/ReposContext';
 import { getApiBase } from '../../utils/config';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
 import { fetchApi } from '../../hooks/useApi';
-import type { UiLayoutMode } from '../../types/dashboard';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
@@ -197,16 +196,12 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                     <select
                         className={selectClass}
                         value={uiLayoutMode}
-                        onChange={e => setUiLayoutMode(e.target.value as UiLayoutMode)}
+                        onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
                         data-testid="pref-ui-layout-mode"
                     >
                         <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
-                        <option value="notes-centric">Notes Centric (Notes + Git + Work Items)</option>
                         <option value="classic">Classic (Activity)</option>
                     </select>
-                    <div className="text-xs text-[#616161] dark:text-[#999] md:ml-28">
-                        UI Mode is global. Notes Centric starts each repo from Notes and keeps Git and Work Items nearby.
-                    </div>
                 </div>
             </div>
 

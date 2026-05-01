@@ -184,27 +184,12 @@ describe('PreferencesSection', () => {
         });
     });
 
-    it('renders UI Mode dropdown with notes-centric server value', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ uiLayoutMode: 'notes-centric' }),
-        });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
-            expect(select.value).toBe('notes-centric');
-            expect(screen.getByText('Notes Centric (Notes + Git + Work Items)')).toBeDefined();
-        });
-    });
-
     it('calls PATCH when UI Mode select changes', async () => {
         mockFetch.mockImplementation((url: string, options?: any) => {
             if (options?.method === 'PATCH') {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ uiLayoutMode: 'notes-centric' }),
+                    json: () => Promise.resolve({ uiLayoutMode: 'dev-workflow' }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ uiLayoutMode: 'classic' }) });
@@ -217,7 +202,7 @@ describe('PreferencesSection', () => {
         });
 
         await act(async () => {
-            fireEvent.change(screen.getByTestId('pref-ui-layout-mode'), { target: { value: 'notes-centric' } });
+            fireEvent.change(screen.getByTestId('pref-ui-layout-mode'), { target: { value: 'dev-workflow' } });
         });
 
         await waitFor(() => {
@@ -226,7 +211,7 @@ describe('PreferencesSection', () => {
             );
             expect(patchCalls.length).toBeGreaterThan(0);
             const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.uiLayoutMode).toBe('notes-centric');
+            expect(body.uiLayoutMode).toBe('dev-workflow');
         });
 
         expect(onSuccess).toHaveBeenCalledWith('Preference saved');

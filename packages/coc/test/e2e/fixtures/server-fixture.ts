@@ -19,8 +19,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
-import { safeRmSync } from '../../helpers/safe-rm';
-export { safeRmSync } from '../../helpers/safe-rm';
+import { safeRmSync } from '../helpers/safe-rm';
+export { safeRmSync } from '../helpers/safe-rm';
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer, resolveTaskRoot } = require('../../../dist/server/index');
