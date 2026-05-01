@@ -40,6 +40,16 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         fetchTree();
     }, [fetchTree]);
 
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { wsId?: string } | undefined;
+            if (detail?.wsId !== workspaceId) return;
+            void fetchTree();
+        };
+        window.addEventListener('notes-changed', handler);
+        return () => window.removeEventListener('notes-changed', handler);
+    }, [workspaceId, fetchTree]);
+
     const createNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
         const nodePath = parentPath ? `${parentPath}/${name}` : name;
         await notesApi.createNode(workspaceId, nodePath, type);

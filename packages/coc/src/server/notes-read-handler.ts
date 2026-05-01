@@ -31,6 +31,7 @@ interface TreeNode {
     path: string;
     type: 'notebook' | 'section' | 'page';
     children?: TreeNode[];
+    lastModifiedAt?: string;
 }
 
 interface SearchMatch {
@@ -107,7 +108,9 @@ async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
             const type = basePath ? 'section' : 'notebook';
             nodes.push({ name: entry.name, path: entryPath, type, children });
         } else {
-            nodes.push({ name: entry.name, path: entryPath, type: 'page' });
+            const filePath = path.join(dir, entry.name);
+            const stat = await fs.promises.stat(filePath);
+            nodes.push({ name: entry.name, path: entryPath, type: 'page', lastModifiedAt: stat.mtime.toISOString() });
         }
     }
     return nodes;

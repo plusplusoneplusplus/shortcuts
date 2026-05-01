@@ -26,7 +26,14 @@ export interface NotesTreeProps {
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
+    isNoteUpdated?: (node: NoteTreeNode) => boolean;
     dragDrop?: NotesDragDropHandlers;
+}
+
+function hasNodeUpdate(node: NoteTreeNode, isNoteUpdated?: (node: NoteTreeNode) => boolean): boolean {
+    if (!isNoteUpdated) return false;
+    if (node.type === 'page') return isNoteUpdated(node);
+    return node.children?.some(child => hasNodeUpdate(child, isNoteUpdated)) ?? false;
 }
 
 export function NotesTree({
@@ -38,6 +45,7 @@ export function NotesTree({
     onToggleExpand,
     onSelectPage,
     onContextMenu,
+    isNoteUpdated,
     dragDrop,
 }: NotesTreeProps) {
     return (
@@ -61,6 +69,7 @@ export function NotesTree({
                             isExpanded={isExpanded}
                             depth={depth}
                             isSystemFolder={isSysFolder}
+                            hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
@@ -86,6 +95,7 @@ export function NotesTree({
                                 onToggleExpand={onToggleExpand}
                                 onSelectPage={onSelectPage}
                                 onContextMenu={onContextMenu}
+                                isNoteUpdated={isNoteUpdated}
                                 dragDrop={dragDrop}
                             />
                         )}

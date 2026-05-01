@@ -8,6 +8,7 @@ export interface NotesTreeItemProps {
     isExpanded: boolean;
     depth: number;
     isSystemFolder?: boolean;
+    hasUpdate?: boolean;
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
@@ -37,6 +38,7 @@ export function NotesTreeItem({
     isExpanded,
     depth,
     isSystemFolder,
+    hasUpdate,
     onToggleExpand,
     onSelectPage,
     onContextMenu,
@@ -120,6 +122,14 @@ export function NotesTreeItem({
                 <span className="flex-shrink-0 text-[11px]" data-testid="node-icon">{ICON_MAP[node.type]}</span>
                 {/* Name */}
                 <span className={cn('flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]', isSystemFolder && 'italic opacity-80')}>{displayName}</span>
+                {hasUpdate && (
+                    <span
+                        className="flex-shrink-0 h-2 w-2 rounded-full bg-[#0078d4] dark:bg-[#3794ff]"
+                        data-testid="note-update-indicator"
+                        title="Updated since last viewed"
+                        aria-label="Updated since last viewed"
+                    />
+                )}
                 {/* System folder lock badge */}
                 {isSystemFolder && (
                     <span

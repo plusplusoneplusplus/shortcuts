@@ -152,6 +152,7 @@ src/
 │   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes
 │   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
 │   ├── notes-watcher.ts          # File watcher for notes directories — debounced, .md-only, broadcasts notes-changed WS events
+│   ├── notes-read-handler.ts     # Notes tree/content/search API; page tree nodes include lastModifiedAt from file mtime
 │   ├── notes-order.ts            # .order.json helpers — readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename, applyOrder for per-directory custom sort order
     │   ├── notes-git-types.ts        # Shared type definitions for notes git tracking (NotesGitConfig, NotesGitStatus, NotesGitLogEntry, NotesGitDiff)
     │   ├── notes-git-service.ts      # Git operations for the notes directory — init, status, log, diff, commit against a standalone repo in ~/.coc/repos/<wsId>/notes/
@@ -203,7 +204,7 @@ src/
 │               ├── contexts/            # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
 │               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
-│               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName
+│               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName. Notes sidebar update indicators compare tree node lastModifiedAt against localStorage key `coc-notes-seen-<workspaceId>`.
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)

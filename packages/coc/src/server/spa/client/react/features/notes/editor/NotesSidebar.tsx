@@ -9,6 +9,7 @@ import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
+import { useNoteSeenState } from '../hooks/useNoteSeenState';
 import { fetchApi } from '../../../hooks/useApi';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
@@ -39,6 +40,7 @@ export interface NotesSidebarProps {
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady }: NotesSidebarProps) {
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
+    const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
@@ -88,6 +90,14 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     useEffect(() => {
         if (notesRoot) onNotesRootReady?.(notesRoot);
     }, [notesRoot, onNotesRootReady]);
+
+    useEffect(() => {
+        if (tree) syncSeenState(tree);
+    }, [tree, syncSeenState]);
+
+    useEffect(() => {
+        if (selectedPath) markAsSeen(selectedPath);
+    }, [selectedPath, markAsSeen]);
 
     // Scroll the selected tree item into view after tree renders
     useEffect(() => {
@@ -462,6 +472,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         onToggleExpand={handleToggleExpand}
                         onSelectPage={onSelectPage}
                         onContextMenu={handleContextMenu}
+                        isNoteUpdated={isNoteUpdated}
                         dragDrop={{
                             createDragStartHandler: dragDrop.createDragStartHandler,
                             createDragEndHandler: dragDrop.createDragEndHandler,

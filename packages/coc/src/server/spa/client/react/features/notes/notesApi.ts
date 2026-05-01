@@ -28,6 +28,7 @@ export interface NoteTreeNode {
     path: string;
     type: 'notebook' | 'section' | 'page';
     children?: NoteTreeNode[];
+    lastModifiedAt?: string;
 }
 
 export interface NoteSearchMatch {

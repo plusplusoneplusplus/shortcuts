@@ -221,10 +221,14 @@ describe('Notes Handler', () => {
 
             expect(tree[2].children[1].name).toBe('daily.md');
             expect(tree[2].children[1].type).toBe('page');
+            expect(tree[2].children[1].lastModifiedAt).toEqual(expect.any(String));
+            expect(Number.isNaN(Date.parse(tree[2].children[1].lastModifiedAt))).toBe(false);
+            expect(tree[2].lastModifiedAt).toBeUndefined();
 
             // File last
             expect(tree[3].name).toBe('quick-note.md');
             expect(tree[3].type).toBe('page');
+            expect(tree[3].lastModifiedAt).toEqual(expect.any(String));
         });
 
         it('should sort directories before files, alphabetically within each', async () => {

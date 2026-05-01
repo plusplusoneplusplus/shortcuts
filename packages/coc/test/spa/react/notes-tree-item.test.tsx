@@ -128,4 +128,27 @@ describe('NotesTreeItem', () => {
         );
         expect(getByTestId('notes-tree-item-deep').style.paddingLeft).toBe('32px');
     });
+
+    it('renders a subtle update indicator when hasUpdate is true', () => {
+        const node = makeNode({ name: 'Updated', path: 'nb/updated.md' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                hasUpdate
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+
+        const indicator = getByTestId('note-update-indicator');
+        expect(indicator.className).toContain('rounded-full');
+        expect(indicator.getAttribute('aria-label')).toBe('Updated since last viewed');
+    });
+
+    it('does not render an update indicator by default', () => {
+        const node = makeNode({ name: 'Current', path: 'nb/current.md' });
+        const { queryByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+
+        expect(queryByTestId('note-update-indicator')).toBeNull();
+    });
 });

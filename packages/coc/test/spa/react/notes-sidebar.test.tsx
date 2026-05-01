@@ -69,6 +69,7 @@ function renderSidebar(selectedPath: string | null = null, onSelectPage = vi.fn(
 describe('NotesSidebar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        window.localStorage.clear();
         mockGetTree.mockResolvedValue({ tree: SAMPLE_TREE, notesRoot: '/mock/notes' });
         mockCreateNode.mockResolvedValue({ path: 'new', type: 'page' });
         mockRenameNode.mockResolvedValue({ oldPath: 'x', newPath: 'y' });
@@ -555,6 +556,109 @@ describe('NotesSidebar', () => {
         await waitFor(() => {
             expect(mockGetTree.mock.calls.length).toBeGreaterThan(initialCalls);
         });
+    });
+
+    it('refreshes the tree when notes-changed is dispatched for the workspace', async () => {
+        const { findByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+        const initialCalls = mockGetTree.mock.calls.length;
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent('notes-changed', { detail: { wsId: 'ws1', changedPaths: ['Notebook1/TopPage'] } }));
+        });
+
+        await waitFor(() => {
+            expect(mockGetTree.mock.calls.length).toBeGreaterThan(initialCalls);
+        });
+    });
+
+    it('shows update indicators on updated pages and ancestor folders', async () => {
+        window.localStorage.setItem('coc-notes-seen-ws1', JSON.stringify({
+            'Notebook1/TopPage': '2024-01-01T00:00:00.000Z',
+        }));
+        mockGetTree.mockResolvedValue({
+            tree: [
+                {
+                    ...SAMPLE_TREE[0],
+                    children: [
+                        SAMPLE_TREE[0].children![0],
+                        {
+                            ...SAMPLE_TREE[0].children![1],
+                            lastModifiedAt: '2024-01-02T00:00:00.000Z',
+                        },
+                    ],
+                },
+                SAMPLE_TREE[1],
+            ],
+            notesRoot: '/mock/notes',
+        });
+
+        const { findByTestId } = renderSidebar();
+        const notebook = await findByTestId('notes-tree-item-Notebook1');
+        expect(notebook.querySelector('[data-testid="note-update-indicator"]')).toBeTruthy();
+
+        fireEvent.click(notebook);
+        const page = await findByTestId('notes-tree-item-TopPage');
+        expect(page.querySelector('[data-testid="note-update-indicator"]')).toBeTruthy();
+    });
+
+    it('clears the update indicator when a note is selected', async () => {
+        window.localStorage.setItem('coc-notes-seen-ws1', JSON.stringify({
+            'Notebook1/TopPage': '2024-01-01T00:00:00.000Z',
+        }));
+        mockGetTree.mockResolvedValue({
+            tree: [
+                {
+                    ...SAMPLE_TREE[0],
+                    children: [
+                        SAMPLE_TREE[0].children![0],
+                        {
+                            ...SAMPLE_TREE[0].children![1],
+                            lastModifiedAt: '2024-01-02T00:00:00.000Z',
+                        },
+                    ],
+                },
+                SAMPLE_TREE[1],
+            ],
+            notesRoot: '/mock/notes',
+        });
+
+        const { findByTestId } = renderSidebar('Notebook1/TopPage');
+        const page = await findByTestId('notes-tree-item-TopPage');
+
+        await waitFor(() => {
+            expect(page.querySelector('[data-testid="note-update-indicator"]')).toBeNull();
+        });
+    });
+
+    it('treats newly discovered notes as already seen', async () => {
+        window.localStorage.setItem('coc-notes-seen-ws1', JSON.stringify({}));
+        mockGetTree.mockResolvedValue({
+            tree: [
+                {
+                    name: 'Notebook1',
+                    path: 'Notebook1',
+                    type: 'notebook',
+                    children: [
+                        {
+                            name: 'NewPage.md',
+                            path: 'Notebook1/NewPage.md',
+                            type: 'page',
+                            lastModifiedAt: '2024-01-02T00:00:00.000Z',
+                        },
+                    ],
+                },
+            ],
+            notesRoot: '/mock/notes',
+        });
+
+        const { findByTestId } = renderSidebar();
+        const notebook = await findByTestId('notes-tree-item-Notebook1');
+        expect(notebook.querySelector('[data-testid="note-update-indicator"]')).toBeNull();
+
+        fireEvent.click(notebook);
+        const page = await findByTestId('notes-tree-item-NewPage.md');
+        expect(page.querySelector('[data-testid="note-update-indicator"]')).toBeNull();
     });
 
     it('Refresh button is disabled while loading', async () => {
