@@ -48,10 +48,13 @@ const mockPopStash = vi.fn();
 const mockRebaseAutosquash = vi.fn();
 const mockCherryPick = vi.fn();
 
+const mockForgeExecGit = vi.fn();
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
         BranchService: vi.fn().mockImplementation(() => ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
@@ -171,6 +174,8 @@ describe('Git Branch Edge Cases', () => {
         mockStashChanges.mockReset();
         mockPopStash.mockReset();
         mockExecSync.mockReset();
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetBranchStatus.mockReturnValue({
@@ -401,8 +406,8 @@ describe('Git Branch Edge Cases', () => {
                 'abc1234def567890\nabc1234\nDetached commit\nDev\ndev@test.com\n2026-01-01T00:00:00Z\n\n',
             ].join('\0');
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return logOutput;
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return logOutput;
                 return '';
             });
             mockGetBranchStatus.mockReturnValue({

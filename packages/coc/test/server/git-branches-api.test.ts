@@ -72,10 +72,13 @@ const mockBridge = {
     isSessionAlive: vi.fn(async () => true),
 };
 
+const mockForgeExecGit = vi.fn();
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
         BranchService: vi.fn().mockImplementation(() => ({
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
@@ -235,6 +238,8 @@ describe('Git Branches API endpoints', () => {
         mockBridgeEnqueue.mockResolvedValue('task-mock-default');
         mockBridgeOn.mockReset();
         mockBridgeOff.mockReset();
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
     });
 
     // -----------------------------------------------------------------------
@@ -1018,12 +1023,11 @@ describe('Git Branches API endpoints', () => {
 
     describe('POST /api/workspaces/:id/git/reset', () => {
         beforeEach(() => {
-            mockExecSync.mockReset();
+            mockForgeExecGit.mockReset();
+            mockForgeExecGit.mockReturnValue('');
         });
 
         it('should hard-reset to a commit hash by default', async () => {
-            mockExecSync.mockReturnValue('');
-
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'abc1234' }),
@@ -1031,65 +1035,62 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: true });
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --hard abc1234',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--hard', 'abc1234'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('should respect explicit mode=hard', async () => {
-            mockExecSync.mockReturnValue('');
-
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'abc1234', mode: 'hard' }),
             });
 
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --hard abc1234',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--hard', 'abc1234'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('should support mode=soft', async () => {
-            mockExecSync.mockReturnValue('');
-
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'abc1234', mode: 'soft' }),
             });
 
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --soft abc1234',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--soft', 'abc1234'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('should support mode=mixed', async () => {
-            mockExecSync.mockReturnValue('');
-
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'abc1234', mode: 'mixed' }),
             });
 
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --mixed abc1234',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--mixed', 'abc1234'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('should default to hard when mode is an invalid value', async () => {
-            mockExecSync.mockReturnValue('');
-
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'abc1234', mode: 'rebase' }),
             });
 
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --hard abc1234',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--hard', 'abc1234'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
@@ -1113,7 +1114,7 @@ describe('Git Branches API endpoints', () => {
         });
 
         it('should return 400 when git reset fails', async () => {
-            mockExecSync.mockImplementation(() => { throw new Error('fatal: Could not reset HEAD'); });
+            mockForgeExecGit.mockImplementation(() => { throw new Error('fatal: Could not reset HEAD'); });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',

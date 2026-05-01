@@ -27,6 +27,7 @@ import { gitCache } from '../../src/server/git-cache';
 
 const mockExecSync = vi.fn();
 const mockExecFileSync = vi.fn();
+const mockForgeExecGit = vi.fn();
 vi.mock('child_process', () => ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
@@ -53,6 +54,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             detectCommitRange: vi.fn(),
         })),
         detectRemoteUrl: vi.fn(async () => undefined),
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
     };
 });
 
@@ -134,6 +136,8 @@ describe('Git API endpoints', () => {
         mockGetCurrentBranch.mockReturnValue('main');
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
         gitCache.clear();
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
     });
 
     const base = () => `http://127.0.0.1:${port}`;
@@ -149,8 +153,8 @@ describe('Git API endpoints', () => {
                 'def456abc789012\ndef456a\nAdd feature\nJane Smith\njane@example.com\n2026-01-16T12:00:00+00:00\nabc123def456789\nThis is the commit body\nwith multiple lines',
             ].join('\0');
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return logOutput;
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return logOutput;
                 return '';
             });
             mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: false });
@@ -171,8 +175,8 @@ describe('Git API endpoints', () => {
         });
 
         it('returns empty list when no commits', async () => {
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return '';
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return '';
                 return '';
             });
 
@@ -184,7 +188,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns empty on git error (non-git repo)', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('fatal: not a git repository');
             });
 
@@ -201,8 +205,8 @@ describe('Git API endpoints', () => {
         });
 
         it('handles unpushedCount when no upstream (getBranchStatus returns null)', async () => {
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return 'a1b2c3\na1b2\nCommit\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return 'a1b2c3\na1b2\nCommit\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
                 return '';
             });
             mockGetBranchStatus.mockReturnValue(null);
@@ -214,10 +218,10 @@ describe('Git API endpoints', () => {
         });
 
         it('respects limit and skip query params', async () => {
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) {
-                    expect(cmd).toContain('--skip=5');
-                    expect(cmd).toContain('--max-count=10');
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') {
+                    expect(args).toContain('--skip=5');
+                    expect(args).toContain('--max-count=10');
                     return '';
                 }
                 return '';
@@ -227,64 +231,64 @@ describe('Git API endpoints', () => {
         });
 
         it('passes --grep flag when search query is provided', async () => {
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+            let capturedArgs: string[] = [];
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') { capturedArgs = args; return ''; }
                 return '';
             });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=fix+auth`);
-            expect(capturedCmd).toContain('--grep=');
-            expect(capturedCmd).toContain('fix auth');
-            expect(capturedCmd).toContain('--regexp-ignore-case');
+            expect(capturedArgs.some(a => a.includes('--grep='))).toBe(true);
+            expect(capturedArgs.some(a => a.includes('fix auth'))).toBe(true);
+            expect(capturedArgs).toContain('--regexp-ignore-case');
         });
 
         it('does not include --grep when search is empty', async () => {
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+            let capturedArgs: string[] = [];
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') { capturedArgs = args; return ''; }
                 return '';
             });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=`);
-            expect(capturedCmd).not.toContain('--grep');
+            expect(capturedArgs.some(a => a.includes('--grep'))).toBe(false);
         });
 
-        it('looks up by full commit hash (40-char hex) using execFileSync (shell-safe)', async () => {
+        it('looks up by full commit hash (40-char hex) using execGit (shell-safe)', async () => {
             const hash = 'f4965316a6f17d4eea9d817102b90d68b17b9d21';
             const logOutput = `${hash}\nf496531\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
-            mockExecFileSync.mockReturnValue(logOutput);
+            mockForgeExecGit.mockReturnValue(logOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}`);
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.commits).toHaveLength(1);
             expect(data.commits[0].hash).toBe(hash);
-            // Verify execFileSync was called with args array (bypasses shell)
-            expect(mockExecFileSync).toHaveBeenCalledWith(
-                'git',
+            // Verify execGit was called with args array (bypasses shell)
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
                 expect.arrayContaining([`${hash}^!`]),
-                expect.objectContaining({ encoding: 'utf-8' }),
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
-        it('looks up by short commit hash (7-char hex) using execFileSync (shell-safe)', async () => {
+        it('looks up by short commit hash (7-char hex) using execGit (shell-safe)', async () => {
             const shortHash = 'f496531';
             const logOutput = `f4965316a6f17d4eea9d817102b90d68b17b9d21\n${shortHash}\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
-            mockExecFileSync.mockReturnValue(logOutput);
+            mockForgeExecGit.mockReturnValue(logOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${shortHash}`);
             expect(res.status).toBe(200);
-            expect(mockExecFileSync).toHaveBeenCalledWith(
-                'git',
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
                 expect.arrayContaining([`${shortHash}^!`]),
-                expect.objectContaining({ encoding: 'utf-8' }),
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('returns empty commits when hash does not exist in repo', async () => {
             const hash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
-            mockExecFileSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('fatal: bad object ' + hash);
             });
 
@@ -294,35 +298,35 @@ describe('Git API endpoints', () => {
         });
 
         it('uses --grep for non-hex search terms (not treated as hash)', async () => {
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+            let capturedArgs: string[] = [];
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') { capturedArgs = args; return ''; }
                 return '';
             });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=fix+auth`);
-            expect(capturedCmd).toContain('--grep=');
-            expect(capturedCmd).not.toContain('^!');
+            expect(capturedArgs.some(a => a.includes('--grep='))).toBe(true);
+            expect(capturedArgs.some(a => a.includes('^!'))).toBe(false);
         });
 
         it('uses --grep for string that looks partially like a hash but has non-hex chars', async () => {
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+            let capturedArgs: string[] = [];
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') { capturedArgs = args; return ''; }
                 return '';
             });
 
             // 'g' is not a valid hex character
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=abcdefg`);
-            expect(capturedCmd).toContain('--grep=');
-            expect(capturedCmd).not.toContain('^!');
+            expect(capturedArgs.some(a => a.includes('--grep='))).toBe(true);
+            expect(capturedArgs.some(a => a.includes('^!'))).toBe(false);
         });
 
         it('uses separate cache keys for different search queries', async () => {
             const logOutput = 'abc123def456789\nabc123d\nFix auth bug\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
             let callCount = 0;
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) { callCount++; return logOutput; }
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') { callCount++; return logOutput; }
                 return '';
             });
 
@@ -343,8 +347,8 @@ describe('Git API endpoints', () => {
     describe('GET /api/workspaces/:id/git/commits/:hash', () => {
         it('returns single commit details', async () => {
             const logOutput = 'abc123def456789\nabc123d\nInitial commit\nJohn Doe\njohn@example.com\n2026-01-15T10:00:00+00:00\n\nBody text';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log -1')) return logOutput;
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return logOutput;
                 return '';
             });
 
@@ -365,7 +369,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns 404 when commit does not exist', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('fatal: bad object');
             });
 
@@ -375,8 +379,8 @@ describe('Git API endpoints', () => {
 
         it('caches the result on subsequent calls', async () => {
             const logOutput = 'abc123def456789\nabc123d\nCached commit\nDev\ndev@test.com\n2026-01-01T00:00:00Z\n\n';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log -1')) return logOutput;
+            mockForgeExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return logOutput;
                 return '';
             });
 
@@ -384,11 +388,11 @@ describe('Git API endpoints', () => {
             expect(res1.status).toBe(200);
 
             // Second call should use cache — reset mock to confirm it's not called again
-            mockExecSync.mockReset();
+            mockForgeExecGit.mockReset();
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456789`);
             expect(res2.status).toBe(200);
             expect(res2.json().subject).toBe('Cached commit');
-            expect(mockExecSync).not.toHaveBeenCalled();
+            expect(mockForgeExecGit).not.toHaveBeenCalled();
         });
     });
 
@@ -453,7 +457,7 @@ describe('Git API endpoints', () => {
             const nameStatusOutput = 'M\tsrc/index.ts\nA\tsrc/new-file.ts\nD\told-file.ts';
             // Second call: numstat
             const numstatOutput = '10\t3\tsrc/index.ts\n25\t0\tsrc/new-file.ts\n0\t15\told-file.ts';
-            mockExecSync
+            mockForgeExecGit
                 .mockReturnValueOnce(nameStatusOutput)
                 .mockReturnValueOnce(numstatOutput);
 
@@ -469,7 +473,7 @@ describe('Git API endpoints', () => {
         it('returns rename info with oldPath', async () => {
             const nameStatusOutput = 'R100\told/path.ts\tnew/path.ts';
             const numstatOutput = '5\t2\tnew/path.ts';
-            mockExecSync
+            mockForgeExecGit
                 .mockReturnValueOnce(nameStatusOutput)
                 .mockReturnValueOnce(numstatOutput);
 
@@ -487,7 +491,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns error on git failure', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('bad object abc123');
             });
 
@@ -503,7 +507,7 @@ describe('Git API endpoints', () => {
         });
 
         it('handles empty diff-tree output', async () => {
-            mockExecSync.mockReturnValue('');
+            mockForgeExecGit.mockReturnValue('');
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(200);
             expect(res.json().files).toEqual([]);
@@ -517,7 +521,7 @@ describe('Git API endpoints', () => {
     describe('GET /api/workspaces/:id/git/commits/:hash/diff', () => {
         it('returns diff for a commit', async () => {
             const diffOutput = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new';
-            mockExecSync.mockReturnValue(diffOutput);
+            mockForgeExecGit.mockReturnValue(diffOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/diff`);
             expect(res.status).toBe(200);
@@ -526,7 +530,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns error on git failure', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('bad object deadbeef');
             });
 
@@ -542,7 +546,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns empty diff', async () => {
-            mockExecSync.mockReturnValue('');
+            mockForgeExecGit.mockReturnValue('');
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/diff`);
             expect(res.status).toBe(200);
             expect(res.json().diff).toBe('');
@@ -556,7 +560,7 @@ describe('Git API endpoints', () => {
     describe('GET /api/workspaces/:id/git/commits/:hash/files/*/diff', () => {
         it('returns diff for a specific file in a commit', async () => {
             const diffOutput = 'diff --git a/src/index.ts b/src/index.ts\n--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new';
-            mockExecSync.mockReturnValue(diffOutput);
+            mockForgeExecGit.mockReturnValue(diffOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('src/index.ts')}/diff`);
             expect(res.status).toBe(200);
@@ -571,22 +575,22 @@ describe('Git API endpoints', () => {
 
         it('returns cached result on second request', async () => {
             const diffOutput = 'diff --git a/f.ts b/f.ts\n-old\n+new';
-            mockExecSync.mockReturnValue(diffOutput);
+            mockForgeExecGit.mockReturnValue(diffOutput);
 
             const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
             expect(res1.status).toBe(200);
             expect(res1.json().diff).toBe(diffOutput);
 
-            mockExecSync.mockReset();
+            mockForgeExecGit.mockReset();
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
             expect(res2.status).toBe(200);
             expect(res2.json().diff).toBe(diffOutput);
-            // execSync should not have been called again
-            expect(mockExecSync).not.toHaveBeenCalled();
+            // execGit should not have been called again
+            expect(mockForgeExecGit).not.toHaveBeenCalled();
         });
 
         it('returns error on git failure', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('bad object deadbeef');
             });
 
@@ -598,7 +602,7 @@ describe('Git API endpoints', () => {
 
         it('handles deeply nested file paths', async () => {
             const diffOutput = 'diff for nested file';
-            mockExecSync.mockReturnValue(diffOutput);
+            mockForgeExecGit.mockReturnValue(diffOutput);
 
             const filePath = 'packages/coc-server/src/api-handler.ts';
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent(filePath)}/diff`);
@@ -613,7 +617,7 @@ describe('Git API endpoints', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files/*/content', () => {
         it('returns full file content for a commit file', async () => {
-            mockExecFileSync.mockReturnValue('first line\nsecond line\n');
+            mockForgeExecGit.mockReturnValue('first line\nsecond line\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/readme.md')}/content`
@@ -628,15 +632,15 @@ describe('Git API endpoints', () => {
             expect(data.truncated).toBe(false);
             expect(data.language).toBe('md');
             expect(data.resolvedRef).toBe('abc123:docs/readme.md');
-            expect(mockExecFileSync).toHaveBeenCalledWith(
-                'git',
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
                 ['show', 'abc123:docs/readme.md'],
-                expect.objectContaining({ cwd: WORKSPACE_ROOT, encoding: 'utf-8', timeout: 5000 }),
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
 
         it('falls back to the parent ref when the file was deleted in the commit', async () => {
-            mockExecFileSync
+            mockForgeExecGit
                 .mockImplementationOnce(() => {
                     throw new Error('fatal: path does not exist in commit');
                 })
@@ -650,11 +654,11 @@ describe('Git API endpoints', () => {
             const data = res.json();
             expect(data.lines).toEqual(['deleted content']);
             expect(data.resolvedRef).toBe('abc123^:docs/removed.md');
-            expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+            expect(mockForgeExecGit).toHaveBeenCalledTimes(2);
         });
 
         it('returns 400 when commit file content cannot be read', async () => {
-            mockExecFileSync.mockImplementation(() => {
+            mockForgeExecGit.mockImplementation(() => {
                 throw new Error('fatal: bad object');
             });
 
@@ -685,7 +689,7 @@ describe('Git API endpoints', () => {
         });
 
         it('accepts minimum valid hash length (4 chars)', async () => {
-            mockExecSync.mockReturnValue('');
+            mockForgeExecGit.mockReturnValue('');
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd/files`);
             expect(res.status).toBe(200);
         });
