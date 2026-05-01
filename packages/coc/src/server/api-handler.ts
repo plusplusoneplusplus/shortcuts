@@ -17,7 +17,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType } from '@plusplusoneplusplus/forge';
-import { GitOpsStore, SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
+import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGit } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from './types';
@@ -278,9 +278,9 @@ export function execGitSync(args: string, cwd: string): string {
     return childProcess.execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
 }
 
-/** Run a git command synchronously using an args array (shell-safe, no escaping needed). */
+/** Run a git command synchronously using an args array (WSL-aware via forge execGit). */
 export function execGitArgsSync(args: string[], cwd: string): string {
-    return childProcess.execFileSync('git', args, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
+    return execGit(args, cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
 }
 
 /** Read a file's content from a specific commit, falling back to the first parent for deleted files. */
@@ -290,12 +290,7 @@ export function readGitFileAtCommit(hash: string, filePath: string, cwd: string)
 
     for (const resolvedRef of refsToTry) {
         try {
-            const content = childProcess.execFileSync('git', ['show', resolvedRef], {
-                cwd,
-                encoding: 'utf-8',
-                timeout: 5000,
-                maxBuffer: GIT_MAX_BUFFER,
-            });
+            const content = execGit(['show', resolvedRef], cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER });
             return { content, resolvedRef };
         } catch (error) {
             lastError = error;

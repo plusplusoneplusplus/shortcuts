@@ -9,7 +9,7 @@
 import * as url from 'url';
 import { BranchService } from '@plusplusoneplusplus/forge';
 import type { GitOpJob } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody, execGitSync } from '../api-handler';
+import { sendJSON, parseBody, execGitArgsSync } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
@@ -427,7 +427,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 : 'hard';
 
             try {
-                execGitSync(`reset --${mode} ${body.hash}`, ws.rootPath);
+                execGitArgsSync(['reset', `--${mode}`, body.hash], ws.rootPath);
                 gitCache.invalidateMutable(id);
                 getWsServer?.()?.broadcastGitChanged(id, 'reset');
                 sendJSON(res, 200, { success: true });

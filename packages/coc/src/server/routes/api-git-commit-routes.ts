@@ -8,7 +8,7 @@
 import * as url from 'url';
 import * as path from 'path';
 import { BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON, execGitSync, execGitArgsSync, readGitFileAtCommit } from '../api-handler';
+import { sendJSON, execGitArgsSync, readGitFileAtCommit } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { gitCache } from '../git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
@@ -61,11 +61,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                         raw = '';
                     }
                 } else {
-                    const searchFlags = search
-                        ? ` --grep=${JSON.stringify(search)} --regexp-ignore-case`
-                        : '';
-                    raw = execGitSync(
-                        `log --format="${format}" --skip=${skip} --max-count=${limit} -z${searchFlags}`,
+                    const searchArgs = search ? [`--grep=${search}`, '--regexp-ignore-case'] : [];
+                    raw = execGitArgsSync(
+                        ['log', `--format=${format}`, `--skip=${skip}`, `--max-count=${limit}`, '-z', ...searchArgs],
                         ws.rootPath
                     );
                 }
@@ -128,7 +126,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
-                const raw = execGitSync(`log -1 --format="${format}" ${hash}`, ws.rootPath);
+                const raw = execGitArgsSync(['log', '-1', `--format=${format}`, hash], ws.rootPath);
                 const lines = raw.trim().split('\n');
                 if (lines.length < 6) {
                     return handleAPIError(res, notFound('Commit'));
@@ -169,9 +167,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 // name-status with rename/copy detection
-                const nameStatusRaw = execGitSync(`diff-tree --no-commit-id -r --name-status -M -C ${hash}`, ws.rootPath);
+                const nameStatusRaw = execGitArgsSync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], ws.rootPath);
                 // numstat for additions/deletions
-                const numstatRaw = execGitSync(`diff-tree --no-commit-id -r --numstat -M -C ${hash}`, ws.rootPath);
+                const numstatRaw = execGitArgsSync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], ws.rootPath);
 
                 // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")
                 const numstatMap = new Map<string, { additions: number; deletions: number }>();
@@ -238,7 +236,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const diff = execGitSync(`show --format="" --patch ${hash}`, ws.rootPath);
+                const diff = execGitArgsSync(['show', '--format=', '--patch', hash], ws.rootPath);
                 const result = { diff };
                 gitCache.set(cacheKey, result);
                 sendJSON(res, 200, result);
@@ -269,7 +267,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const diff = execGitSync(`show --format="" --patch -U99999 ${hash} -- ${filePath}`, ws.rootPath);
+                const diff = execGitArgsSync(['show', '--format=', '--patch', '-U99999', hash, '--', filePath], ws.rootPath);
                 const result = truncateDiffIfNeeded(diff, full);
                 gitCache.set(cacheKey, result);
                 sendJSON(res, 200, result);

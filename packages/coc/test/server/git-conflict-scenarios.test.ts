@@ -49,10 +49,13 @@ const mockPush = vi.fn();
 const mockPull = vi.fn();
 const mockFetch = vi.fn();
 
+const mockForgeExecGit = vi.fn();
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
         BranchService: vi.fn().mockImplementation(() => ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
@@ -72,7 +75,6 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             fetch: mockFetch,
         })),
         GitRangeService: vi.fn().mockImplementation(() => ({
-            getCurrentBranch: vi.fn().mockReturnValue('main'),
             getCurrentBranch: vi.fn().mockResolvedValue('main'),
             detectCommitRange: vi.fn(),
         })),
@@ -165,6 +167,8 @@ describe('Git Conflict Scenarios', () => {
         mockCherryPick.mockReset();
         mockRebaseAutosquash.mockReset();
         mockExecSync.mockReset();
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
@@ -248,8 +252,6 @@ describe('Git Conflict Scenarios', () => {
 
     describe('POST /api/workspaces/:id/git/reset after merge conflict', () => {
         it('hard-reset after failed merge restores working tree', async () => {
-            mockExecSync.mockReturnValue('');
-
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
                 method: 'POST',
                 body: JSON.stringify({ hash: 'HEAD', mode: 'hard' }),
@@ -257,9 +259,10 @@ describe('Git Conflict Scenarios', () => {
 
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: true });
-            expect(mockExecSync).toHaveBeenCalledWith(
-                'git reset --hard HEAD',
-                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            expect(mockForgeExecGit).toHaveBeenCalledWith(
+                ['reset', '--hard', 'HEAD'],
+                WORKSPACE_ROOT,
+                expect.anything(),
             );
         });
     });

@@ -1,11 +1,23 @@
 /**
  * Tests for execGitSync and execGitArgsSync helpers in api-handler.ts.
  *
- * Verifies Windows caret (^) escaping and shell-safe array-form execution.
+ * execGitSync: string-based, uses child_process.execSync for non-WSL paths.
+ * execGitArgsSync: array-based, delegates to forge execGit (WSL-aware).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock forge's execGit for execGitArgsSync (which now delegates to it)
+const mockForgeExecGit = vi.fn();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
+    };
+});
+
+// Keep child_process mock for execGitSync (still uses execSync for non-WSL paths)
 const mockExecSync = vi.fn();
 const mockExecFileSync = vi.fn();
 vi.mock('child_process', () => ({
@@ -79,40 +91,52 @@ describe('execGitSync', () => {
 
 describe('execGitArgsSync', () => {
     beforeEach(() => {
-        mockExecFileSync.mockReset();
-        mockExecFileSync.mockReturnValue('');
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
     });
 
-    it('should call execFileSync with args array (bypasses shell)', () => {
-        mockExecFileSync.mockReturnValue('output\n');
+    it('should delegate to forge execGit with args and cwd', () => {
+        mockForgeExecGit.mockReturnValue('output');
         const result = execGitArgsSync(['log', '--oneline'], '/repo');
         expect(result).toBe('output');
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
+        expect(mockForgeExecGit).toHaveBeenCalledWith(
             ['log', '--oneline'],
-            expect.objectContaining({ cwd: '/repo', encoding: 'utf-8' }),
+            '/repo',
+            expect.objectContaining({ timeout: 5000 }),
         );
     });
 
     it('should pass caret (^) through without modification', () => {
-        mockExecFileSync.mockReturnValue('');
+        mockForgeExecGit.mockReturnValue('');
         execGitArgsSync(['log', '--format=%H', '-z', 'abc123^!'], '/repo');
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
+        expect(mockForgeExecGit).toHaveBeenCalledWith(
             ['log', '--format=%H', '-z', 'abc123^!'],
-            expect.objectContaining({ cwd: '/repo' }),
+            '/repo',
+            expect.anything(),
         );
     });
 
     it('should trim output', () => {
-        mockExecFileSync.mockReturnValue('  result  ');
+        mockForgeExecGit.mockReturnValue('  result  ');
         expect(execGitArgsSync(['status'], '/repo')).toBe('result');
     });
 
-    it('should propagate errors from execFileSync', () => {
-        mockExecFileSync.mockImplementation(() => {
+    it('should propagate errors from forge execGit', () => {
+        mockForgeExecGit.mockImplementation(() => {
             throw new Error('fatal: bad revision');
         });
         expect(() => execGitArgsSync(['log', 'bad^!'], '/repo')).toThrow('fatal: bad revision');
+    });
+
+    it('is WSL-aware: routes to forge execGit which handles WSL paths', () => {
+        const wslPath = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
+        mockForgeExecGit.mockReturnValue('main');
+        const result = execGitArgsSync(['branch', '--show-current'], wslPath);
+        expect(result).toBe('main');
+        expect(mockForgeExecGit).toHaveBeenCalledWith(
+            ['branch', '--show-current'],
+            wslPath,
+            expect.objectContaining({ timeout: 5000 }),
+        );
     });
 });

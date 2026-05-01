@@ -24,7 +24,7 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git-cache';
 
 // ============================================================================
-// Mock execGitSync and child_process
+// Mock child_process (still needed for execGitSync in api-handler)
 // ============================================================================
 
 const mockExecSync = vi.fn();
@@ -35,9 +35,11 @@ vi.mock('child_process', () => ({
 }));
 
 // ============================================================================
-// Mock BranchService and GitRangeService
+// Mock forge: execGit (used by execGitArgsSync and readGitFileAtCommit),
+// BranchService, and GitRangeService
 // ============================================================================
 
+const mockExecGit = vi.fn();
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
@@ -46,6 +48,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        execGit: (...args: any[]) => mockExecGit(...args),
         BranchService: vi.fn().mockImplementation(() => ({
             getBranchStatus: mockGetBranchStatus,
             hasUncommittedChanges: mockHasUncommittedChanges,
@@ -155,10 +158,12 @@ describe('Git Commit Edge Cases', () => {
     beforeEach(() => {
         mockExecSync.mockReset();
         mockExecFileSync.mockReset();
+        mockExecGit.mockReset();
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
         // Sensible defaults
+        mockExecGit.mockReturnValue('');
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetCurrentBranch.mockReturnValue('main');
         mockGetBranchStatus.mockReturnValue({
@@ -178,7 +183,7 @@ describe('Git Commit Edge Cases', () => {
     describe('GET /api/workspaces/:id/git/commits/:hash/diff — special commits', () => {
         it('shows all files as added for initial commit (no parent)', async () => {
             // Initial commit: git diff HEAD^ HEAD would fail, but git diff-tree --root works
-            mockExecSync.mockReturnValue(INITIAL_COMMIT_DIFF);
+            mockExecGit.mockReturnValue(INITIAL_COMMIT_DIFF);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef56789a/diff`,
@@ -193,7 +198,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('shows combined diff for merge commit with two parents', async () => {
-            mockExecSync.mockReturnValue(MERGE_COMMIT_DIFF);
+            mockExecGit.mockReturnValue(MERGE_COMMIT_DIFF);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234ef567890/diff`,
@@ -208,7 +213,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns 404 for nonexistent SHA', async () => {
-            mockExecSync.mockImplementation(() => {
+            mockExecGit.mockImplementation(() => {
                 throw new Error('fatal: bad object deadbeef1234567890');
             });
 
@@ -222,7 +227,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns empty diff for empty commit (no changes)', async () => {
-            mockExecSync.mockReturnValue('');
+            mockExecGit.mockReturnValue('');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef56789a/diff`,
@@ -235,7 +240,7 @@ describe('Git Commit Edge Cases', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files/:file/content — special cases', () => {
         it('returns 400 for file at nonexistent commit hash', async () => {
-            mockExecFileSync.mockImplementation(() => {
+            mockExecGit.mockImplementation(() => {
                 throw new Error('fatal: bad object');
             });
 
@@ -250,7 +255,7 @@ describe('Git Commit Edge Cases', () => {
 
         it('falls back to parent ref for file deleted in commit', async () => {
             // First call (at hash) throws; second call (at hash^) succeeds
-            mockExecFileSync
+            mockExecGit
                 .mockImplementationOnce(() => {
                     throw new Error('fatal: path does not exist in commit');
                 })
@@ -267,7 +272,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns 200 with content for file added in commit', async () => {
-            mockExecFileSync.mockReturnValue('export const added = true;\n');
+            mockExecGit.mockReturnValue('export const added = true;\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('added.ts')}/content`,
@@ -281,7 +286,7 @@ describe('Git Commit Edge Cases', () => {
 
         it('returns 400 when file content exceeds 10MB', async () => {
             const largeContent = 'x'.repeat(10 * 1024 * 1024 + 1);
-            mockExecFileSync.mockReturnValue(largeContent);
+            mockExecGit.mockReturnValue(largeContent);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('huge.bin')}/content`,
@@ -294,7 +299,7 @@ describe('Git Commit Edge Cases', () => {
 
         it('returns 200 when file content is just under 10MB', async () => {
             const justUnderContent = 'x'.repeat(10 * 1024 * 1024 - 1);
-            mockExecFileSync.mockReturnValue(justUnderContent);
+            mockExecGit.mockReturnValue(justUnderContent);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('big.txt')}/content`,
@@ -311,9 +316,9 @@ describe('Git Commit Edge Cases', () => {
                 `hash${String(i).padStart(15, '0')}\nhash${i}ab\nCommit ${i}\nDev\ndev@t.com\n2026-01-0${i + 1}T00:00:00Z\n\n`,
             ).join('\0');
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) {
-                    expect(cmd).toContain('--max-count=5');
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') {
+                    expect(args).toContain('--max-count=5');
                     return commits;
                 }
                 return '';
@@ -329,9 +334,9 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('passes --skip to git log when ?skip=N is provided', async () => {
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) {
-                    expect(cmd).toContain('--skip=10');
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') {
+                    expect(args).toContain('--skip=10');
                     return '';
                 }
                 return '';
@@ -343,10 +348,10 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('uses default limit of 50 when no limit param is provided', async () => {
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) {
-                    capturedCmd = cmd;
+            let capturedArgs: string[] = [];
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') {
+                    capturedArgs = args;
                     return '';
                 }
                 return '';
@@ -356,12 +361,12 @@ describe('Git Commit Edge Cases', () => {
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`,
             );
 
-            expect(capturedCmd).toContain('--max-count=50');
+            expect(capturedArgs).toContain('--max-count=50');
         });
 
         it('returns empty list when git repo has no commits yet', async () => {
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return '';
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return '';
                 return '';
             });
 
@@ -385,8 +390,8 @@ describe('Git Commit Edge Cases', () => {
         it('handles git log returning commits with multi-line body', async () => {
             const logOutput = 'abc1234def567890\nabc1234\nFix bug\nDev\ndev@t.com\n2026-01-01T00:00:00Z\nparent1\nFixes #123\nAdditional details on line 2\n';
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return logOutput;
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args[0] === 'log') return logOutput;
                 return '';
             });
 
@@ -398,6 +403,67 @@ describe('Git Commit Edge Cases', () => {
             const data = res.json();
             expect(data.commits).toHaveLength(1);
             expect(data.commits[0].body).toContain('Fixes #123');
+        });
+    });
+
+    // ========================================================================
+    // WSL regression: git routes must use forge execGit (WSL-aware)
+    // ========================================================================
+
+    describe('WSL regression: commit routes delegate to forge execGit', () => {
+        it('passes WSL UNC rootPath to forge execGit for commit diff', async () => {
+            const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'WSL Repo', rootPath: WSL_ROOT },
+            ]);
+            gitCache.clear();
+
+            mockExecGit.mockReturnValue(INITIAL_COMMIT_DIFF);
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef56789a/diff`,
+            );
+
+            expect(res.status).toBe(200);
+            // Verify forge execGit was called with the WSL path as repoRoot
+            expect(mockExecGit).toHaveBeenCalledWith(
+                expect.arrayContaining(['show']),
+                WSL_ROOT,
+                expect.anything(),
+            );
+
+            // Restore normal rootPath for other tests
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'Commit Edge Repo', rootPath: WORKSPACE_ROOT },
+            ]);
+            gitCache.clear();
+        });
+
+        it('passes WSL UNC rootPath to forge execGit for file content', async () => {
+            const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'WSL Repo', rootPath: WSL_ROOT },
+            ]);
+            gitCache.clear();
+
+            mockExecGit.mockReturnValue('const x = 1;\n');
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('src/x.ts')}/content`,
+            );
+
+            expect(res.status).toBe(200);
+            expect(mockExecGit).toHaveBeenCalledWith(
+                expect.arrayContaining(['show']),
+                WSL_ROOT,
+                expect.anything(),
+            );
+
+            // Restore
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'Commit Edge Repo', rootPath: WORKSPACE_ROOT },
+            ]);
+            gitCache.clear();
         });
     });
 });
