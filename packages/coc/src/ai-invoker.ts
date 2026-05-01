@@ -121,6 +121,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 tools: options.tools,
                 onToolEvent: invokerOptions?.onToolEvent,
                 systemMessage: invokerOptions?.systemMessage,
+                signal: invokerOptions?.signal,
             };
 
             const result = await service.sendMessage(sendOptions);

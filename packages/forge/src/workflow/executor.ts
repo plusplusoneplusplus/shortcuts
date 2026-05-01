@@ -17,7 +17,10 @@ import { executeMap } from './nodes/map';
 import { executeReduce } from './nodes/reduce';
 import { executeAI } from './nodes/ai';
 import { getLogger, LogCategory } from '../logger';
-import { CancellationError as RuntimeCancellationError } from '../runtime/cancellation';
+import {
+    isWorkflowCancellationError,
+    throwIfWorkflowCancelled,
+} from './cancellation';
 import type {
     WorkflowConfig, WorkflowExecutionOptions, WorkflowSettings, WorkflowResult,
     NodeResult, Items,
@@ -46,12 +49,6 @@ function applySettingsDefaults(
     };
 }
 
-class CancellationError extends RuntimeCancellationError {
-    constructor() {
-        super('Workflow execution was cancelled');
-    }
-}
-
 function gatherInputs(parentIds: string[], results: Map<string, NodeResult>): Items {
     return parentIds.flatMap(id => results.get(id)?.items ?? []);
 }
@@ -68,6 +65,8 @@ async function executeNode(
     nodeId: string,
     ctx: WorkflowContext,
 ): Promise<void> {
+    throwIfWorkflowCancelled(ctx.options.signal);
+
     const nodeConfig = ctx.config.nodes[nodeId];
     const nodeStartTime = Date.now();
     const parentIds = nodeConfig.from ?? [];
@@ -117,6 +116,8 @@ async function executeNode(
                 throw new Error(`Unknown node type: ${(nodeConfig as any).type}`);
         }
 
+        throwIfWorkflowCancelled(ctx.options.signal);
+
         const durationMs = Date.now() - nodeStartTime;
         ctx.results.set(nodeId, {
             nodeId,
@@ -143,6 +144,10 @@ async function executeNode(
             `[Workflow] Node complete: ${nodeId} (out=${output.length}, ms=${durationMs})`,
         );
     } catch (err) {
+        if (isWorkflowCancellationError(err)) {
+            throw err;
+        }
+
         const durationMs = Date.now() - nodeStartTime;
         if (nodeConfig.onError === 'warn') {
             const msg = err instanceof Error ? err.message : String(err);
@@ -238,13 +243,13 @@ export async function executeWorkflow(
         const tier = tiers[i];
 
         // Cancellation check — before starting any new tier
-        if (effectiveOptions.signal?.aborted) {
-            throw new CancellationError();
-        }
+        throwIfWorkflowCancelled(effectiveOptions.signal);
 
         getLogger().info(LogCategory.PIPELINE, `[Workflow] Tier ${i + 1}/${tiers.length}: [${tier.join(', ')}]`);
 
         await Promise.all(tier.map(nodeId => executeNode(nodeId, ctx)));
+
+        throwIfWorkflowCancelled(effectiveOptions.signal);
 
         getLogger().info(
             LogCategory.PIPELINE,

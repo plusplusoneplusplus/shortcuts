@@ -114,6 +114,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
                 model,
                 workingDirectory: resolveWorkingDirectory(options.repoPath),
                 timeoutMs,
+                signal: invokerOptions?.signal,
                 availableTools: ANALYSIS_TOOLS,
                 onPermissionRequest: (req) =>
                     req.kind === 'read' ? { kind: 'approve-once' } : { kind: 'reject' },
@@ -162,6 +163,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 model,
                 workingDirectory: options.repoPath ? resolveWorkingDirectory(options.repoPath) : undefined,
                 timeoutMs,
+                signal: invokerOptions?.signal,
                 loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
             };
 
@@ -219,6 +221,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 prompt,
                 model,
                 timeoutMs,
+                signal: invokerOptions?.signal,
                 workingDirectory: resolveWorkingDirectory(options.workingDirectory),
                 loadDefaultMcpConfig: false,
             };

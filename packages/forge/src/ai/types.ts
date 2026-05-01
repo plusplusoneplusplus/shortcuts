@@ -106,6 +106,8 @@ export interface AIInvokerOptions {
     workingDirectory?: string;
     /** Timeout in ms */
     timeoutMs?: number;
+    /** Abort signal for cooperative cancellation. */
+    signal?: AbortSignal;
     /** Custom tools to register on the AI session (SDK-native tools, not MCP). */
     tools?: import('../copilot-sdk-wrapper/types').Tool<any>[];
     /** Callback invoked for each tool event during the AI session. */

@@ -13,6 +13,7 @@ import type {
     WorkflowExecutionOptions
 } from '../types';
 import { ConcurrencyLimiter } from '../concurrency-limiter';
+import { isWorkflowCancelled, isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
 
 // ---------------------------------------------------------------------------
 // Module-level concurrency limiter cache
@@ -40,9 +41,12 @@ export async function executeFilter(
     inputs: Items,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
+    throwIfWorkflowCancelled(options.signal);
+
     const results = await Promise.all(
         inputs.map(item => evaluateRule(config.rule, item, options))
     );
+    throwIfWorkflowCancelled(options.signal);
     return inputs.filter((_, i) => results[i]);
 }
 
@@ -54,6 +58,8 @@ export async function evaluateRule(
     item: Item,
     options: WorkflowExecutionOptions
 ): Promise<boolean> {
+    throwIfWorkflowCancelled(options.signal);
+
     switch (rule.type) {
         case 'field':
             return evaluateFieldRule(rule, item);
@@ -151,6 +157,8 @@ async function evaluateAIRule(
     }
 
     const invoke = async (): Promise<boolean> => {
+        throwIfWorkflowCancelled(options.signal);
+
         const prompt = rule.prompt.replace(
             /\{\{(\w+)\}\}/g,
             (_, key) => String(item[key] ?? '')
@@ -158,15 +166,22 @@ async function evaluateAIRule(
 
         let response: string;
         try {
+            throwIfWorkflowCancelled(options.signal);
             const result = await options.aiInvoker!(prompt, {
                 model: rule.model,
-                timeoutMs: rule.timeoutMs
+                timeoutMs: rule.timeoutMs,
+                signal: options.signal,
             });
+            throwIfWorkflowCancelled(options.signal);
             if (!result.success) {
                 return false;
             }
             response = result.response ?? '';
-        } catch {
+        } catch (err) {
+            if (isWorkflowCancellationError(err) || options.signal?.aborted) {
+                throwIfWorkflowCancelled(options.signal);
+                throw err;
+            }
             return false;
         }
 
@@ -174,7 +189,7 @@ async function evaluateAIRule(
     };
 
     if (rule.concurrency !== undefined && rule.concurrency > 0) {
-        return getLimiter(rule.concurrency).run(invoke);
+        return getLimiter(rule.concurrency).run(invoke, () => isWorkflowCancelled(options.signal));
     }
     return invoke();
 }

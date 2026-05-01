@@ -58,6 +58,11 @@ export class RequestRunner {
     async send(options: SendMessageOptions): Promise<SDKInvocationResult> {
         const aiLog = getAIServiceLogger();
         const startTime = Date.now();
+        const throwIfAborted = () => {
+            if (options.signal?.aborted) {
+                throw new Error('Request aborted');
+            }
+        };
 
         const availability = await this.isAvailable();
         if (!availability.available) {
@@ -67,13 +72,16 @@ export class RequestRunner {
         let session: CopilotSession | null = null;
         let client: CopilotClient | null = null;
         let result: SDKInvocationResult | null = null;
+        let removeAbortListener: (() => void) | undefined;
 
         // When the caller provides a pre-created client we reuse it and must
         // NOT stop it in the finally block — the caller owns its lifecycle.
         const clientOwned = !options.client;
 
         try {
+            throwIfAborted();
             client = options.client ?? await this.createClient(options.workingDirectory);
+            throwIfAborted();
             const preparedAttachments = this.prepareAttachments(options.attachments, options.workingDirectory);
 
             // Build session options — start with the required permission handler
@@ -182,6 +190,21 @@ export class RequestRunner {
             const sessionLog = createSessionLogger(session.sessionId);
             options.onSessionCreated?.(session.sessionId);
 
+            const abortSession = () => {
+                sessionLog.debug('Abort signal received — destroying session');
+                const destroy = () => session?.destroy().catch(() => {});
+                const abort = typeof (session as { abort?: () => Promise<void> }).abort === 'function'
+                    ? (session as { abort: () => Promise<void> }).abort().catch(() => undefined).then(destroy)
+                    : destroy();
+                Promise.resolve(abort).catch(() => {});
+            };
+            options.signal?.addEventListener('abort', abortSession, { once: true });
+            removeAbortListener = () => options.signal?.removeEventListener('abort', abortSession);
+            if (options.signal?.aborted) {
+                abortSession();
+                throwIfAborted();
+            }
+
             if (options.mode && session.rpc?.mode) {
                 await session.rpc.mode.set({ mode: options.mode });
                 sessionLog.debug({ mode: options.mode }, 'Mode set');
@@ -198,12 +221,14 @@ export class RequestRunner {
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && typeof session.on === 'function' && typeof session.send === 'function') {
                 const idleTimeoutMs = options.idleTimeoutMs ?? this.defaultIdleTimeoutMs;
                 const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged, options.toolResultInterceptors);
+                throwIfAborted();
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
                 capturedToolCalls = streamingResult.toolCalls;
             } else {
                 const sendResult = await this.sendWithTimeout(session, options.prompt, timeoutMs, preparedAttachments);
+                throwIfAborted();
                 response = sendResult?.data?.content || '';
             }
 
@@ -243,6 +268,7 @@ export class RequestRunner {
             return result;
 
         } finally {
+            removeAbortListener?.();
             if (session) {
                 this.sessionManager.untrack(session.sessionId);
                 const finalSessionLog = createSessionLogger(session.sessionId);

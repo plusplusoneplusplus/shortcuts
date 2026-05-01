@@ -65,10 +65,11 @@ Each `sendMessage()` call in `RequestRunner.send()`:
 3. Build ISessionOptions (model, streaming, tools, MCP config, permissions)
 4. Session creation or resume (falls back to create on resume failure)
 5. onSessionCreated callback fires
-6. sessionManager.track(session)
-7. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
-8. Empty-response handling (turnCount>0 = success)
-9. FINALLY: sessionManager.untrack + session.destroy + client.stop
+6. Attach optional `AbortSignal` listener that aborts/destroys the session on cancellation
+7. sessionManager.track(session)
+8. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
+9. Empty-response handling (turnCount>0 = success)
+10. FINALLY: remove abort listener, sessionManager.untrack + session.destroy + client.stop
 ```
 
 ## Streaming Internals (`StreamingSession.run()`)

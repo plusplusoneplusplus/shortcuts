@@ -10,6 +10,7 @@
 
 import type { MapNodeConfig, Items, WorkflowExecutionOptions, Item } from '../types';
 import { ConcurrencyLimiter } from '../concurrency-limiter';
+import { isWorkflowCancelled, isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
 import {
     resolvePrompt,
     buildItemPrompt,
@@ -73,9 +74,14 @@ export async function executeMap(
     inputs: Items,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
+    throwIfWorkflowCancelled(options.signal);
+
     const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters, config.skill, config.skills);
+    throwIfWorkflowCancelled(options.signal);
+
     const concurrency = config.concurrency ?? options.concurrency ?? 5;
     const limiter = new ConcurrencyLimiter(concurrency);
+    const isCancelled = () => isWorkflowCancelled(options.signal);
 
     const batchSize = config.batchSize ?? 1;
 
@@ -85,6 +91,8 @@ export async function executeMap(
         const batchResults = await Promise.all(
             batches.map((batch, batchIndex) =>
                 limiter.run(async () => {
+                    throwIfWorkflowCancelled(options.signal);
+
                     const nodeId = options.currentNodeId ?? '';
                     const itemLabel = `batch-${batchIndex}`;
                     const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
@@ -97,12 +105,20 @@ export async function executeMap(
                     const prompt = buildBatchPrompt(resolvedPrompt, batch);
                     let result;
                     try {
+                        throwIfWorkflowCancelled(options.signal);
                         result = await options.aiInvoker!(prompt, {
                             model: config.model ?? options.model,
                             timeoutMs: config.timeoutMs ?? options.timeoutMs,
                             workingDirectory: options.workingDirectory ?? options.workflowDirectory,
+                            signal: options.signal,
                         });
+                        throwIfWorkflowCancelled(options.signal);
                     } catch (err) {
+                        if (isWorkflowCancellationError(err) || options.signal?.aborted) {
+                            throwIfWorkflowCancelled(options.signal);
+                            throw err;
+                        }
+
                         const error = err instanceof Error ? err.message : String(err);
                         options.processTracker?.updateProcess(processId, 'failed', undefined, error);
                         options.onItemProcess?.({
@@ -124,7 +140,7 @@ export async function executeMap(
                         nodeId, itemIndex: batchIndex, processId, status: 'completed', itemLabel,
                     });
                     return parseBatchResponse(result.response!, batch, config.output);
-                })
+                }, isCancelled)
             )
         );
         return batchResults.flat();
@@ -134,6 +150,8 @@ export async function executeMap(
     const results = await Promise.all(
         inputs.map((item, index) =>
             limiter.run(async () => {
+                throwIfWorkflowCancelled(options.signal);
+
                 const nodeId = options.currentNodeId ?? '';
                 const itemLabel = getItemLabel(item, index);
                 const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
@@ -146,12 +164,20 @@ export async function executeMap(
                 const prompt = buildItemPrompt(resolvedPrompt, item);
                 let result;
                 try {
+                    throwIfWorkflowCancelled(options.signal);
                     result = await options.aiInvoker!(prompt, {
                         model: config.model ?? options.model,
                         timeoutMs: config.timeoutMs ?? options.timeoutMs,
                         workingDirectory: options.workingDirectory ?? options.workflowDirectory,
+                        signal: options.signal,
                     });
+                    throwIfWorkflowCancelled(options.signal);
                 } catch (err) {
+                    if (isWorkflowCancellationError(err) || options.signal?.aborted) {
+                        throwIfWorkflowCancelled(options.signal);
+                        throw err;
+                    }
+
                     const error = err instanceof Error ? err.message : String(err);
                     options.processTracker?.updateProcess(processId, 'failed', undefined, error);
                     options.onItemProcess?.({
@@ -173,7 +199,7 @@ export async function executeMap(
                     nodeId, itemIndex: index, processId, status: 'completed', itemLabel,
                 });
                 return mergeOutput(item, result.response!, config.output);
-            })
+            }, isCancelled)
         )
     );
     return results;

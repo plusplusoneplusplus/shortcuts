@@ -7,6 +7,7 @@
  */
 
 import type { AINodeConfig, Item, Items, WorkflowExecutionOptions } from '../types';
+import { isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
 import { resolvePrompt, mergeOutput } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +24,10 @@ export async function executeAI(
     inputs: Items,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
+    throwIfWorkflowCancelled(options.signal);
+
     const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters, config.skill, config.skills);
+    throwIfWorkflowCancelled(options.signal);
 
     const prompt = resolvedPrompt
         .replace(/\{\{ITEMS\}\}/g, JSON.stringify(inputs, null, 2));
@@ -38,12 +42,20 @@ export async function executeAI(
 
     let result;
     try {
+        throwIfWorkflowCancelled(options.signal);
         result = await options.aiInvoker!(prompt, {
             model: config.model ?? options.model,
             timeoutMs: config.timeoutMs ?? options.timeoutMs,
             workingDirectory: options.workingDirectory ?? options.workflowDirectory,
+            signal: options.signal,
         });
+        throwIfWorkflowCancelled(options.signal);
     } catch (err) {
+        if (isWorkflowCancellationError(err) || options.signal?.aborted) {
+            throwIfWorkflowCancelled(options.signal);
+            throw err;
+        }
+
         const error = err instanceof Error ? err.message : String(err);
         options.processTracker?.updateProcess(processId, 'failed', undefined, error);
         options.onItemProcess?.({

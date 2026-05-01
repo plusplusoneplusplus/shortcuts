@@ -236,6 +236,63 @@ describe('executeWorkflow', () => {
         ).rejects.toThrow(/cancelled/i);
     });
 
+    it('cancels remaining same-tier AI nodes when the signal aborts during an AI invocation', async () => {
+        const controller = new AbortController();
+        const config: WorkflowConfig = {
+            name: 'cancel-same-tier-ai',
+            nodes: {
+                first: {
+                    type: 'ai',
+                    prompt: 'first',
+                },
+                second: {
+                    type: 'ai',
+                    prompt: 'second',
+                },
+            },
+        };
+        const aiInvoker = vi.fn().mockImplementation((_prompt: string, options?: { signal?: AbortSignal }) => {
+            expect(options?.signal).toBe(controller.signal);
+            controller.abort();
+            return Promise.resolve({ success: true, response: '{"result":"ok"}' });
+        });
+
+        await expect(
+            executeWorkflow(config, makeOptions({ signal: controller.signal, aiInvoker })),
+        ).rejects.toThrow(/cancelled/i);
+        expect(aiInvoker).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start queued map AI calls after cancellation', async () => {
+        const controller = new AbortController();
+        const config: WorkflowConfig = {
+            name: 'cancel-map-queue',
+            nodes: {
+                load: {
+                    type: 'load',
+                    source: { type: 'inline', items: [{ id: '1' }, { id: '2' }, { id: '3' }] },
+                },
+                map: {
+                    type: 'map',
+                    from: ['load'],
+                    prompt: 'map {{id}}',
+                    concurrency: 1,
+                    output: ['result'],
+                },
+            },
+        };
+        const aiInvoker = vi.fn().mockImplementation((_prompt: string, options?: { signal?: AbortSignal }) => {
+            expect(options?.signal).toBe(controller.signal);
+            controller.abort();
+            return Promise.resolve({ success: true, response: '{"result":"ok"}' });
+        });
+
+        await expect(
+            executeWorkflow(config, makeOptions({ signal: controller.signal, aiInvoker })),
+        ).rejects.toThrow(/cancelled/i);
+        expect(aiInvoker).toHaveBeenCalledTimes(1);
+    });
+
     it('onProgress called with running and completed for every node', async () => {
         const config = linearConfig();
         const onProgress = vi.fn();

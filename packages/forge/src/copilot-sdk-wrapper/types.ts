@@ -351,6 +351,8 @@ export interface SendMessageOptions {
     workingDirectory?: string;
     /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 6 hours) */
     timeoutMs?: number;
+    /** Abort signal for cooperative request cancellation. */
+    signal?: AbortSignal;
     /**
      * Idle timeout in milliseconds. Resets every time a streaming chunk or
      * message event is received. If no activity arrives within this window,

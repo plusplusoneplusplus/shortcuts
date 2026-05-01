@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readCSVFile } from '../../utils/csv-reader';
 import type { Item, Items, LoadNodeConfig, WorkflowExecutionOptions } from '../types';
+import { throwIfWorkflowCancelled } from '../cancellation';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -69,6 +70,8 @@ export async function executeLoad(
     config: LoadNodeConfig,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
+    throwIfWorkflowCancelled(options.signal);
+
     switch (config.source.type) {
         case 'csv': {
             const workflowDir = options.workflowDirectory ?? process.cwd();
@@ -136,7 +139,20 @@ export async function executeLoad(
                 'Return ONLY a JSON array of objects. No explanation.',
             ].join('\n');
 
-            const result = await options.aiInvoker(prompt, { model: config.source.model });
+            let result;
+            try {
+                throwIfWorkflowCancelled(options.signal);
+                result = await options.aiInvoker(prompt, {
+                    model: config.source.model,
+                    signal: options.signal,
+                });
+                throwIfWorkflowCancelled(options.signal);
+            } catch (err) {
+                if (options.signal?.aborted) {
+                    throwIfWorkflowCancelled(options.signal);
+                }
+                throw err;
+            }
 
             if (!result.success || !result.response) {
                 throw new Error(`Load node (ai): AI invocation failed: ${result.error ?? 'unknown error'}`);

@@ -117,6 +117,42 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.error).toContain('No response received');
     });
 
+    it('destroys the active session when the abort signal fires', async () => {
+        const controller = new AbortController();
+        let rejectSend: ((error: Error) => void) | undefined;
+        const mockSession = {
+            sessionId: 'abort-session',
+            sendAndWait: vi.fn().mockImplementation(() => new Promise((_resolve, reject) => {
+                rejectSend = reject;
+            })),
+            abort: vi.fn().mockResolvedValue(undefined),
+            destroy: vi.fn().mockImplementation(() => {
+                rejectSend?.(new Error('destroyed'));
+                return Promise.resolve();
+            }),
+        };
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const resultPromise = runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+            signal: controller.signal,
+        });
+        await vi.waitFor(() => expect(mockSession.sendAndWait).toHaveBeenCalled(), { timeout: 1000 });
+        controller.abort();
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('destroyed');
+        expect(mockSession.abort).toHaveBeenCalledTimes(1);
+        expect(mockSession.destroy).toHaveBeenCalled();
+    });
+
     it('translates WSL attachment paths before sending', async () => {
         const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
         const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };

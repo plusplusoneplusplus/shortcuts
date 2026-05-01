@@ -11,6 +11,7 @@
  */
 
 import { PipelineCoreError } from '../errors/pipeline-core-error';
+import * as jsYaml from 'js-yaml';
 import type { ErrorCodeType } from '../errors/error-codes';
 import type {
     WorkflowConfig,
@@ -395,7 +396,6 @@ function compilePipelineToWorkflow(parsed: Record<string, unknown>): WorkflowCon
  * - Pipeline YAML → compile to WorkflowConfig
  */
 export function compileToWorkflow(yaml: string): WorkflowConfig {
-    const jsYaml = require('js-yaml');
     const parsed = jsYaml.load(yaml) as Record<string, unknown>;
     return compileToWorkflowFromObject(parsed);
 }
