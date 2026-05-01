@@ -29,7 +29,7 @@ import {
     applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
-import { readRepoPreferences } from '../preferences-handler';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -76,7 +76,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
 
         const disabledLlmTools = this.dataDir && payload.workspaceId
-            ? readRepoPreferences(this.dataDir, payload.workspaceId).disabledLlmTools
+            ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)
             : undefined;
 
         const { tools, suffix } = applyLlmToolPreferences(

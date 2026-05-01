@@ -32,6 +32,8 @@ export {
 export {
     LLM_TOOL_REGISTRY,
     DEFAULT_DISABLED_LLM_TOOLS,
+    CLASSIC_MODE_EXTRA_DISABLED_TOOLS,
+    getEffectiveDefaultDisabledTools,
     isLlmToolEnabled,
     filterDisabledLlmTools,
     type LlmToolMeta,

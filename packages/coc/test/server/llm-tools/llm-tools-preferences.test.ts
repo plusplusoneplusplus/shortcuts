@@ -13,9 +13,12 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     validatePerRepoPreferences,
+    readEffectiveDisabledLlmTools,
+    writePreferences,
     readRepoPreferences,
     writeRepoPreferences,
 } from '../../../src/server/preferences-handler';
+import { getEffectiveDefaultDisabledTools } from '../../../src/server/llm-tools/llm-tool-registry';
 import { applyLlmToolPreferences } from '../../../src/server/executors/prompt-builder';
 
 // ============================================================================
@@ -112,6 +115,46 @@ describe('readRepoPreferences / writeRepoPreferences — disabledLlmTools', () =
         const prefs = readRepoPreferences(tmpDir, wsId);
         expect(prefs.lastModel).toBe('gpt-4');
         expect(prefs.disabledLlmTools).toEqual(['ask_user']);
+    });
+});
+
+// ============================================================================
+// readEffectiveDisabledLlmTools
+// ============================================================================
+
+describe('readEffectiveDisabledLlmTools', () => {
+    let tmpDir: string;
+    const wsId = 'test-ws-effective';
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-tools-effective-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('uses classic-mode defaults when no explicit repo preference exists', () => {
+        writePreferences(tmpDir, { global: { uiLayoutMode: 'classic' } });
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools('classic'));
+    });
+
+    it('uses dev-workflow defaults when no explicit repo preference exists', () => {
+        writePreferences(tmpDir, { global: { uiLayoutMode: 'dev-workflow' } });
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
+    });
+
+    it('uses classic-mode defaults when layout mode is not set', () => {
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools(undefined));
+    });
+
+    it('lets an explicit empty repo preference enable every tool in classic mode', () => {
+        writePreferences(tmpDir, { global: { uiLayoutMode: 'classic' } });
+        writeRepoPreferences(tmpDir, wsId, { disabledLlmTools: [] });
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual([]);
     });
 });
 

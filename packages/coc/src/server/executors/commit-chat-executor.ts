@@ -35,7 +35,7 @@ import {
     applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
-import { readRepoPreferences } from '../preferences-handler';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { ProcessWebSocketServer } from '../websocket';
 
 // ============================================================================
@@ -114,7 +114,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
         const disabledLlmTools = this.dataDir && wsId
-            ? readRepoPreferences(this.dataDir, wsId).disabledLlmTools
+            ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools: filteredTools, suffix: filteredSuffix } = applyLlmToolPreferences(

@@ -17,8 +17,14 @@ import { gitCache } from '../git-cache';
 import { gitInfoCache, type GitInfoResult } from '../git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { readRepoPreferences, writeRepoPreferences, validatePerRepoPreferences } from '../preferences-handler';
-import { LLM_TOOL_REGISTRY, DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
+import {
+    readEffectiveDisabledLlmTools,
+    readGlobalPreferences,
+    readRepoPreferences,
+    writeRepoPreferences,
+    validatePerRepoPreferences,
+} from '../preferences-handler';
+import { LLM_TOOL_REGISTRY, getEffectiveDefaultDisabledTools } from '../llm-tools/llm-tool-registry';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -391,14 +397,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             if (!ctx.dataDir) {
-                sendJSON(res, 200, { tools: LLM_TOOL_REGISTRY, disabledLlmTools: DEFAULT_DISABLED_LLM_TOOLS });
+                sendJSON(res, 200, { tools: LLM_TOOL_REGISTRY, disabledLlmTools: getEffectiveDefaultDisabledTools() });
                 return;
             }
-            const prefs = readRepoPreferences(ctx.dataDir, ws.id);
-            const disabledLlmTools: string[] = prefs.disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS;
             sendJSON(res, 200, {
                 tools: LLM_TOOL_REGISTRY,
-                disabledLlmTools,
+                disabledLlmTools: readEffectiveDisabledLlmTools(ctx.dataDir, ws.id),
             });
         },
     });
@@ -430,9 +434,10 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 disabledLlmTools: body.disabledLlmTools,
             });
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
+            const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
                 tools: LLM_TOOL_REGISTRY,
-                disabledLlmTools: merged.disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS,
+                disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
             });
         },
     });

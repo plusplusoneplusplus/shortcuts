@@ -55,6 +55,7 @@ vi.mock('../../../src/server/preferences-handler', async (importOriginal) => {
     return {
         ...actual,
         readRepoPreferences: vi.fn().mockReturnValue({}),
+        readEffectiveDisabledLlmTools: vi.fn().mockReturnValue(['tavily_web_search']),
     };
 });
 

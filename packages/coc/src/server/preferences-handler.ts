@@ -16,6 +16,7 @@ import { parseBodyOrReject } from './shared/handler-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
 import type { NotesGitConfig } from './notes-git-types';
+import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
 
 // ============================================================================
 // Types
@@ -147,7 +148,7 @@ export interface PerRepoPreferences {
     };
     /**
      * Per-workspace LLM tool deny-list.
-     * - `undefined` — use defaults (all enabled except tavily_web_search).
+     * - `undefined` — use mode-aware defaults.
      * - `string[]` — tools whose name matches an entry are disabled.
      */
     disabledLlmTools?: string[];
@@ -480,6 +481,11 @@ export function readPreferences(dataDir: string): PreferencesFile {
     }
 }
 
+/** Read only the global preferences block from disk. */
+export function readGlobalPreferences(dataDir: string): GlobalPreferences {
+    return readPreferences(dataDir).global ?? {};
+}
+
 /**
  * Write the global preferences file to disk atomically (write-then-rename).
  * Creates the data directory if it doesn't exist.
@@ -508,6 +514,20 @@ export function readRepoPreferences(dataDir: string, workspaceId: string): PerRe
     } catch {
         return {};
     }
+}
+
+/**
+ * Resolve the effective disabled LLM tools for a workspace.
+ * Explicit per-repo preferences win; otherwise defaults depend on the global UI layout mode.
+ */
+export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: string): string[] {
+    const repoPrefs = readRepoPreferences(dataDir, workspaceId);
+    if (repoPrefs.disabledLlmTools !== undefined) {
+        return repoPrefs.disabledLlmTools;
+    }
+
+    const globalPrefs = readGlobalPreferences(dataDir);
+    return getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode);
 }
 
 /**

@@ -13,7 +13,7 @@
  * - Session cleanup + output persistence happens in finally (no leaks)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -638,9 +638,20 @@ describe('ChatBaseExecutor selected skills', () => {
 
 describe('create_work_item / create_bug tool wiring', () => {
     let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+
+    function writeLayoutMode(uiLayoutMode: 'classic' | 'dev-workflow') {
+        fs.writeFileSync(
+            path.join(dataDir, 'preferences.json'),
+            JSON.stringify({ global: { uiLayoutMode } }),
+        );
+    }
 
     beforeEach(() => {
         store = createMockProcessStore();
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-tool-wiring-'));
+        fs.mkdirSync(path.join(dataDir, 'repos', 'ws-123'), { recursive: true });
+        writeLayoutMode('dev-workflow');
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
         sdkMocks.mockSendMessage.mockResolvedValue({
@@ -649,6 +660,10 @@ describe('create_work_item / create_bug tool wiring', () => {
             sessionId: 'sess-1',
             toolCalls: [],
         });
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
     function makeTaskWithWorkspace(mode: 'ask' | 'plan' | 'autopilot', id: string): QueuedTask {
@@ -670,7 +685,7 @@ describe('create_work_item / create_bug tool wiring', () => {
     }
 
     it('ChatExecutor includes create_work_item and create_bug tools', async () => {
-        const executor = new ChatExecutor(store, makeOptions(store), '/tmp/coc');
+        const executor = new ChatExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('ask', 'task-wi-ask');
 
         await executor.execute(task, 'Hello');
@@ -682,7 +697,7 @@ describe('create_work_item / create_bug tool wiring', () => {
     });
 
     it('AutopilotExecutor includes create_work_item and create_bug tools', async () => {
-        const executor = new AutopilotExecutor(store, makeOptions(store), '/tmp/coc');
+        const executor = new AutopilotExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('autopilot', 'task-wi-auto');
 
         await executor.execute(task, 'Hello');
@@ -694,7 +709,7 @@ describe('create_work_item / create_bug tool wiring', () => {
     });
 
     it('PlanExecutor includes create_work_item and create_bug tools', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store), '/tmp/coc');
+        const executor = new PlanExecutor(store, makeOptions(store), dataDir);
         const task = makeTaskWithWorkspace('plan', 'task-wi-plan');
 
         await executor.execute(task, 'Hello');
@@ -715,7 +730,7 @@ describe('create_work_item / create_bug tool wiring', () => {
             sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
             sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
 
-            const executor = new Ctor(store, makeOptions(store), '/tmp/coc');
+            const executor = new Ctor(store, makeOptions(store), dataDir);
             const task = makeTaskWithWorkspace(mode, id);
 
             await executor.execute(task, 'Hello');
@@ -724,6 +739,32 @@ describe('create_work_item / create_bug tool wiring', () => {
             expect(call.prompt).toContain('create-work-item');
             expect(call.prompt).toContain('create-bug');
             expect(call.prompt).toContain('update-work-item');
+        }
+    });
+
+    it('classic mode disables create_work_item and create_bug tools by default', async () => {
+        writeLayoutMode('classic');
+
+        for (const { mode, Ctor, id } of [
+            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'classic-ask' },
+            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'classic-auto' },
+            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'classic-plan' },
+        ]) {
+            sdkMocks.resetAll();
+            sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+            sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
+
+            const executor = new Ctor(store, makeOptions(store), dataDir);
+            const task = makeTaskWithWorkspace(mode, id);
+
+            await executor.execute(task, 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).not.toContain('create_work_item');
+            expect(toolNames).not.toContain('create_bug');
+            expect(call.prompt).not.toContain('create-work-item');
+            expect(call.prompt).not.toContain('create-bug');
         }
     });
 });

@@ -37,6 +37,20 @@ const mockBuildModeSystemMessage = vi.fn().mockReturnValue({ mode: 'replace', co
 const mockWithRepoInstructions = vi.fn().mockImplementation(async (sm: any) => sm);
 const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
+const mockApplyLlmToolPreferences = vi.fn().mockImplementation((addons: Array<{ tools: any[]; suffix: string }>, disabled?: string[]) => {
+    const tools: any[] = [];
+    let suffix = '';
+    for (const addon of addons) {
+        const filtered = disabled
+            ? addon.tools.filter(tool => !disabled.includes(tool.name))
+            : addon.tools;
+        if (filtered.length > 0) {
+            tools.push(...filtered);
+            suffix += addon.suffix;
+        }
+    }
+    return { tools, suffix };
+});
 
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
@@ -46,6 +60,7 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
+    applyLlmToolPreferences: (...args: any[]) => mockApplyLlmToolPreferences(...args),
     prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
         selectedSkills && selectedSkills.length > 0
             ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
@@ -115,6 +130,7 @@ describe('FollowUpExecutor', () => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockApplyLlmToolPreferences.mockClear();
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });

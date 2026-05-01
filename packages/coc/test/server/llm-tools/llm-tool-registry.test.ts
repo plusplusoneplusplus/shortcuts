@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
     LLM_TOOL_REGISTRY,
     DEFAULT_DISABLED_LLM_TOOLS,
+    CLASSIC_MODE_EXTRA_DISABLED_TOOLS,
+    getEffectiveDefaultDisabledTools,
     isLlmToolEnabled,
     filterDisabledLlmTools,
 } from '../../../src/server/llm-tools/llm-tool-registry';
@@ -63,6 +65,25 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
         for (const tool of LLM_TOOL_REGISTRY.filter(t => t.enabledByDefault)) {
             expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain(tool.name);
         }
+    });
+});
+
+describe('getEffectiveDefaultDisabledTools', () => {
+    it('disables work item, bug, and web search tools in classic mode', () => {
+        expect(getEffectiveDefaultDisabledTools('classic')).toEqual(
+            expect.arrayContaining(['create_work_item', 'create_bug', 'tavily_web_search']),
+        );
+    });
+
+    it('uses classic mode defaults when layout mode is undefined', () => {
+        expect(getEffectiveDefaultDisabledTools(undefined)).toEqual(getEffectiveDefaultDisabledTools('classic'));
+    });
+
+    it('uses only registry-level defaults in dev-workflow mode', () => {
+        expect(getEffectiveDefaultDisabledTools('dev-workflow')).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
+        expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toEqual(
+            expect.arrayContaining(CLASSIC_MODE_EXTRA_DISABLED_TOOLS),
+        );
     });
 });
 

@@ -15,7 +15,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
-import { LLM_TOOL_REGISTRY, DEFAULT_DISABLED_LLM_TOOLS } from '../../src/server/llm-tools/llm-tool-registry';
+import { LLM_TOOL_REGISTRY, getEffectiveDefaultDisabledTools } from '../../src/server/llm-tools/llm-tool-registry';
 
 // ============================================================================
 // Mock loadDefaultMcpConfig (required by registerApiRoutes)
@@ -104,9 +104,11 @@ describe('LLM Tools Config API endpoints', () => {
     });
 
     beforeEach(() => {
-        // Clean preferences file between tests
+        // Clean preferences files between tests
         const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
         if (fs.existsSync(prefsPath)) fs.unlinkSync(prefsPath);
+        const globalPrefsPath = path.join(tmpDir, 'preferences.json');
+        if (fs.existsSync(globalPrefsPath)) fs.unlinkSync(globalPrefsPath);
     });
 
     const base = () => `http://127.0.0.1:${port}`;
@@ -131,12 +133,41 @@ describe('LLM Tools Config API endpoints', () => {
             expect(names).toContain('suggest_follow_ups');
         });
 
-        it('returns default disabled list when no preferences set', async () => {
+        it('returns classic-mode defaults when no preferences are set', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.disabledLlmTools).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
-            expect(data.disabledLlmTools).toContain('tavily_web_search');
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools(undefined));
+            expect(data.disabledLlmTools).toEqual(
+                expect.arrayContaining(['create_work_item', 'create_bug', 'tavily_web_search']),
+            );
+        });
+
+        it('returns classic-mode defaults when global layout mode is classic', async () => {
+            fs.writeFileSync(
+                path.join(tmpDir, 'preferences.json'),
+                JSON.stringify({ global: { uiLayoutMode: 'classic' } }),
+            );
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('classic'));
+        });
+
+        it('returns dev-workflow defaults when global layout mode is dev-workflow', async () => {
+            fs.writeFileSync(
+                path.join(tmpDir, 'preferences.json'),
+                JSON.stringify({ global: { uiLayoutMode: 'dev-workflow' } }),
+            );
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
+            expect(data.disabledLlmTools).not.toEqual(
+                expect.arrayContaining(['create_work_item', 'create_bug']),
+            );
         });
 
         it('returns custom disabled list from preferences', async () => {
@@ -151,6 +182,10 @@ describe('LLM Tools Config API endpoints', () => {
         });
 
         it('returns empty disabled list when explicitly set to empty', async () => {
+            fs.writeFileSync(
+                path.join(tmpDir, 'preferences.json'),
+                JSON.stringify({ global: { uiLayoutMode: 'classic' } }),
+            );
             const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
             fs.writeFileSync(prefsPath, JSON.stringify({ disabledLlmTools: [] }));
 

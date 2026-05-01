@@ -35,6 +35,7 @@ import {
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
+    applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
@@ -44,6 +45,7 @@ import { getRepoDataPath } from '../paths';
 import { BaseExecutor } from './base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';
 import { isValidTaskFolder } from './auto-folder-utils';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 // ============================================================================
 // Types
 // ============================================================================
@@ -285,8 +287,14 @@ export class FollowUpExecutor extends BaseExecutor {
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
 
-            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const combinedSuffix = (followUpSuffix || '') + boundedMemory.suffix;
+            const followUp = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
+            const disabledLlmTools = this.dataDir && wsId
+                ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
+                : undefined;
+            const { tools: filteredTools, suffix: combinedSuffix } = applyLlmToolPreferences(
+                [followUp, boundedMemory],
+                disabledLlmTools,
+            );
             const followUpMessage = prependSelectedSkillsDirective(
                 combinedSuffix ? `${message}${combinedSuffix}` : message,
                 selectedSkillNames,
@@ -311,7 +319,7 @@ export class FollowUpExecutor extends BaseExecutor {
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
-                tools: [...suggestTools, ...boundedMemory.tools].length > 0 ? [...suggestTools, ...boundedMemory.tools] : undefined,
+                tools: filteredTools.length > 0 ? filteredTools : undefined,
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {

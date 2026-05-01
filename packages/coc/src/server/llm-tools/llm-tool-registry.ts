@@ -82,10 +82,33 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     },
 ] as const;
 
-/** Tool names that are disabled by default (used as fallback when no preferences exist). */
+/** Tool names disabled by the registry-level default, independent of UI layout mode. */
 export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
     .filter(t => !t.enabledByDefault)
     .map(t => t.name);
+
+/** Additional tool names disabled by default when the dashboard uses classic mode. */
+export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [
+    'create_work_item',
+    'create_bug',
+];
+
+/**
+ * Resolve the default disabled tools for the current UI layout mode.
+ * Classic mode is the safe default when no layout preference has been saved.
+ */
+export function getEffectiveDefaultDisabledTools(
+    uiLayoutMode?: 'classic' | 'dev-workflow',
+): string[] {
+    if (uiLayoutMode === 'dev-workflow') {
+        return [...DEFAULT_DISABLED_LLM_TOOLS];
+    }
+
+    return Array.from(new Set([
+        ...DEFAULT_DISABLED_LLM_TOOLS,
+        ...CLASSIC_MODE_EXTRA_DISABLED_TOOLS,
+    ]));
+}
 
 /**
  * Returns true if a tool should be included given the disabled tools list.

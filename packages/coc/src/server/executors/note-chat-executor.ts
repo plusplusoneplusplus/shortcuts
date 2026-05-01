@@ -29,7 +29,7 @@ import {
     applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
-import { readRepoPreferences } from '../preferences-handler';
+import { readEffectiveDisabledLlmTools, readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
 
 // ============================================================================
@@ -133,7 +133,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
         const disabledLlmTools = this.dataDir && wsId
-            ? readRepoPreferences(this.dataDir, wsId).disabledLlmTools
+            ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools, suffix: toolSuffix } = applyLlmToolPreferences(
