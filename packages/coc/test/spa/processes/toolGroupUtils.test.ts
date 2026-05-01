@@ -1328,7 +1328,7 @@ describe('filterWhisperChunks', () => {
         expect(wg.summary.memoryActions).toBeUndefined();
     });
 
-    it('memoryActions captures action/target/content with truncation', () => {
+    it('memoryActions preserves full action content', () => {
         const longContent = 'x'.repeat(100);
         const chunks = [
             { kind: 'tool', key: 'k-t1', toolId: 't1' },
@@ -1340,7 +1340,7 @@ describe('filterWhisperChunks', () => {
 
         const result = filterWhisperChunks(chunks, toolById);
         const wg = result[0] as WhisperGroupChunk;
-        expect(wg.summary.memoryActions![0].content).toBe('x'.repeat(80));
+        expect(wg.summary.memoryActions![0].content).toBe(longContent);
     });
 
     it('memoryActions uses old_text as fallback content for remove', () => {

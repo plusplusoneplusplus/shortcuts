@@ -550,10 +550,13 @@ export function filterWhisperChunks(
     const memoryActions: Array<{ action: string; target: string; content?: string }> = [];
     for (const tc of allToolCalls) {
         if (tc.toolName === 'memory' && tc.args) {
-            const action = (tc.args.action || 'add') as string;
-            const target = (tc.args.target || 'memory') as string;
-            const content = (tc.args.content || tc.args.old_text || '') as string;
-            memoryActions.push({ action, target, content: content.slice(0, 80) });
+            const actionArg = tc.args.action;
+            const targetArg = tc.args.target;
+            const contentArg = tc.args.content ?? tc.args.old_text;
+            const action = typeof actionArg === 'string' && actionArg ? actionArg : 'add';
+            const target = typeof targetArg === 'string' && targetArg ? targetArg : 'memory';
+            const content = typeof contentArg === 'string' ? contentArg : '';
+            memoryActions.push({ action, target, ...(content ? { content } : {}) });
         }
     }
 

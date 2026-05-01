@@ -482,6 +482,55 @@ describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
         expect(rows[0].textContent).toContain('x'.repeat(60) + '…');
     });
 
+    it('does not reveal full memory content before the long-hover delay', () => {
+        vi.useFakeTimers();
+        const longContent = 'stored memory fact '.repeat(8);
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'repo', content: longContent },
+        ]);
+        const content = container.querySelector('[data-testid="memory-popover-content-0"]') as HTMLElement;
+
+        fireEvent.mouseEnter(content);
+        act(() => { vi.advanceTimersByTime(699); });
+
+        expect(container.querySelector('[data-testid="memory-full-content-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+
+    it('reveals full memory content after a long hover over the preview', () => {
+        vi.useFakeTimers();
+        const longContent = 'line one\nline two with enough detail to exceed the preview limit\nline three';
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'repo', content: longContent },
+        ]);
+        const content = container.querySelector('[data-testid="memory-popover-content-0"]') as HTMLElement;
+
+        fireEvent.mouseEnter(content);
+        act(() => { vi.advanceTimersByTime(700); });
+
+        expect(container.querySelector('[data-testid="memory-full-content-popover"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="memory-full-content"]')?.textContent).toBe(longContent);
+        vi.useRealTimers();
+    });
+
+    it('hides full memory content when leaving the preview', () => {
+        vi.useFakeTimers();
+        const longContent = 'stored memory fact '.repeat(8);
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'repo', content: longContent },
+        ]);
+        const content = container.querySelector('[data-testid="memory-popover-content-0"]') as HTMLElement;
+
+        fireEvent.mouseEnter(content);
+        act(() => { vi.advanceTimersByTime(700); });
+        expect(container.querySelector('[data-testid="memory-full-content-popover"]')).not.toBeNull();
+
+        fireEvent.mouseLeave(content);
+
+        expect(container.querySelector('[data-testid="memory-full-content-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+
     it('popover disappears on mouse leave', () => {
         vi.useFakeTimers();
         const container = renderAndHoverMemory([

@@ -3,7 +3,7 @@
  * in Whisper verbosity mode (level 3). Shows an aggregate header with tool call
  * and message counts. Expands to reveal Compact-level (level 1) rendering.
  */
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { cn } from '../../../../ui';
 import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
@@ -222,9 +222,113 @@ const MEMORY_ACTION_ICONS: Record<string, string> = {
     remove: '➖',
 };
 
+const MEMORY_PREVIEW_CHAR_LIMIT = 60;
+const MEMORY_FULL_HOVER_DELAY_MS = 700;
+
+interface MemoryAction {
+    action: string;
+    target: string;
+    content?: string;
+}
+
 interface MemoryHoverPopoverProps {
-    actions: Array<{ action: string; target: string; content?: string }>;
+    actions: MemoryAction[];
     anchorRef: React.RefObject<HTMLSpanElement | null>;
+}
+
+interface MemoryFullContentPopoverProps {
+    content: string;
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+}
+
+function formatMemoryPreview(content: string): string {
+    return content.length > MEMORY_PREVIEW_CHAR_LIMIT
+        ? content.slice(0, MEMORY_PREVIEW_CHAR_LIMIT) + '…'
+        : content;
+}
+
+function MemoryFullContentPopover({ content, anchorRef }: MemoryFullContentPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 560, 320);
+
+    return (
+        <div
+            className="fixed z-[60] rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-xl min-w-[280px] max-w-[560px] p-3"
+            style={{ top: pos.top, left: pos.left }}
+            data-testid="memory-full-content-popover"
+            onClick={e => e.stopPropagation()}
+        >
+            <div className="text-[10px] uppercase tracking-wide text-[#848484] mb-1">
+                Full memory content
+            </div>
+            <pre
+                className="m-0 max-h-[320px] overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-[#1e1e1e] dark:text-[#cccccc] font-mono"
+                data-testid="memory-full-content"
+            >
+                {content}
+            </pre>
+        </div>
+    );
+}
+
+function MemoryPopoverRow({ entry, index }: { entry: MemoryAction; index: number }) {
+    const [showFullContent, setShowFullContent] = useState(false);
+    const contentRef = useRef<HTMLSpanElement | null>(null);
+    const longHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasLongContent = !!entry.content && entry.content.length > MEMORY_PREVIEW_CHAR_LIMIT;
+
+    const clearLongHoverTimer = useCallback(() => {
+        if (longHoverTimer.current) {
+            clearTimeout(longHoverTimer.current);
+            longHoverTimer.current = null;
+        }
+    }, []);
+
+    const startLongHover = useCallback(() => {
+        if (!hasLongContent) return;
+        clearLongHoverTimer();
+        longHoverTimer.current = setTimeout(() => {
+            setShowFullContent(true);
+            longHoverTimer.current = null;
+        }, MEMORY_FULL_HOVER_DELAY_MS);
+    }, [clearLongHoverTimer, hasLongContent]);
+
+    const stopLongHover = useCallback(() => {
+        clearLongHoverTimer();
+        setShowFullContent(false);
+    }, [clearLongHoverTimer]);
+
+    useEffect(() => () => clearLongHoverTimer(), [clearLongHoverTimer]);
+
+    return (
+        <div
+            className="flex items-center gap-2 px-2.5 py-1 text-xs"
+            data-testid="memory-popover-row"
+        >
+            <span className="shrink-0">{MEMORY_ACTION_ICONS[entry.action] ?? '📝'}</span>
+            <span className="shrink-0 px-1 rounded bg-[#e8e8e8] dark:bg-[#333] text-[10px] font-medium">
+                {entry.target}
+            </span>
+            {entry.content && (
+                <span
+                    ref={contentRef}
+                    className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1"
+                    data-testid={`memory-popover-content-${index}`}
+                    onMouseEnter={startLongHover}
+                    onMouseLeave={stopLongHover}
+                    aria-describedby={showFullContent ? `memory-full-content-${index}` : undefined}
+                >
+                    {formatMemoryPreview(entry.content)}
+                    {showFullContent && (
+                        <span id={`memory-full-content-${index}`}>
+                            <MemoryFullContentPopover content={entry.content} anchorRef={contentRef} />
+                        </span>
+                    )}
+                </span>
+            )}
+        </div>
+    );
 }
 
 function MemoryHoverPopover({ actions, anchorRef }: MemoryHoverPopoverProps) {
@@ -239,21 +343,7 @@ function MemoryHoverPopover({ actions, anchorRef }: MemoryHoverPopoverProps) {
             data-testid="memory-hover-popover"
         >
             {actions.map((entry, i) => (
-                <div
-                    key={i}
-                    className="flex items-center gap-2 px-2.5 py-1 text-xs"
-                    data-testid="memory-popover-row"
-                >
-                    <span className="shrink-0">{MEMORY_ACTION_ICONS[entry.action] ?? '📝'}</span>
-                    <span className="shrink-0 px-1 rounded bg-[#e8e8e8] dark:bg-[#333] text-[10px] font-medium">
-                        {entry.target}
-                    </span>
-                    {entry.content && (
-                        <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
-                            {entry.content.length > 60 ? entry.content.slice(0, 60) + '…' : entry.content}
-                        </span>
-                    )}
-                </div>
+                <MemoryPopoverRow key={i} entry={entry} index={i} />
             ))}
         </div>
     );
@@ -265,7 +355,7 @@ function MemoryHoverPopover({ actions, anchorRef }: MemoryHoverPopoverProps) {
 
 interface MemoryHoverSpanProps {
     text: string;
-    actions: Array<{ action: string; target: string; content?: string }>;
+    actions: MemoryAction[];
     testId?: string;
 }
 
