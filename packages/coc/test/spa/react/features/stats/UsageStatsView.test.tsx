@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { UsageStatsView } from '../../../../../src/server/spa/client/react/features/stats/UsageStatsView';
-import type { ClientTokenUsageStatsResponse } from '../../../../../src/server/spa/client/react/types/dashboard';
+import type { ClientTokenUsage, ClientTokenUsageStatsResponse } from '../../../../../src/server/spa/client/react/types/dashboard';
 
 const mockReload = vi.fn();
 
@@ -28,27 +28,26 @@ const makeHookResult = (overrides: Partial<{
     ...overrides,
 });
 
-const makeEntry = (date: string, model: string) => ({
-    date,
-    byModel: {
-        [model]: {
-            inputTokens: 1000,
-            outputTokens: 500,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-            totalTokens: 1500,
-            turnCount: 1,
-        },
-    },
-    dayTotal: {
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 1500,
-        turnCount: 1,
-    },
+const makeUsage = (overrides: Partial<ClientTokenUsage> = {}): ClientTokenUsage => ({
+    inputTokens: 1000,
+    outputTokens: 500,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 1500,
+    turnCount: 1,
+    ...overrides,
 });
+
+const makeEntry = (date: string, model: string, usageOverrides: Partial<ClientTokenUsage> = {}) => {
+    const usage = makeUsage(usageOverrides);
+    return {
+        date,
+        byModel: {
+            [model]: usage,
+        },
+        dayTotal: usage,
+    };
+};
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -152,5 +151,36 @@ describe('UsageStatsView', () => {
         );
         render(<UsageStatsView />);
         expect(screen.getByText(/Generated at:/)).toBeTruthy();
+    });
+
+    it('shows premium units only in rightmost total cells', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [
+                        makeEntry('2025-07-10', 'gpt-4o', {
+                            inputTokens: 14100000,
+                            outputTokens: 125400,
+                            cacheReadTokens: 9500000,
+                            cacheWriteTokens: 18200,
+                            totalTokens: 14225400,
+                            cost: 416.375,
+                        }),
+                    ],
+                    models: ['gpt-4o'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        expect(screen.getAllByText('↓14.1M total').length).toBe(4);
+        expect(screen.getAllByText('· 9.5M cached').length).toBe(4);
+        expect(screen.getAllByText('· 4.6M new').length).toBe(4);
+        expect(screen.getAllByText('↑125.4k out').length).toBe(4);
+        expect(screen.getAllByText('· 18.2k cache write').length).toBe(4);
+        expect(screen.getAllByText('· 416.38 units').length).toBe(2);
     });
 });

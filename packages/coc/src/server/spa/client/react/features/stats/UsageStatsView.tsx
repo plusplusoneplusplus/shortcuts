@@ -15,9 +15,9 @@ function fmt(n: number): string {
     return String(n);
 }
 
-function fmtCost(c: number | undefined): string | null {
-    if (c === undefined || c === null) return null;
-    return '$' + c.toFixed(4);
+function fmtPremiumUnits(units: number | undefined): string | null {
+    if (units === undefined || units === null) return null;
+    return units.toFixed(2) + ' units';
 }
 
 function sumUsage(entries: ClientTokenUsageStatsEntry[]): ClientTokenUsage {
@@ -58,27 +58,35 @@ function sumByModel(entries: ClientTokenUsageStatsEntry[], model: string): Clien
     );
 }
 
-function UsageCell({ usage }: { usage: ClientTokenUsage }) {
-    const costStr = fmtCost(usage.cost);
+function UsageCell({ usage, showPremiumUnits = false }: { usage: ClientTokenUsage; showPremiumUnits?: boolean }) {
+    const premiumUnits = showPremiumUnits ? fmtPremiumUnits(usage.cost) : null;
+    const cachedInputTokens = usage.cacheReadTokens;
+    const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens, 0);
 
     const tooltip = [
-        `Input:       ${usage.inputTokens.toLocaleString()}`,
-        `Output:      ${usage.outputTokens.toLocaleString()}`,
-        `Cache read:  ${usage.cacheReadTokens.toLocaleString()}`,
-        `Cache write: ${usage.cacheWriteTokens.toLocaleString()}`,
-        `Total:       ${usage.totalTokens.toLocaleString()}`,
-        `Turns:       ${usage.turnCount}`,
-        ...(costStr ? [`Cost:        ${costStr}`] : []),
+        `Input total:   ${usage.inputTokens.toLocaleString()}`,
+        `Input cached:  ${cachedInputTokens.toLocaleString()}`,
+        `Input new:     ${newInputTokens.toLocaleString()}`,
+        `Output:        ${usage.outputTokens.toLocaleString()}`,
+        `Cache write:   ${usage.cacheWriteTokens.toLocaleString()}`,
+        `Turns:         ${usage.turnCount}`,
+        ...(premiumUnits ? [`Premium units: ${premiumUnits}`] : []),
     ].join('\n');
 
     return (
-        <span title={tooltip} className="cursor-default">
-            <span className="text-[var(--vscode-foreground)]">↓{fmt(usage.inputTokens)}</span>
-            {' '}
-            <span className="text-[var(--vscode-foreground)]">↑{fmt(usage.outputTokens)}</span>
-            {costStr && (
-                <span className="ml-1 text-[var(--vscode-descriptionForeground)]">{costStr}</span>
-            )}
+        <span title={tooltip} className="cursor-default inline-flex flex-col gap-0.5 leading-snug">
+            <span>
+                <span className="text-[var(--vscode-foreground)]">↓{fmt(usage.inputTokens)} total</span>
+                <span className="text-[var(--vscode-descriptionForeground)]"> · {fmt(cachedInputTokens)} cached</span>
+                <span className="text-[var(--vscode-descriptionForeground)]"> · {fmt(newInputTokens)} new</span>
+            </span>
+            <span>
+                <span className="text-[var(--vscode-foreground)]">↑{fmt(usage.outputTokens)} out</span>
+                <span className="text-[var(--vscode-descriptionForeground)]"> · {fmt(usage.cacheWriteTokens)} cache write</span>
+                {premiumUnits && (
+                    <span className="text-[var(--vscode-descriptionForeground)]"> · {premiumUnits}</span>
+                )}
+            </span>
         </span>
     );
 }
@@ -188,7 +196,7 @@ export function UsageStatsView() {
                                     })}
 
                                     <td className={tdClass}>
-                                        <UsageCell usage={entry.dayTotal} />
+                                        <UsageCell usage={entry.dayTotal} showPremiumUnits />
                                     </td>
                                 </tr>
                             ))}
@@ -209,7 +217,7 @@ export function UsageStatsView() {
                                     );
                                 })}
                                 <td className={tdClass}>
-                                    <UsageCell usage={grandTotal} />
+                                    <UsageCell usage={grandTotal} showPremiumUnits />
                                 </td>
                             </tr>
                         </tfoot>
