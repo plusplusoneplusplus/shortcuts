@@ -15,10 +15,6 @@ export interface PerRepoPrefsClient {
     charLimit?: number;
     writeFrequency?: 'low' | 'medium' | 'high';
   };
-  /** Sandboxed inline previews for opted-in local HTML links. */
-  htmlEmbed?: {
-    enabled?: boolean;
-  };
   /** Notes directory git tracking settings. */
   notesGit?: NotesGitConfig;
   /** Per-repo activity filter selections (status and type filters). */

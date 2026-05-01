@@ -102,6 +102,10 @@ export interface GlobalPreferences {
      * `true` = handler is enabled; `false` or absent = disabled (default).
      */
     linkHandlers?: Record<string, boolean>;
+    /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
+    htmlEmbed?: {
+        enabled: boolean;
+    };
 }
 
 /** Per-repository UI preferences. */
@@ -133,10 +137,6 @@ export interface PerRepoPreferences {
         charLimit?: number;
         /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
         writeFrequency?: 'low' | 'medium' | 'high';
-    };
-    /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
-    htmlEmbed?: {
-        enabled: boolean;
     };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
@@ -249,6 +249,13 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         }
         if (Object.keys(validated).length > 0) {
             result.linkHandlers = validated;
+        }
+    }
+
+    if (typeof obj.htmlEmbed === 'object' && obj.htmlEmbed !== null) {
+        const he = obj.htmlEmbed as Record<string, unknown>;
+        if (typeof he.enabled === 'boolean') {
+            result.htmlEmbed = { enabled: he.enabled };
         }
     }
 
@@ -393,13 +400,6 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 validated.writeFrequency = bm.writeFrequency;
             }
             result.boundedMemory = validated;
-        }
-    }
-
-    if (typeof obj.htmlEmbed === 'object' && obj.htmlEmbed !== null) {
-        const he = obj.htmlEmbed as Record<string, unknown>;
-        if (typeof he.enabled === 'boolean') {
-            result.htmlEmbed = { enabled: he.enabled };
         }
     }
 

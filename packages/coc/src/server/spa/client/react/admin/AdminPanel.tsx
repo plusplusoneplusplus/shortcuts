@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../ui';
 import { getApiBase } from '../utils/config';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
+import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { SettingsCard } from './SettingsCard';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
@@ -93,6 +94,7 @@ export function AdminPanel() {
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
+    const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(false);
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
@@ -106,7 +108,7 @@ export function AdminPanel() {
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, htmlEmbedEnabled: false, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
 
     // Export
@@ -218,10 +220,12 @@ export function AdminPanel() {
             const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
             const r = data.reposSidebarCollapsed ?? false;
             const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
+            const h = data.htmlEmbed?.enabled === true;
             setTheme(t);
             setReposSidebarCollapsed(r);
             setUiLayoutMode(u);
-            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r, uiLayoutMode: u }));
+            setHtmlEmbedEnabled(h);
+            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r, uiLayoutMode: u, htmlEmbedEnabled: h }));
         } catch { /* ignore */ }
     }, []);
 
@@ -250,6 +254,7 @@ export function AdminPanel() {
     const appearanceDirty = theme !== appearanceSnapshot.theme ||
         reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
         uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
+        htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled ||
         taskCardDensity !== appearanceSnapshot.taskCardDensity ||
         historyGrouping !== appearanceSnapshot.historyGrouping;
 
@@ -356,13 +361,16 @@ export function AdminPanel() {
     const handleSaveAppearance = useCallback(async () => {
         setAppearanceSaving(true);
         try {
-            // Save preferences (theme, reposSidebarCollapsed, uiLayoutMode)
-            const prefsChanged = theme !== appearanceSnapshot.theme || reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed || uiLayoutMode !== appearanceSnapshot.uiLayoutMode;
+            // Save preferences (theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed)
+            const prefsChanged = theme !== appearanceSnapshot.theme ||
+                reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
+                uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
+                htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled;
             if (prefsChanged) {
                 const prefsRes = await fetch(getApiBase() + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ theme, reposSidebarCollapsed, uiLayoutMode }),
+                    body: JSON.stringify({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed: { enabled: htmlEmbedEnabled } }),
                 });
                 if (!prefsRes.ok) {
                     const body = await prefsRes.json().catch(() => ({}));
@@ -384,18 +392,20 @@ export function AdminPanel() {
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setAppearanceSnapshot({ theme, reposSidebarCollapsed, uiLayoutMode, taskCardDensity, historyGrouping });
+            invalidateHtmlEmbedPreference();
+            setAppearanceSnapshot({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, taskCardDensity, historyGrouping });
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setAppearanceSaving(false);
         }
-    }, [theme, reposSidebarCollapsed, uiLayoutMode, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
+    }, [theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
 
     const handleCancelAppearance = useCallback(() => {
         setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
         setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
         setUiLayoutMode(appearanceSnapshot.uiLayoutMode as 'classic' | 'dev-workflow');
+        setHtmlEmbedEnabled(appearanceSnapshot.htmlEmbedEnabled);
         setTaskCardDensity(appearanceSnapshot.taskCardDensity);
         setHistoryGrouping(appearanceSnapshot.historyGrouping);
     }, [appearanceSnapshot]);
@@ -970,6 +980,24 @@ export function AdminPanel() {
                                                 checked={reposSidebarCollapsed}
                                                 onChange={e => setReposSidebarCollapsed(e.target.checked)}
                                                 data-testid="pref-repos-sidebar-collapsed"
+                                            />
+                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Inline HTML previews</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">
+                                                Render local <span className="font-mono">.html</span> links titled <span className="font-mono">embed</span> as sandboxed chat previews.
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={htmlEmbedEnabled}
+                                                onChange={e => setHtmlEmbedEnabled(e.target.checked)}
+                                                data-testid="pref-html-embed-enabled"
                                             />
                                             <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                         </label>

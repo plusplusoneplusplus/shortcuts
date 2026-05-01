@@ -10,6 +10,9 @@ export interface GlobalPreferencePatch {
         myWorkExcludedTypes?: string[];
     };
     reposSidebarCollapsed?: boolean;
+    htmlEmbed?: {
+        enabled: boolean;
+    };
 }
 
 export async function patchGlobalPreferences(patch: GlobalPreferencePatch): Promise<any> {

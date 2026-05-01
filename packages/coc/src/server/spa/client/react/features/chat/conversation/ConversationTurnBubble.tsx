@@ -13,7 +13,7 @@ import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
-import { usePreferences } from '../../../hooks/preferences/usePreferences';
+import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { fetchApi } from '../../../hooks/useApi';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
@@ -666,8 +666,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
-    const { htmlEmbed } = usePreferences(wsId);
-    const htmlEmbedEnabled = htmlEmbed?.enabled === true && !turn.streaming;
+    const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId, { htmlEmbedEnabled }) : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});

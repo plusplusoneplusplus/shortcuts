@@ -184,6 +184,10 @@ describe('parseSettingsSection', () => {
         expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
     });
 
+    it('returns default "info" for removed repo display settings section', () => {
+        expect(parseSettingsSection('#repos/r1/settings/display')).toBe('info');
+    });
+
     // Regression: #repos/:id/settings/memory must resolve to "memory" so that
     // refreshing the memory settings page does not show a blank panel.
     it('returns "memory" for #repos/r1/settings/memory', () => {
@@ -226,6 +230,10 @@ describe('VALID_SETTINGS_SECTIONS', () => {
     // Regression: 'notes' was missing from the hand-rolled set while present in SettingsSection.
     it('includes "notes"', () => {
         expect(VALID_SETTINGS_SECTIONS.has('notes')).toBe(true);
+    });
+
+    it('does not include "display"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('display')).toBe(false);
     });
 
     it('is derived from SETTINGS_SECTION_VALUES — exact same members', () => {

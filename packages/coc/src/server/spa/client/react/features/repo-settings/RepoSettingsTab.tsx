@@ -23,7 +23,6 @@ import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
-import { DisplaySettingsSection } from './DisplaySettingsSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -35,7 +34,6 @@ type ActiveSection = SettingsSection;
 const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'info', label: 'Info', icon: '📋' },
     { id: 'preferences', label: 'Preferences', icon: '⚙️' },
-    { id: 'display', label: 'Display', icon: '🖼️' },
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
     { id: 'llm-tools', label: 'LLM Tools', icon: '🔧' },
@@ -493,9 +491,6 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 )}
                 {activeSection === 'preferences' && (
                     <RepoPreferencesSection workspaceId={workspaceId} />
-                )}
-                {activeSection === 'display' && (
-                    <DisplaySettingsSection workspaceId={workspaceId} />
                 )}
                 {activeSection === 'mcp' && (
                     <McpServersPanel

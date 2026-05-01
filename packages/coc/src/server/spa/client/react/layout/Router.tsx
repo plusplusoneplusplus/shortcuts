@@ -575,6 +575,11 @@ export function Router() {
                     }
                     // Settings section deep-link: #repos/{id}/settings/{section}
                     if (parts[2] === 'settings') {
+                        if (parts[3] === 'display') {
+                            dispatch({ type: 'SET_ADMIN_SUB_TAB', tab: 'settings' });
+                            location.replace('#admin/settings');
+                            return;
+                        }
                         dispatch({ type: 'SET_SETTINGS_SECTION', section: parseSettingsSection('#' + hash) });
                     }
                     // Backward compat: redirect old #repos/{id}/copilot/{section} → settings

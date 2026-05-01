@@ -617,6 +617,43 @@ describe('AdminPanel', () => {
             expect(capturedBody.taskCardDensity).toBe('dense');
         });
 
+        it('persists inline HTML previews as a global preference from Appearance', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (options?.method === 'PATCH' && url.includes('/preferences')) {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { taskCardDensity: 'compact' }, sources: {} }),
+                    });
+                }
+                if (url.includes('/preferences')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ theme: 'auto', reposSidebarCollapsed: false, uiLayoutMode: 'classic', htmlEmbed: { enabled: false } }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('pref-html-embed-enabled')).toBeDefined());
+            capturedBody = null;
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pref-html-embed-enabled'));
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-appearance-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.htmlEmbed).toEqual({ enabled: true });
+        });
+
         it('cancel reverts to previous value', async () => {
             mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {

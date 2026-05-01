@@ -35,8 +35,6 @@ export interface UsePreferencesResult {
     setEffort: (e: string) => void;
     skills: LastSkillsByMode;
     setSkill: (mode: SkillMode, s: string[]) => void;
-    htmlEmbed: { enabled: boolean };
-    setHtmlEmbedEnabled: (enabled: boolean) => void;
     loaded: boolean;
 }
 
@@ -48,7 +46,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
     const [skills, setSkillsState] = useState<LastSkillsByMode>({ ...EMPTY_SKILLS });
-    const [htmlEmbed, setHtmlEmbedState] = useState({ enabled: false });
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -56,7 +53,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         setDepthState('');
         setEffortState('');
         setSkillsState({ ...EMPTY_SKILLS });
-        setHtmlEmbedState({ enabled: false });
         if (!repoId) {
             setLoaded(true);
             return;
@@ -104,9 +100,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                             ask: normalizeArr(prefs.lastSkills.ask),
                             plan: normalizeArr(prefs.lastSkills.plan),
                         });
-                    }
-                    if (typeof prefs.htmlEmbed === 'object' && prefs.htmlEmbed !== null) {
-                        setHtmlEmbedState({ enabled: prefs.htmlEmbed.enabled === true });
                     }
                 }
             } catch {
@@ -158,18 +151,8 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }).catch(() => {});
     }, [repoId]);
 
-    const setHtmlEmbedEnabled = useCallback((enabled: boolean) => {
-        setHtmlEmbedState({ enabled });
-        if (!repoId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ htmlEmbed: { enabled } }),
-        }).catch(() => {});
-    }, [repoId]);
-
     // Backward compat: expose task model as the single 'model' property
     const model = models.task;
 
-    return { model, models, setModel, depth, setDepth, effort, setEffort, skills, setSkill, htmlEmbed, setHtmlEmbedEnabled, loaded };
+    return { model, models, setModel, depth, setDepth, effort, setEffort, skills, setSkill, loaded };
 }
