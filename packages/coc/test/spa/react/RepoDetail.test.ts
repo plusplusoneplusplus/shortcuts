@@ -504,29 +504,19 @@ describe('RepoDetail switchSubTab git deep-link', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null })");
     });
 
-    it('uses getTabSuffix to build the URL suffix', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('getTabSuffix(tab, state)');
+    it('uses buildRepoSubTabSuffix to build the URL suffix', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('buildRepoSubTabSuffix(tab, state, selectedTaskId)');
     });
 
-    it('getTabSuffix restores commit hash in URL when git tab has a selected commit', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('state.selectedGitCommitHash');
-        expect(REPO_DETAIL_SOURCE).toContain("return '/git/' + hash + file");
+    it('passes the repo-scoped selected task id into the shared URL builder', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('queueState.selectedTaskIdByRepo[ws.id]');
     });
 
-    it('getTabSuffix includes file path in URL when git tab has a selected file', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('state.selectedGitFilePath');
-        expect(REPO_DETAIL_SOURCE).toContain("encodeURIComponent(state.selectedGitFilePath)");
+    it('no longer has a private getTabSuffix helper', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('function getTabSuffix');
     });
 
-    it('getTabSuffix returns /git when no commit is selected', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("return '/git'");
-    });
-
-    it('getTabSuffix preserves settings section in URL', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("return '/settings/' + state.settingsSection");
-    });
-
-    it('getTabSuffix does not have info tab shortcut', () => {
+    it('does not have info tab shortcut', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain("if (tab === 'info') return ''");
     });
 });

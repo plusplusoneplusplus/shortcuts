@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
+import type { AppContextState } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -218,6 +219,52 @@ describe('repo sub-tab deep-link parsing', () => {
         const result = parseRepoDeepLink('#processes');
         expect(result.repoId).toBeNull();
         expect(result.subTab).toBeNull();
+    });
+});
+
+describe('buildRepoSubTabSuffix', () => {
+    function stateWith(overrides: Partial<AppContextState> = {}): AppContextState {
+        return {
+            settingsSection: 'info',
+            selectedGitCommitHash: null,
+            selectedGitFilePath: null,
+            selectedNotePath: null,
+            ...overrides,
+        } as AppContextState;
+    }
+
+    it('preserves settings section state', () => {
+        expect(buildRepoSubTabSuffix('settings', stateWith({ settingsSection: 'llm-tools' })))
+            .toBe('/settings/llm-tools');
+    });
+
+    it('preserves git commit and file state', () => {
+        expect(buildRepoSubTabSuffix('git', stateWith({
+            selectedGitCommitHash: 'abc 123',
+            selectedGitFilePath: 'src/server/file name.ts',
+        }))).toBe('/git/abc%20123/src%2Fserver%2Ffile%20name.ts');
+    });
+
+    it('builds the git tab path when no commit is selected', () => {
+        expect(buildRepoSubTabSuffix('git', stateWith())).toBe('/git');
+    });
+
+    it('preserves notes path state by encoding each path segment', () => {
+        expect(buildRepoSubTabSuffix('notes', stateWith({ selectedNotePath: 'Notebook/Section One/Page.md' })))
+            .toBe('/notes/Notebook/Section%20One/Page.md');
+    });
+
+    it.each(['chats', 'activity', 'tasks'] as const)('preserves selected task state for %s', (tab) => {
+        expect(buildRepoSubTabSuffix(tab, stateWith(), 'queue task/1'))
+            .toBe(`/${tab}/queue%20task%2F1`);
+    });
+
+    it('does not append empty selected task state', () => {
+        expect(buildRepoSubTabSuffix('chats', stateWith(), null)).toBe('/chats');
+    });
+
+    it('falls back to the plain tab path for tabs without nested state', () => {
+        expect(buildRepoSubTabSuffix('workflows', stateWith(), 'queue_1')).toBe('/workflows');
     });
 });
 
@@ -1822,8 +1869,8 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain('workspaceId: state.selectedRepoId');
     });
 
-    it('queueDispatch is included in useEffect dependency array', () => {
-        expect(ROUTER_SOURCE).toContain('queueDispatch, state.activeTab, state.selectedRepoId');
+    it('uses the shared repo sub-tab suffix builder for shortcut navigation', () => {
+        expect(ROUTER_SOURCE).toContain('buildRepoSubTabSuffix(tab, state, selectedTaskId)');
     });
 
     it('activity route is in VALID_REPO_SUB_TABS', () => {

@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import type { AppContextState } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
@@ -38,6 +37,7 @@ import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabl
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { MobileTabBar } from '../../layout/MobileTabBar';
+import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -67,27 +67,6 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
 export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
     ? SUB_TABS
     : SUB_TABS.filter(t => t.key !== 'wiki');
-
-function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {
-    if (tab === 'settings') return '/settings/' + state.settingsSection;
-    if (tab === 'git') {
-        if (state.selectedGitCommitHash) {
-            const hash = encodeURIComponent(state.selectedGitCommitHash);
-            const file = state.selectedGitFilePath
-                ? '/' + encodeURIComponent(state.selectedGitFilePath)
-                : '';
-            return '/git/' + hash + file;
-        }
-        return '/git';
-    }
-    if (tab === 'notes') {
-        if (state.selectedNotePath) {
-            return '/notes/' + state.selectedNotePath.split('/').map(encodeURIComponent).join('/');
-        }
-        return '/notes';
-    }
-    return '/' + tab;
-}
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
@@ -325,7 +304,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const switchSubTab = (tab: RepoSubTab) => {
         if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: ws.id });
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
-        location.hash = '#repos/' + encodeURIComponent(ws.id) + getTabSuffix(tab, state);
+        const selectedTaskId = queueState.selectedTaskIdByRepo[ws.id] ?? queueState.selectedTaskId;
+        location.hash = '#repos/' + encodeURIComponent(ws.id) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
     };
 
     const handleNavigateToTask = useCallback((taskId: string) => {

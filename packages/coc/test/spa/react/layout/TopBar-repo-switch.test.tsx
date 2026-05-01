@@ -18,6 +18,7 @@ const mockDispatch = vi.fn();
 
 let mockRepoTabState: Record<string, RepoSubTab> = {};
 let mockSettingsSection: SettingsSection = 'info';
+let mockSelectedTaskIdByRepo: Record<string, string | null> = {};
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -33,6 +34,16 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
         dispatch: mockDispatch,
     }),
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({
+        state: {
+            selectedTaskId: null,
+            selectedTaskIdByRepo: mockSelectedTaskIdByRepo,
+        },
+        dispatch: vi.fn(),
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip', () => ({
@@ -71,6 +82,7 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         mockDispatch.mockClear();
         mockRepoTabState = {};
         mockSettingsSection = 'info';
+        mockSelectedTaskIdByRepo = {};
     });
 
     afterEach(() => {
@@ -127,6 +139,22 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         render(<TopBar />);
         act(() => { capturedOnSelect?.('new-repo'); });
         expect(location.hash).toBe('#repos/new-repo/chats');
+    });
+
+    it('preserves selected chat id when target repo restores chats', () => {
+        mockRepoTabState = { 'repo-abc': 'chats' };
+        mockSelectedTaskIdByRepo = { 'repo-abc': 'queue task/1' };
+        render(<TopBar />);
+        act(() => { capturedOnSelect?.('repo-abc'); });
+        expect(location.hash).toBe('#repos/repo-abc/chats/queue%20task%2F1');
+    });
+
+    it('preserves selected task id when target repo restores tasks', () => {
+        mockRepoTabState = { 'repo-abc': 'tasks' };
+        mockSelectedTaskIdByRepo = { 'repo-abc': 'queue_task_1' };
+        render(<TopBar />);
+        act(() => { capturedOnSelect?.('repo-abc'); });
+        expect(location.hash).toBe('#repos/repo-abc/tasks/queue_task_1');
     });
 
     it('dispatches SET_SELECTED_REPO with the new repo id', () => {

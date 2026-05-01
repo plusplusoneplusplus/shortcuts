@@ -4,9 +4,10 @@
 
 import { useCallback, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { useTheme } from './ThemeProvider';
-import { buildNoteHash } from './Router';
+import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
@@ -49,6 +50,7 @@ export interface TopBarProps {
 
 export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
+    const { state: queueState } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
     const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
@@ -99,19 +101,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
         const subTab = state.repoTabState[id] ?? 'chats';
-        let suffix: string;
-        if (subTab === 'settings') {
-            suffix = `/${subTab}/${state.settingsSection}`;
-        } else if (subTab === 'notes') {
-            const savedPath = state.notePathState?.[id];
-            suffix = savedPath
-                ? '/notes/' + savedPath.split('/').map(encodeURIComponent).join('/')
-                : '/notes';
-        } else {
-            suffix = `/${subTab}`;
-        }
+        const selectedTaskId = queueState.selectedTaskIdByRepo?.[id] ?? null;
+        const suffix = buildRepoSubTabSuffix(
+            subTab,
+            { ...state, selectedNotePath: state.notePathState?.[id] ?? null },
+            selectedTaskId
+        );
         location.hash = '#repos/' + encodeURIComponent(id) + suffix;
-    }, [dispatch, state.repoTabState, state.settingsSection, state.notePathState]);
+    }, [dispatch, queueState.selectedTaskIdByRepo, state]);
 
     const isOnReposTab = state.activeTab === 'repos';
 

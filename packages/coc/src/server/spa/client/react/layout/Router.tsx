@@ -5,6 +5,7 @@
 
 import { useEffect, useLayoutEffect, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
+import type { AppContextState } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
@@ -215,6 +216,32 @@ export function buildNoteHash(wsId: string, notePath: string): string {
     return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
 }
 
+export function buildRepoSubTabSuffix(
+    tab: RepoSubTab,
+    state: AppContextState,
+    selectedTaskId?: string | null
+): string {
+    if (tab === 'settings') {
+        return '/settings/' + encodeURIComponent(state.settingsSection);
+    }
+    if (tab === 'git') {
+        if (!state.selectedGitCommitHash) return '/git';
+        const hash = encodeURIComponent(state.selectedGitCommitHash);
+        const file = state.selectedGitFilePath
+            ? '/' + encodeURIComponent(state.selectedGitFilePath)
+            : '';
+        return '/git/' + hash + file;
+    }
+    if (tab === 'notes') {
+        if (!state.selectedNotePath) return '/notes';
+        return '/notes/' + state.selectedNotePath.split('/').map(encodeURIComponent).join('/');
+    }
+    if ((tab === 'chats' || tab === 'activity' || tab === 'tasks') && selectedTaskId) {
+        return '/' + tab + '/' + encodeURIComponent(selectedTaskId);
+    }
+    return '/' + tab;
+}
+
 // ── Work-items deep-links ─────────────────────────────────────────────
 
 export interface WorkItemDeepLink {
@@ -356,7 +383,7 @@ export function buildDbBrowserHash(table: string | null, page: number, sort: str
 
 export function Router() {
     const { state, dispatch } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     const switchTab = useCallback((tab: string) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: tab as DashboardTab });
@@ -642,13 +669,25 @@ export function Router() {
                     if (tab === 'notes' && !isNotesEnabled()) return;
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/' + tab;
+                    const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
                 }
             }
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [dispatch, queueDispatch, state.activeTab, state.selectedRepoId]);
+    }, [
+        dispatch,
+        queueDispatch,
+        queueState.selectedTaskId,
+        queueState.selectedTaskIdByRepo,
+        state.activeTab,
+        state.selectedGitCommitHash,
+        state.selectedGitFilePath,
+        state.selectedNotePath,
+        state.selectedRepoId,
+        state.settingsSection,
+    ]);
 
     switch (state.activeTab) {
         case 'repos':
