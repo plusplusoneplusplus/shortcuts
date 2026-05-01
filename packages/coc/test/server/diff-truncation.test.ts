@@ -74,11 +74,14 @@ const mockGetAllChanges = vi.fn();
 const mockGetFileDiff = vi.fn();
 const mockDetectCommitRange = vi.fn();
 const mockRangeGetFileDiff = vi.fn();
+// execGitArgsSync delegates to forge execGit (WSL-aware); mock it directly
+const mockForgeExecGit = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        execGit: (...args: any[]) => mockForgeExecGit(...args),
         BranchService: vi.fn().mockImplementation(() => ({
             getBranchStatus: mockGetBranchStatus,
             getRepoState: vi.fn().mockReturnValue({}),
@@ -164,6 +167,8 @@ describe('Diff truncation endpoints', () => {
     beforeEach(() => {
         mockExecSync.mockReset();
         mockExecFileSync.mockReset();
+        mockForgeExecGit.mockReset();
+        mockForgeExecGit.mockReturnValue('');
         mockGetBranchStatus.mockReset();
         mockGetFileDiff.mockReset();
         mockDetectCommitRange.mockReset();
@@ -178,7 +183,7 @@ describe('Diff truncation endpoints', () => {
 
         it('returns truncated diff when over limit', async () => {
             const largeDiff = makeLargeDiff(DIFF_LINE_LIMIT + 200);
-            mockExecSync.mockReturnValue(largeDiff);
+            mockForgeExecGit.mockReturnValue(largeDiff);
 
             const res = await request(endpoint('big-file.ts'));
             const data = res.json();
@@ -189,7 +194,7 @@ describe('Diff truncation endpoints', () => {
 
         it('returns full diff when ?full=true', async () => {
             const largeDiff = makeLargeDiff(DIFF_LINE_LIMIT + 200);
-            mockExecSync.mockReturnValue(largeDiff);
+            mockForgeExecGit.mockReturnValue(largeDiff);
 
             const res = await request(endpoint('big-file.ts', true));
             const data = res.json();
@@ -199,7 +204,7 @@ describe('Diff truncation endpoints', () => {
 
         it('returns untruncated diff when under limit', async () => {
             const smallDiff = 'line1\nline2\nline3';
-            mockExecSync.mockReturnValue(smallDiff);
+            mockForgeExecGit.mockReturnValue(smallDiff);
 
             const res = await request(endpoint('small-file.ts'));
             const data = res.json();
