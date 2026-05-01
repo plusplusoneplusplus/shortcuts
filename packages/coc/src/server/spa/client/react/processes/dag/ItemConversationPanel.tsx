@@ -8,9 +8,13 @@ import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
 import { Badge, Button, Spinner, SendButton } from '../../ui';
+import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { ConversationTurnBubble } from '../../features/chat/conversation/ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
+import { RichTextInput } from '../../shared/RichTextInput';
+import type { RichTextInputHandle } from '../../shared/RichTextInput';
+import { useFileAttachments } from '../../features/chat/hooks/useFileAttachments';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
@@ -47,8 +51,9 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
 }
 
 export function ItemConversationPanel({ processId, onClose, isDark }: ItemConversationPanelProps) {
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const modHeld = useModifierKey(textareaRef);
+    const richTextRef = useRef<RichTextInputHandle>(null);
+    const inputContainerRef = useRef<HTMLDivElement>(null);
+    const modHeld = useModifierKey(inputContainerRef);
     const [processData, setProcessData] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
@@ -59,6 +64,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
     const scrollRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     // Fetch process data on mount
     useEffect(() => {
@@ -169,7 +175,8 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
 
     const sendFollowUp = useCallback(async (deliveryMode: DeliveryMode = 'enqueue') => {
         const content = inputValue.trim();
-        if (!content) return;
+        const attachmentPayload = toPayload();
+        if (!content && attachmentPayload.length === 0) return;
 
         if (sending) {
             // While a previous send is in-flight, fire-and-forget the new
@@ -177,16 +184,20 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
             // optimistic user turn. The server will either inject it
             // immediately (immediate) or queue it for later (enqueue).
             setInputValue('');
+            richTextRef.current?.setValue('');
+            clearAttachments();
             setTurns(prev => [...prev, { role: 'user', content, timestamp: new Date().toISOString(), timeline: [] }]);
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, deliveryMode }),
+                body: JSON.stringify({ content, deliveryMode, ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}) }),
             }).catch(() => {});
             return;
         }
 
         setInputValue('');
+        richTextRef.current?.setValue('');
+        clearAttachments();
         setSending(true);
 
         const timestamp = new Date().toISOString();
@@ -201,7 +212,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, deliveryMode }),
+                body: JSON.stringify({ content, deliveryMode, ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}) }),
             });
 
             if (response.status === 410) {
@@ -230,7 +241,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         } finally {
             setSending(false);
         }
-    }, [inputValue, sending, processId, waitForFollowUpCompletion]);
+    }, [inputValue, sending, processId, waitForFollowUpCompletion, toPayload, clearAttachments]);
 
     const handleRetry = useCallback(() => {
         // Find last user message and re-send
@@ -366,37 +377,43 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
 
             {/* Chat input */}
             <div
+                ref={inputContainerRef}
                 data-testid="item-conversation-input"
-                className="px-4 py-3 border-t flex items-end gap-2"
+                className="px-4 py-3 border-t flex flex-col gap-2"
                 style={{ borderColor: isDark ? '#3c3c3c' : '#e0e0e0' }}
             >
-                <textarea
-                    ref={textareaRef}
-                    rows={1}
-                    value={inputValue}
-                    disabled={inputDisabled}
-                    placeholder="Follow up…"
-                    onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                            if (e.ctrlKey || e.metaKey) {
-                                e.preventDefault();
-                                void sendFollowUp('immediate');
-                            } else if (!e.shiftKey) {
-                                e.preventDefault();
-                                void sendFollowUp('enqueue');
+                {attachmentError && (
+                    <div className="text-xs text-[#f14c4c]" data-testid="item-conversation-attachment-error">{attachmentError}</div>
+                )}
+                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+                <div className="flex items-end gap-2">
+                    <RichTextInput
+                        ref={richTextRef}
+                        placeholder="Follow up…"
+                        disabled={inputDisabled}
+                        className="w-full min-h-[34px] max-h-28 overflow-y-auto border rounded p-2 text-sm bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        onChange={(val) => setInputValue(val)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                if (e.ctrlKey || e.metaKey) {
+                                    e.preventDefault();
+                                    void sendFollowUp('immediate');
+                                } else if (!e.shiftKey) {
+                                    e.preventDefault();
+                                    void sendFollowUp('enqueue');
+                                }
                             }
-                        }
-                    }}
-                    data-testid="item-conversation-textarea"
-                    className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                />
-                <SendButton
-                    disabled={inputDisabled || !inputValue.trim()}
-                    ctrlHeld={modHeld}
-                    onSend={(dm) => { void sendFollowUp(dm); }}
-                    data-testid="item-conversation-send"
-                />
+                        }}
+                        onPaste={addFromPaste}
+                        data-testid="item-conversation-textarea"
+                    />
+                    <SendButton
+                        disabled={inputDisabled || (!inputValue.trim() && attachments.length === 0)}
+                        ctrlHeld={modHeld}
+                        onSend={(dm) => { void sendFollowUp(dm); }}
+                        data-testid="item-conversation-send"
+                    />
+                </div>
             </div>
         </div>
     );

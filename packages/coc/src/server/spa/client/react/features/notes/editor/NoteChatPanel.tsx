@@ -17,6 +17,8 @@ import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
 import type { ChatMode } from '../../../repos/modeConfig';
 import { fetchApi } from '../../../hooks/useApi';
+import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
+import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -48,6 +50,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const [input, setInput] = useState('');
     const [selectedMode, setSelectedMode] = useState<'ask' | 'autopilot'>('ask');
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
@@ -80,7 +83,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const handleSend = async () => {
         const text = input.trim();
         const activeRefs = references ?? [];
-        if (!text && activeRefs.length === 0) return;
+        if (!text && activeRefs.length === 0 && attachments.length === 0) return;
 
         // Intercept /new and /clear commands
         if (/^\/(new|clear)$/i.test(text)) {
@@ -91,12 +94,14 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         }
 
         const { skills: extractedSkills } = slashCommands.parseAndExtract(text);
+        const attachmentPayload = toPayload();
         setInput('');
         richTextRef.current?.setValue('');
+        clearAttachments();
         await onBeforeSend?.();
         const prompt = formatNoteReferences(activeRefs) + text;
         onClearReferences?.();
-        await createChat(prompt, modelCommand.modelOverride, selectedMode, extractedSkills.length > 0 ? extractedSkills : undefined);
+        await createChat(prompt, modelCommand.modelOverride, selectedMode, extractedSkills.length > 0 ? extractedSkills : undefined, attachmentPayload.length > 0 ? attachmentPayload : undefined);
     };
 
     const noNoteSelected = scope === 'per-note' && !notePath;
@@ -137,7 +142,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                     <div className="text-xs">{emptyStateText}</div>
                                 </div>
                             </div>
-                            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                                 {references && references.length > 0 && (
                                     <NoteReferenceChips
                                         references={references}
@@ -145,6 +150,10 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                         className="mb-2"
                                     />
                                 )}
+                                {attachmentError && (
+                                    <div className="text-xs text-[#f14c4c]" data-testid="note-chat-attachment-error">{attachmentError}</div>
+                                )}
+                                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 min-w-0 relative">
                                         <RichTextInput
@@ -189,6 +198,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                                 }
                                                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
                                             }}
+                                            onPaste={addFromPaste}
                                             data-testid="note-chat-input"
                                         />
                                         <SlashCommandMenu
@@ -242,7 +252,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                         </div>
                                     )}
                                     <button
-                                        disabled={!input.trim() && !(references && references.length > 0)}
+                                        disabled={!input.trim() && !(references && references.length > 0) && attachments.length === 0}
                                         onClick={handleSend}
                                         className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
                                         data-testid="note-chat-send-btn"

@@ -95,7 +95,7 @@ describe('CommitChatPanel', () => {
 
         it('handleSend trims input and calls createChat', () => {
             expect(source).toContain('const text = input.trim()');
-            expect(source).toContain('await createChat(text)');
+            expect(source).toContain('await createChat(text');
         });
 
         it('clears input after send', () => {
@@ -148,6 +148,34 @@ describe('CommitChatPanel', () => {
 
         it('has commit-chat-panel testid', () => {
             expect(source).toContain('data-testid="commit-chat-panel"');
+        });
+    });
+
+    describe('image paste support', () => {
+        it('imports useFileAttachments hook', () => {
+            expect(source).toContain("useFileAttachments");
+        });
+
+        it('imports AttachmentPreviews component', () => {
+            expect(source).toContain("AttachmentPreviews");
+        });
+
+        it('wires onPaste to addFromPaste', () => {
+            expect(source).toContain('onPaste={addFromPaste}');
+        });
+
+        it('renders AttachmentPreviews with attachments and onRemove', () => {
+            expect(source).toContain('<AttachmentPreviews');
+            expect(source).toContain('attachments={attachments}');
+            expect(source).toContain('onRemove={removeAttachment}');
+        });
+
+        it('clears attachments after send', () => {
+            expect(source).toContain('clearAttachments()');
+        });
+
+        it('enables send button when attachments are present', () => {
+            expect(source).toContain('attachments.length === 0');
         });
     });
 });

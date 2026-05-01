@@ -274,4 +274,40 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('extractedSkills.length > 0 ? extractedSkills : undefined');
         });
     });
+
+    describe('image paste support', () => {
+        it('imports useFileAttachments hook', () => {
+            expect(source).toContain("useFileAttachments");
+        });
+
+        it('imports AttachmentPreviews component', () => {
+            expect(source).toContain("AttachmentPreviews");
+        });
+
+        it('wires onPaste to addFromPaste', () => {
+            expect(source).toContain('onPaste={addFromPaste}');
+        });
+
+        it('renders AttachmentPreviews with attachments and onRemove', () => {
+            expect(source).toContain('<AttachmentPreviews');
+            expect(source).toContain('attachments={attachments}');
+            expect(source).toContain('onRemove={removeAttachment}');
+        });
+
+        it('clears attachments after send', () => {
+            expect(source).toContain('clearAttachments()');
+        });
+
+        it('enables send button when attachments are present', () => {
+            expect(source).toContain('attachments.length === 0');
+        });
+
+        it('passes attachments to createChat when present', () => {
+            expect(source).toContain('attachmentPayload.length > 0 ? attachmentPayload : undefined');
+        });
+
+        it('shows attachment error when present', () => {
+            expect(source).toContain('note-chat-attachment-error');
+        });
+    });
 });

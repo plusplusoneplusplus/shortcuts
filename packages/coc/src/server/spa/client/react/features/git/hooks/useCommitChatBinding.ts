@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../../hooks/useApi';
+import type { AttachmentPayload } from '../../../types/attachments';
 
 export interface UseCommitChatBindingOptions {
     workspaceId: string;
@@ -15,7 +16,7 @@ export interface UseCommitChatBindingReturn {
     /** Error message if binding fetch failed */
     error: string | null;
     /** Create a new chat for this commit. Returns the new taskId. */
-    createChat: (prompt: string) => Promise<string | null>;
+    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
 }
 
 export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseCommitChatBindingReturn {
@@ -45,7 +46,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     }, [workspaceId, commitHash]);
 
     // Create a new chat for this commit
-    const createChat = useCallback(async (prompt: string): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
         if (!commitHash) return null;
         try {
             // Create queue task
@@ -60,6 +61,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
                         mode: 'ask',
                         prompt,
                         workspaceId,
+                        ...(attachments && attachments.length > 0 ? { attachments } : {}),
                         context: {
                             commitChat: { commitHash, commitMessage },
                         },

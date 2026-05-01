@@ -3,6 +3,55 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+
+// Mock RichTextInput as a simple textarea for testability
+vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
+    const React = await import('react');
+    return {
+        RichTextInput: React.forwardRef(function RichTextInputMock(props: any, ref: any) {
+            const { onChange, onKeyDown, onPaste, placeholder, disabled, 'data-testid': testId, className } = props;
+            const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+            React.useImperativeHandle(ref, () => ({
+                getValue: () => textareaRef.current?.value ?? '',
+                setValue: (text: string) => { if (textareaRef.current) textareaRef.current.value = text; },
+                focus: () => textareaRef.current?.focus(),
+            }));
+            return React.createElement('textarea', {
+                ref: textareaRef,
+                'data-testid': testId ?? 'item-conversation-textarea',
+                placeholder,
+                disabled,
+                className,
+                onChange: (e: any) => onChange?.(e.target.value),
+                onKeyDown,
+                onPaste,
+            });
+        }),
+    };
+});
+
+// Mock AttachmentPreviews as a no-op
+vi.mock('../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
+}));
+
+// Mock useFileAttachments with a default implementation
+const mockAddFromPaste = vi.fn();
+const mockRemoveAttachment = vi.fn();
+const mockClearAttachments = vi.fn();
+const mockToPayload = vi.fn(() => []);
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
+        addFromPaste: mockAddFromPaste,
+        removeAttachment: mockRemoveAttachment,
+        clearAttachments: mockClearAttachments,
+        error: null,
+        toPayload: mockToPayload,
+    }),
+}));
+
 import { ItemConversationPanel } from '../../../../src/server/spa/client/react/processes/dag/ItemConversationPanel';
 
 function makeProcessResponse(overrides: Record<string, any> = {}) {
@@ -39,6 +88,11 @@ describe('ItemConversationPanel', () => {
         fetchMock = vi.fn();
         global.fetch = fetchMock;
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        mockAddFromPaste.mockClear();
+        mockRemoveAttachment.mockClear();
+        mockClearAttachments.mockClear();
+        mockToPayload.mockClear();
+        mockToPayload.mockReturnValue([]);
     });
 
     afterEach(() => {
@@ -447,7 +501,7 @@ describe('ItemConversationPanel', () => {
                 expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
             });
 
-            const textarea = screen.getByTestId('item-conversation-textarea') as HTMLTextAreaElement;
+            const textarea = screen.getByTestId('item-conversation-textarea');
             fireEvent.change(textarea, { target: { value: 'first message' } });
 
             // Trigger send — sending becomes true
@@ -477,7 +531,7 @@ describe('ItemConversationPanel', () => {
                 expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
             });
 
-            const textarea = screen.getByTestId('item-conversation-textarea') as HTMLTextAreaElement;
+            const textarea = screen.getByTestId('item-conversation-textarea');
             fireEvent.change(textarea, { target: { value: 'test' } });
 
             await act(async () => {
@@ -581,6 +635,116 @@ describe('ItemConversationPanel', () => {
             expect(postCall).toBeDefined();
             const body = JSON.parse(postCall![1].body);
             expect(body.deliveryMode).toBe('immediate');
+
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('image paste support', () => {
+        it('wires onPaste handler from useFileAttachments to RichTextInput', async () => {
+            fetchMock.mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve(makeProcessResponse()),
+            });
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea');
+            fireEvent.paste(textarea);
+
+            expect(mockAddFromPaste).toHaveBeenCalled();
+        });
+
+        it('clears attachments after sending a message', async () => {
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({}),
+                })
+                .mockResolvedValue({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                });
+
+            const mockEs = {
+                addEventListener: vi.fn(),
+                close: vi.fn(),
+                onerror: null as any,
+            };
+            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea');
+            fireEvent.change(textarea, { target: { value: 'message with image' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Send'));
+            });
+
+            expect(mockClearAttachments).toHaveBeenCalled();
+
+            vi.unstubAllGlobals();
+        });
+
+        it('includes attachments in POST body when toPayload returns items', async () => {
+            const fakePayload = [{ type: 'image', data: 'data:image/png;base64,abc', name: 'test.png' }];
+            mockToPayload.mockReturnValue(fakePayload);
+
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({}),
+                })
+                .mockResolvedValue({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                });
+
+            const mockEs = {
+                addEventListener: vi.fn(),
+                close: vi.fn(),
+                onerror: null as any,
+            };
+            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea');
+            fireEvent.change(textarea, { target: { value: 'check this screenshot' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Send'));
+            });
+
+            const postCall = fetchMock.mock.calls.find(
+                (c: any[]) => c[1]?.method === 'POST',
+            );
+            expect(postCall).toBeDefined();
+            const body = JSON.parse(postCall![1].body);
+            expect(body.attachments).toEqual(fakePayload);
 
             vi.unstubAllGlobals();
         });

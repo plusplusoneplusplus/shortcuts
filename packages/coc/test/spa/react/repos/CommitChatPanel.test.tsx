@@ -32,15 +32,37 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () =
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', () => ({
     RichTextInput: vi.fn().mockImplementation(
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        ({ onChange, onKeyDown, placeholder, 'data-testid': testId, ...rest }: any) => (
+        ({ onChange, onKeyDown, onPaste, placeholder, 'data-testid': testId, ...rest }: any) => (
             <input
                 data-testid={testId ?? 'commit-chat-input'}
                 placeholder={placeholder}
                 onChange={(e: any) => onChange?.(e.target.value)}
                 onKeyDown={onKeyDown}
+                onPaste={onPaste}
             />
         ),
     ),
+}));
+
+// Mock AttachmentPreviews as a no-op
+vi.mock('../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
+}));
+
+// Mock useFileAttachments
+const mockCommitAddFromPaste = vi.fn();
+const mockCommitClearAttachments = vi.fn();
+const mockCommitToPayload = vi.fn(() => []);
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
+        addFromPaste: mockCommitAddFromPaste,
+        removeAttachment: vi.fn(),
+        clearAttachments: mockCommitClearAttachments,
+        error: null,
+        toPayload: mockCommitToPayload,
+    }),
 }));
 
 import { CommitChatPanel } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel';
@@ -49,6 +71,7 @@ describe('CommitChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCreateChat.mockResolvedValue('new-task-id');
+        mockCommitToPayload.mockReturnValue([]);
     });
 
     const defaultProps = {
@@ -192,5 +215,64 @@ describe('CommitChatPanel', () => {
             commitHash: 'deadbeef',
             commitMessage: 'fix: null check',
         });
+    });
+
+    // ========================================================================
+    // Image paste support
+    // ========================================================================
+
+    it('wires onPaste handler from useFileAttachments to input', async () => {
+        setupHook();
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        const input = screen.getByTestId('commit-chat-input');
+        fireEvent.paste(input);
+
+        expect(mockCommitAddFromPaste).toHaveBeenCalled();
+    });
+
+    it('clears attachments after sending', async () => {
+        setupHook();
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        const input = screen.getByTestId('commit-chat-input');
+        fireEvent.change(input, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
+        });
+
+        expect(mockCommitClearAttachments).toHaveBeenCalled();
+    });
+
+    it('passes attachments to createChat when present', async () => {
+        const fakePayload = [{ type: 'image', data: 'data:image/png;base64,abc', name: 'img.png' }];
+        mockCommitToPayload.mockReturnValue(fakePayload);
+        setupHook();
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        const input = screen.getByTestId('commit-chat-input');
+        fireEvent.change(input, { target: { value: 'check this' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
+        });
+
+        expect(mockCreateChat).toHaveBeenCalledWith('check this', fakePayload);
+    });
+
+    it('does not pass attachments when toPayload returns empty', async () => {
+        mockCommitToPayload.mockReturnValue([]);
+        setupHook();
+        await act(async () => { render(<CommitChatPanel {...defaultProps} />); });
+
+        const input = screen.getByTestId('commit-chat-input');
+        fireEvent.change(input, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('commit-chat-send-btn'));
+        });
+
+        expect(mockCreateChat).toHaveBeenCalledWith('hello', undefined);
     });
 });

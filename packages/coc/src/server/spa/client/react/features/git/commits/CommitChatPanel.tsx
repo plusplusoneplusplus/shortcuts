@@ -4,6 +4,8 @@ import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
 import { RichTextInput } from '../../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
+import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
+import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
 
 export interface CommitChatPanelProps {
     workspaceId: string;
@@ -16,13 +18,16 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
     const { taskId, loading, error, createChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     const handleSend = async () => {
         const text = input.trim();
-        if (!text) return;
+        if (!text && attachments.length === 0) return;
+        const attachmentPayload = toPayload();
         setInput('');
         richTextRef.current?.setValue('');
-        await createChat(text);
+        clearAttachments();
+        await createChat(text, attachmentPayload.length > 0 ? attachmentPayload : undefined);
     };
 
     return (
@@ -67,7 +72,11 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                             <div className="text-xs">Ask questions about the changes</div>
                         </div>
                     </div>
-                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+                        {attachmentError && (
+                            <div className="text-xs text-[#f14c4c]" data-testid="commit-chat-attachment-error">{attachmentError}</div>
+                        )}
+                        <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                         <div className="flex items-center gap-2">
                             <RichTextInput
                                 ref={richTextRef}
@@ -77,10 +86,11 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
                                 }}
+                                onPaste={addFromPaste}
                                 data-testid="commit-chat-input"
                             />
                             <button
-                                disabled={!input.trim()}
+                                disabled={!input.trim() && attachments.length === 0}
                                 onClick={handleSend}
                                 className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
                                 data-testid="commit-chat-send-btn"
