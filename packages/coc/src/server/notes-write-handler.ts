@@ -45,6 +45,53 @@ function isSystemFolder(notesRoot: string, resolvedPath: string): boolean {
     return SYSTEM_FOLDER_NAMES.some(name => resolvedPath === path.join(notesRoot, name));
 }
 
+function getFsErrorCode(err: unknown): string | undefined {
+    if (typeof err !== 'object' || err === null || !('code' in err)) {
+        return undefined;
+    }
+    const code = (err as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+}
+
+function isMissingPathError(err: unknown): boolean {
+    const code = getFsErrorCode(err);
+    return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.access(filePath);
+        return true;
+    } catch (err) {
+        if (isMissingPathError(err)) {
+            return false;
+        }
+        throw err;
+    }
+}
+
+function normalizePathForComparison(filePath: string): string {
+    return path.normalize(filePath);
+}
+
+async function pathsReferToSameExistingEntry(left: string, right: string): Promise<boolean> {
+    const [leftRealPath, rightRealPath] = await Promise.all([
+        fs.promises.realpath(left),
+        fs.promises.realpath(right),
+    ]);
+    if (normalizePathForComparison(leftRealPath) === normalizePathForComparison(rightRealPath)) {
+        return true;
+    }
+    if (normalizePathForComparison(left).toLowerCase() !== normalizePathForComparison(right).toLowerCase()) {
+        return false;
+    }
+    const [leftStat, rightStat] = await Promise.all([
+        fs.promises.stat(left),
+        fs.promises.stat(right),
+    ]);
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+}
+
 // ============================================================================
 // Write Route Registration
 // ============================================================================
@@ -217,12 +264,21 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 404, 'Source path not found');
             }
 
-            // Check collision
-            try {
-                await fs.promises.access(resolvedNew);
+            if (resolvedOld === resolvedNew) {
                 return sendError(res, 409, 'Destination path already exists');
-            } catch {
-                // Expected — destination should not exist
+            }
+
+            // Check collision. On case-insensitive filesystems, a case-only rename
+            // makes the destination path appear to exist because it resolves to the
+            // source entry. Permit that alias but keep rejecting separate entries.
+            let destinationExists: boolean;
+            try {
+                destinationExists = await pathExists(resolvedNew);
+                if (destinationExists && !(await pathsReferToSameExistingEntry(resolvedOld, resolvedNew))) {
+                    return sendError(res, 409, 'Destination path already exists');
+                }
+            } catch (err: any) {
+                return sendError(res, 500, 'Failed to check destination path: ' + (err.message || 'Unknown error'));
             }
 
             try {

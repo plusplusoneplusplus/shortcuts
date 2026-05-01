@@ -549,6 +549,60 @@ describe('Notes Handler', () => {
             expect(body.error).toContain('already exists');
         });
 
+        it('should allow renaming a file when only casing changes', async () => {
+            const srv = await startServer();
+            const sidecarData = JSON.stringify({ threads: { t1: { id: 't1' } } });
+            createNoteFiles({
+                'Bugs.md': '# Bugs',
+                'Bugs.md.comments.json': sidecarData,
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'Bugs.md',
+                newPath: 'bugs.md',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.oldPath).toBe('Bugs.md');
+            expect(body.newPath).toBe('bugs.md');
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            const entries = fs.readdirSync(notesDir);
+            expect(entries).toContain('bugs.md');
+            expect(entries).toContain('bugs.md.comments.json');
+            expect(entries).not.toContain('Bugs.md');
+            expect(entries).not.toContain('Bugs.md.comments.json');
+
+            const newRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=bugs.md`);
+            expect(newRes.status).toBe(200);
+            expect(JSON.parse(newRes.body).content).toBe('# Bugs');
+        });
+
+        it('should allow renaming a directory when only casing changes', async () => {
+            const srv = await startServer();
+            createNoteFiles({ 'Bugs/issue.md': '# Issue' });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'Bugs',
+                newPath: 'bugs',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.oldPath).toBe('Bugs');
+            expect(body.newPath).toBe('bugs');
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            const entries = fs.readdirSync(notesDir);
+            expect(entries).toContain('bugs');
+            expect(entries).not.toContain('Bugs');
+
+            const newRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=bugs/issue.md`);
+            expect(newRes.status).toBe(200);
+            expect(JSON.parse(newRes.body).content).toBe('# Issue');
+        });
+
         it('should return 403 for path traversal', async () => {
             const srv = await startServer();
             createNoteFiles({ 'legit.md': '# Legit' });

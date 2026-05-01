@@ -350,6 +350,21 @@ describe('Notes Order — Integration', () => {
             expect(readOrder('')).toEqual(['gamma.md', 'renamed-beta.md', 'alpha.md']);
         });
 
+        it('renames entry in parent .order.json when only casing changes', async () => {
+            const srv = await startServer();
+            createFiles({ 'Bugs/page.md': '' });
+            writeOrder('', ['Bugs']);
+            await registerWorkspace(srv);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'Bugs',
+                newPath: 'bugs',
+            });
+            expect(res.status).toBe(200);
+
+            expect(readOrder('')).toEqual(['bugs']);
+        });
+
         it('removes from old parent .order.json on cross-parent move', async () => {
             const srv = await startServer();
             createFiles({ 'nb-a/page.md': '', 'nb-b/x.md': '' });
