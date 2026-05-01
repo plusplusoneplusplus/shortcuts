@@ -13,9 +13,15 @@ export const MODE_ICONS: Record<ChatMode, string> = {
 };
 
 export const MODE_LABELS: Record<ChatMode, string> = {
-    ask: '💡',
-    plan: '📋',
-    autopilot: '🤖',
+    ask: '💡 Ask',
+    plan: '📋 Plan',
+    autopilot: '🤖 Autopilot',
+};
+
+export const MODE_TOOLTIPS: Record<ChatMode, string> = {
+    ask: 'Ask — get answers without making changes',
+    plan: 'Plan — create a step-by-step plan',
+    autopilot: 'Autopilot — execute changes automatically',
 };
 
 const MODE_ORDER: ChatMode[] = ['ask', 'plan', 'autopilot'];

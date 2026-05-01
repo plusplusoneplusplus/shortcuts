@@ -57,6 +57,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
     },
     MODE_ICONS: { ask: '?', plan: 'P', autopilot: 'A' },
     MODE_LABELS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot' },
+    MODE_TOOLTIPS: { ask: 'Ask tooltip', plan: 'Plan tooltip', autopilot: 'Autopilot tooltip' },
     cycleMode: (m: string) => m,
 }));
 

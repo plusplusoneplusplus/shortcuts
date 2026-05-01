@@ -74,9 +74,14 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         autopilot: '🤖',
     },
     MODE_LABELS: {
-        ask: '💡',
-        plan: '📋',
-        autopilot: '🤖',
+        ask: '💡 Ask',
+        plan: '📋 Plan',
+        autopilot: '🤖 Autopilot',
+    },
+    MODE_TOOLTIPS: {
+        ask: 'Ask — get answers without making changes',
+        plan: 'Plan — create a step-by-step plan',
+        autopilot: 'Autopilot — execute changes automatically',
     },
     cycleMode: (current: string) => {
         const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot' };

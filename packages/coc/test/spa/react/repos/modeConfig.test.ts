@@ -24,9 +24,9 @@ describe('MODE_ICONS', () => {
 });
 
 describe('MODE_LABELS', () => {
-    it('has a full label for every mode', () => {
-        expect(MODE_LABELS.ask).toBe('💡');
-        expect(MODE_LABELS.plan).toBe('📋');
-        expect(MODE_LABELS.autopilot).toBe('🤖');
+    it('has a descriptive label for every mode', () => {
+        expect(MODE_LABELS.ask).toBe('💡 Ask');
+        expect(MODE_LABELS.plan).toBe('📋 Plan');
+        expect(MODE_LABELS.autopilot).toBe('🤖 Autopilot');
     });
 });

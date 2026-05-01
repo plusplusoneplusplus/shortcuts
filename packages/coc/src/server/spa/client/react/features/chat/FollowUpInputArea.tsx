@@ -9,7 +9,7 @@ import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
-import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from '../../repos/modeConfig';
+import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { ModelInfo } from '../../hooks/useModels';
@@ -184,6 +184,7 @@ export function FollowUpInputArea({
                         className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#c8c8c8] dark:hover:bg-[#4e4e4e] text-[10px] leading-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#0078d4]/50"
                         onClick={() => setSuggestionsDismissed(true)}
                         aria-label="Dismiss suggestions"
+                        title="Dismiss suggestions"
                         data-testid="dismiss-suggestions-btn"
                     >
                         ✕
@@ -239,6 +240,7 @@ export function FollowUpInputArea({
                         className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
                         data-testid="mode-cycle-btn"
                         aria-label={`Mode: ${selectedMode}. Tap to switch.`}
+                        title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
                     >
                         {MODE_ICONS[selectedMode]}
                     </button>
@@ -248,6 +250,7 @@ export function FollowUpInputArea({
                         onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
                         className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
                         data-testid="mode-dropdown"
+                        title="Select chat mode (Shift+Tab to cycle)"
                     >
                         {(Object.entries(MODE_LABELS) as [string, string][])
                             .filter(([mode]) => !allowedModes || allowedModes.includes(mode as ChatMode))
@@ -379,6 +382,7 @@ export function FollowUpInputArea({
                             className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
                             onClick={() => modelCommand.setModelOverride(null)}
                             aria-label="Clear model override"
+                            title="Clear model override"
                         >✕</button>
                     </div>
                 )}
@@ -388,6 +392,7 @@ export function FollowUpInputArea({
                         className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
                         onClick={() => onStop?.()}
                         data-testid="activity-chat-stop-btn"
+                        title="Stop generation"
                     >
                         Stop
                     </button>

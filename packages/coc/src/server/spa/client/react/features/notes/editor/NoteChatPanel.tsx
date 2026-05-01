@@ -237,6 +237,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                                 className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
                                                 onClick={() => modelCommand.setModelOverride(null)}
                                                 aria-label="Clear model override"
+                                                title="Clear model override"
                                             >✕</button>
                                         </div>
                                     )}
@@ -245,6 +246,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                         onClick={handleSend}
                                         className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50"
                                         data-testid="note-chat-send-btn"
+                                        title="Send (Enter)"
                                     >Send</button>
                                 </div>
                             </div>
