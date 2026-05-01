@@ -257,6 +257,20 @@ describe('WhisperCollapsedGroup — FileHoverPopover', () => {
         expect(row?.textContent).not.toContain('−');
     });
 
+    it('keeps file popover open on inside click and dismisses it on outside click', () => {
+        const container = renderAndHoverFiles([
+            { path: 'src/a.ts', insertions: 4, deletions: 2, isCreate: false },
+        ]);
+        const popover = container.querySelector('[data-testid="file-hover-popover"]') as HTMLElement;
+
+        fireEvent.mouseDown(popover);
+        expect(container.querySelector('[data-testid="file-hover-popover"]')).not.toBeNull();
+
+        fireEvent.mouseDown(document.body);
+
+        expect(container.querySelector('[data-testid="file-hover-popover"]')).toBeNull();
+    });
+
     it('renders the file popover in a document.body portal at viewport coordinates', () => {
         const { container } = renderHeader({
             toolCallCount: 1,
@@ -390,6 +404,14 @@ describe('WhisperCollapsedGroup — SkillHoverPopover', () => {
         act(() => { vi.advanceTimersByTime(200); });
         expect(container.querySelector('[data-testid="skill-hover-popover"]')).toBeNull();
         vi.useRealTimers();
+    });
+
+    it('dismisses skill popover on Escape', () => {
+        const container = renderAndHoverSkills(['impl']);
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        expect(container.querySelector('[data-testid="skill-hover-popover"]')).toBeNull();
     });
 
     it('renders the skill popover in a document.body portal at viewport coordinates', () => {
@@ -587,6 +609,16 @@ describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
 
         expect(container.querySelector('[data-testid="memory-full-content-popover"]')).toBeNull();
         vi.useRealTimers();
+    });
+
+    it('dismisses memory popover on outside click', () => {
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'memory', content: 'fact' },
+        ]);
+
+        fireEvent.mouseDown(document.body);
+
+        expect(container.querySelector('[data-testid="memory-hover-popover"]')).toBeNull();
     });
 
     it('renders memory popovers in document.body portals at viewport coordinates', () => {

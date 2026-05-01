@@ -79,6 +79,47 @@ function clampPopoverPosition(
     return { top, left };
 }
 
+function useHoverPopoverDismissal(
+    open: boolean,
+    anchorRef: React.RefObject<HTMLElement | null>,
+    popoverRef: React.RefObject<HTMLElement | null>,
+    onDismiss: () => void,
+) {
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onDismiss();
+            }
+        };
+        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+            const target = event.target as Node | null;
+            if (!target) {
+                return;
+            }
+            if (anchorRef.current?.contains(target)) {
+                return;
+            }
+            if (popoverRef.current?.contains(target)) {
+                return;
+            }
+            onDismiss();
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('touchstart', handlePointerDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('touchstart', handlePointerDown);
+        };
+    }, [open, anchorRef, popoverRef, onDismiss]);
+}
+
 // ---------------------------------------------------------------------------
 // shortenPath — shows dir/basename, truncating middle for long paths
 // ---------------------------------------------------------------------------
@@ -142,17 +183,19 @@ function DiffBar({ insertions, deletions, isCreate }: DiffBarProps) {
 interface SkillHoverPopoverProps {
     skillNames: string[];
     anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
 }
 
-function SkillHoverPopover({ skillNames, anchorRef, onMouseEnter, onMouseLeave }: SkillHoverPopoverProps) {
+function SkillHoverPopover({ skillNames, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: SkillHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const pos = clampPopoverPosition(rect, 400, skillNames.length * 28 + 8);
 
     return ReactDOM.createPortal(
         <div
+            ref={popoverRef}
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
             style={{ top: pos.top, left: pos.left }}
             data-testid="skill-hover-popover"
@@ -189,6 +232,7 @@ interface SkillHoverSpanProps {
 function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
     const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showPopover = useCallback(() => {
@@ -199,6 +243,15 @@ function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
     const hidePopover = useCallback(() => {
         graceTimer.current = setTimeout(() => setHovered(false), 150);
     }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
     return (
         <span
@@ -213,6 +266,7 @@ function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
                 <SkillHoverPopover
                     skillNames={skillNames}
                     anchorRef={anchorRef}
+                    popoverRef={popoverRef}
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
                 />
@@ -243,6 +297,7 @@ interface MemoryAction {
 interface MemoryHoverPopoverProps {
     actions: MemoryAction[];
     anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
 }
@@ -347,13 +402,14 @@ function MemoryPopoverRow({ entry, index }: { entry: MemoryAction; index: number
     );
 }
 
-function MemoryHoverPopover({ actions, anchorRef, onMouseEnter, onMouseLeave }: MemoryHoverPopoverProps) {
+function MemoryHoverPopover({ actions, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: MemoryHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const pos = clampPopoverPosition(rect, 400, actions.length * 28 + 8);
 
     return ReactDOM.createPortal(
         <div
+            ref={popoverRef}
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
             style={{ top: pos.top, left: pos.left }}
             data-testid="memory-hover-popover"
@@ -381,6 +437,7 @@ interface MemoryHoverSpanProps {
 function MemoryHoverSpan({ text, actions, testId }: MemoryHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
     const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showPopover = useCallback(() => {
@@ -391,6 +448,15 @@ function MemoryHoverSpan({ text, actions, testId }: MemoryHoverSpanProps) {
     const hidePopover = useCallback(() => {
         graceTimer.current = setTimeout(() => setHovered(false), 150);
     }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
     return (
         <span
@@ -405,6 +471,7 @@ function MemoryHoverSpan({ text, actions, testId }: MemoryHoverSpanProps) {
                 <MemoryHoverPopover
                     actions={actions}
                     anchorRef={anchorRef}
+                    popoverRef={popoverRef}
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
                 />
@@ -421,11 +488,12 @@ interface CommitHoverPopoverProps {
     commits: DetectedCommit[];
     workspaceId?: string;
     anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
 }
 
-function CommitHoverPopover({ commits, workspaceId, anchorRef, onMouseEnter, onMouseLeave }: CommitHoverPopoverProps) {
+function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: CommitHoverPopoverProps) {
     const { markPoppedOut } = useGitReviewPopOut();
 
     if (!anchorRef.current) return null;
@@ -445,6 +513,7 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, onMouseEnter, onM
 
     return ReactDOM.createPortal(
         <div
+            ref={popoverRef}
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
             style={{ top: pos.top, left: pos.left }}
             data-testid="commit-hover-popover"
@@ -509,11 +578,12 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, onMouseEnter, onM
 interface FileHoverPopoverProps {
     files: FileEdit[];
     anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
 }
 
-function FileHoverPopover({ files, anchorRef, onMouseEnter, onMouseLeave }: FileHoverPopoverProps) {
+function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: FileHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const rowHeight = 28;
@@ -524,6 +594,7 @@ function FileHoverPopover({ files, anchorRef, onMouseEnter, onMouseLeave }: File
 
     return ReactDOM.createPortal(
         <div
+            ref={popoverRef}
             className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[240px] max-w-[460px]"
             style={{ top: pos.top, left: pos.left }}
             data-testid="file-hover-popover"
@@ -589,6 +660,7 @@ interface FileHoverSpanProps {
 function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
     const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showPopover = useCallback(() => {
@@ -599,6 +671,15 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
     const hidePopover = useCallback(() => {
         graceTimer.current = setTimeout(() => setHovered(false), 150);
     }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
     const totals = useMemo(() => computeFileEditTotals(files), [files]);
     const hasTotals = totals.totalInsertions > 0 || totals.totalDeletions > 0;
@@ -623,6 +704,7 @@ function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
                 <FileHoverPopover
                     files={files}
                     anchorRef={anchorRef}
+                    popoverRef={popoverRef}
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
                 />
@@ -645,6 +727,7 @@ interface CommitHoverSpanProps {
 function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
     const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showPopover = useCallback(() => {
@@ -655,6 +738,15 @@ function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpan
     const hidePopover = useCallback(() => {
         graceTimer.current = setTimeout(() => setHovered(false), 150);
     }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
     return (
         <span
@@ -670,6 +762,7 @@ function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpan
                     commits={commits}
                     workspaceId={workspaceId}
                     anchorRef={anchorRef}
+                    popoverRef={popoverRef}
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
                 />

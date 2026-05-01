@@ -124,6 +124,22 @@ describe('WhisperCollapsedGroup', () => {
         expect(popover.style.left).toBe('64px');
     });
 
+    it('dismisses commit popover on Escape', () => {
+        render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                summary={makeSummary({ commitCount: 1, commits: [makeCommit()] })}
+            />,
+        );
+        const hoverTarget = screen.getByTestId('whisper-commit-hover');
+        fireEvent.mouseEnter(hoverTarget);
+        expect(screen.getByTestId('commit-hover-popover')).toBeDefined();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        expect(screen.queryByTestId('commit-hover-popover')).toBeNull();
+    });
+
     it('hides commit popover on mouse leave after grace timer', () => {
         render(
             <WhisperCollapsedGroup
