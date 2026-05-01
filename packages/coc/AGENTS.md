@@ -13,6 +13,7 @@ Git commit file clicks in the repo dashboard use `RepoGitTab` split-view routing
 Repo Settings → Memory exposes a per-repo **Enable Memory for this Repo** switch backed by `boundedMemory.enabled` in `/api/workspaces/:id/preferences`; disabling it preserves `MEMORY.md` content but stops future bounded-memory injection.
 Admin → Settings → Appearance & Navigation exposes the global inline HTML preview control backed by `htmlEmbed.enabled` in `/api/preferences`; when enabled, local `.html`/`.htm` markdown links with title `"embed"` render as sandboxed iframe previews through `/api/workspaces/:id/files/html`.
 Repo Settings → LLM Tools exposes per-repo enable/disable toggles for AI chat tools backed by `disabledLlmTools` in `/api/workspaces/:id/preferences`. Dedicated API: `GET/PUT /api/workspaces/:id/llm-tools-config`. All tools enabled by default except `tavily_web_search`. Tool registry in `llm-tools/llm-tool-registry.ts`.
+Dashboard Usage shows token breakdowns by day/model. Per-model cells show tokens only; Total cells add estimated token-cost USD from forge pricing helpers and display SDK multiplier accounting as `Premium units` without dollar formatting.
 
 ## Usage
 
@@ -115,6 +116,7 @@ src/
 │   ├── process-resume-handler.ts # Resume interrupted processes
 │   ├── prompt-handler.ts         # Prompt management API
 │   ├── prompt-utils.ts           # Prompt utilities
+│   ├── stats-handler.ts          # Usage stats API — aggregates token usage and estimated token-price USD by day/model
 │   ├── preferences-handler.ts    # User preference storage API (UI prefs only; pin/archive moved to processes table)
 │   ├── pin-archive-handler.ts    # Pin/archive REST API (PATCH /api/processes/:id/pin, /archive; POST /api/processes/archive, /unarchive; GET /api/workspaces/:id/pinned)
 │   ├── admin-handler.ts          # Admin/diagnostic endpoints

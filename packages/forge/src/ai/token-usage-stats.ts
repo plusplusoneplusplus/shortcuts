@@ -1,5 +1,6 @@
 import type { TokenUsage } from '../copilot-sdk-wrapper/types';
 import type { SerializedAIProcess } from './process-types';
+import { estimateCopilotTokenCost } from './copilot-token-cost';
 
 export interface TokenUsageStatsEntry {
     date: string;                        // YYYY-MM-DD (UTC)
@@ -30,10 +31,22 @@ interface Accumulator {
     usage: TokenUsage;
     hasCost: boolean;
     hasDuration: boolean;
+    hasEstimatedUsdCost: boolean;
+    hasCostBreakdown: boolean;
+    pricingSources: Set<string>;
+    pricingUnavailable: boolean;
 }
 
 function newAccumulator(): Accumulator {
-    return { usage: emptyUsage(), hasCost: false, hasDuration: false };
+    return {
+        usage: emptyUsage(),
+        hasCost: false,
+        hasDuration: false,
+        hasEstimatedUsdCost: false,
+        hasCostBreakdown: false,
+        pricingSources: new Set(),
+        pricingUnavailable: false,
+    };
 }
 
 function addToAccumulator(acc: Accumulator, src: TokenUsage): void {
@@ -52,6 +65,31 @@ function addToAccumulator(acc: Accumulator, src: TokenUsage): void {
         acc.hasDuration = true;
         acc.usage.duration = (acc.usage.duration ?? 0) + src.duration;
     }
+    if (src.estimatedUsdCost !== undefined) {
+        acc.hasEstimatedUsdCost = true;
+        acc.usage.estimatedUsdCost = (acc.usage.estimatedUsdCost ?? 0) + src.estimatedUsdCost;
+    }
+    if (src.costBreakdown !== undefined) {
+        acc.hasCostBreakdown = true;
+        const existing = acc.usage.costBreakdown ?? {
+            inputUsd: 0,
+            cachedInputUsd: 0,
+            cacheWriteUsd: 0,
+            outputUsd: 0,
+        };
+        acc.usage.costBreakdown = {
+            inputUsd: existing.inputUsd + src.costBreakdown.inputUsd,
+            cachedInputUsd: existing.cachedInputUsd + src.costBreakdown.cachedInputUsd,
+            cacheWriteUsd: existing.cacheWriteUsd + src.costBreakdown.cacheWriteUsd,
+            outputUsd: existing.outputUsd + src.costBreakdown.outputUsd,
+        };
+    }
+    if (src.pricingSource !== undefined) {
+        acc.pricingSources.add(src.pricingSource);
+    }
+    if (src.pricingUnavailable) {
+        acc.pricingUnavailable = true;
+    }
 }
 
 function finalizeAccumulator(acc: Accumulator): TokenUsage {
@@ -62,6 +100,41 @@ function finalizeAccumulator(acc: Accumulator): TokenUsage {
     if (!acc.hasDuration) {
         delete result.duration;
     }
+    if (!acc.hasEstimatedUsdCost) {
+        delete result.estimatedUsdCost;
+    }
+    if (!acc.hasCostBreakdown) {
+        delete result.costBreakdown;
+    }
+    if (acc.pricingSources.size > 0) {
+        result.pricingSource = Array.from(acc.pricingSources).sort().join(', ');
+    } else {
+        delete result.pricingSource;
+    }
+    if (acc.pricingUnavailable) {
+        result.pricingUnavailable = true;
+    } else {
+        delete result.pricingUnavailable;
+    }
+    return result;
+}
+
+function addEstimatedTokenCost(model: string, usage: TokenUsage): TokenUsage {
+    const result: TokenUsage = { ...usage };
+    const estimated = estimateCopilotTokenCost(model, result);
+    if (!estimated) {
+        result.pricingUnavailable = true;
+        return result;
+    }
+
+    result.estimatedUsdCost = estimated.totalUsd;
+    result.costBreakdown = {
+        inputUsd: estimated.inputUsd,
+        cachedInputUsd: estimated.cachedInputUsd,
+        cacheWriteUsd: estimated.cacheWriteUsd,
+        outputUsd: estimated.outputUsd,
+    };
+    result.pricingSource = estimated.pricingSource;
     return result;
 }
 
@@ -109,7 +182,7 @@ export function aggregateTokenUsageStats(
         const dayAcc = newAccumulator();
 
         for (const [model, acc] of modelMap) {
-            const finalized = finalizeAccumulator(acc);
+            const finalized = addEstimatedTokenCost(model, finalizeAccumulator(acc));
             byModel[model] = finalized;
             addToAccumulator(dayAcc, finalized);
         }

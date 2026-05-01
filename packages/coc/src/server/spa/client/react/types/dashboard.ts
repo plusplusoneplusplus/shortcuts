@@ -11,6 +11,15 @@ export interface ClientTokenUsage {
     totalTokens: number;
     turnCount: number;
     cost?: number;
+    estimatedUsdCost?: number;
+    costBreakdown?: {
+        inputUsd: number;
+        cachedInputUsd: number;
+        cacheWriteUsd: number;
+        outputUsd: number;
+    };
+    pricingSource?: string;
+    pricingUnavailable?: boolean;
     duration?: number;
     /** Session-level token limit (from session.usage_info) */
     tokenLimit?: number;

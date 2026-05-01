@@ -114,4 +114,40 @@ describe('aggregateTokenUsageStats', () => {
         expect(result.entries[0].byModel['gpt-4'].cost).toBeCloseTo(0.01);
         expect(result.entries[0].dayTotal.cost).toBeCloseTo(0.01);
     });
+
+    it('10. estimated USD token cost is summed by day and model', () => {
+        const p1 = makeProcess('2024-06-01T08:00:00.000Z', 'gpt-5.5', {
+            inputTokens: 1_000_000,
+            outputTokens: 0,
+            cacheReadTokens: 500_000,
+            cacheWriteTokens: 0,
+            totalTokens: 1_000_000,
+        });
+        const p2 = makeProcess('2024-06-01T09:00:00.000Z', 'claude-sonnet-4.6', {
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 100_000,
+            totalTokens: 2_000_000,
+        });
+
+        const result = aggregateTokenUsageStats([p1, p2]);
+
+        expect(result.entries[0].byModel['gpt-5.5'].estimatedUsdCost).toBeCloseTo(2.75);
+        expect(result.entries[0].byModel['claude-sonnet-4.6'].estimatedUsdCost).toBeCloseTo(18.075);
+        expect(result.entries[0].dayTotal.estimatedUsdCost).toBeCloseTo(20.825);
+        expect(result.entries[0].dayTotal.costBreakdown?.cacheWriteUsd).toBeCloseTo(0.375);
+        expect(result.entries[0].dayTotal.pricingSource).toContain('docs.github.com');
+    });
+
+    it('11. unknown models omit estimated USD token cost', () => {
+        const p = makeProcess('2024-06-01T10:00:00.000Z', 'unknown-model', {});
+        const result = aggregateTokenUsageStats([p]);
+
+        expect(result.entries[0].byModel['unknown-model'].estimatedUsdCost).toBeUndefined();
+        expect(result.entries[0].byModel['unknown-model'].costBreakdown).toBeUndefined();
+        expect(result.entries[0].byModel['unknown-model'].pricingUnavailable).toBe(true);
+        expect(result.entries[0].dayTotal.estimatedUsdCost).toBeUndefined();
+        expect(result.entries[0].dayTotal.pricingUnavailable).toBe(true);
+    });
 });

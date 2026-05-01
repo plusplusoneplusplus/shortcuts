@@ -17,23 +17,48 @@ function fmt(n: number): string {
 
 function fmtPremiumUnits(units: number | undefined): string | null {
     if (units === undefined || units === null) return null;
-    return units.toFixed(2) + ' units';
+    return units.toFixed(2);
+}
+
+function fmtUsdCost(usd: number): string {
+    if (usd >= 0.01) return '$' + usd.toFixed(2);
+    return '$' + usd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function addUsage(acc: ClientTokenUsage, usage: ClientTokenUsage): ClientTokenUsage {
+    const costBreakdown = usage.costBreakdown
+        ? {
+            inputUsd: (acc.costBreakdown?.inputUsd ?? 0) + usage.costBreakdown.inputUsd,
+            cachedInputUsd: (acc.costBreakdown?.cachedInputUsd ?? 0) + usage.costBreakdown.cachedInputUsd,
+            cacheWriteUsd: (acc.costBreakdown?.cacheWriteUsd ?? 0) + usage.costBreakdown.cacheWriteUsd,
+            outputUsd: (acc.costBreakdown?.outputUsd ?? 0) + usage.costBreakdown.outputUsd,
+        }
+        : acc.costBreakdown;
+
+    return {
+        inputTokens: acc.inputTokens + usage.inputTokens,
+        outputTokens: acc.outputTokens + usage.outputTokens,
+        cacheReadTokens: acc.cacheReadTokens + usage.cacheReadTokens,
+        cacheWriteTokens: acc.cacheWriteTokens + usage.cacheWriteTokens,
+        totalTokens: acc.totalTokens + usage.totalTokens,
+        turnCount: acc.turnCount + usage.turnCount,
+        cost:
+            acc.cost !== undefined && usage.cost !== undefined
+                ? acc.cost + usage.cost
+                : acc.cost ?? usage.cost,
+        estimatedUsdCost:
+            acc.estimatedUsdCost !== undefined && usage.estimatedUsdCost !== undefined
+                ? acc.estimatedUsdCost + usage.estimatedUsdCost
+                : acc.estimatedUsdCost ?? usage.estimatedUsdCost,
+        costBreakdown,
+        pricingSource: acc.pricingSource ?? usage.pricingSource,
+        pricingUnavailable: acc.pricingUnavailable || usage.pricingUnavailable,
+    };
 }
 
 function sumUsage(entries: ClientTokenUsageStatsEntry[]): ClientTokenUsage {
     return entries.reduce(
-        (acc, e) => ({
-            inputTokens: acc.inputTokens + e.dayTotal.inputTokens,
-            outputTokens: acc.outputTokens + e.dayTotal.outputTokens,
-            cacheReadTokens: acc.cacheReadTokens + e.dayTotal.cacheReadTokens,
-            cacheWriteTokens: acc.cacheWriteTokens + e.dayTotal.cacheWriteTokens,
-            totalTokens: acc.totalTokens + e.dayTotal.totalTokens,
-            turnCount: acc.turnCount + e.dayTotal.turnCount,
-            cost:
-                acc.cost !== undefined && e.dayTotal.cost !== undefined
-                    ? acc.cost + e.dayTotal.cost
-                    : acc.cost ?? e.dayTotal.cost,
-        }),
+        (acc, e) => addUsage(acc, e.dayTotal),
         { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, turnCount: 0 }
     );
 }
@@ -42,35 +67,42 @@ function sumByModel(entries: ClientTokenUsageStatsEntry[], model: string): Clien
     const rows = entries.filter(e => e.byModel[model]);
     if (rows.length === 0) return undefined;
     return rows.reduce(
-        (acc, e) => ({
-            inputTokens: acc.inputTokens + e.byModel[model].inputTokens,
-            outputTokens: acc.outputTokens + e.byModel[model].outputTokens,
-            cacheReadTokens: acc.cacheReadTokens + e.byModel[model].cacheReadTokens,
-            cacheWriteTokens: acc.cacheWriteTokens + e.byModel[model].cacheWriteTokens,
-            totalTokens: acc.totalTokens + e.byModel[model].totalTokens,
-            turnCount: acc.turnCount + e.byModel[model].turnCount,
-            cost:
-                acc.cost !== undefined && e.byModel[model].cost !== undefined
-                    ? acc.cost + e.byModel[model].cost
-                    : acc.cost ?? e.byModel[model].cost,
-        }),
+        (acc, e) => addUsage(acc, e.byModel[model]),
         { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, turnCount: 0 }
     );
 }
 
-function UsageCell({ usage, showPremiumUnits = false }: { usage: ClientTokenUsage; showPremiumUnits?: boolean }) {
-    const premiumUnits = showPremiumUnits ? fmtPremiumUnits(usage.cost) : null;
+function UsageCell({
+    usage,
+    showCostDetails = false,
+}: {
+    usage: ClientTokenUsage;
+    showCostDetails?: boolean;
+}) {
+    const premiumUnits = showCostDetails ? fmtPremiumUnits(usage.cost) : null;
+    const estimatedCost = showCostDetails && usage.estimatedUsdCost !== undefined
+        ? fmtUsdCost(usage.estimatedUsdCost)
+        : null;
     const cachedInputTokens = usage.cacheReadTokens;
-    const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens, 0);
+    const newInputTokens = Math.max(usage.inputTokens - cachedInputTokens - usage.cacheWriteTokens, 0);
 
     const tooltip = [
         `Input total:   ${usage.inputTokens.toLocaleString()}`,
-        `Input cached:  ${cachedInputTokens.toLocaleString()}`,
-        `Input new:     ${newInputTokens.toLocaleString()}`,
-        `Output:        ${usage.outputTokens.toLocaleString()}`,
+        `Input cached/read: ${cachedInputTokens.toLocaleString()}`,
+        `Input non-cached:  ${newInputTokens.toLocaleString()}`,
         `Cache write:   ${usage.cacheWriteTokens.toLocaleString()}`,
+        `Output:        ${usage.outputTokens.toLocaleString()}`,
         `Turns:         ${usage.turnCount}`,
-        ...(premiumUnits ? [`Premium units: ${premiumUnits}`] : []),
+        ...(showCostDetails && usage.costBreakdown ? [
+            `Estimated token cost: ${fmtUsdCost(usage.estimatedUsdCost ?? 0)}`,
+            `  Input:        ${fmtUsdCost(usage.costBreakdown.inputUsd)}`,
+            `  Cached input: ${fmtUsdCost(usage.costBreakdown.cachedInputUsd)}`,
+            `  Cache write:  ${fmtUsdCost(usage.costBreakdown.cacheWriteUsd)}`,
+            `  Output:       ${fmtUsdCost(usage.costBreakdown.outputUsd)}`,
+        ] : []),
+        ...(showCostDetails && usage.pricingUnavailable ? ['No pricing table entry for this model'] : []),
+        ...(showCostDetails && premiumUnits ? [`Premium units: ${premiumUnits}`] : []),
+        ...(showCostDetails && usage.pricingSource ? [`Pricing source: ${usage.pricingSource}`] : []),
     ].join('\n');
 
     return (
@@ -83,10 +115,13 @@ function UsageCell({ usage, showPremiumUnits = false }: { usage: ClientTokenUsag
             <span>
                 <span className="text-[var(--vscode-foreground)]">↑{fmt(usage.outputTokens)} out</span>
                 <span className="text-[var(--vscode-descriptionForeground)]"> · {fmt(usage.cacheWriteTokens)} cache write</span>
-                {premiumUnits && (
-                    <span className="text-[var(--vscode-descriptionForeground)]"> · {premiumUnits}</span>
+                {estimatedCost && (
+                    <span className="text-[var(--vscode-descriptionForeground)]"> · est {estimatedCost}</span>
                 )}
             </span>
+            {premiumUnits && (
+                <span className="text-[var(--vscode-descriptionForeground)]">Premium units: {premiumUnits}</span>
+            )}
         </span>
     );
 }
@@ -196,7 +231,7 @@ export function UsageStatsView() {
                                     })}
 
                                     <td className={tdClass}>
-                                        <UsageCell usage={entry.dayTotal} showPremiumUnits />
+                                        <UsageCell usage={entry.dayTotal} showCostDetails />
                                     </td>
                                 </tr>
                             ))}
@@ -217,7 +252,7 @@ export function UsageStatsView() {
                                     );
                                 })}
                                 <td className={tdClass}>
-                                    <UsageCell usage={grandTotal} showPremiumUnits />
+                                    <UsageCell usage={grandTotal} showCostDetails />
                                 </td>
                             </tr>
                         </tfoot>

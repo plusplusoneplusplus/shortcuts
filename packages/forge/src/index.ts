@@ -210,6 +210,13 @@ export {
     TokenUsageStatsEntry,
     TokenUsageStatsResponse,
     aggregateTokenUsageStats,
+    COPILOT_MODEL_PRICING,
+    COPILOT_PRICING_SOURCE,
+    CopilotModelPricing,
+    CopilotTokenCostBreakdown,
+    estimateCopilotTokenCost,
+    getCopilotModelPricing,
+    normalizeCopilotModelId,
 } from './ai';
 
 // ============================================================================

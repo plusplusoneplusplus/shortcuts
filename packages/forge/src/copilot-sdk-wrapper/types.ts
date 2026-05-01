@@ -253,6 +253,19 @@ export interface TokenUsage {
     totalTokens: number;
     /** Cumulative cost across all turns (if reported by the SDK) */
     cost?: number;
+    /** Estimated USD token cost derived from published Copilot per-token pricing */
+    estimatedUsdCost?: number;
+    /** Estimated USD token cost by billing category */
+    costBreakdown?: {
+        inputUsd: number;
+        cachedInputUsd: number;
+        cacheWriteUsd: number;
+        outputUsd: number;
+    };
+    /** Pricing table source for estimatedUsdCost */
+    pricingSource?: string;
+    /** True when one or more models did not have a matching pricing table entry */
+    pricingUnavailable?: boolean;
     /** Cumulative duration in ms across all turns (if reported by the SDK) */
     duration?: number;
     /** Number of assistant.usage events received (one per turn) */

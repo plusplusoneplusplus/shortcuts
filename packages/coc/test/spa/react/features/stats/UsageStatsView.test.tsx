@@ -181,6 +181,64 @@ describe('UsageStatsView', () => {
         expect(screen.getAllByText('· 4.6M new').length).toBe(4);
         expect(screen.getAllByText('↑125.4k out').length).toBe(4);
         expect(screen.getAllByText('· 18.2k cache write').length).toBe(4);
-        expect(screen.getAllByText('· 416.38 units').length).toBe(2);
+        expect(screen.getAllByText('Premium units: 416.38').length).toBe(2);
+        expect(screen.queryByText(/416\.38 units/)).toBeNull();
+    });
+
+    it('renders estimated token cost only in rightmost total cells', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [
+                        makeEntry('2025-07-10', 'gpt-5.5', {
+                            inputTokens: 2_000_000,
+                            outputTokens: 1_000_000,
+                            cacheReadTokens: 500_000,
+                            cacheWriteTokens: 0,
+                            totalTokens: 3_000_000,
+                            estimatedUsdCost: 42.31,
+                            costBreakdown: {
+                                inputUsd: 7.5,
+                                cachedInputUsd: 0.25,
+                                cacheWriteUsd: 0,
+                                outputUsd: 34.56,
+                            },
+                            pricingSource: 'https://docs.github.com/example',
+                        }),
+                    ],
+                    models: ['gpt-5.5'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        expect(screen.getAllByText('· est $42.31').length).toBe(2);
+        const cellsWithPricingSource = screen.getAllByTitle(/Pricing source: https:\/\/docs\.github\.com\/example/);
+        expect(cellsWithPricingSource).toHaveLength(2);
+    });
+
+    it('does not render a dollar sign for SDK premium units', () => {
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({
+                data: {
+                    entries: [
+                        makeEntry('2025-07-10', 'gpt-4o', {
+                            cost: 12.5,
+                        }),
+                    ],
+                    models: ['gpt-4o'],
+                    generatedAt: '2025-07-10T12:00:00Z',
+                    totalDays: 1,
+                },
+            })
+        );
+
+        render(<UsageStatsView />);
+
+        expect(screen.getAllByText('Premium units: 12.50').length).toBe(2);
+        expect(document.body.textContent).not.toContain('$12.50');
     });
 });

@@ -186,3 +186,14 @@ export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
 
 // Token Usage Stats
 export { TokenUsageStatsEntry, TokenUsageStatsResponse, aggregateTokenUsageStats } from './token-usage-stats';
+export {
+    COPILOT_MODEL_PRICING,
+    COPILOT_PRICING_SOURCE,
+    CopilotModelPricing,
+} from './copilot-pricing-data';
+export {
+    CopilotTokenCostBreakdown,
+    estimateCopilotTokenCost,
+    getCopilotModelPricing,
+    normalizeCopilotModelId,
+} from './copilot-token-cost';
