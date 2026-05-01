@@ -181,6 +181,7 @@ describe('FollowPromptDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('chat');
+            expect(body.payload.prompt).toBe('Use the impl skill.');
             expect(body.payload.context.skills).toContain('impl');
         });
     });
@@ -465,7 +466,7 @@ describe('FollowPromptDialog', () => {
         expect(textarea.value).toBe('');
     });
 
-    it('includes additionalInfo in POST body when non-empty', async () => {
+    it('includes additionalInfo in the queued prompt when non-empty', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
@@ -518,7 +519,8 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.context.blocks[0].content).toBe('focus on auth module');
+            expect(body.payload.prompt).toBe('Use the impl skill.\n\nfocus on auth module');
+            expect(body.payload.context?.blocks).toBeUndefined();
         });
     });
 
@@ -569,6 +571,7 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.prompt).toBe('Use the impl skill.');
             expect(body.payload.context?.blocks).toBeUndefined();
         });
     });

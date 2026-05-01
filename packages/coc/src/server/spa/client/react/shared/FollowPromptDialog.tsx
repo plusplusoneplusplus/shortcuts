@@ -114,22 +114,19 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             }
 
             const displayLabel = skillNames.length === 1 ? skillNames[0] : skillNames.join(', ');
+            const trimmed = additionalInfo.trim();
+            const skillInstruction = `Use the ${displayLabel} skill${skillNames.length > 1 ? 's' : ''}.`;
+            const fullPrompt = trimmed ? `${skillInstruction}\n\n${trimmed}` : skillInstruction;
             const chatPayload: Record<string, any> = {
                 kind: 'chat',
                 mode: 'autopilot',
-                prompt: `Use the ${displayLabel} skill${skillNames.length > 1 ? 's' : ''}.`,
+                prompt: fullPrompt,
                 workingDirectory,
                 context: {
                     files: [planFilePath],
                     skills: skillNames,
                 },
             };
-
-            const trimmed = additionalInfo.trim();
-            if (trimmed) {
-                if (!chatPayload.context.blocks) chatPayload.context.blocks = [];
-                chatPayload.context.blocks.push({ label: 'Additional Info', content: trimmed });
-            }
 
             const displayName = skillNames.length === 1
                 ? `Follow: ${skillNames[0]} on ${taskName}`

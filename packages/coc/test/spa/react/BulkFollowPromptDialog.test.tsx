@@ -240,6 +240,8 @@ describe('BulkFollowPromptDialog', () => {
             const bodies = postCalls.map(([_, opts]: [string, any]) => JSON.parse(opts.body));
             expect(bodies[0].type).toBe('chat');
             expect(bodies[1].type).toBe('chat');
+            expect(bodies[0].payload.prompt).toBe('Use the draft skill.');
+            expect(bodies[1].payload.prompt).toBe('Use the draft skill.');
             expect(bodies[0].payload.context.skills).toContain('draft');
             expect(bodies[1].payload.context.skills).toContain('draft');
             expect(bodies[0].payload.context.files.some((f: string) => f.includes('design.md'))).toBe(true);
@@ -581,7 +583,7 @@ describe('BulkFollowPromptDialog', () => {
         expect(textarea.value).toBe('');
     });
 
-    it('includes additionalInfo in POST body when non-empty', async () => {
+    it('includes additionalInfo in each queued prompt when non-empty', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
@@ -632,7 +634,8 @@ describe('BulkFollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.context.blocks[0].content).toBe('output in JSON');
+            expect(body.payload.prompt).toBe('Use the impl skill.\n\noutput in JSON');
+            expect(body.payload.context?.blocks).toBeUndefined();
         });
     });
 
@@ -682,6 +685,7 @@ describe('BulkFollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.prompt).toBe('Use the impl skill.');
             expect(body.payload.context?.blocks).toBeUndefined();
         });
     });

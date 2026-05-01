@@ -136,22 +136,19 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
 
                 const taskName = file.fileName.replace(/\.md$/, '');
 
+                const trimmed = additionalInfo.trim();
+                const skillInstruction = `Use the ${name} skill.`;
+                const fullPrompt = trimmed ? `${skillInstruction}\n\n${trimmed}` : skillInstruction;
                 const chatPayload: Record<string, any> = {
                     kind: 'chat',
                     mode: 'autopilot',
-                    prompt: `Use the ${name} skill.`,
+                    prompt: fullPrompt,
                     workingDirectory,
                     context: {
                         files: [planFilePath],
                         skills: [name],
                     },
                 };
-
-                const trimmed = additionalInfo.trim();
-                if (trimmed) {
-                    if (!chatPayload.context.blocks) chatPayload.context.blocks = [];
-                    chatPayload.context.blocks.push({ label: 'Additional Info', content: trimmed });
-                }
 
                 const body: any = {
                     type: 'chat',
