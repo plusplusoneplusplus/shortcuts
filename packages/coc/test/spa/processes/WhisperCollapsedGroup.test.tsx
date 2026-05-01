@@ -95,6 +95,35 @@ describe('WhisperCollapsedGroup', () => {
         expect(popover.textContent).toContain('fix: second');
     });
 
+    it('renders commit popover in a document.body portal at viewport coordinates', () => {
+        const { container } = render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                summary={makeSummary({ commitCount: 1, commits: [makeCommit()] })}
+            />,
+        );
+        const hoverTarget = screen.getByTestId('whisper-commit-hover');
+        vi.spyOn(hoverTarget, 'getBoundingClientRect').mockReturnValue({
+            top: 140,
+            bottom: 164,
+            left: 64,
+            right: 132,
+            width: 68,
+            height: 24,
+            x: 64,
+            y: 140,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(hoverTarget);
+
+        const popover = screen.getByTestId('commit-hover-popover');
+        expect(popover).toBeDefined();
+        expect(container.querySelector('[data-testid="commit-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('168px');
+        expect(popover.style.left).toBe('64px');
+    });
+
     it('hides commit popover on mouse leave after grace timer', () => {
         render(
             <WhisperCollapsedGroup

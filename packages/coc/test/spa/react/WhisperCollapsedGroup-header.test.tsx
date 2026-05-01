@@ -219,7 +219,7 @@ describe('WhisperCollapsedGroup — FileHoverPopover', () => {
         if (span) {
             fireEvent.mouseEnter(span);
         }
-        return container;
+        return document.body;
     }
 
     it('popover renders file rows with correct icon and basename', () => {
@@ -255,6 +255,35 @@ describe('WhisperCollapsedGroup — FileHoverPopover', () => {
         const row = container.querySelector('[data-testid="file-popover-row"]');
         expect(row?.textContent).toContain('+10');
         expect(row?.textContent).not.toContain('−');
+    });
+
+    it('renders the file popover in a document.body portal at viewport coordinates', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            fileEditCount: 1,
+            fileEdits: [{ path: 'src/a.ts', insertions: 4, deletions: 2, isCreate: false }],
+        });
+        const span = container.querySelector('[data-testid="whisper-file-hover"]') as HTMLElement;
+        vi.spyOn(span, 'getBoundingClientRect').mockReturnValue({
+            top: 100,
+            bottom: 120,
+            left: 50,
+            right: 110,
+            width: 60,
+            height: 20,
+            x: 50,
+            y: 100,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(span);
+
+        const popover = document.body.querySelector('[data-testid="file-hover-popover"]') as HTMLElement;
+        expect(popover).not.toBeNull();
+        expect(container.querySelector('[data-testid="file-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('124px');
+        expect(popover.style.left).toBe('50px');
     });
 });
 
@@ -330,7 +359,7 @@ describe('WhisperCollapsedGroup — SkillHoverPopover', () => {
         if (span) {
             fireEvent.mouseEnter(span);
         }
-        return container;
+        return document.body;
     }
 
     it('popover renders skill rows with icon and name', () => {
@@ -361,6 +390,35 @@ describe('WhisperCollapsedGroup — SkillHoverPopover', () => {
         act(() => { vi.advanceTimersByTime(200); });
         expect(container.querySelector('[data-testid="skill-hover-popover"]')).toBeNull();
         vi.useRealTimers();
+    });
+
+    it('renders the skill popover in a document.body portal at viewport coordinates', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            skillCount: 1,
+            skillNames: ['impl'],
+        });
+        const span = container.querySelector('[data-testid="whisper-skill-hover"]') as HTMLElement;
+        vi.spyOn(span, 'getBoundingClientRect').mockReturnValue({
+            top: 80,
+            bottom: 104,
+            left: 32,
+            right: 88,
+            width: 56,
+            height: 24,
+            x: 32,
+            y: 80,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(span);
+
+        const popover = document.body.querySelector('[data-testid="skill-hover-popover"]') as HTMLElement;
+        expect(popover).not.toBeNull();
+        expect(container.querySelector('[data-testid="skill-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('108px');
+        expect(popover.style.left).toBe('32px');
     });
 });
 
@@ -443,7 +501,7 @@ describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
         if (span) {
             fireEvent.mouseEnter(span);
         }
-        return container;
+        return document.body;
     }
 
     it('popover renders memory rows with action icon, target badge, and content', () => {
@@ -528,6 +586,61 @@ describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
         fireEvent.mouseLeave(content);
 
         expect(container.querySelector('[data-testid="memory-full-content-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+
+    it('renders memory popovers in document.body portals at viewport coordinates', () => {
+        vi.useFakeTimers();
+        const longContent = 'line one\nline two with enough detail to exceed the preview limit\nline three';
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            memoryCount: 1,
+            memoryActions: [{ action: 'add', target: 'repo', content: longContent }],
+        });
+        const span = container.querySelector('[data-testid="whisper-memory-hover"]') as HTMLElement;
+        vi.spyOn(span, 'getBoundingClientRect').mockReturnValue({
+            top: 120,
+            bottom: 142,
+            left: 72,
+            right: 152,
+            width: 80,
+            height: 22,
+            x: 72,
+            y: 120,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(span);
+
+        const popover = document.body.querySelector('[data-testid="memory-hover-popover"]') as HTMLElement;
+        expect(popover).not.toBeNull();
+        expect(container.querySelector('[data-testid="memory-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('146px');
+        expect(popover.style.left).toBe('72px');
+
+        const content = document.body.querySelector('[data-testid="memory-popover-content-0"]') as HTMLElement;
+        vi.spyOn(content, 'getBoundingClientRect').mockReturnValue({
+            top: 180,
+            bottom: 202,
+            left: 96,
+            right: 320,
+            width: 224,
+            height: 22,
+            x: 96,
+            y: 180,
+            toJSON: () => ({}),
+        } as DOMRect);
+        fireEvent.mouseEnter(content);
+        act(() => { vi.advanceTimersByTime(700); });
+
+        const fullPopover = document.body.querySelector('[data-testid="memory-full-content-popover"]') as HTMLElement;
+        expect(fullPopover).not.toBeNull();
+        expect(container.querySelector('[data-testid="memory-full-content-popover"]')).toBeNull();
+        expect(fullPopover.id).toBe('memory-full-content-0');
+        expect(content.getAttribute('aria-describedby')).toBe('memory-full-content-0');
+        expect(fullPopover.style.top).toBe('206px');
+        expect(fullPopover.style.left).toBe('96px');
         vi.useRealTimers();
     });
 

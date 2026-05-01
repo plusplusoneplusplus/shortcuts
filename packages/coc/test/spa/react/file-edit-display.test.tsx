@@ -83,7 +83,7 @@ function renderAndHoverFiles(fileEdits: FileEdit[]) {
     if (span) {
         fireEvent.mouseEnter(span);
     }
-    return container;
+    return document.body;
 }
 
 // ── computeNetDiff tests ───────────────────────────────────────────────────
