@@ -21,6 +21,7 @@ interface TasksMillerLayoutProps {
     primaryFolderPath?: string;
     initialFolderPath: string | null;
     initialFilePath: string | null;
+    initialActiveFolderPath?: string | null;
     initialViewMode: 'review' | 'source' | null;
     navigateToFilePath: string | null;
     onNavigated: () => void;
@@ -50,6 +51,7 @@ export function TasksMillerLayout({
     primaryFolderPath,
     initialFolderPath,
     initialFilePath,
+    initialActiveFolderPath,
     initialViewMode,
     navigateToFilePath,
     onNavigated,
@@ -96,6 +98,7 @@ export function TasksMillerLayout({
                             primaryFolderPath={primaryFolderPath}
                             initialFolderPath={initialFolderPath}
                             initialFilePath={initialFilePath}
+                            initialActiveFolderPath={initialActiveFolderPath}
                             navigateToFilePath={navigateToFilePath}
                             onNavigated={onNavigated}
                             onColumnsChange={onColumnsChange}

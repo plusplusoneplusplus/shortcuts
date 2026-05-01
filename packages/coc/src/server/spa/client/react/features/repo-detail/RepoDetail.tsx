@@ -80,6 +80,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     }>({ open: false, minimized: false, targetFolder: undefined });
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
+    const tasksNavStateKey = `${ws.id}::tasks`;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
@@ -551,7 +552,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 wsId={ws.id}
                                 repos={repos}
                                 onOpenGenerateDialog={handleOpenGenerateDialog}
-                                initialNavState={state.repoSubTabNavState?.[ws.id]}
+                                initialNavState={state.repoSubTabNavState?.[tasksNavStateKey]}
                                 onNavStateChange={(ns) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState: ns })}
                             />
                         ) : (

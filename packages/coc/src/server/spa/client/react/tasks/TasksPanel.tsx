@@ -54,7 +54,12 @@ function scrollToEnd(el: HTMLElement | null) {
     });
 }
 
-function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
+function getParentFolderPath(filePath: string | null | undefined): string | null {
+    if (!filePath || !filePath.match(/[\\/]/)) return null;
+    return filePath.split(/[\\/]/).slice(0, -1).join('/');
+}
+
+function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, onNavStateChange }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, openFileTaskRootPath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
@@ -83,7 +88,15 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     }, [appState.workspaces, wsId]);
     const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
     const [activeFolder, setActiveFolder] = useState<TaskFolder | null>(null);
-    const handleActiveFolderChange = useCallback((folder: TaskFolder) => { setActiveFolder(folder); }, []);
+    const [activeFolderPath, setActiveFolderPath] = useState<string | null>(
+        initialNavState?.activeFolderPath
+            ?? initialNavState?.selectedFolderPath
+            ?? getParentFolderPath(initialNavState?.openFilePath)
+    );
+    const handleActiveFolderChange = useCallback((folder: TaskFolder) => {
+        setActiveFolder(folder);
+        setActiveFolderPath(folder.relativePath ? folder.relativePath.replace(/\\/g, '/') : null);
+    }, []);
     const folderActions = useFolderActions(wsId, { onArchived: () => setUndoAvailable(true) });
     const fileActions = useFileActions(wsId, { onArchived: () => setUndoAvailable(true) });
 
@@ -171,6 +184,15 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     useEffect(() => {
         scrollToEnd(scrollRef.current);
     }, [openFilePath]);
+
+    useEffect(() => {
+        onNavStateChange?.({
+            openFilePath,
+            selectedFilePaths: Array.from(selectedFilePaths),
+            selectedFolderPath,
+            activeFolderPath,
+        });
+    }, [openFilePath, selectedFilePaths, selectedFolderPath, activeFolderPath, onNavStateChange]);
 
     const handleColumnsChange = () => { scrollToEnd(scrollRef.current); };
     const handleNavigateBack = () => { if (scrollRef.current) scrollRef.current.scrollLeft = 0; };
@@ -266,6 +288,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 primaryFolderPath={primaryFolderPath}
                 initialFolderPath={initialParams.initialFolderPath}
                 initialFilePath={initialParams.initialFilePath}
+                initialActiveFolderPath={initialParams.initialFolderPath ?? initialNavState?.activeFolderPath ?? getParentFolderPath(initialNavState?.openFilePath)}
                 initialViewMode={initialParams.initialViewMode}
                 navigateToFilePath={fileDlg.navigateToFilePath}
                 onNavigated={() => fileDlg.setNavigateToFilePath(null)}
@@ -339,8 +362,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
 
 export function TasksPanel({ wsId, repos, onOpenGenerateDialog, initialNavState, onNavStateChange }: TasksPanelProps) {
     return (
-        <TaskProvider initialNavState={initialNavState} onNavStateChange={onNavStateChange}>
-            <TasksPanelInner wsId={wsId} repos={repos} onOpenGenerateDialog={onOpenGenerateDialog} />
+        <TaskProvider initialNavState={initialNavState}>
+            <TasksPanelInner wsId={wsId} repos={repos} onOpenGenerateDialog={onOpenGenerateDialog} initialNavState={initialNavState} onNavStateChange={onNavStateChange} />
         </TaskProvider>
     );
 }

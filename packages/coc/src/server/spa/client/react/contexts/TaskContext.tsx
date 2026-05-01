@@ -83,6 +83,7 @@ export function TaskProvider({ children, initialNavState, onNavStateChange }: {
         ...initialState,
         openFilePath: initialNavState?.openFilePath ?? null,
         selectedFilePaths: new Set(initialNavState?.selectedFilePaths ?? []),
+        selectedFolderPath: initialNavState?.selectedFolderPath ?? null,
     });
 
     // Sync navigation state back to caller, skipping the initial mount.
@@ -94,8 +95,10 @@ export function TaskProvider({ children, initialNavState, onNavStateChange }: {
         onNavStateChangeRef.current?.({
             openFilePath: state.openFilePath,
             selectedFilePaths: Array.from(state.selectedFilePaths),
+            selectedFolderPath: state.selectedFolderPath,
+            activeFolderPath: initialNavState?.activeFolderPath ?? null,
         });
-    }, [state.openFilePath, state.selectedFilePaths]);
+    }, [state.openFilePath, state.selectedFilePaths, state.selectedFolderPath, initialNavState?.activeFolderPath]);
 
     return <TaskContext.Provider value={{ state, dispatch }}>{children}</TaskContext.Provider>;
 }

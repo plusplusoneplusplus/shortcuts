@@ -180,5 +180,7 @@ export type WikiViewMode = 'list' | 'detail';
 export interface TasksPanelNavState {
     openFilePath: string | null;
     selectedFilePaths: string[];
+    selectedFolderPath: string | null;
+    activeFolderPath: string | null;
 }
 

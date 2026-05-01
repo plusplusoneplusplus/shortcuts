@@ -937,26 +937,34 @@ describe('AppContext reducer', () => {
 
     // ── SET_TASKS_NAV_STATE ────────────────────────────────────────────
     describe('SET_TASKS_NAV_STATE', () => {
+        const nav = (overrides: Partial<NonNullable<AppContextState['repoSubTabNavState'][string]>> = {}) => ({
+            openFilePath: null,
+            selectedFilePaths: [],
+            selectedFolderPath: null,
+            activeFolderPath: null,
+            ...overrides,
+        });
+
         it('stores nav state keyed by repoId::tasks', () => {
             const state = makeState();
-            const navState = { openFilePath: 'feature1/task.md', selectedFilePaths: [] };
+            const navState = nav({ openFilePath: 'feature1/task.md', selectedFolderPath: 'feature1', activeFolderPath: 'feature1' });
             const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState });
             expect(result.repoSubTabNavState['repo1::tasks']).toEqual(navState);
         });
 
         it('preserves other repo nav states', () => {
-            const existing = { openFilePath: 'other.md', selectedFilePaths: [] };
+            const existing = nav({ openFilePath: 'other.md' });
             const state = makeState({ repoSubTabNavState: { 'repo2::tasks': existing } });
-            const navState = { openFilePath: 'new.md', selectedFilePaths: ['a.md'] };
+            const navState = nav({ openFilePath: 'new.md', selectedFilePaths: ['a.md'] });
             const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState });
             expect(result.repoSubTabNavState['repo1::tasks']).toEqual(navState);
             expect(result.repoSubTabNavState['repo2::tasks']).toEqual(existing);
         });
 
         it('updates existing nav state for a repo', () => {
-            const old = { openFilePath: 'old.md', selectedFilePaths: [] };
+            const old = nav({ openFilePath: 'old.md' });
             const state = makeState({ repoSubTabNavState: { 'repo1::tasks': old } });
-            const updated = { openFilePath: 'new.md', selectedFilePaths: [] };
+            const updated = nav({ openFilePath: 'new.md' });
             const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: updated });
             expect(result.repoSubTabNavState['repo1::tasks']).toEqual(updated);
         });

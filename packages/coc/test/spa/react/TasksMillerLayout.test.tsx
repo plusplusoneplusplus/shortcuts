@@ -19,6 +19,7 @@ vi.mock('../../../src/server/spa/client/react/tasks/TaskTree', () => ({
             primaryFolderPath: props.primaryFolderPath,
             initialFolderPath: props.initialFolderPath,
             initialFilePath: props.initialFilePath,
+            initialActiveFolderPath: props.initialActiveFolderPath,
             navigateToFilePath: props.navigateToFilePath,
         })} />
     ),
@@ -88,6 +89,7 @@ function defaultProps(overrides?: Partial<Parameters<typeof TasksMillerLayout>[0
         primaryFolderPath: undefined,
         initialFolderPath: null as string | null,
         initialFilePath: null as string | null,
+        initialActiveFolderPath: null as string | null,
         initialViewMode: null as 'review' | 'source' | null,
         navigateToFilePath: null as string | null,
         onNavigated: vi.fn(),
@@ -194,11 +196,13 @@ describe('TasksMillerLayout', () => {
             render(<TasksMillerLayout {...defaultProps({
                 initialFolderPath: 'sub/folder',
                 initialFilePath: 'sub/folder/file.md',
+                initialActiveFolderPath: 'sub/folder',
                 navigateToFilePath: 'target.md',
             })} />);
             const forwarded = JSON.parse(screen.getByTestId('mock-task-tree').getAttribute('data-props')!);
             expect(forwarded.initialFolderPath).toBe('sub/folder');
             expect(forwarded.initialFilePath).toBe('sub/folder/file.md');
+            expect(forwarded.initialActiveFolderPath).toBe('sub/folder');
             expect(forwarded.navigateToFilePath).toBe('target.md');
         });
 

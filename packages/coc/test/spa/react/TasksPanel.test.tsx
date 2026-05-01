@@ -11,7 +11,7 @@ import { ToastProvider } from '../../../src/server/spa/client/react/contexts/Toa
 import { TaskProvider, useTaskPanel } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/contexts/TaskContext';
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
-import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
+import { buildColumnsForFolderPath, getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import { buildFileTooltip } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import { TaskSearchResults, highlightMatch } from '../../../src/server/spa/client/react/tasks/TaskSearchResults';
 import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
@@ -60,6 +60,16 @@ const mockTree = {
 };
 
 const mockCommentCounts = { 'task1.plan.md': 3 };
+
+function makeNavState(overrides: Partial<TasksPanelNavState> = {}): TasksPanelNavState {
+    return {
+        openFilePath: null,
+        selectedFilePaths: [],
+        selectedFolderPath: null,
+        activeFolderPath: null,
+        ...overrides,
+    };
+}
 
 // ============================================================================
 // TaskContext reducer tests
@@ -122,33 +132,65 @@ describe('taskReducer', () => {
     });
 });
 
+describe('buildColumnsForFolderPath', () => {
+    it('builds root-only columns for null', () => {
+        const result = buildColumnsForFolderPath(mockTree as TaskFolder, null);
+        expect(result.columns).toHaveLength(1);
+        expect(result.keys).toEqual([]);
+        expect(result.folder.relativePath).toBe('');
+    });
+
+    it('builds nested columns for a valid subfolder path', () => {
+        const result = buildColumnsForFolderPath(mockTree as TaskFolder, 'feature1');
+        expect(result.columns).toHaveLength(2);
+        expect(result.keys).toEqual(['feature1']);
+        expect(result.folder.relativePath).toBe('feature1');
+    });
+
+    it('stops at the deepest valid folder for a partially invalid path', () => {
+        const result = buildColumnsForFolderPath(mockTree as TaskFolder, 'feature1/missing');
+        expect(result.columns).toHaveLength(2);
+        expect(result.keys).toEqual(['feature1']);
+        expect(result.folder.relativePath).toBe('feature1');
+    });
+
+    it('handles backslash separators', () => {
+        const result = buildColumnsForFolderPath(mockTree as TaskFolder, 'feature1\\missing');
+        expect(result.columns).toHaveLength(2);
+        expect(result.keys).toEqual(['feature1']);
+        expect(result.folder.relativePath).toBe('feature1');
+    });
+});
+
 // ============================================================================
 // TaskProvider — initialNavState + onNavStateChange
 // ============================================================================
 
 describe('TaskProvider nav state', () => {
     function NavStateDisplay() {
-        const { openFilePath, selectedFilePaths } = useTaskPanel();
+        const { openFilePath, selectedFilePaths, selectedFolderPath } = useTaskPanel();
         return (
             <div>
                 <span data-testid="open-file">{openFilePath ?? '__null__'}</span>
                 <span data-testid="selected-count">{selectedFilePaths.size}</span>
+                <span data-testid="selected-folder">{selectedFolderPath ?? '__null__'}</span>
             </div>
         );
     }
 
     function NavStateTrigger() {
-        const { setOpenFilePath, toggleSelectedFile } = useTaskPanel();
+        const { setOpenFilePath, toggleSelectedFile, setSelectedFolderPath } = useTaskPanel();
         return (
             <>
                 <button data-testid="set-file" onClick={() => setOpenFilePath('foo.md')}>set</button>
                 <button data-testid="toggle-sel" onClick={() => toggleSelectedFile('bar.md')}>toggle</button>
+                <button data-testid="set-folder" onClick={() => setSelectedFolderPath('feature1')}>folder</button>
             </>
         );
     }
 
     it('initialises openFilePath from initialNavState', () => {
-        const navState: TasksPanelNavState = { openFilePath: 'restored.md', selectedFilePaths: [] };
+        const navState = makeNavState({ openFilePath: 'restored.md' });
         render(
             <TaskProvider initialNavState={navState}>
                 <NavStateDisplay />
@@ -158,7 +200,7 @@ describe('TaskProvider nav state', () => {
     });
 
     it('initialises selectedFilePaths from initialNavState', () => {
-        const navState: TasksPanelNavState = { openFilePath: null, selectedFilePaths: ['a.md', 'b.md'] };
+        const navState = makeNavState({ selectedFilePaths: ['a.md', 'b.md'] });
         render(
             <TaskProvider initialNavState={navState}>
                 <NavStateDisplay />
@@ -167,9 +209,19 @@ describe('TaskProvider nav state', () => {
         expect(screen.getByTestId('selected-count').textContent).toBe('2');
     });
 
+    it('initialises selectedFolderPath from initialNavState', () => {
+        const navState = makeNavState({ selectedFolderPath: 'feature1' });
+        render(
+            <TaskProvider initialNavState={navState}>
+                <NavStateDisplay />
+            </TaskProvider>
+        );
+        expect(screen.getByTestId('selected-folder').textContent).toBe('feature1');
+    });
+
     it('does not call onNavStateChange on initial mount', () => {
         const cb = vi.fn();
-        const navState: TasksPanelNavState = { openFilePath: 'restored.md', selectedFilePaths: [] };
+        const navState = makeNavState({ openFilePath: 'restored.md' });
         render(
             <TaskProvider initialNavState={navState} onNavStateChange={cb}>
                 <NavStateDisplay />
@@ -188,7 +240,7 @@ describe('TaskProvider nav state', () => {
         );
         fireEvent.click(screen.getByTestId('set-file'));
         await waitFor(() => expect(cb).toHaveBeenCalled());
-        expect(cb).toHaveBeenCalledWith({ openFilePath: 'foo.md', selectedFilePaths: [] });
+        expect(cb).toHaveBeenCalledWith(makeNavState({ openFilePath: 'foo.md' }));
     });
 
     it('calls onNavStateChange when selectedFilePaths changes', async () => {
@@ -201,7 +253,20 @@ describe('TaskProvider nav state', () => {
         );
         fireEvent.click(screen.getByTestId('toggle-sel'));
         await waitFor(() => expect(cb).toHaveBeenCalled());
-        expect(cb).toHaveBeenCalledWith({ openFilePath: null, selectedFilePaths: ['bar.md'] });
+        expect(cb).toHaveBeenCalledWith(makeNavState({ selectedFilePaths: ['bar.md'] }));
+    });
+
+    it('calls onNavStateChange when selectedFolderPath changes', async () => {
+        const cb = vi.fn();
+        render(
+            <TaskProvider onNavStateChange={cb}>
+                <NavStateDisplay />
+                <NavStateTrigger />
+            </TaskProvider>
+        );
+        fireEvent.click(screen.getByTestId('set-folder'));
+        await waitFor(() => expect(cb).toHaveBeenCalled());
+        expect(cb).toHaveBeenCalledWith(makeNavState({ selectedFolderPath: 'feature1' }));
     });
 });
 
@@ -270,11 +335,12 @@ describe('TasksPanel', () => {
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
-        const navState: TasksPanelNavState = { openFilePath: 'feature1/design.md', selectedFilePaths: [] };
+        const navState = makeNavState({ openFilePath: 'feature1/design.md' });
         render(<Wrap><TasksPanel wsId="ws1" initialNavState={navState} /></Wrap>);
         await waitFor(() => {
             expect(document.querySelector('#task-preview-body')).toBeTruthy();
         });
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
     });
 
     it('calls onNavStateChange when a file is opened', async () => {
@@ -300,6 +366,27 @@ describe('TasksPanel', () => {
         await waitFor(() => expect(onNavStateChange).toHaveBeenCalled());
         const lastCall = onNavStateChange.mock.calls[onNavStateChange.mock.calls.length - 1][0] as TasksPanelNavState;
         expect(lastCall.openFilePath).toBe('feature1/design.md');
+        expect(lastCall.selectedFolderPath).toBe('feature1');
+        expect(lastCall.activeFolderPath).toBe('feature1');
+        expect(lastCall.selectedFilePaths).toEqual([]);
+    });
+
+    it('restores miller columns from saved active folder state on remount', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
+        });
+        const navState = makeNavState({
+            selectedFolderPath: 'feature1',
+            activeFolderPath: 'feature1',
+        });
+        render(<Wrap><TasksPanel wsId="ws1" initialNavState={navState} /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+        expect(screen.getByTestId('task-tree-item-design')).toBeTruthy();
     });
 
     it('filters out .git folders from the task tree UI', async () => {

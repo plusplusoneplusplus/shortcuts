@@ -20,6 +20,7 @@ interface TaskTreeProps {
     primaryFolderPath?: string;
     initialFolderPath?: string | null;
     initialFilePath?: string | null;
+    initialActiveFolderPath?: string | null;
     navigateToFilePath?: string | null;
     onNavigated?: () => void;
     onColumnsChange?: () => void;
@@ -49,6 +50,31 @@ export function rebuildColumnsFromKeys(tree: TaskFolder, keys: (string | null)[]
     return cols;
 }
 
+export function buildColumnsForFolderPath(tree: TaskFolder, folderPath: string | null): {
+    columns: TaskNode[][];
+    keys: (string | null)[];
+    folder: TaskFolder;
+} {
+    const columns: TaskNode[][] = [folderToNodes(tree)];
+    const keys: (string | null)[] = [];
+    let folder = tree;
+
+    for (const segment of (folderPath ?? '').split(/[\\/]/).filter(Boolean)) {
+        const child = folder.children.find(f => f.name === segment);
+        if (!child) break;
+        columns.push(folderToNodes(child));
+        keys.push(getFolderKey(child));
+        folder = child;
+    }
+
+    return { columns, keys, folder };
+}
+
+function getParentFolderPath(filePath: string | null | undefined): string | null {
+    if (!filePath || !filePath.match(/[\\/]/)) return null;
+    return filePath.split(/[\\/]/).slice(0, -1).join('/');
+}
+
 export function TaskTree({
     tree,
     commentCounts,
@@ -57,6 +83,7 @@ export function TaskTree({
     primaryFolderPath,
     initialFolderPath,
     initialFilePath,
+    initialActiveFolderPath,
     navigateToFilePath,
     onNavigated,
     onColumnsChange,
@@ -108,6 +135,7 @@ export function TaskTree({
 
     // Emit resolved active folder to parent whenever keys or tree change
     useEffect(() => {
+        if (isInitialMount.current) return;
         const cb = activeFolderChangeRef.current;
         if (!cb) return;
         let parent = tree;
@@ -127,23 +155,17 @@ export function TaskTree({
 
         if (isInitialMount.current) {
             isInitialMount.current = false;
-            if (initialFolderPath || initialFilePath) {
-                const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split(/[\\/]/).slice(0, -1).join('/') : '');
-                const segments = folderPath.split(/[\\/]/).filter(Boolean);
-                const cols: TaskNode[][] = [rootNodes];
-                const keys: (string | null)[] = [];
-                let cur = tree;
-                for (const seg of segments) {
-                    const found = cur.children.find(f => f.name === seg);
-                    if (!found) break;
-                    cols.push(folderToNodes(found));
-                    keys.push(getFolderKey(found));
-                    cur = found;
-                }
+            const restoredFilePath = initialFilePath ?? openFilePath;
+            const folderPath = initialFolderPath
+                ?? getParentFolderPath(initialFilePath)
+                ?? initialActiveFolderPath
+                ?? getParentFolderPath(restoredFilePath);
+            if (folderPath || restoredFilePath) {
+                const { columns: cols, keys } = buildColumnsForFolderPath(tree, folderPath);
                 setColumns(cols);
                 setActiveFolderKeys(keys);
                 activeFolderKeysRef.current = keys;
-                if (initialFilePath) setOpenFilePath(initialFilePath, findTaskRootPathInTree(tree, initialFilePath));
+                if (restoredFilePath) setOpenFilePath(restoredFilePath, findTaskRootPathInTree(tree, restoredFilePath));
                 return;
             }
             setColumns([rootNodes]);
@@ -160,21 +182,8 @@ export function TaskTree({
     useEffect(() => {
         if (!navigateToFilePath || !tree) return;
 
-        const folderPath = navigateToFilePath.includes('/')
-            ? navigateToFilePath.split('/').slice(0, -1).join('/')
-            : '';
-        const segments = folderPath.split('/').filter(Boolean);
-        const rootNodes = folderToNodes(tree);
-        const cols: TaskNode[][] = [rootNodes];
-        const keys: (string | null)[] = [];
-        let cur = tree;
-        for (const seg of segments) {
-            const found = cur.children.find(f => f.name === seg);
-            if (!found) break;
-            cols.push(folderToNodes(found));
-            keys.push(getFolderKey(found));
-            cur = found;
-        }
+        const folderPath = getParentFolderPath(navigateToFilePath) ?? '';
+        const { columns: cols, keys } = buildColumnsForFolderPath(tree, folderPath);
         setColumns(cols);
         setActiveFolderKeys(keys);
         activeFolderKeysRef.current = keys;
