@@ -302,7 +302,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         theme: 'auto',
     },
     terminal: {
-        enabled: false,
+        enabled: true,
     },
     notes: {
         enabled: true,

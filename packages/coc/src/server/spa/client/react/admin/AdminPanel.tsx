@@ -80,7 +80,7 @@ export function AdminPanel() {
     const [serverName, setServerName] = useState('');
 
     // Feature toggles
-    const [terminalEnabled, setTerminalEnabled] = useState(false);
+    const [terminalEnabled, setTerminalEnabled] = useState(true);
     const [notesEnabled, setNotesEnabled] = useState(true);
     const [myWorkEnabled, setMyWorkEnabled] = useState(false);
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
@@ -107,7 +107,7 @@ export function AdminPanel() {
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: false, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -186,7 +186,7 @@ export function AdminPanel() {
             setHistoryGrouping(hg);
             setAppearanceSnapshot(prev => ({ ...prev, taskCardDensity: tcd, historyGrouping: hg }));
             setServerName(resolved.serve?.serverName ?? '');
-            const te = resolved.terminal?.enabled ?? false;
+            const te = resolved.terminal?.enabled ?? true;
             const ne = resolved.notes?.enabled ?? false;
             const mwe = resolved.myWork?.enabled ?? false;
             const mle = resolved.myLife?.enabled ?? false;

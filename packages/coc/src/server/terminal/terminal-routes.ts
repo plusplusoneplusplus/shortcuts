@@ -32,7 +32,7 @@ export function registerTerminalRoutes(
         handler: async (_req, res) => {
             const mgr = getTerminalSessionManager();
             sendJSON(res, 200, {
-                enabled: resolvedConfig?.terminal?.enabled ?? false,
+                enabled: resolvedConfig?.terminal?.enabled ?? true,
                 nodePtyAvailable: mgr != null,
                 activeSessions: mgr?.size ?? 0,
             });

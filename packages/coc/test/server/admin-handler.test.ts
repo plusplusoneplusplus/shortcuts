@@ -450,12 +450,12 @@ describe('Admin Handler', () => {
             expect(body.sources['chat.followUpSuggestions.count']).toBe('default');
         });
 
-        it('should return terminal.enabled=false by default', async () => {
+        it('should return terminal.enabled=true by default', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
-            expect(body.resolved.terminal.enabled).toBe(false);
+            expect(body.resolved.terminal.enabled).toBe(true);
             expect(body.sources['terminal.enabled']).toBe('default');
         });
 

@@ -38,7 +38,7 @@ export function getHostname(): string | undefined {
 }
 
 export function isTerminalEnabled(): boolean {
-    return getConfig().terminalEnabled === true;
+    return getConfig().terminalEnabled !== false;
 }
 
 export function isNotesEnabled(): boolean {

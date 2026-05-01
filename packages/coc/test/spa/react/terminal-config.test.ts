@@ -36,10 +36,10 @@ describe('isTerminalEnabled', () => {
         expect(isTerminalEnabled()).toBe(false);
     });
 
-    it('returns false when terminalEnabled is missing', async () => {
+    it('returns true when terminalEnabled is missing', async () => {
         (globalThis as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
         const { isTerminalEnabled } = await import('../../../src/server/spa/client/react/utils/config');
-        expect(isTerminalEnabled()).toBe(false);
+        expect(isTerminalEnabled()).toBe(true);
     });
 });
 
@@ -56,9 +56,9 @@ describe('generateDashboardHtml terminalEnabled', () => {
         expect(html).toContain('terminalEnabled: false');
     });
 
-    it('injects terminalEnabled: false when option is omitted', () => {
+    it('injects terminalEnabled: true when option is omitted', () => {
         const html = generateDashboardHtml({});
-        expect(html).toContain('terminalEnabled: false');
+        expect(html).toContain('terminalEnabled: true');
     });
 
     it('terminalEnabled is a boolean literal, not a quoted string', () => {

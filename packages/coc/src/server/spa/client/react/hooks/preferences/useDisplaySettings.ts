@@ -22,7 +22,7 @@ interface DisplaySettings {
     pullRequestsEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: true, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical', workflowsEnabled: false, pullRequestsEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: true, notesEnabled: true, myWorkEnabled: false, myLifeEnabled: false, scratchpadEnabled: false, scratchpadLayout: 'vertical', workflowsEnabled: false, pullRequestsEnabled: false };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
@@ -43,7 +43,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             taskCardDensity: (data?.resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
             historyGrouping: data?.resolved?.historyGrouping ?? true,
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
-            terminalEnabled: data?.resolved?.terminal?.enabled ?? false,
+            terminalEnabled: data?.resolved?.terminal?.enabled ?? true,
             notesEnabled: data?.resolved?.notes?.enabled ?? true,
             myWorkEnabled: data?.resolved?.myWork?.enabled ?? false,
             myLifeEnabled: data?.resolved?.myLife?.enabled ?? false,

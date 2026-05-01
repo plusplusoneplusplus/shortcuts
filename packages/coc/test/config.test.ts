@@ -58,7 +58,7 @@ describe('Config', () => {
                 followUpSuggestions: { enabled: true, count: 3 },
                 askUser: { enabled: false },
             });
-            expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
         });
@@ -413,12 +413,17 @@ timeout: 300
 
         it('should preserve terminal.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.terminal.enabled).toBe(false);
+            expect(result.terminal.enabled).toBe(true);
         });
 
-        it('should override terminal.enabled from file', () => {
+        it('should override terminal.enabled=true from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: true } });
             expect(result.terminal.enabled).toBe(true);
+        });
+
+        it('should override terminal.enabled=false from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: false } });
+            expect(result.terminal.enabled).toBe(false);
         });
 
         it('should preserve notes.enabled default when not overridden', () => {
@@ -620,7 +625,7 @@ timeout: 300
             const configPath = path.join(tmpDir, 'no-terminal.yaml');
             fs.writeFileSync(configPath, 'model: gpt-4\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.terminal.enabled).toBe(false);
+            expect(result.resolved.terminal.enabled).toBe(true);
             expect(result.sources['terminal.enabled']).toBe('default');
         });
 

@@ -81,7 +81,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         wsPath = '/ws',
         apiBasePath = '/api',
         enableWiki = false,
-        terminalEnabled,
+        terminalEnabled = true,
         notesEnabled,
         myWorkEnabled,
         myLifeEnabled,
