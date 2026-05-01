@@ -232,7 +232,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                                 type="button"
                                 className="text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
                                 title="View full system prompt"
-                                onClick={() => setSystemPromptOpen(true)}
+                                onClick={() => { setOpen(false); setSystemPromptOpen(true); }}
                             >
                                 👁 view
                             </button>
@@ -296,6 +296,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     ref={popoverRef}
                     className="fixed z-[10003] w-[480px] max-w-[calc(100vw-16px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
                     style={{ top: menuPos.top, left: menuPos.left }}
+                    onMouseDown={e => e.stopPropagation()}
                 >
                     {popoverContent}
                 </div>,

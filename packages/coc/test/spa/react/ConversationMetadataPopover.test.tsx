@@ -383,6 +383,62 @@ describe('ConversationMetadataPopover – system prompt row', () => {
         expect(screen.getByText(systemPromptText)).toBeDefined();
     });
 
+    it('closes metadata popover when view button is clicked (so dialog is not obscured)', async () => {
+        const processWithPrompt = {
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: 'Some system prompt.' },
+        };
+        renderPopover(processWithPrompt);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        expect(screen.getByText('Conversation metadata')).toBeDefined();
+
+        const viewBtn = screen.getByTitle('View full system prompt');
+        await act(async () => {
+            fireEvent.click(viewBtn);
+        });
+
+        // Metadata popover should be closed
+        expect(screen.queryByText('Conversation metadata')).toBeNull();
+        // Dialog should be open
+        expect(screen.getByText('Some system prompt.')).toBeDefined();
+    });
+
+    it('does not propagate mousedown from inside the popover to document (regression: overflow-menu close)', async () => {
+        const processWithPrompt = {
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: 'Hello.' },
+        };
+        renderPopover(processWithPrompt);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        // Simulate an outside-click handler like ChatHeaderOverflowMenu registers
+        let documentMouseDownFired = false;
+        const handler = () => { documentMouseDownFired = true; };
+        document.addEventListener('mousedown', handler);
+
+        try {
+            // Fire mousedown inside the popover portal
+            const viewBtn = screen.getByTitle('View full system prompt');
+            await act(async () => {
+                fireEvent.mouseDown(viewBtn);
+            });
+
+            // The event should NOT have reached the document-level listener
+            expect(documentMouseDownFired).toBe(false);
+        } finally {
+            document.removeEventListener('mousedown', handler);
+        }
+    });
+
     it('closes system prompt dialog on Escape key', async () => {
         const processWithPrompt = {
             ...BASE_PROCESS,
