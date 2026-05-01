@@ -4,7 +4,7 @@
  * Provides a declarative list of named handlers that intercept specific URLs
  * and open them in their respective desktop applications instead of a browser tab.
  *
- * All handlers are **disabled by default**. The consumer passes the per-user
+ * All handlers are **enabled by default**. The consumer passes the per-user
  * config (from `useLinkHandlers`) as a parameter so this module stays pure
  * and testable with no side effects at import time.
  */
@@ -101,6 +101,9 @@ export const LINK_HANDLER_META: LinkHandlerMeta[] = [
     },
 ];
 
+export const DEFAULT_LINK_HANDLERS_CONFIG: Record<string, boolean> =
+    Object.fromEntries(LINK_HANDLER_META.map(meta => [meta.name, true]));
+
 // ── Core function ─────────────────────────────────────────────────────────────
 
 /**
@@ -109,10 +112,11 @@ export const LINK_HANDLER_META: LinkHandlerMeta[] = [
  *
  * @param href   The URL to open.
  * @param config A map of handler name → enabled flag (from `useLinkHandlers`).
+ *               Missing built-in handler keys are treated as enabled.
  */
 export function openLink(href: string, config: Record<string, boolean>): void {
     for (const handler of BUILTIN_LINK_HANDLERS) {
-        if (config[handler.name] === true && handler.matches(href)) {
+        if (config[handler.name] !== false && handler.matches(href)) {
             handler.open(href);
             return;
         }

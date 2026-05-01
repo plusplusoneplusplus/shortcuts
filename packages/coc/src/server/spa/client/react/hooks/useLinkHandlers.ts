@@ -7,15 +7,16 @@
  * - `setHandlerEnabled(name, enabled)` writes back via `PATCH /api/preferences`
  *   (fire-and-forget) and notifies all subscribers immediately.
  *
- * All handlers are disabled by default (absent key = disabled).
+ * All built-in handlers are enabled by default (absent key = enabled).
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { getApiBase } from '../utils/config';
+import { DEFAULT_LINK_HANDLERS_CONFIG } from '../utils/link-handler';
 
 // ── Module-level shared store ────────────────────────────────────────────────
 
-let currentConfig: Record<string, boolean> = {};
+let currentConfig: Record<string, boolean> = { ...DEFAULT_LINK_HANDLERS_CONFIG };
 let serverFetched = false;
 const listeners = new Set<() => void>();
 
@@ -34,7 +35,7 @@ function getSnapshot(): Record<string, boolean> {
 
 /** @internal Reset module-level state for testing. */
 export function __resetForTesting(): void {
-    currentConfig = {};
+    currentConfig = { ...DEFAULT_LINK_HANDLERS_CONFIG };
     serverFetched = false;
     listeners.clear();
 }
@@ -76,11 +77,14 @@ export function useLinkHandlers(): [
                 const prefs = await res.json();
                 const serverHandlers = prefs.linkHandlers;
                 if (typeof serverHandlers === 'object' && serverHandlers !== null) {
-                    currentConfig = serverHandlers as Record<string, boolean>;
+                    currentConfig = {
+                        ...DEFAULT_LINK_HANDLERS_CONFIG,
+                        ...(serverHandlers as Record<string, boolean>),
+                    };
                     notifyAll();
                 }
             } catch {
-                // Server unavailable — keep defaults (all disabled)
+                // Server unavailable — keep defaults.
             }
         })();
     }, []);

@@ -99,7 +99,7 @@ export interface GlobalPreferences {
     /**
      * Per-handler enabled/disabled overrides for the link-handler feature.
      * Keys are handler names (e.g. 'teams', 'vscode', 'onenote').
-     * `true` = handler is enabled; `false` or absent = disabled (default).
+     * `true` or absent = handler is enabled (default); `false` = disabled.
      */
     linkHandlers?: Record<string, boolean>;
     /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */

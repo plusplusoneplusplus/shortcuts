@@ -12,6 +12,7 @@ import {
     BUILTIN_LINK_HANDLERS,
     openLink,
     getLinkHandlersMeta,
+    DEFAULT_LINK_HANDLERS_CONFIG,
 } from '../../../../src/server/spa/client/react/utils/link-handler';
 
 // ── Handler predicates ─────────────────────────────────────────────────────
@@ -97,8 +98,8 @@ describe('openLink', () => {
         vi.unstubAllGlobals();
     });
 
-    it('falls back to window.open when no handlers are enabled', () => {
-        openLink('https://github.com', {});
+    it('falls back to window.open when no handler matches', () => {
+        openLink('https://github.com', DEFAULT_LINK_HANDLERS_CONFIG);
         expect(mockWindowOpen).toHaveBeenCalledWith('https://github.com', '_blank', 'noopener');
     });
 
@@ -107,6 +108,12 @@ describe('openLink', () => {
         expect(mockWindowOpen).toHaveBeenCalledWith(
             'https://teams.microsoft.com/l/channel/abc', '_blank', 'noopener'
         );
+    });
+
+    it('treats missing built-in handler config as enabled by default', () => {
+        openLink('https://teams.microsoft.com/l/channel/abc', {});
+        expect(mockWindowOpen).not.toHaveBeenCalled();
+        expect(mockLocationHref).toBe('msteams://teams.microsoft.com/l/channel/abc');
     });
 
     it('opens teams URL via msteams:// when teams handler is enabled', () => {

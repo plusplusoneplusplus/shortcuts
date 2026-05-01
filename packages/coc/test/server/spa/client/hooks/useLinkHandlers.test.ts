@@ -4,7 +4,7 @@
  * Tests for hooks/useLinkHandlers.ts
  *
  * Covers:
- * - Default state (all disabled)
+ * - Default state (all enabled)
  * - Fetching server config on mount
  * - setHandlerEnabled() updates state and PATCHes preferences
  * - getLinkHandlersConfig() returns current snapshot for non-React code
@@ -33,7 +33,7 @@ describe('useLinkHandlers', () => {
         vi.restoreAllMocks();
     });
 
-    it('starts with an empty config (all handlers disabled)', async () => {
+    it('starts with all built-in handlers enabled', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: async () => ({ linkHandlers: {} }),
@@ -42,17 +42,18 @@ describe('useLinkHandlers', () => {
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
         );
         const { result } = renderHook(() => useLinkHandlers());
-        const [config] = result.current;
-        // Before or after fetch, no handler should be true
-        expect(config.teams).not.toBe(true);
-        expect(config.vscode).not.toBe(true);
-        expect(config.onenote).not.toBe(true);
+        await waitFor(() => {
+            const [config] = result.current;
+            expect(config.teams).toBe(true);
+            expect(config.vscode).toBe(true);
+            expect(config.onenote).toBe(true);
+        });
     });
 
-    it('loads server config on mount', async () => {
+    it('loads server config on mount and preserves enabled defaults for missing handlers', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
-            json: async () => ({ linkHandlers: { teams: true } }),
+            json: async () => ({ linkHandlers: { teams: false } }),
         });
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
@@ -60,7 +61,9 @@ describe('useLinkHandlers', () => {
         const { result } = renderHook(() => useLinkHandlers());
         await waitFor(() => {
             const [config] = result.current;
-            expect(config.teams).toBe(true);
+            expect(config.teams).toBe(false);
+            expect(config.vscode).toBe(true);
+            expect(config.onenote).toBe(true);
         });
     });
 
@@ -73,10 +76,12 @@ describe('useLinkHandlers', () => {
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
         );
         const { result } = renderHook(() => useLinkHandlers());
-        // Should stay empty (no throw)
+        // Should keep defaults (no throw)
         await waitFor(() => {
             const [config] = result.current;
-            expect(typeof config).toBe('object');
+            expect(config.teams).toBe(true);
+            expect(config.vscode).toBe(true);
+            expect(config.onenote).toBe(true);
         });
     });
 
