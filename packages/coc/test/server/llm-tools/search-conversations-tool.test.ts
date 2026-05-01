@@ -79,7 +79,10 @@ describe('createSearchConversationsTool', () => {
             properties: {
                 query: { type: 'string', description: expect.any(String) },
                 workspaceId: { type: 'string', description: expect.any(String) },
+                since: { type: 'string', description: expect.any(String) },
+                until: { type: 'string', description: expect.any(String) },
                 limit: { type: 'number', description: expect.any(String) },
+                offset: { type: 'number', description: expect.any(String) },
                 summarize: { type: 'boolean', description: expect.any(String) },
             },
             required: [],
@@ -135,7 +138,10 @@ describe('createSearchConversationsTool', () => {
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: 'default-ws',
+            since: undefined,
+            until: undefined,
             limit: 10,
+            offset: 0,
         });
     });
 
@@ -147,19 +153,25 @@ describe('createSearchConversationsTool', () => {
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: 'override-ws',
+            since: undefined,
+            until: undefined,
             limit: 10,
+            offset: 0,
         });
     });
 
-    it('caps limit at 20', async () => {
+    it('caps limit at 100', async () => {
         const store = makeMockStore({ results: [], total: 0 });
         const { tool } = createSearchConversationsTool(store);
 
-        await tool.handler({ query: 'test', limit: 100 }, invocationStub);
+        await tool.handler({ query: 'test', limit: 500 }, invocationStub);
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: undefined,
-            limit: 20,
+            since: undefined,
+            until: undefined,
+            limit: 100,
+            offset: 0,
         });
     });
 
@@ -171,7 +183,10 @@ describe('createSearchConversationsTool', () => {
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: undefined,
+            since: undefined,
+            until: undefined,
             limit: 10,
+            offset: 0,
         });
     });
 
@@ -183,8 +198,39 @@ describe('createSearchConversationsTool', () => {
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: undefined,
+            since: undefined,
+            until: undefined,
             limit: 1,
+            offset: 0,
         });
+    });
+
+    it('passes since, until, and offset to keyword search', async () => {
+        const store = makeMockStore({ results: [], total: 0 });
+        const { tool } = createSearchConversationsTool(store);
+
+        await tool.handler({
+            query: 'test',
+            since: '2026-04-29T00:00:00.000-07:00',
+            until: '2026-04-30T00:00:00.000-07:00',
+            offset: 50,
+        }, invocationStub);
+
+        expect(store.searchConversations).toHaveBeenCalledWith('test', {
+            workspaceId: undefined,
+            since: new Date('2026-04-29T00:00:00.000-07:00'),
+            until: new Date('2026-04-30T00:00:00.000-07:00'),
+            limit: 10,
+            offset: 50,
+        });
+    });
+
+    it('throws a clear error for invalid date inputs', async () => {
+        const store = makeMockStore({ results: [], total: 0 });
+        const { tool } = createSearchConversationsTool(store);
+
+        await expect(tool.handler({ query: 'test', since: 'not-a-date' }, invocationStub))
+            .rejects.toThrow('Invalid since datetime: not-a-date');
     });
 
     it('returns only the token-efficient fields', async () => {

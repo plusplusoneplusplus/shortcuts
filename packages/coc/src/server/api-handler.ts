@@ -144,6 +144,13 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
         }
     }
 
+    if (typeof query.until === 'string' && query.until) {
+        const date = new Date(query.until);
+        if (!isNaN(date.getTime())) {
+            filter.until = date;
+        }
+    }
+
     if (typeof query.limit === 'string' && query.limit) {
         const limit = parseInt(query.limit, 10);
         if (!isNaN(limit) && limit > 0) {

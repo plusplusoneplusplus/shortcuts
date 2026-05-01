@@ -135,7 +135,7 @@ src/
 │   │   ├── add-diff-comment-tool.ts # Factory for per-invocation add_diff_comment AI tool (commit chat)
 │   │   ├── diff-line-mapper.ts   # Unified diff parser and source-line → diff-index mapper
 │   │   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
-│   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 conversation search)
+│   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 keyword search plus metadata-only recent/activity-window listing)
 │   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
 │   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
 │   ├── executors/                 # AI chat execution layer — process lifecycle, prompt building

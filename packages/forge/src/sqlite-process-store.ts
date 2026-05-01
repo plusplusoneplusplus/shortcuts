@@ -785,7 +785,7 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
-        const { sql, params } = this.buildProcessWhereClause(filter);
+        const { sql, params } = this.buildProcessWhereClause(filter, true);
 
         // Total count (pre-pagination)
         const countQuery = `SELECT COUNT(*) AS cnt FROM processes ${sql}`;
@@ -819,6 +819,7 @@ export class SqliteProcessStore implements ProcessStore {
                 title: row.title ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+                activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
             });
@@ -1542,8 +1543,13 @@ export class SqliteProcessStore implements ProcessStore {
         }
 
         if (filter?.since) {
-            whereClauses.push('p.start_time >= ?');
+            whereClauses.push('COALESCE(p.last_event_at, p.start_time) >= ?');
             params.push(filter.since.toISOString());
+        }
+
+        if (filter?.until) {
+            whereClauses.push('COALESCE(p.last_event_at, p.start_time) < ?');
+            params.push(filter.until.toISOString());
         }
 
         const whereSQL = whereClauses.join(' AND ');
@@ -1636,7 +1642,10 @@ export class SqliteProcessStore implements ProcessStore {
 
     async listRecentProcesses(options: {
         workspaceId?: string;
+        since?: Date;
+        until?: Date;
         limit?: number;
+        offset?: number;
         excludeProcessId?: string;
     }): Promise<ProcessIndexEntry[]> {
         const conditions: string[] = ['archived = 0'];
@@ -1652,8 +1661,19 @@ export class SqliteProcessStore implements ProcessStore {
             params.push(options.excludeProcessId);
         }
 
+        if (options.since) {
+            conditions.push('COALESCE(last_event_at, start_time) >= ?');
+            params.push(options.since.toISOString());
+        }
+
+        if (options.until) {
+            conditions.push('COALESCE(last_event_at, start_time) < ?');
+            params.push(options.until.toISOString());
+        }
+
         const whereSQL = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const limit = Math.min(Math.max(1, options.limit ?? 10), 20);
+        const limit = Math.min(Math.max(1, options.limit ?? 10), 100);
+        const offset = Math.max(0, options.offset ?? 0);
 
         const query = `
             SELECT id, workspace_id, status, type, start_time, end_time,
@@ -1661,11 +1681,11 @@ export class SqliteProcessStore implements ProcessStore {
                    last_event_at, pinned_at, archived
             FROM processes ${whereSQL}
             ORDER BY COALESCE(last_event_at, start_time) DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
         `;
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(query).iterate(...params, limit) as IterableIterator<ProcessRow>) {
+        for (const row of this.db.prepare(query).iterate(...params, limit, offset) as IterableIterator<ProcessRow>) {
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             entries.push({
@@ -1681,6 +1701,7 @@ export class SqliteProcessStore implements ProcessStore {
                 title: row.title ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+                activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
             });
@@ -1711,7 +1732,10 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     /** Build a WHERE clause from ProcessFilter fields. */
-    private buildProcessWhereClause(filter?: ProcessFilter): { sql: string; params: unknown[] } {
+    private buildProcessWhereClause(
+        filter?: ProcessFilter,
+        useActivityTime: boolean = false,
+    ): { sql: string; params: unknown[] } {
         if (!filter) return { sql: '', params: [] };
 
         const conditions: string[] = [];
@@ -1738,9 +1762,14 @@ export class SqliteProcessStore implements ProcessStore {
             conditions.push('type = ?');
             params.push(filter.type);
         }
+        const timeExpression = useActivityTime ? 'COALESCE(last_event_at, start_time)' : 'start_time';
         if (filter.since !== undefined) {
-            conditions.push('start_time >= ?');
+            conditions.push(`${timeExpression} >= ?`);
             params.push(filter.since.toISOString());
+        }
+        if (filter.until !== undefined) {
+            conditions.push(`${timeExpression} < ?`);
+            params.push(filter.until.toISOString());
         }
 
         if (conditions.length === 0) return { sql: '', params: [] };

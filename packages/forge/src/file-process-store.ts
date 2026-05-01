@@ -271,7 +271,11 @@ export class FileProcessStore implements ProcessStore {
         }
         if (filter?.since) {
             const sinceTime = filter.since.getTime();
-            entries = entries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
+            entries = entries.filter(e => new Date(e.lastEventAt ?? e.startTime).getTime() >= sinceTime);
+        }
+        if (filter?.until) {
+            const untilTime = filter.until.getTime();
+            entries = entries.filter(e => new Date(e.lastEventAt ?? e.startTime).getTime() < untilTime);
         }
         return entries;
     }
@@ -970,6 +974,7 @@ export class FileProcessStore implements ProcessStore {
                 ? new Date(entry.process.endTime).getTime() - new Date(entry.process.startTime).getTime()
                 : undefined,
             lastEventAt: entry.process.lastEventAt,
+            activityAt: entry.process.lastEventAt ?? entry.process.startTime,
         };
     }
 

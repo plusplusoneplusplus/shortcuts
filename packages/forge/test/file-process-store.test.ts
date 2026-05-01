@@ -371,6 +371,78 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(await store.getProcessCount({ status: ['running', 'failed'] })).toBe(2);
     });
 
+    it('getProcessSummaries filters by since using activity time', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('old', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-28T12:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('active', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T12:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+
+        const { entries, total } = await store.getProcessSummaries({
+            workspaceId: 'ws-a',
+            since: new Date('2026-04-29T00:00:00.000Z'),
+        });
+
+        expect(total).toBe(1);
+        expect(entries.map(e => e.id)).toEqual(['active']);
+        expect(entries[0].activityAt).toBe('2026-04-29T12:00:00.000Z');
+    });
+
+    it('getProcessSummaries filters by until with an exclusive activity upper bound', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('included', {
+            startTime: new Date('2026-04-29T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T23:59:59.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('excluded', {
+            startTime: new Date('2026-04-29T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-30T00:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+
+        const { entries } = await store.getProcessSummaries({
+            workspaceId: 'ws-a',
+            until: new Date('2026-04-30T00:00:00.000Z'),
+        });
+
+        expect(entries.map(e => e.id)).toEqual(['included']);
+    });
+
+    it('getProcessSummaries supports bounded activity windows', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('before', {
+            startTime: new Date('2026-04-28T23:00:00.000Z'),
+            lastEventAt: new Date('2026-04-28T23:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('inside', {
+            startTime: new Date('2026-04-29T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T12:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('after', {
+            startTime: new Date('2026-04-30T00:00:00.000Z'),
+            lastEventAt: new Date('2026-04-30T00:00:00.000Z'),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+
+        const { entries, total } = await store.getProcessSummaries({
+            workspaceId: 'ws-a',
+            since: new Date('2026-04-29T00:00:00.000Z'),
+            until: new Date('2026-04-30T00:00:00.000Z'),
+        });
+
+        expect(total).toBe(1);
+        expect(entries.map(e => e.id)).toEqual(['inside']);
+    });
+
     it('getProcessCount across workspaces agrees with getAllProcesses().length', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));

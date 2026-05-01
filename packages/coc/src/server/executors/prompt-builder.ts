@@ -391,7 +391,8 @@ export function buildSearchConversationsAddon(
         '\n\nYou have access to two conversation-history tools: ' +
         '`search_conversations` to find past sessions by keyword (returns snippets), and ' +
         '`get_conversation` to fetch the full transcript of a session by processId (compacted to fit a token budget). ' +
-        'Typical flow: search → pick a relevant processId → get_conversation. ' +
+        'Use `search_conversations` with no query plus workspaceId and since/until to list recent conversation metadata for a time window, then call `get_conversation` for selected processIds. ' +
+        'Typical flow: search or list metadata → pick a relevant processId → get_conversation. ' +
         'Use these when the user references previous discussions or you need context from earlier sessions.';
 
     return { tools: [searchTool, getTool], suffix };

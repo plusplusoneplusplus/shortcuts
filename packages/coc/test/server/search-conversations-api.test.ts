@@ -214,6 +214,17 @@ describe('GET /api/processes/search', () => {
         }));
     });
 
+    it('passes since and until filters to store', async () => {
+        mockSearch.mockResolvedValueOnce({ results: [], total: 0 });
+
+        await request(`${baseUrl}/api/processes/search?q=test&since=2026-04-29T00%3A00%3A00.000Z&until=2026-04-30T00%3A00%3A00.000Z`);
+
+        expect(mockSearch).toHaveBeenCalledWith('test', expect.objectContaining({
+            since: new Date('2026-04-29T00:00:00.000Z'),
+            until: new Date('2026-04-30T00:00:00.000Z'),
+        }));
+    });
+
     it('response shape includes all documented fields', async () => {
         mockSearch.mockResolvedValueOnce({ results: [makeSearchResult()], total: 1 });
 

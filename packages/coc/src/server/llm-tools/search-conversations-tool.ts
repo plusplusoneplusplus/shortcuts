@@ -14,12 +14,15 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/forge';
-import type { ProcessStore, ConversationTurn } from '@plusplusoneplusplus/forge';
+import type { ProcessIndexEntry, ProcessStore, ConversationTurn } from '@plusplusoneplusplus/forge';
 
 export interface SearchConversationsArgs {
     query?: string;
     workspaceId?: string;
+    since?: string;
+    until?: string;
     limit?: number;
+    offset?: number;
     summarize?: boolean;
 }
 
@@ -57,7 +60,7 @@ export interface SearchConversationsToolOptions {
     summarizer?: Summarizer;
 }
 
-const MAX_RESULTS = 20;
+const MAX_RESULTS = 100;
 const DEFAULT_LIMIT = 10;
 const MAX_SUMMARIZE_SESSIONS = 5;
 const RAW_PREVIEW_LENGTH = 500;
@@ -194,8 +197,9 @@ export function createSearchConversationsTool(
     const tool = defineTool<SearchConversationsArgs>('search_conversations', {
         description:
             'Search your conversation history in this workspace, or browse recent sessions. ' +
-            'TWO MODES: (1) Recent sessions — call with no query to see what was worked on recently. ' +
+            'TWO MODES: (1) Recent sessions — call with no query to list metadata-only sessions, optionally scoped by workspaceId and since/until activity window. ' +
             '(2) Keyword search — search for specific topics across all past sessions, optionally with AI-generated summaries. ' +
+            'For periodic tasks, use no query plus workspaceId + since/until to discover candidate processIds, then call get_conversation only for selected sessions. ' +
             'USE PROACTIVELY when the user says "we did this before", "remember when", "last time", "as I mentioned", ' +
             'or references a topic from a previous session. Better to search and confirm than to guess.',
         parameters: {
@@ -211,9 +215,25 @@ export function createSearchConversationsTool(
                     type: 'string',
                     description: 'Optional workspace ID to scope the search to a specific repository',
                 },
+                since: {
+                    type: 'string',
+                    description:
+                        'Optional ISO datetime lower bound on conversation activity time ' +
+                        '(inclusive). Uses COALESCE(lastEventAt, startTime).',
+                },
+                until: {
+                    type: 'string',
+                    description:
+                        'Optional ISO datetime upper bound on conversation activity time ' +
+                        '(exclusive). Uses COALESCE(lastEventAt, startTime).',
+                },
                 limit: {
                     type: 'number',
                     description: `Maximum number of results to return (default: ${DEFAULT_LIMIT}, max: ${MAX_RESULTS})`,
+                },
+                offset: {
+                    type: 'number',
+                    description: 'Optional pagination offset (default: 0)',
                 },
                 summarize: {
                     type: 'boolean',
@@ -229,14 +249,25 @@ export function createSearchConversationsTool(
                 Math.max(1, args.limit ?? DEFAULT_LIMIT),
                 MAX_RESULTS,
             );
+            const effectiveOffset = Math.max(0, args.offset ?? 0);
             const effectiveWorkspaceId = args.workspaceId ?? workspaceId;
+            const since = parseIsoDateArg(args.since, 'since');
+            const until = parseIsoDateArg(args.until, 'until');
             const query = args.query?.trim() ?? '';
 
             // ================================================================
             // Mode 1: Recent sessions (no query)
             // ================================================================
             if (!query) {
-                return handleRecentMode(store, effectiveWorkspaceId, effectiveLimit, currentProcessId);
+                return handleRecentMode(
+                    store,
+                    effectiveWorkspaceId,
+                    since,
+                    until,
+                    effectiveLimit,
+                    effectiveOffset,
+                    currentProcessId,
+                );
             }
 
             // ================================================================
@@ -254,7 +285,10 @@ export function createSearchConversationsTool(
 
             const { results, total } = await store.searchConversations(query, {
                 workspaceId: effectiveWorkspaceId,
+                since,
+                until,
                 limit: effectiveLimit,
+                offset: effectiveOffset,
             });
 
             // Filter out current session
@@ -279,6 +313,8 @@ export function createSearchConversationsTool(
                 })),
                 total,
                 query,
+                limit: effectiveLimit,
+                offset: effectiveOffset,
             };
         },
     });
@@ -290,64 +326,112 @@ export function createSearchConversationsTool(
 // Mode handlers
 // ============================================================================
 
+function parseIsoDateArg(value: string | undefined, name: string): Date | undefined {
+    if (value === undefined || value.trim() === '') {
+        return undefined;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        throw new Error(`Invalid ${name} datetime: ${value}. Expected an ISO 8601 datetime.`);
+    }
+    return date;
+}
+
+function toRecentResult(e: ProcessIndexEntry) {
+    const activityAt = e.activityAt ?? e.lastEventAt ?? e.startTime;
+    return {
+        processId: e.id,
+        workspaceId: e.workspaceId,
+        title: e.title || e.promptPreview,
+        status: e.status,
+        type: e.type,
+        startTime: e.startTime,
+        endTime: e.endTime,
+        lastEventAt: e.lastEventAt,
+        activityAt,
+        preview: e.promptPreview.length > RAW_PREVIEW_LENGTH
+            ? e.promptPreview.slice(0, RAW_PREVIEW_LENGTH) + '…'
+            : e.promptPreview,
+    };
+}
+
 async function handleRecentMode(
     store: ProcessStore,
     workspaceId: string | undefined,
+    since: Date | undefined,
+    until: Date | undefined,
     limit: number,
+    offset: number,
     currentProcessId: string | undefined,
 ) {
     if (!store.listRecentProcesses) {
         // Fallback: try getProcessSummaries
         if (store.getProcessSummaries) {
-            const { entries } = await store.getProcessSummaries({
+            const { entries, total } = await store.getProcessSummaries({
                 workspaceId,
+                since,
+                until,
                 limit: limit + 1, // fetch one extra to account for filtering
+                offset,
             });
             const filtered = currentProcessId
                 ? entries.filter(e => e.id !== currentProcessId).slice(0, limit)
                 : entries.slice(0, limit);
             return {
                 mode: 'recent' as const,
-                results: filtered.map(e => ({
-                    processId: e.id,
-                    title: e.title || e.promptPreview,
-                    status: e.status,
-                    startTime: e.startTime,
-                    preview: e.promptPreview.length > RAW_PREVIEW_LENGTH
-                        ? e.promptPreview.slice(0, RAW_PREVIEW_LENGTH) + '…'
-                        : e.promptPreview,
-                })),
+                results: filtered.map(toRecentResult),
                 count: filtered.length,
-                message: `Showing ${filtered.length} most recent session(s).`,
+                total,
+                hasMore: offset + filtered.length < total,
+                limit,
+                offset,
+                message: `Showing ${filtered.length} recent session metadata row(s).`,
             };
         }
         return {
             mode: 'recent' as const,
             results: [],
             count: 0,
+            total: 0,
+            hasMore: false,
+            limit,
+            offset,
             message: 'Recent session listing is not available (requires SQLite backend)',
         };
     }
 
     const entries = await store.listRecentProcesses({
         workspaceId,
-        limit,
+        since,
+        until,
+        limit: limit + 1,
+        offset,
         excludeProcessId: currentProcessId,
     });
+    const pageEntries = entries.slice(0, limit);
+    let total = offset + pageEntries.length;
+    let hasMore = entries.length > limit;
+
+    if (store.getProcessSummaries) {
+        const summary = await store.getProcessSummaries({
+            workspaceId,
+            since,
+            until,
+            limit: 1,
+        });
+        total = currentProcessId ? Math.max(0, summary.total - 1) : summary.total;
+        hasMore = offset + pageEntries.length < total;
+    }
 
     return {
         mode: 'recent' as const,
-        results: entries.map(e => ({
-            processId: e.id,
-            title: e.title || e.promptPreview,
-            status: e.status,
-            startTime: e.startTime,
-            preview: e.promptPreview.length > RAW_PREVIEW_LENGTH
-                ? e.promptPreview.slice(0, RAW_PREVIEW_LENGTH) + '…'
-                : e.promptPreview,
-        })),
-        count: entries.length,
-        message: `Showing ${entries.length} most recent session(s).`,
+        results: pageEntries.map(toRecentResult),
+        count: pageEntries.length,
+        total,
+        hasMore,
+        limit,
+        offset,
+        message: `Showing ${pageEntries.length} recent session metadata row(s).`,
     };
 }
 

@@ -172,7 +172,114 @@ describe('recent-browse mode', () => {
         expect(result.mode).toBe('recent');
         expect(result.results).toHaveLength(2);
         expect(result.count).toBe(2);
+        expect(result.total).toBe(2);
+        expect(result.hasMore).toBe(false);
         expect(result.message).toContain('2');
+    });
+
+    it('returns metadata-only rows in recent mode', async () => {
+        const entries = [
+            makeProcessEntry({
+                id: 'proc-1',
+                workspaceId: 'ws-1',
+                type: 'chat',
+                endTime: '2025-01-15T10:05:00Z',
+                lastEventAt: '2025-01-15T10:04:00Z',
+                activityAt: '2025-01-15T10:04:00Z',
+            }),
+        ];
+        const store = makeMockStore({ recentProcesses: entries });
+        const { tool } = createSearchConversationsTool(store);
+
+        const result = await tool.handler({}, invocationStub);
+
+        expect(Object.keys(result.results[0]).sort()).toEqual([
+            'activityAt',
+            'endTime',
+            'lastEventAt',
+            'preview',
+            'processId',
+            'startTime',
+            'status',
+            'title',
+            'type',
+            'workspaceId',
+        ]);
+        expect(result.results[0]).not.toHaveProperty('snippet');
+        expect(result.results[0]).not.toHaveProperty('content');
+        expect(result.results[0]).not.toHaveProperty('toolCalls');
+    });
+
+    it('passes workspace filter only in recent mode', async () => {
+        const store = makeMockStore({ recentProcesses: [] });
+        const { tool } = createSearchConversationsTool(store);
+
+        await tool.handler({ workspaceId: 'ws-abc123' }, invocationStub);
+
+        expect(store.listRecentProcesses).toHaveBeenCalledWith(expect.objectContaining({
+            workspaceId: 'ws-abc123',
+            since: undefined,
+            until: undefined,
+        }));
+    });
+
+    it('passes since only in recent mode', async () => {
+        const store = makeMockStore({ recentProcesses: [] });
+        const { tool } = createSearchConversationsTool(store);
+
+        await tool.handler({ since: '2026-04-29T00:00:00.000-07:00' }, invocationStub);
+
+        expect(store.listRecentProcesses).toHaveBeenCalledWith(expect.objectContaining({
+            since: new Date('2026-04-29T00:00:00.000-07:00'),
+            until: undefined,
+        }));
+    });
+
+    it('passes until only in recent mode', async () => {
+        const store = makeMockStore({ recentProcesses: [] });
+        const { tool } = createSearchConversationsTool(store);
+
+        await tool.handler({ until: '2026-04-30T00:00:00.000-07:00' }, invocationStub);
+
+        expect(store.listRecentProcesses).toHaveBeenCalledWith(expect.objectContaining({
+            since: undefined,
+            until: new Date('2026-04-30T00:00:00.000-07:00'),
+        }));
+    });
+
+    it('passes bounded since and until with pagination in recent mode', async () => {
+        const store = makeMockStore({
+            recentProcesses: [makeProcessEntry({ id: 'p1' }), makeProcessEntry({ id: 'p2' })],
+            processSummaries: { entries: [makeProcessEntry()], total: 75 },
+        });
+        const { tool } = createSearchConversationsTool(store);
+
+        const result = await tool.handler({
+            workspaceId: 'ws-abc123',
+            since: '2026-04-29T00:00:00.000-07:00',
+            until: '2026-04-30T00:00:00.000-07:00',
+            limit: 50,
+            offset: 50,
+        }, invocationStub);
+
+        expect(store.listRecentProcesses).toHaveBeenCalledWith(expect.objectContaining({
+            workspaceId: 'ws-abc123',
+            since: new Date('2026-04-29T00:00:00.000-07:00'),
+            until: new Date('2026-04-30T00:00:00.000-07:00'),
+            limit: 51,
+            offset: 50,
+        }));
+        expect(result.count).toBe(2);
+        expect(result.total).toBe(75);
+        expect(result.hasMore).toBe(true);
+    });
+
+    it('throws a clear error for invalid recent-mode date inputs', async () => {
+        const store = makeMockStore({ recentProcesses: [] });
+        const { tool } = createSearchConversationsTool(store);
+
+        await expect(tool.handler({ until: 'definitely-not-a-date' }, invocationStub))
+            .rejects.toThrow('Invalid until datetime: definitely-not-a-date');
     });
 
     it('returns recent processes when query is whitespace-only', async () => {
@@ -527,7 +634,10 @@ describe('default behavior (backward compatible)', () => {
 
         expect(store.searchConversations).toHaveBeenCalledWith('test', {
             workspaceId: 'ws-1',
+            since: undefined,
+            until: undefined,
             limit: 10,
+            offset: 0,
         });
         expect(result.mode).toBe('search');
     });
@@ -547,15 +657,15 @@ describe('default behavior (backward compatible)', () => {
 // ============================================================================
 
 describe('limit clamping', () => {
-    it('clamps limit > 20 to 20', async () => {
+    it('clamps limit > 100 to 100', async () => {
         const store = makeMockStore({
             searchResults: { results: [], total: 0 },
         });
         const { tool } = createSearchConversationsTool(store);
 
-        await tool.handler({ query: 'test', limit: 100 }, invocationStub);
+        await tool.handler({ query: 'test', limit: 500 }, invocationStub);
 
-        expect(store.searchConversations).toHaveBeenCalledWith('test', expect.objectContaining({ limit: 20 }));
+        expect(store.searchConversations).toHaveBeenCalledWith('test', expect.objectContaining({ limit: 100 }));
     });
 
     it('clamps limit < 1 to 1', async () => {

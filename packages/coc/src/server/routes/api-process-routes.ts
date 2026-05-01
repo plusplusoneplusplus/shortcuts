@@ -237,6 +237,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 status: filter.status,
                 type: filter.type,
                 since: filter.since,
+                until: filter.until,
                 limit: filter.limit ?? 50,
                 offset: filter.offset ?? 0,
             };

@@ -38,7 +38,10 @@ export interface SearchFilter {
     workspaceId?: string;
     status?: AIProcessStatus | AIProcessStatus[];
     type?: AIProcessType;
+    /** Inclusive lower bound on conversation activity time: COALESCE(lastEventAt, startTime). */
     since?: Date;
+    /** Exclusive upper bound on conversation activity time: COALESCE(lastEventAt, startTime). */
+    until?: Date;
     limit?: number;
     offset?: number;
 }
@@ -220,7 +223,15 @@ export interface ProcessFilter {
     parentProcessId?: string;
     status?: AIProcessStatus | AIProcessStatus[];
     type?: AIProcessType;
+    /**
+     * Inclusive lower time bound. Lightweight metadata/history queries interpret this
+     * as conversation activity time: COALESCE(lastEventAt, startTime), so follow-ups
+     * on older conversations are included. Legacy full-process queries preserve their
+     * existing startTime-based behavior where possible.
+     */
     since?: Date;
+    /** Exclusive upper time bound, using the same time-field semantics as `since`. */
+    until?: Date;
     limit?: number;
     offset?: number;
     /**
@@ -252,6 +263,8 @@ export interface ProcessIndexEntry {
     duration?: number;
     /** Timestamp of the last conversation event (ISO string). */
     lastEventAt?: string;
+    /** Activity timestamp used for metadata history ordering/filtering. */
+    activityAt?: string;
     /** ISO timestamp when the process was pinned (null = not pinned). */
     pinnedAt?: string;
     /** Whether the process is archived. */
@@ -432,7 +445,10 @@ export interface ProcessStore {
      */
     listRecentProcesses?(options: {
         workspaceId?: string;
+        since?: Date;
+        until?: Date;
         limit?: number;
+        offset?: number;
         excludeProcessId?: string;
     }): Promise<ProcessIndexEntry[]>;
 

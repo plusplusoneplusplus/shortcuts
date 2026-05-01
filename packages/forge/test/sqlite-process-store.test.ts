@@ -368,6 +368,26 @@ describe('SqliteProcessStore — getProcessSummaries', () => {
         expect(total).toBe(3);
         expect(entries).toHaveLength(2);
     });
+
+    it('time filters use activity time for metadata summaries', async () => {
+        await store.addProcess(makeProcess('old', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-28T12:00:00.000Z'),
+        }));
+        await store.addProcess(makeProcess('active', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T12:00:00.000Z'),
+        }));
+
+        const { entries, total } = await store.getProcessSummaries!({
+            since: new Date('2026-04-29T00:00:00.000Z'),
+            until: new Date('2026-04-30T00:00:00.000Z'),
+        });
+
+        expect(total).toBe(1);
+        expect(entries.map(e => e.id)).toEqual(['active']);
+        expect(entries[0].activityAt).toBe('2026-04-29T12:00:00.000Z');
+    });
 });
 
 // ============================================================================
@@ -939,6 +959,11 @@ describe('SqliteProcessStore — searchConversations', () => {
                 content: turns[i].content,
             }));
         }
+        if (overrides?.lastEventAt) {
+            store.getDatabase()
+                .prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+                .run(overrides.lastEventAt.toISOString(), id);
+        }
     }
 
     it('returns matching turns with correct processId, snippet, and rank', async () => {
@@ -1112,19 +1137,63 @@ describe('SqliteProcessStore — searchConversations', () => {
         expect(results).toEqual([]);
     });
 
-    it('since filter restricts to processes started after the given date', async () => {
+    it('since filter restricts to processes active after the given date', async () => {
         await seedProcess('p-old', [
             { role: 'user', content: 'temporal-keyword' },
-        ], { startTime: new Date('2025-01-01T00:00:00Z') });
+        ], {
+            startTime: new Date('2025-01-01T00:00:00Z'),
+            lastEventAt: new Date('2025-01-01T00:00:00Z'),
+        });
         await seedProcess('p-recent', [
             { role: 'user', content: 'temporal-keyword' },
-        ], { startTime: new Date('2026-06-01T00:00:00Z') });
+        ], {
+            startTime: new Date('2026-06-01T00:00:00Z'),
+            lastEventAt: new Date('2026-06-01T00:00:00Z'),
+        });
 
         const { results, total } = await store.searchConversations('temporal-keyword', {
             since: new Date('2026-01-01T00:00:00Z'),
         });
         expect(total).toBe(1);
         expect(results[0].processId).toBe('p-recent');
+    });
+
+    it('since filter includes older processes with recent activity', async () => {
+        await seedProcess('p-active-old', [
+            { role: 'user', content: 'activity-window-keyword' },
+        ], {
+            startTime: new Date('2025-01-01T00:00:00Z'),
+            lastEventAt: new Date('2026-06-01T00:00:00Z'),
+        });
+
+        const { results, total } = await store.searchConversations('activity-window-keyword', {
+            since: new Date('2026-01-01T00:00:00Z'),
+        });
+
+        expect(total).toBe(1);
+        expect(results[0].processId).toBe('p-active-old');
+    });
+
+    it('until filter is an exclusive activity upper bound', async () => {
+        await seedProcess('p-before', [
+            { role: 'user', content: 'until-window-keyword' },
+        ], {
+            startTime: new Date('2026-04-29T12:00:00Z'),
+            lastEventAt: new Date('2026-04-29T23:59:59Z'),
+        });
+        await seedProcess('p-at-boundary', [
+            { role: 'user', content: 'until-window-keyword' },
+        ], {
+            startTime: new Date('2026-04-29T12:00:00Z'),
+            lastEventAt: new Date('2026-04-30T00:00:00Z'),
+        });
+
+        const { results, total } = await store.searchConversations('until-window-keyword', {
+            until: new Date('2026-04-30T00:00:00Z'),
+        });
+
+        expect(total).toBe(1);
+        expect(results[0].processId).toBe('p-before');
     });
 
     it('does not return results from archived processes', async () => {

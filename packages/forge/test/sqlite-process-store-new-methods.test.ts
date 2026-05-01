@@ -157,8 +157,8 @@ describe('SqliteProcessStore.listRecentProcesses', () => {
         expect(entries).toHaveLength(3);
     });
 
-    it('clamps limit to maximum of 20', async () => {
-        for (let i = 0; i < 25; i++) {
+    it('clamps limit to maximum of 100', async () => {
+        for (let i = 0; i < 125; i++) {
             await store.addProcess(
                 makeProcess(`p${i}`, {
                     startTime: new Date(Date.now() + i * 1000),
@@ -168,7 +168,7 @@ describe('SqliteProcessStore.listRecentProcesses', () => {
         }
 
         const entries = await store.listRecentProcesses({ limit: 100 });
-        expect(entries).toHaveLength(20);
+        expect(entries).toHaveLength(100);
     });
 
     it('filters by workspaceId', async () => {
@@ -192,6 +192,69 @@ describe('SqliteProcessStore.listRecentProcesses', () => {
 
         expect(entries).toHaveLength(2);
         expect(entries.every(e => e.id !== 'p2')).toBe(true);
+    });
+
+    it('filters by since using activity time', async () => {
+        await store.addProcess(makeProcess('old', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-28T12:00:00.000Z'),
+        }));
+        await store.addProcess(makeProcess('active', {
+            startTime: new Date('2026-04-28T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T12:00:00.000Z'),
+        }));
+
+        const entries = await store.listRecentProcesses({
+            since: new Date('2026-04-29T00:00:00.000Z'),
+        });
+
+        expect(entries.map(e => e.id)).toEqual(['active']);
+        expect(entries[0].activityAt).toBe('2026-04-29T12:00:00.000Z');
+    });
+
+    it('filters by until using an exclusive activity upper bound', async () => {
+        await store.addProcess(makeProcess('included', {
+            startTime: new Date('2026-04-29T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T23:59:59.000Z'),
+        }));
+        await store.addProcess(makeProcess('excluded', {
+            startTime: new Date('2026-04-29T12:00:00.000Z'),
+            lastEventAt: new Date('2026-04-30T00:00:00.000Z'),
+        }));
+
+        const entries = await store.listRecentProcesses({
+            until: new Date('2026-04-30T00:00:00.000Z'),
+        });
+
+        expect(entries.map(e => e.id)).toEqual(['included']);
+    });
+
+    it('filters by bounded activity time and supports offset', async () => {
+        await store.addProcess(makeProcess('before', {
+            startTime: new Date('2026-04-28T23:00:00.000Z'),
+            lastEventAt: new Date('2026-04-28T23:00:00.000Z'),
+        }));
+        await store.addProcess(makeProcess('first', {
+            startTime: new Date('2026-04-29T01:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T01:00:00.000Z'),
+        }));
+        await store.addProcess(makeProcess('second', {
+            startTime: new Date('2026-04-29T02:00:00.000Z'),
+            lastEventAt: new Date('2026-04-29T02:00:00.000Z'),
+        }));
+        await store.addProcess(makeProcess('after', {
+            startTime: new Date('2026-04-30T00:00:00.000Z'),
+            lastEventAt: new Date('2026-04-30T00:00:00.000Z'),
+        }));
+
+        const entries = await store.listRecentProcesses({
+            since: new Date('2026-04-29T00:00:00.000Z'),
+            until: new Date('2026-04-30T00:00:00.000Z'),
+            limit: 1,
+            offset: 1,
+        });
+
+        expect(entries.map(e => e.id)).toEqual(['first']);
     });
 
     it('does not include archived processes', async () => {
