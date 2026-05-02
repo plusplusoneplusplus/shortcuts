@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { getConversationTurns } from '../../features/chat/conversation/chatConversationUtils';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
@@ -20,7 +21,7 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
         if (!taskId || task?.status !== 'queued') return;
         const interval = setInterval(async () => {
             try {
-                const data = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+                const data = await getSpaCocClient().queue.getTask(taskId);
                 const t = data?.task;
                 if (t && t.status !== 'queued') {
                     setTask(t);

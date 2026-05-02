@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { Button, Spinner } from '../ui';
 import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload';
 import { useQueue } from '../contexts/QueueContext';
@@ -21,7 +21,7 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
 
     useEffect(() => {
         if (!task?.id) return;
-        fetchApi('/queue/' + encodeURIComponent(task.id) + '/resolved-prompt')
+        getSpaCocClient().queue.resolvedPrompt(task.id)
             .then((data: any) => { if (data) setResolvedPrompt(data); })
             .catch(() => { /* non-fatal */ });
     }, [task?.id]);

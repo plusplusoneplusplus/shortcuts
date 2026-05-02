@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { getApiBase } from '../../utils/config';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
@@ -402,7 +403,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Fetch full task data for pending tasks (metadata + payload)
     useEffect(() => {
         if (!taskId || !isPending) { setFullTask(null); return; }
-        fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`)
+        getSpaCocClient().queue.getTask(bareTaskId)
             .then((data: any) => setFullTask(data?.task || null))
             .catch(() => setFullTask(null));
     }, [taskId, isPending, queueState.refreshVersion]);
@@ -479,7 +480,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 }
 
                 // Queue fetch path — taskId may be bare or a processId that fell through
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
+                const queueData = await getSpaCocClient().queue.getTask(bareTaskId);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
 
@@ -610,7 +611,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     // Fall through to queue fetch with bare taskId
                 }
 
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
+                const queueData = await getSpaCocClient().queue.getTask(bareTaskId);
                 const refreshedTask = queueData?.task ?? null;
 
                 const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
@@ -678,13 +679,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => () => { stopStreaming(); closeFollowUpStream(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleCancel = async () => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId), { method: 'DELETE' });
+        await getSpaCocClient().queue.cancel(bareTaskId);
         if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
     };
 
     const handleMoveToTop = async () => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top', { method: 'POST' });
+        await getSpaCocClient().queue.moveToTop(bareTaskId);
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
     };
 

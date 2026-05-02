@@ -409,13 +409,13 @@ describe('ChatDetail', () => {
     describe('cancel and move-to-top actions', () => {
         it('defines handleCancel that deletes the queue task', () => {
             expect(source).toContain('handleCancel');
-            expect(source).toContain("method: 'DELETE'");
+            expect(source).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
             expect(source).toContain("SELECT_QUEUE_TASK', id: null");
         });
 
         it('defines handleMoveToTop that POSTs move-to-top', () => {
             expect(source).toContain('handleMoveToTop');
-            expect(source).toContain('/move-to-top');
+            expect(source).toContain('getSpaCocClient().queue.moveToTop(bareTaskId)');
         });
 
         it('passes cancel and moveToTop to PendingTaskInfoPanel', () => {
@@ -548,7 +548,7 @@ describe('ChatDetail', () => {
     describe('lazy image loading', () => {
         it('PendingTaskPayload fetches images when payload.hasImages is true', () => {
             expect(payloadSource).toContain('payload.hasImages');
-            expect(payloadSource).toContain("fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)");
+            expect(payloadSource).toContain('getSpaCocClient().queue.images(task.id)');
         });
 
         it('PendingTaskPayload renders ImageGallery for fetched images', () => {
@@ -1128,7 +1128,7 @@ describe('ChatDetail', () => {
                 source.indexOf('handleCancel'),
                 source.indexOf('handleCancel') + 400,
             );
-            expect(cancelBlock).toContain("method: 'DELETE'");
+            expect(cancelBlock).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
         });
 
         it('stop button in FollowUpInputArea calls onStop on click', () => {

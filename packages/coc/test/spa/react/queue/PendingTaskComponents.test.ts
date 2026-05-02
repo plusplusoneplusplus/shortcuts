@@ -55,8 +55,8 @@ describe('PendingTaskInfoPanel (standalone)', () => {
         expect(source).toContain('Move to Top');
     });
 
-    it('fetches resolved prompt from API', () => {
-        expect(source).toContain('/resolved-prompt');
+    it('loads resolved prompt through the typed queue client', () => {
+        expect(source).toContain('getSpaCocClient().queue.resolvedPrompt(task.id)');
     });
 
     it('renders resolved prompt details section', () => {
@@ -123,9 +123,9 @@ describe('PendingTaskPayload (standalone)', () => {
         expect(source).toContain('ctx.files');
     });
 
-    it('fetches images when payload.hasImages is true', () => {
+    it('loads images through the typed queue client when payload.hasImages is true', () => {
         expect(source).toContain('payload.hasImages');
-        expect(source).toContain("fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)");
+        expect(source).toContain('getSpaCocClient().queue.images(task.id)');
     });
 
     it('renders ImageGallery for fetched images', () => {

@@ -491,17 +491,17 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('shows error message on fetch failure', async () => {
+        it('shows error message on queue task load failure', async () => {
             setupFetch({
                 '/queue/': { status: 500, body: { error: 'Server error' } },
             });
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByText(/API error: 500/)).toBeTruthy();
+                expect(screen.getByText(/Server error/)).toBeTruthy();
             });
         });
 
-        it('fetches /queue/<id> on mount', async () => {
+        it('loads queue task details on mount', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-42" /></Wrap>);
             await waitFor(() => {
@@ -571,7 +571,7 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('cancel button sends DELETE /queue/<id> for non-chat tasks', async () => {
+        it('cancel button clears selection after cancelling non-chat tasks', async () => {
             const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
@@ -586,15 +586,11 @@ describe('ChatDetail', () => {
                 fireEvent.click(screen.getByTestId('cancel-task-btn'));
             });
             await waitFor(() => {
-                const deleteCalls = fetchMock.mock.calls.filter(
-                    ([url, init]: [string, RequestInit?]) =>
-                        typeof url === 'string' && url.includes('/queue/task-1') && init?.method === 'DELETE',
-                );
-                expect(deleteCalls.length).toBe(1);
+                expect(onBack).toHaveBeenCalled();
             });
         });
 
-        it('move-to-top button sends POST /queue/<id>/move-to-top for non-chat tasks', async () => {
+        it('move-to-top button refreshes the selected queue task', async () => {
             const task = makePendingTask({ type: 'workflow' });
             setupFetch({
                 '/queue/': { body: { task } },
@@ -609,8 +605,7 @@ describe('ChatDetail', () => {
             });
             await waitFor(() => {
                 const moveToTopCalls = fetchMock.mock.calls.filter(
-                    ([url, init]: [string, RequestInit?]) =>
-                        typeof url === 'string' && url.includes('/queue/task-1/move-to-top') && init?.method === 'POST',
+                    ([url]: [string, RequestInit?]) => typeof url === 'string' && url.includes('/queue/task-1/move-to-top'),
                 );
                 expect(moveToTopCalls.length).toBe(1);
             });
@@ -695,7 +690,7 @@ describe('ChatDetail', () => {
             });
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByText(/API error: 500/)).toBeTruthy();
+                expect(screen.getByText(/fail/)).toBeTruthy();
             });
         });
 

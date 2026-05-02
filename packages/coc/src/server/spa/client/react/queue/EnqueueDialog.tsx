@@ -8,6 +8,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
 import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
@@ -356,13 +357,8 @@ export function EnqueueDialog() {
                     const taskNameFromFile = file.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '';
                     const body = buildBody([file], taskNameFromFile);
                     try {
-                        const res = await fetch(getApiBase() + '/queue/tasks', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
-                        });
-                        if (res.ok) succeeded++;
-                        else failed++;
+                        await getSpaCocClient().queue.enqueueTask(body);
+                        succeeded++;
                     } catch {
                         failed++;
                     }
@@ -376,14 +372,9 @@ export function EnqueueDialog() {
                 const body = buildBody(
                     contextFiles.length > 0 ? contextFiles : undefined,
                 );
-                const res = await fetch(getApiBase() + '/queue/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
+                const created = await getSpaCocClient().queue.enqueueTask(body);
                 if (queueState.dialogLaunchMode === 'floating-chat') {
-                    const created = await res.json().catch(() => null);
-                    const createdId = created?.task?.id ?? created?.id;
+                    const createdId = created?.task?.id;
                     if (createdId) {
                         floatChat({
                             taskId: createdId,

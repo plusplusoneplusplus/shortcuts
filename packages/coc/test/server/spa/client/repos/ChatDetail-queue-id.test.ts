@@ -2,10 +2,10 @@
  * @vitest-environment node
  *
  * Regression test: ChatDetail must strip the `queue_` prefix from
- * processId-style taskIds before calling `/api/queue/:id` endpoints.
+ * processId-style taskIds before calling typed queue-client task endpoints.
  *
  * The component's `taskId` prop may arrive with a `queue_` prefix (when
- * opened from the repos view), but the server API expects a bare task ID.
+ * opened from the repos view), but queue task routes expect a bare task ID.
  * A shared `bareTaskId` constant handles the normalisation.
  */
 import { describe, it, expect } from 'vitest';
@@ -65,7 +65,7 @@ describe('bareTaskId derivation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Source-level regression guard: every `/queue/` API call in
+// 3. Source-level regression guard: every queue-client task call in
 //    ChatDetail must use `bareTaskId`, not raw `taskId`.
 // ---------------------------------------------------------------------------
 
@@ -79,27 +79,25 @@ describe('ChatDetail source-level regression', () => {
         expect(src).toContain('const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId');
     });
 
-    it('never passes raw taskId to /queue/ API endpoints', () => {
-        // Match lines like `/queue/${...taskId}` or `/queue/' + ...taskId`
-        // that use the raw `taskId` variable instead of `bareTaskId`.
-        const queueCallLines = src.split('\n').filter(line =>
-            line.includes('/queue/') && line.includes('taskId'),
+    it('never passes raw taskId to typed queue task methods', () => {
+        const queueTaskCallLines = src.split('\n').filter(line =>
+            line.includes('getSpaCocClient().queue.') && line.includes('taskId'),
         );
 
-        for (const line of queueCallLines) {
+        for (const line of queueTaskCallLines) {
             // Lines that define bareTaskId or contain comments are OK
             if (line.includes('const bareTaskId') || line.trimStart().startsWith('//') || line.trimStart().startsWith('*')) continue;
-            // Every remaining /queue/ line must use bareTaskId, not raw taskId
+            // Every remaining queue task line must use bareTaskId, not raw taskId
             expect(line).toContain('bareTaskId');
             expect(line).not.toMatch(/[^e]taskId/); // must not have raw taskId (but bareTaskId is OK)
         }
     });
 
     it('handleCancel uses bareTaskId', () => {
-        expect(src).toContain("'/queue/' + encodeURIComponent(bareTaskId)");
+        expect(src).toContain('getSpaCocClient().queue.cancel(bareTaskId)');
     });
 
     it('handleMoveToTop uses bareTaskId', () => {
-        expect(src).toContain("'/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top'");
+        expect(src).toContain('getSpaCocClient().queue.moveToTop(bareTaskId)');
     });
 });

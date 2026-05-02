@@ -3,7 +3,7 @@
  *
  * Verifies that:
  * - useWebSocket exposes onConnect callback
- * - App.tsx does NOT fetch /queue during bootstrap (handled solely by handleConnect)
+ * - App.tsx does NOT load the queue during bootstrap (handled solely by handleConnect)
  * - App.tsx passes onConnect to useWebSocket for reconnect recovery
  * - QueueContext no longer includes the SEED_QUEUE action
  */
@@ -50,20 +50,20 @@ describe('useWebSocket — onConnect callback', () => {
 });
 
 // ============================================================================
-// App.tsx — bootstrap does NOT fetch /queue (handled by handleConnect)
+// App.tsx — bootstrap does NOT load queue (handled by handleConnect)
 // ============================================================================
 
-describe('App.tsx — bootstrap does not fetch queue', () => {
+describe('App.tsx — bootstrap does not load queue', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(path.join(CLIENT_DIR, 'App.tsx'), 'utf-8');
     });
 
-    it('does not fetch /queue in bootstrap', () => {
+    it('does not load the queue in bootstrap', () => {
         const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
         expect(bootstrapBlock).not.toBeNull();
-        expect(bootstrapBlock![0]).not.toContain("fetchApi('/queue')");
+        expect(bootstrapBlock![0]).not.toContain('queue.list()');
     });
 
     it('does not dispatch SEED_QUEUE', () => {
@@ -96,10 +96,10 @@ describe('App.tsx — onConnect reconnect handler', () => {
         expect(source).toMatch(/const\s+handleConnect\s*=\s*useCallback/);
     });
 
-    it('handleConnect fetches /queue', () => {
+    it('handleConnect uses the typed queue client for reconnect recovery', () => {
         const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
         expect(handleConnectBlock).not.toBeNull();
-        expect(handleConnectBlock![0]).toContain("fetchApi('/queue')");
+        expect(handleConnectBlock![0]).toContain('getSpaCocClient().queue.list()');
     });
 
     it('handleConnect dispatches QUEUE_UPDATED (not SEED_QUEUE) for reconnect', () => {

@@ -145,7 +145,7 @@ describe('EnqueueDialog', () => {
         }
     });
 
-    it('submit POSTs to /api/queue/tasks with correct prompt', async () => {
+    it('submits the typed queue task payload with the correct prompt', async () => {
         // Setup fetch: models, preferences GET, templates GET, then queue tasks POST
         mockFetch
             .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) }) // /api/models

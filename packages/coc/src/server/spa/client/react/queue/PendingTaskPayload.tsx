@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { ImageGallery, FilePathLink } from '../ui';
 
 export function MetaRow({ label, value, breakAll }: { label: string; value: string; breakAll?: boolean }) {
@@ -31,7 +31,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
         setPayloadImagesLoading(false);
         if (!task?.id || !payload.hasImages || (payload.images && payload.images.length > 0)) return;
         setPayloadImagesLoading(true);
-        fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)
+        getSpaCocClient().queue.images(task.id)
             .then((data: any) => { setPayloadImages(data?.images || []); })
             .catch(() => { /* non-fatal */ })
             .finally(() => { setPayloadImagesLoading(false); });

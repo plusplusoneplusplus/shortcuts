@@ -53,6 +53,36 @@ export interface QueueStatsResponse {
   stats: QueueStats;
 }
 
+export interface QueueTaskResponse {
+  task: QueueTaskSummary;
+}
+
+export interface QueueImagesResponse {
+  images: string[];
+}
+
+export interface QueueResolvedPromptResponse {
+  taskId: string;
+  type: string;
+  planFilePath?: string;
+  planFileContent?: string;
+  promptFilePath?: string;
+  promptFileContent?: string;
+  resolvedPrompt?: string;
+  [key: string]: unknown;
+}
+
+export interface QueueReposResponse {
+  repos: Array<{
+    repoId: string;
+    rootPath: string;
+    isPaused: boolean;
+    taskCount: number;
+    queuedCount: number;
+    runningCount: number;
+  }>;
+}
+
 export interface EnqueueTaskRequest {
   type: string;
   priority?: TaskPriority;
@@ -74,4 +104,24 @@ export interface QueueHistoryResponse {
 
 export interface QueueModelsResponse {
   models: string[];
+}
+
+export interface QueuePauseMarkerResponse {
+  markerId: string;
+  afterIndex: number;
+}
+
+export interface QueueMoveResponse {
+  moved: boolean;
+  position?: number;
+}
+
+export interface QueueTaskMutationResponse {
+  task?: QueueTaskSummary;
+  cancelled?: boolean;
+  frozen?: boolean;
+  unfrozen?: boolean;
+  admitted?: boolean;
+  unadmitted?: boolean;
+  [key: string]: unknown;
 }

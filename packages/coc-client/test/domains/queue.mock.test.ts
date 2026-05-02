@@ -48,6 +48,7 @@ describe('QueueClient mock server contract', () => {
     mock.on('GET', '/api/queue', { body: listResponse });
     mock.on('GET', '/api/queue/stats', { body: statsResponse });
     mock.on('GET', '/api/queue/history', { body: historyResponse });
+    mock.on('GET', '/api/queue/repos', { body: { repos: [{ repoId: 'repo/with/slashes', rootPath: 'C:\\repos\\app', isPaused: true, taskCount: 1, queuedCount: 1, runningCount: 0 }] } });
     const client = createClient(mock);
 
     await expect(client.queue.list({ workspace: 'repo/with/slashes', type: 'chat' })).resolves.toEqual(listResponse);
@@ -58,6 +59,9 @@ describe('QueueClient mock server contract', () => {
       limit: 25,
       status: ['completed', 'failed'],
     })).resolves.toEqual(historyResponse);
+    await expect(client.queue.repos()).resolves.toEqual({
+      repos: [{ repoId: 'repo/with/slashes', rootPath: 'C:\\repos\\app', isPaused: true, taskCount: 1, queuedCount: 1, runningCount: 0 }],
+    });
 
     expectGetRequest(mock.requests[0], '/api/queue', {
       workspace: 'repo/with/slashes',
@@ -72,6 +76,7 @@ describe('QueueClient mock server contract', () => {
       limit: '25',
       status: 'completed,failed',
     });
+    expectGetRequest(mock.requests[3], '/api/queue/repos');
   });
 
   it('omits workspace and empty array query parameters for global read calls', async () => {
@@ -110,9 +115,11 @@ describe('QueueClient mock server contract', () => {
       stats: mockQueueStats({ isPaused: false, pausedRepos: [] }),
     };
     mock.on('POST', '/api/queue', { status: 201, body: enqueueResponse });
+    mock.on('POST', '/api/queue/tasks', { status: 201, body: enqueueResponse });
     mock.on('POST', '/api/queue/pause', { body: pauseResponse });
     mock.on('POST', '/api/queue/resume', { body: resumeResponse });
     mock.on('DELETE', '/api/queue/task%2Fencoded', { body: { cancelled: true } });
+    mock.on('POST', '/api/queue/task%2Fencoded/move-to-top', { body: { moved: true, position: 1 } });
     const client = createClient(mock);
     const enqueueRequest: EnqueueTaskRequest = {
       type: 'chat',
@@ -126,14 +133,45 @@ describe('QueueClient mock server contract', () => {
     };
 
     await expect(client.queue.enqueue(enqueueRequest)).resolves.toEqual(enqueueResponse);
-    await expect(client.queue.pause('repo/with/slashes')).resolves.toEqual(pauseResponse);
+    await expect(client.queue.enqueueTask(enqueueRequest)).resolves.toEqual(enqueueResponse);
+    await expect(client.queue.pause({ repoId: 'repo/with/slashes' })).resolves.toEqual(pauseResponse);
     await expect(client.queue.resume('repo/with/slashes')).resolves.toEqual(resumeResponse);
     await expect(client.queue.cancel('task/encoded', { reason: 'No longer needed' })).resolves.toEqual({ cancelled: true });
+    await expect(client.queue.moveToTop('task/encoded')).resolves.toEqual({ moved: true, position: 1 });
 
     expectJsonRequest(mock.requests[0], 'POST', '/api/queue', enqueueRequest);
-    expectEmptyRequest(mock.requests[1], 'POST', '/api/queue/pause', { workspace: 'repo/with/slashes' });
-    expectEmptyRequest(mock.requests[2], 'POST', '/api/queue/resume', { workspace: 'repo/with/slashes' });
-    expectJsonRequest(mock.requests[3], 'DELETE', '/api/queue/task%2Fencoded', { reason: 'No longer needed' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/queue/tasks', enqueueRequest);
+    expectEmptyRequest(mock.requests[2], 'POST', '/api/queue/pause', { repoId: 'repo/with/slashes' });
+    expectEmptyRequest(mock.requests[3], 'POST', '/api/queue/resume', { workspace: 'repo/with/slashes' });
+    expectJsonRequest(mock.requests[4], 'DELETE', '/api/queue/task%2Fencoded', { reason: 'No longer needed' });
+    expectEmptyRequest(mock.requests[5], 'POST', '/api/queue/task%2Fencoded/move-to-top');
+  });
+
+  it('encodes task IDs for task detail, image, and resolved-prompt reads', async () => {
+    mock = await startMockServer();
+    const task = mockQueuedTask({
+      id: 'task/with spaces',
+      payload: { prompt: 'Line 1\nLine 2', hasImages: true, imagesCount: 1 },
+    });
+    const imagesResponse = { images: ['data:image/png;base64,AAECAwQ='] };
+    const promptResponse = {
+      taskId: 'task/with spaces',
+      type: 'chat',
+      resolvedPrompt: '=== Prompt ===\nLine 1\nLine 2',
+      planFileContent: '# Plan\n\nUse typed queue calls.',
+    };
+    mock.on('GET', '/api/queue/task%2Fwith%20spaces', { body: { task } });
+    mock.on('GET', '/api/queue/task%2Fwith%20spaces/images', { body: imagesResponse });
+    mock.on('GET', '/api/queue/task%2Fwith%20spaces/resolved-prompt', { body: promptResponse });
+    const client = createClient(mock);
+
+    await expect(client.queue.getTask('task/with spaces')).resolves.toEqual({ task });
+    await expect(client.queue.images('task/with spaces')).resolves.toEqual(imagesResponse);
+    await expect(client.queue.resolvedPrompt('task/with spaces')).resolves.toEqual(promptResponse);
+
+    expectGetRequest(mock.requests[0], '/api/queue/task%2Fwith%20spaces');
+    expectGetRequest(mock.requests[1], '/api/queue/task%2Fwith%20spaces/images');
+    expectGetRequest(mock.requests[2], '/api/queue/task%2Fwith%20spaces/resolved-prompt');
   });
 
   it('propagates queue error envelopes as CocApiError instances', async () => {

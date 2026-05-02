@@ -246,7 +246,7 @@ describe('PendingTaskPayload image gallery', () => {
         expect(loading).toBeTruthy();
     });
 
-    it('fetches and renders images when hasImages is true', async () => {
+    it('renders images loaded for payloads with hasImages', async () => {
         fetchMock.mockResolvedValue(
             new Response(JSON.stringify({ images: ['data:image/png;base64,img1'] }), {
                 status: 200,
@@ -266,10 +266,9 @@ describe('PendingTaskPayload image gallery', () => {
         render(<PendingTaskPayload task={task} />);
 
         await waitFor(() => {
-            expect(fetchMock).toHaveBeenCalledWith(
-                expect.stringContaining('/queue/task-1/images'),
-                expect.anything(),
-            );
+            const gallery = screen.getByTestId('image-gallery');
+            expect(gallery).toBeTruthy();
+            expect(gallery.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,img1');
         });
     });
 });

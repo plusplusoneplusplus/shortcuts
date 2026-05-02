@@ -22,6 +22,7 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
+import { getSpaCocClient } from './api/cocClient';
 import { ToastContainer, useToast } from './ui';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
@@ -116,7 +117,7 @@ function AppInner() {
     });
 
     const handleConnect = useCallback(async () => {
-        const data = await fetchApi('/queue').catch(() => null);
+        const data = await getSpaCocClient().queue.list().catch(() => null);
         if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             if (data.history) {
