@@ -1,3 +1,4 @@
+export * from './admin';
 export * from './common';
 export * from './explorer';
 export * from './git';

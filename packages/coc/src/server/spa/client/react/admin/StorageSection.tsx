@@ -9,8 +9,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
 import { Dialog } from '../ui/Dialog';
-import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -130,15 +129,11 @@ function DirectoryImportSection() {
         setScanning(true);
         setError(null);
         try {
-            const data = await fetchApi('/admin/storage/scan-directory', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: dirPath.trim() }),
-            });
+            const data = await getSpaCocClient().admin.scanStorageDirectory({ path: dirPath.trim() });
             setMatchResult(data);
             setPhase('preview');
-        } catch (err: any) {
-            setError(err?.message ?? 'Scan failed');
+        } catch (err: unknown) {
+            setError(getSpaCocClientErrorMessage(err, 'Scan failed'));
         } finally {
             setScanning(false);
         }
@@ -151,13 +146,10 @@ function DirectoryImportSection() {
         setError(null);
 
         try {
-            const tokenData = await fetchApi('/admin/storage/import-directory-token');
-            const importUrl = getApiBase() + '/admin/storage/import-directory?confirm=' + encodeURIComponent(tokenData.token);
-
-            const res = await fetch(importUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: dirPath.trim() }),
+            const tokenData = await getSpaCocClient().admin.getStorageImportDirectoryToken();
+            const res = await getSpaCocClient().admin.importStorageDirectoryStream({
+                token: tokenData.token,
+                path: dirPath.trim(),
             });
 
             if (!res.ok) {
@@ -200,8 +192,8 @@ function DirectoryImportSection() {
                     } catch { /* ignore malformed */ }
                 }
             }
-        } catch (err: any) {
-            setError(err?.message ?? 'Network error');
+        } catch (err: unknown) {
+            setError(getSpaCocClientErrorMessage(err, 'Network error'));
             setPhase('error');
         }
     };
@@ -391,7 +383,7 @@ export default function StorageSection() {
     const loadStatus = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await fetchApi('/admin/storage/status');
+            const data = await getSpaCocClient().admin.getStorageStatus();
             setStatus(data);
         } catch {
             // silently ignore — status section will show a loading state
@@ -423,7 +415,7 @@ export default function StorageSection() {
         setPhase('confirm');
         setAcquiringToken(true);
         try {
-            const data = await fetchApi('/admin/storage/migrate-token');
+            const data = await getSpaCocClient().admin.getStorageMigrateToken();
             setToken(data.token);
         } catch {
             setToken(null);
@@ -445,14 +437,11 @@ export default function StorageSection() {
         abortRef.current = controller;
 
         try {
-            let migrateUrl = getApiBase() + '/admin/storage/migrate?confirm=' + encodeURIComponent(token);
-            if (skipValidation) {
-                migrateUrl += '&skipValidation=1';
-            }
-            const res = await fetch(
-                migrateUrl,
-                { method: 'POST', signal: controller.signal },
-            );
+            const res = await getSpaCocClient().admin.migrateStorageStream({
+                token,
+                skipValidation,
+                signal: controller.signal,
+            });
 
             if (!res.ok) {
                 const text = await res.text();
@@ -481,12 +470,12 @@ export default function StorageSection() {
                     } catch { /* ignore malformed */ }
                 }
             }
-        } catch (err: any) {
-            if (err?.name === 'AbortError') {
+        } catch (err: unknown) {
+            if (err instanceof DOMException && err.name === 'AbortError') {
                 // User cancelled — handled by handleCancel
                 return;
             }
-            setResult({ success: false, error: err?.message ?? 'Network error' });
+            setResult({ success: false, error: getSpaCocClientErrorMessage(err, 'Network error') });
             setPhase('error');
         }
     };
@@ -569,7 +558,7 @@ export default function StorageSection() {
     const handleCancel = async () => {
         abortRef.current?.abort();
         try {
-            await fetch(getApiBase() + '/admin/storage/migrate/cancel', { method: 'POST' });
+            await getSpaCocClient().admin.cancelStorageMigration();
         } catch { /* ignore */ }
         setLogs(prev => [...prev, 'Migration cancelled. Rolling back…']);
         setResult({ success: false, error: 'Migration cancelled by user' });
@@ -585,7 +574,7 @@ export default function StorageSection() {
         setPolling(true);
         const poll = setInterval(async () => {
             try {
-                await fetchApi('/admin/storage/status');
+                await getSpaCocClient().admin.getStorageStatus();
                 clearInterval(poll);
                 pollRef.current = null;
                 window.location.reload();

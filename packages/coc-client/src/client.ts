@@ -1,10 +1,11 @@
-import { ExplorerClient, GitClient, HealthClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, StatsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, ExplorerClient, GitClient, HealthClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, StatsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
 
 export class CocClient {
   readonly options: NormalizedCocClientOptions;
+  readonly admin: AdminClient;
   readonly explorer: ExplorerClient;
   readonly git: GitClient;
   readonly health: HealthClient;
@@ -33,6 +34,7 @@ export class CocClient {
   constructor(options: CocClientOptions = {}) {
     this.options = normalizeOptions(options);
     this.transport = new HttpTransport(this.options);
+    this.admin = new AdminClient(this.transport, this.options);
     this.explorer = new ExplorerClient(this.transport);
     this.git = new GitClient(this.transport);
     this.health = new HealthClient(this.transport);

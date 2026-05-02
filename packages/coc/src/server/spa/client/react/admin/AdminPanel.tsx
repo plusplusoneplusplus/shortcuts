@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { SettingsCard } from './SettingsCard';
@@ -139,9 +139,7 @@ export function AdminPanel() {
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/admin/data/stats?includeWikis=true');
-            if (!res.ok) throw new Error('Failed to load stats');
-            const data = await res.json();
+            const data = await getSpaCocClient().admin.getDataStats({ includeWikis: true });
             setStats({
                 processCount: data.processCount ?? data.processes ?? null,
                 wikiCount: data.wikiCount ?? data.wikis ?? null,
@@ -158,9 +156,7 @@ export function AdminPanel() {
         setConfigLoading(true);
         setConfigError(null);
         try {
-            const res = await fetch(getApiBase() + '/admin/config');
-            if (!res.ok) throw new Error('Failed to load configuration');
-            const data = await res.json();
+            const data = await getSpaCocClient().admin.getConfig();
             setConfig(data);
             const resolved = data.resolved ?? {};
             const form = {
@@ -205,8 +201,8 @@ export function AdminPanel() {
             const pre = resolved.pullRequests?.enabled ?? false;
             setPullRequestsEnabled(pre);
             setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre });
-        } catch (err: any) {
-            setConfigError(err.message || 'Failed to load configuration');
+        } catch (err: unknown) {
+            setConfigError(getSpaCocClientErrorMessage(err, 'Failed to load configuration'));
         } finally {
             setConfigLoading(false);
         }
@@ -214,9 +210,7 @@ export function AdminPanel() {
 
     const loadPreferences = useCallback(async () => {
         try {
-            const res = await fetch(getApiBase() + '/preferences');
-            if (!res.ok) return;
-            const data = await res.json();
+            const data = await getSpaCocClient().preferences.getGlobal();
             const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
             const r = data.reposSidebarCollapsed ?? false;
             const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
@@ -233,8 +227,7 @@ export function AdminPanel() {
         loadStats();
         loadConfig();
         loadPreferences();
-        fetch(getApiBase() + '/admin/version')
-            .then(r => r.ok ? r.json() : null)
+        getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
@@ -291,19 +284,11 @@ export function AdminPanel() {
             const payload: Record<string, unknown> = { parallel, output: configForm.output };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
+            await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             setAiExecSnapshot({ ...configForm });
-        } catch (err: any) {
-            addToast(err.message || 'Save failed', 'error');
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setAiExecSaving(false);
         }
@@ -330,20 +315,12 @@ export function AdminPanel() {
                 showReportIntent,
                 toolCompactness,
             };
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
+            await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
             setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled, showReportIntent, toolCompactness });
-        } catch (err: any) {
-            addToast(err.message || 'Save failed', 'error');
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setChatSaving(false);
         }
@@ -367,35 +344,19 @@ export function AdminPanel() {
                 uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
                 htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled;
             if (prefsChanged) {
-                const prefsRes = await fetch(getApiBase() + '/preferences', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed: { enabled: htmlEmbedEnabled } }),
-                });
-                if (!prefsRes.ok) {
-                    const body = await prefsRes.json().catch(() => ({}));
-                    throw new Error((body as any).error || 'Save failed');
-                }
+                await getSpaCocClient().preferences.patchGlobal({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed: { enabled: htmlEmbedEnabled } });
             }
             // Save config (taskCardDensity, historyGrouping)
             const configChanged = taskCardDensity !== appearanceSnapshot.taskCardDensity || historyGrouping !== appearanceSnapshot.historyGrouping;
             if (configChanged) {
-                const configRes = await fetch(getApiBase() + '/admin/config', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ taskCardDensity, historyGrouping }),
-                });
-                if (!configRes.ok) {
-                    const body = await configRes.json().catch(() => ({}));
-                    throw new Error(body.error || 'Save failed');
-                }
+                await getSpaCocClient().admin.updateConfig({ taskCardDensity, historyGrouping });
             }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
             invalidateHtmlEmbedPreference();
             setAppearanceSnapshot({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, taskCardDensity, historyGrouping });
-        } catch (err: any) {
-            addToast(err.message || 'Save failed', 'error');
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setAppearanceSaving(false);
         }
@@ -414,29 +375,21 @@ export function AdminPanel() {
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    'terminal.enabled': terminalEnabled,
-                    'notes.enabled': notesEnabled,
-                    'myWork.enabled': myWorkEnabled,
-                    'myLife.enabled': myLifeEnabled,
-                    'scratchpad.enabled': scratchpadEnabled,
-                    'scratchpad.layout': scratchpadLayout,
-                    'workflows.enabled': workflowsEnabled,
-                    'pullRequests.enabled': pullRequestsEnabled,
-                }),
+            await getSpaCocClient().admin.updateConfig({
+                'terminal.enabled': terminalEnabled,
+                'notes.enabled': notesEnabled,
+                'myWork.enabled': myWorkEnabled,
+                'myLife.enabled': myLifeEnabled,
+                'scratchpad.enabled': scratchpadEnabled,
+                'scratchpad.layout': scratchpadLayout,
+                'workflows.enabled': workflowsEnabled,
+                'pullRequests.enabled': pullRequestsEnabled,
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
             setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled });
-        } catch (err: any) {
-            addToast(err.message || 'Save failed', 'error');
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
@@ -456,30 +409,23 @@ export function AdminPanel() {
     const handleSaveServerName = useCallback(async () => {
         const trimmed = serverName.trim();
         try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'serve.serverName': trimmed || null }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
+            await getSpaCocClient().admin.updateConfig({ 'serve.serverName': trimmed || null });
             setServerName(trimmed);
             addToast('Server name saved — takes effect on next page reload', 'success');
             await loadConfig();
-        } catch (err: any) {
-            addToast(err.message || 'Could not save server name', 'error');
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Could not save server name'), 'error');
         }
     }, [serverName, addToast, loadConfig]);
 
     const handleExport= useCallback(async () => {
         setExportStatus('Exporting…');
         try {
-            const res = await fetch(getApiBase() + '/admin/export');
+            const res = await getSpaCocClient().admin.exportData();
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || res.statusText);
+                const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : res.statusText;
+                throw new Error(message);
             }
             const disposition = res.headers.get('Content-Disposition') || '';
             const match = disposition.match(/filename="([^"]+)"/);
@@ -494,8 +440,8 @@ export function AdminPanel() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             setExportStatus('Exported successfully.');
-        } catch (err: any) {
-            setExportStatus('Export failed: ' + (err.message || 'Network error'));
+        } catch (err: unknown) {
+            setExportStatus('Export failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
     }, []);
 
@@ -505,13 +451,8 @@ export function AdminPanel() {
         try {
             const text = await importFile.text();
             const payload = JSON.parse(text);
-            const res = await fetch(getApiBase() + '/admin/import/preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(() => null);
-            if (!res.ok || !data?.valid) {
+            const data = await getSpaCocClient().admin.previewImport(payload);
+            if (!data.valid) {
                 setImportPreview('Preview failed: ' + (data?.error || 'Invalid file'));
                 setImportStatus('Preview failed.');
                 return;
@@ -523,9 +464,9 @@ export function AdminPanel() {
             if (p.wikiCount != null) lines.push('Wikis: ' + p.wikiCount);
             setImportPreview(lines.length ? lines.join('\n') : JSON.stringify(p, null, 2));
             setImportStatus('Preview loaded.');
-        } catch {
+        } catch (err: unknown) {
             setImportPreview(null);
-            setImportStatus('Invalid JSON file.');
+            setImportStatus(err instanceof SyntaxError ? 'Invalid JSON file.' : 'Preview failed: ' + getSpaCocClientErrorMessage(err, 'Invalid file'));
         }
     }, [importFile]);
 
@@ -535,31 +476,21 @@ export function AdminPanel() {
         try {
             const text = await importFile.text();
             const payload = JSON.parse(text);
-            const tokenRes = await fetch(getApiBase() + '/admin/import-token').then(r => r.json());
+            const tokenRes = await getSpaCocClient().admin.getImportToken();
             if (!tokenRes?.token) { setImportStatus('Failed to get import token.'); return; }
             setImportStatus('Importing…');
-            const res = await fetch(
-                getApiBase() + '/admin/import?confirm=' + encodeURIComponent(tokenRes.token) + '&mode=' + importMode,
-                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-            );
-            if (res.ok) {
-                setImportStatus('Import complete.');
-                addToast('Import complete', 'success');
-                loadStats();
-            } else {
-                const body = await res.json().catch(() => ({}));
-                setImportStatus('Import failed: ' + (body.error || res.statusText));
-            }
-        } catch (err: any) {
-            setImportStatus('Import failed: ' + (err.message || 'Network error'));
+            await getSpaCocClient().admin.importData(payload, { token: tokenRes.token, mode: importMode });
+            setImportStatus('Import complete.');
+            addToast('Import complete', 'success');
+            loadStats();
+        } catch (err: unknown) {
+            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, err instanceof SyntaxError ? 'Invalid JSON file.' : 'Network error'));
         }
     }, [importFile, importMode, addToast, loadStats]);
 
     const handlePreviewWipe = useCallback(async () => {
         try {
-            const res = await fetch(getApiBase() + '/admin/data/stats?includeWikis=' + includeWikis);
-            if (!res.ok) { setWipePreview('Failed to load preview.'); return; }
-            const data = await res.json();
+            const data = await getSpaCocClient().admin.getDataStats({ includeWikis });
             const lines: string[] = [];
             if (data.processCount != null) lines.push('Processes: ' + data.processCount);
             if (data.wikiCount != null) lines.push('Wikis: ' + data.wikiCount);
@@ -573,14 +504,12 @@ export function AdminPanel() {
     const handleWipeStep1 = useCallback(async () => {
         setWipeStatus('Requesting confirmation token…');
         try {
-            const res = await fetch(getApiBase() + '/admin/data/wipe-token');
-            if (!res.ok) throw new Error('Failed to get wipe token');
-            const data = await res.json();
+            const data = await getSpaCocClient().admin.getWipeToken();
             if (!data.token) throw new Error('No token received');
             setWipeToken(data.token);
             setWipeStatus('');
-        } catch (err: any) {
-            setWipeStatus(err.message);
+        } catch (err: unknown) {
+            setWipeStatus(getSpaCocClientErrorMessage(err, 'Failed to get wipe token'));
         }
     }, []);
 
@@ -588,21 +517,13 @@ export function AdminPanel() {
         if (!wipeToken) return;
         setWipeStatus('Wiping data…');
         try {
-            const res = await fetch(
-                getApiBase() + '/admin/data?confirm=' + encodeURIComponent(wipeToken) + '&includeWikis=' + includeWikis,
-                { method: 'DELETE' }
-            );
-            if (res.ok) {
-                setWipeStatus('Data wiped successfully.');
-                addToast('Data wiped', 'success');
-                setWipeToken(null);
-                loadStats();
-            } else {
-                const body = await res.json().catch(() => ({}));
-                setWipeStatus('Wipe failed: ' + (body.error || res.statusText));
-            }
-        } catch (err: any) {
-            setWipeStatus('Wipe failed: ' + (err.message || 'Network error'));
+            await getSpaCocClient().admin.wipeData({ token: wipeToken, includeWikis });
+            setWipeStatus('Data wiped successfully.');
+            addToast('Data wiped', 'success');
+            setWipeToken(null);
+            loadStats();
+        } catch (err: unknown) {
+            setWipeStatus('Wipe failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
     }, [wipeToken, includeWikis, addToast, loadStats]);
 
@@ -615,32 +536,24 @@ export function AdminPanel() {
         setRestarting(true);
         setRestartStatus('Sending restart request…');
         try {
-            const res = await fetch(getApiBase() + '/admin/restart', { method: 'POST' });
-            if (res.ok) {
-                setRestartStatus('Server is restarting. Waiting for it to come back…');
-                addToast('Restart initiated — rebuilding…', 'success');
-                // Poll until the server comes back, then reload the page
-                const poll = () => {
-                    setTimeout(async () => {
-                        try {
-                            const ping = await fetch(getApiBase() + '/admin/data/stats', { signal: AbortSignal.timeout(2000) });
-                            if (ping.ok) {
-                                setRestartStatus('Server is back!');
-                                window.location.reload();
-                                return;
-                            }
-                        } catch { /* server still down */ }
-                        poll();
-                    }, 3000);
-                };
-                poll();
-            } else {
-                const body = await res.json().catch(() => ({}));
-                setRestartStatus('Restart failed: ' + (body.error || res.statusText));
-                setRestarting(false);
-            }
-        } catch (err: any) {
-            setRestartStatus('Restart failed: ' + (err.message || 'Network error'));
+            await getSpaCocClient().admin.restart();
+            setRestartStatus('Server is restarting. Waiting for it to come back…');
+            addToast('Restart initiated — rebuilding…', 'success');
+            // Poll until the server comes back, then reload the page
+            const poll = () => {
+                setTimeout(async () => {
+                    try {
+                        await getSpaCocClient().admin.getDataStats(undefined, { signal: AbortSignal.timeout(2000) });
+                        setRestartStatus('Server is back!');
+                        window.location.reload();
+                        return;
+                    } catch { /* server still down */ }
+                    poll();
+                }, 3000);
+            };
+            poll();
+        } catch (err: unknown) {
+            setRestartStatus('Restart failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
             setRestarting(false);
         }
     }, [addToast]);

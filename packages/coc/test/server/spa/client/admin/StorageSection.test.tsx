@@ -12,46 +12,49 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 
-let mockFetchApiResult: any = null;
-let mockFetchApiError: Error | null = null;
-
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(async () => {
-        if (mockFetchApiError) throw mockFetchApiError;
-        return mockFetchApiResult;
-    }),
+const mocks = vi.hoisted(() => ({
+    admin: {
+        getStorageStatus: vi.fn(),
+        getStorageMigrateToken: vi.fn(),
+        migrateStorageStream: vi.fn(),
+        cancelStorageMigration: vi.fn(),
+        scanStorageDirectory: vi.fn(),
+        getStorageImportDirectoryToken: vi.fn(),
+        importStorageDirectoryStream: vi.fn(),
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ admin: mocks.admin }),
+    getSpaCocClientErrorMessage: (err: unknown, fallback: string) => err instanceof Error ? err.message : fallback,
+}));
+
 import StorageSection from '../../../../../src/server/spa/client/react/admin/StorageSection';
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function setStatusResponse(data: any) {
-    mockFetchApiResult = data;
-    mockFetchApiError = null;
+    mocks.admin.getStorageStatus.mockResolvedValue(data);
 }
 
 function setStatusError(msg = 'Network error') {
-    mockFetchApiError = new Error(msg);
-    mockFetchApiResult = null;
+    mocks.admin.getStorageStatus.mockRejectedValue(new Error(msg));
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────
 
 beforeEach(() => {
     vi.clearAllMocks();
-    mockFetchApiResult = null;
-    mockFetchApiError = null;
-    // Restore the default mock implementation (clearAllMocks doesn't reset it)
-    (fetchApi as any).mockImplementation(async () => {
-        if (mockFetchApiError) throw mockFetchApiError;
-        return mockFetchApiResult;
-    });
+    mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 0, workspaces: 0 } });
+    mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
+    mocks.admin.cancelStorageMigration.mockResolvedValue({ success: true });
+    mocks.admin.scanStorageDirectory.mockResolvedValue({ matched: [], unmatched: [], totalProcesses: 0, totalMatchedProcesses: 0 });
+    mocks.admin.getStorageImportDirectoryToken.mockResolvedValue({ token: 'dir-token', expiresIn: 300 });
+    mocks.admin.importStorageDirectoryStream.mockResolvedValue(sseResponse('data: {"type":"done","success":true,"summary":{"imported":0,"skipped":0,"failed":0,"perWorkspace":[]}}\n\n'));
 });
 
 afterEach(() => {
@@ -63,7 +66,7 @@ afterEach(() => {
 describe('StorageSection — status display', () => {
     it('shows spinner while loading', () => {
         // Never resolve the fetch
-        (fetchApi as any).mockImplementation(() => new Promise(() => {}));
+        mocks.admin.getStorageStatus.mockImplementation(() => new Promise(() => {}));
         const { container } = render(<StorageSection />);
         expect(container.querySelector('[aria-label="Loading"]')).toBeTruthy();
     });
@@ -117,15 +120,8 @@ describe('StorageSection — confirmation dialog', () => {
     });
 
     it('opens confirmation dialog when Migrate button is clicked', async () => {
-        // fetchApi will be called first for status, then for token
-        let callCount = 0;
-        (fetchApi as any).mockImplementation(async (path: string) => {
-            callCount++;
-            if (path.includes('migrate-token')) {
-                return { token: 'test-token-123', expiresIn: 300 };
-            }
-            return { backend: 'file', stats: { processes: 10, workspaces: 2 } };
-        });
+        mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 10, workspaces: 2 } });
+        mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'test-token-123', expiresIn: 300 });
 
         render(<StorageSection />);
 
@@ -149,12 +145,8 @@ describe('StorageSection — confirmation dialog', () => {
     });
 
     it('cancels dialog and returns to status view', async () => {
-        (fetchApi as any).mockImplementation(async (path: string) => {
-            if (path.includes('migrate-token')) {
-                return { token: 'tok', expiresIn: 300 };
-            }
-            return { backend: 'file', stats: { processes: 10, workspaces: 2 } };
-        });
+        mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 10, workspaces: 2 } });
+        mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
 
         render(<StorageSection />);
 
@@ -179,13 +171,8 @@ describe('StorageSection — confirmation dialog', () => {
 
 describe('StorageSection — migration progress', () => {
     it('shows phase checklist during migration', async () => {
-        // Mock fetchApi for status + token
-        (fetchApi as any).mockImplementation(async (path: string) => {
-            if (path.includes('migrate-token')) {
-                return { token: 'tok', expiresIn: 300 };
-            }
-            return { backend: 'file', stats: { processes: 5, workspaces: 1 } };
-        });
+        mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 5, workspaces: 1 } });
+        mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
 
         // Mock fetch for the streaming POST
         const mockReader = {
@@ -211,16 +198,10 @@ describe('StorageSection — migration progress', () => {
                 .mockResolvedValueOnce({ done: true, value: undefined }),
         };
 
-        const originalFetch = globalThis.fetch;
-        globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
-                return {
-                    ok: true,
-                    body: { getReader: () => mockReader },
-                } as any;
-            }
-            return originalFetch(url, opts);
-        }) as any;
+        mocks.admin.migrateStorageStream.mockResolvedValue({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
 
         render(<StorageSection />);
 
@@ -251,16 +232,12 @@ describe('StorageSection — migration progress', () => {
         // Polling starts automatically — spinner shown without user interaction
         expect(screen.getByText(/Waiting for server restart/)).toBeTruthy();
 
-        globalThis.fetch = originalFetch;
+        expect(mocks.admin.migrateStorageStream).toHaveBeenCalledWith({ token: 'tok', skipValidation: false, signal: expect.any(AbortSignal) });
     });
 
     it('shows error state on migration failure', async () => {
-        (fetchApi as any).mockImplementation(async (path: string) => {
-            if (path.includes('migrate-token')) {
-                return { token: 'tok', expiresIn: 300 };
-            }
-            return { backend: 'file', stats: { processes: 5, workspaces: 1 } };
-        });
+        mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 5, workspaces: 1 } });
+        mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
 
         const mockReader = {
             read: vi.fn()
@@ -279,16 +256,10 @@ describe('StorageSection — migration progress', () => {
                 .mockResolvedValueOnce({ done: true, value: undefined }),
         };
 
-        const originalFetch = globalThis.fetch;
-        globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
-                return {
-                    ok: true,
-                    body: { getReader: () => mockReader },
-                } as any;
-            }
-            return originalFetch(url, opts);
-        }) as any;
+        mocks.admin.migrateStorageStream.mockResolvedValue({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
 
         render(<StorageSection />);
 
@@ -317,27 +288,16 @@ describe('StorageSection — migration progress', () => {
             expect(screen.getByText(/JSON files/)).toBeTruthy();
         });
 
-        globalThis.fetch = originalFetch;
     });
 
     it('handles non-ok HTTP response', async () => {
-        (fetchApi as any).mockImplementation(async (path: string) => {
-            if (path.includes('migrate-token')) {
-                return { token: 'tok', expiresIn: 300 };
-            }
-            return { backend: 'file', stats: { processes: 5, workspaces: 1 } };
-        });
+        mocks.admin.getStorageStatus.mockResolvedValue({ backend: 'file', stats: { processes: 5, workspaces: 1 } });
+        mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
 
-        const originalFetch = globalThis.fetch;
-        globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
-                return {
-                    ok: false,
-                    text: async () => 'Migration already in progress',
-                } as any;
-            }
-            return originalFetch(url, opts);
-        }) as any;
+        mocks.admin.migrateStorageStream.mockResolvedValue({
+            ok: false,
+            text: async () => 'Migration already in progress',
+        });
 
         render(<StorageSection />);
 
@@ -360,7 +320,90 @@ describe('StorageSection — migration progress', () => {
             expect(screen.getByText('Migration Failed')).toBeTruthy();
         }, { timeout: 5000 });
 
-        globalThis.fetch = originalFetch;
+    });
+});
+
+describe('StorageSection — directory import', () => {
+    beforeEach(() => {
+        setStatusResponse({ backend: 'sqlite', stats: { processes: 100, workspaces: 5 }, dbPath: 'C:\\data\\processes.db' });
+    });
+
+    it('scans a directory and renders matched import preview', async () => {
+        mocks.admin.scanStorageDirectory.mockResolvedValue({
+            matched: [{
+                workspaceId: 'repo-1',
+                activeCount: 2,
+                archivedCount: 1,
+                archivedBuckets: [],
+                registeredName: 'Repo One',
+                registeredRootPath: 'C:\\repos\\one',
+            }],
+            unmatched: [{ workspaceId: 'old-repo', activeCount: 1, archivedCount: 0 }],
+            totalProcesses: 4,
+            totalMatchedProcesses: 3,
+        });
+
+        render(<StorageSection />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Import History from Directory')).toBeTruthy();
+        });
+        fireEvent.change(screen.getByPlaceholderText('e.g. ~/.coc/repos/ or /backup/coc-data/'), {
+            target: { value: 'C:\\backup\\.coc\\repos' },
+        });
+        fireEvent.click(screen.getByText('Scan'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Matched workspaces (1)')).toBeTruthy();
+        });
+        expect(screen.getByText('Repo One')).toBeTruthy();
+        expect(screen.getByText(/3 processes from 1 workspaces ready to import/)).toBeTruthy();
+        expect(mocks.admin.scanStorageDirectory).toHaveBeenCalledWith({ path: 'C:\\backup\\.coc\\repos' });
+    });
+
+    it('imports matched directory history from a streaming response', async () => {
+        mocks.admin.scanStorageDirectory.mockResolvedValue({
+            matched: [{
+                workspaceId: 'repo-1',
+                activeCount: 2,
+                archivedCount: 0,
+                archivedBuckets: [],
+                registeredName: 'Repo One',
+                registeredRootPath: 'C:\\repos\\one',
+            }],
+            unmatched: [],
+            totalProcesses: 2,
+            totalMatchedProcesses: 2,
+        });
+        mocks.admin.getStorageImportDirectoryToken.mockResolvedValue({ token: 'dir-token', expiresIn: 300 });
+        mocks.admin.importStorageDirectoryStream.mockResolvedValue(sseResponse(
+            'data: {"type":"progress","message":"Importing Repo One"}\n\n' +
+            'data: {"type":"done","success":true,"summary":{"imported":2,"skipped":1,"failed":0,"perWorkspace":[{"workspaceId":"repo-1","name":"Repo One","imported":2,"skipped":1}]}}\n\n'
+        ));
+
+        render(<StorageSection />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Import History from Directory')).toBeTruthy();
+        });
+        fireEvent.change(screen.getByPlaceholderText('e.g. ~/.coc/repos/ or /backup/coc-data/'), {
+            target: { value: 'C:\\backup\\.coc\\repos' },
+        });
+        fireEvent.click(screen.getByText('Scan'));
+        await waitFor(() => {
+            expect(screen.getByText('Import')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Import'));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Import complete/)).toBeTruthy();
+        });
+        expect(screen.getByText(/2 processes imported/)).toBeTruthy();
+        expect(screen.getByText(/1 duplicates skipped/)).toBeTruthy();
+        expect(mocks.admin.importStorageDirectoryStream).toHaveBeenCalledWith({
+            token: 'dir-token',
+            path: 'C:\\backup\\.coc\\repos',
+        });
     });
 });
 
@@ -371,3 +414,17 @@ describe('StorageSection — feature flag gating', () => {
         expect(typeof mod.default).toBe('function');
     });
 });
+
+function sseResponse(text: string): any {
+    const chunks = [new TextEncoder().encode(text)];
+    return {
+        ok: true,
+        body: {
+            getReader: () => ({
+                read: vi.fn()
+                    .mockResolvedValueOnce({ done: false, value: chunks[0] })
+                    .mockResolvedValueOnce({ done: true, value: undefined }),
+            }),
+        },
+    };
+}

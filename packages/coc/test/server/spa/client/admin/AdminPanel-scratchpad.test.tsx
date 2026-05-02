@@ -99,6 +99,18 @@ function mockPreferencesResponse() {
     };
 }
 
+function mockStatsResponse(overrides: Record<string, any> = {}) {
+    return {
+        ok: true,
+        json: async () => ({
+            processCount: 0,
+            wikiCount: 0,
+            totalBytes: 0,
+            ...overrides,
+        }),
+    };
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('AdminPanel — Scratchpad toggle', () => {
@@ -106,6 +118,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         vi.clearAllMocks();
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
@@ -122,9 +135,28 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
     });
 
+    it('renders admin stats from the typed admin client', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse({ processCount: 7, wikiCount: 2, totalBytes: 1536 }));
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+
+        render(<AdminPanel />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('stat-processes').textContent).toContain('7 processes');
+        });
+        expect(screen.getByTestId('stat-wikis').textContent).toContain('2 wikis');
+        expect(screen.getByTestId('stat-disk').textContent).toContain('1.5 KB');
+        expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/admin/data/stats?includeWikis=true'))).toBe(true);
+    });
+
     it('shows scratchpad toggle checked when scratchpad.enabled=true', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
@@ -142,6 +174,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
                 return Promise.resolve({ ok: true, json: async () => ({}) });
             }
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
@@ -183,6 +216,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
     it('shows layout selector when scratchpad is enabled', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
@@ -196,6 +230,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
     it('does not show layout selector when scratchpad is disabled', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: false } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
@@ -213,6 +248,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
                 return Promise.resolve({ ok: true, json: async () => ({}) });
             }
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ scratchpad: { enabled: true, layout: 'horizontal' } }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
         });
