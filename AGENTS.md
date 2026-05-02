@@ -110,6 +110,12 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 **Testing:** 114+ Vitest test files covering CLI, commands, server handlers, queue, wiki, SPA, e2e.
 
+## CoC Client (`packages/coc-client/`)
+
+Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for health, models, preferences, processes, queue, work items, and workspaces, plus WebSocket events and per-process SSE streaming helpers.
+
+**Testing:** Vitest tests cover HTTP transport, URL encoding, domain clients, realtime adapters, and real-server contract routes. `test/mock-server/` provides a lightweight Node `http` + `ws` harness for HTTP, WebSocket, and SSE tests that need status/header/body programming, request recording, scripted socket behavior, SSE chunks, network drops, delays, and idempotent cleanup on `127.0.0.1:0`.
+
 ## Deep Wiki (`packages/deep-wiki/`)
 
 CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `forge`.

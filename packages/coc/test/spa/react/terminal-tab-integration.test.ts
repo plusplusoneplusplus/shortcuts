@@ -44,7 +44,7 @@ describe('Router terminal integration', () => {
     });
 
     it('keyboard handler guards terminal shortcut on isTerminalEnabled', () => {
-        expect(ROUTER_SOURCE).toContain("tab === 'terminal' && !isTerminalEnabled()");
+        expect(ROUTER_SOURCE).toContain("rawTab === 'terminal' && !isTerminalEnabled()");
     });
 
     it('imports isTerminalEnabled from utils/config', () => {
