@@ -1,5 +1,4 @@
 import { useCallback, useRef } from 'react';
-import { getApiBase } from '../../../utils/config';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
@@ -8,6 +7,8 @@ import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload } from '../../../types/attachments';
+import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -85,6 +86,16 @@ export function useSendMessage({
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const resolveCurrentSendRef = useRef<(() => void) | null>(null);
+
+    const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[]): ProcessMessageRequest => ({
+        content,
+        images: images.length > 0 ? images : undefined,
+        ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
+        mode: selectedMode,
+        deliveryMode,
+        ...(skillNames.length > 0 ? { skillNames } : {}),
+        ...(modelOverride ? { model: modelOverride } : {}),
+    }), [images, modelOverride, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {
@@ -165,19 +176,10 @@ export function useSendMessage({
             // Both immediate and enqueue: fire POST to /message and let the
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
-            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: rawContent,
-                    images: images.length > 0 ? images : undefined,
-                    ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
-                    mode: selectedMode,
-                    deliveryMode,
-                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                    ...(modelOverride ? { model: modelOverride } : {}),
-                }),
-            }).catch(() => {});
+            void getSpaCocClient().processes.sendMessage(
+                processId,
+                buildMessageRequest(rawContent, deliveryMode, extractedSkills),
+            ).catch(() => {});
 
             clearImages();
             clearPaste();
@@ -201,34 +203,10 @@ export function useSendMessage({
         });
 
         try {
-            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: rawContent,
-                    images: images.length > 0 ? images : undefined,
-                    ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
-                    mode: selectedMode,
-                    deliveryMode,
-                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                    ...(modelOverride ? { model: modelOverride } : {}),
-                }),
-            });
-
-            if (response.status === 410) {
-                setSessionExpired(true);
-                setError('Session expired.');
-                lastFailedMessageRef.current = rawContent;
-                removeStreamingPlaceholder();
-                return;
-            }
-            if (!response.ok) {
-                const body = await response.json().catch(() => null);
-                setError(body?.error || `Failed to send message (${response.status})`);
-                lastFailedMessageRef.current = rawContent;
-                removeStreamingPlaceholder();
-                return;
-            }
+            await getSpaCocClient().processes.sendMessage(
+                processId,
+                buildMessageRequest(rawContent, deliveryMode, extractedSkills),
+            );
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
@@ -237,7 +215,12 @@ export function useSendMessage({
             clearAttachedContext?.();
             await waitForSendCompletion(processId);
         } catch (err: any) {
-            setError(err?.message || 'Failed to send follow-up message.');
+            if (err instanceof CocApiError && err.status === 410) {
+                setSessionExpired(true);
+                setError('Session expired.');
+            } else {
+                setError(getSpaCocClientErrorMessage(err, 'Failed to send follow-up message.'));
+            }
             lastFailedMessageRef.current = rawContent;
             removeStreamingPlaceholder();
         } finally {
@@ -245,7 +228,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

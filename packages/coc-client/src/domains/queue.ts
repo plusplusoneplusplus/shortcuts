@@ -9,6 +9,8 @@ import type {
   QueuePauseMarkerResponse,
   QueueReposResponse,
   QueueResolvedPromptResponse,
+  QueueSummarizeRequest,
+  QueueSummarizeResponse,
   QueueStatsResponse,
   QueueStatus,
   QueueTaskMutationResponse,
@@ -126,6 +128,17 @@ export class QueueClient {
 
   removePauseMarker(markerId: string): Promise<{ removed: boolean; markerId: string }> {
     return this.transport.request(`/queue/pause-marker/${encodePathSegment(markerId)}`, { method: 'DELETE' });
+  }
+
+  summarize(request: QueueSummarizeRequest): Promise<QueueSummarizeResponse> {
+    return this.transport.request<QueueSummarizeResponse>('/queue/summarize', {
+      method: 'POST',
+      body: {
+        processIds: [...request.processIds],
+        workspaceId: request.workspaceId,
+        userPrompt: request.userPrompt,
+      },
+    });
   }
 
   clear(scope?: QueueScope): Promise<QueueStatsResponse & { cleared: number }> {

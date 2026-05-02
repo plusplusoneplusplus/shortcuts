@@ -114,6 +114,49 @@ export interface ProcessMessageRequest {
 
 export interface ProcessMessageResponse extends JsonObject {}
 
+export interface PendingProcessMessage {
+  id: string;
+  content: string;
+  mode?: 'ask' | 'plan' | 'autopilot' | string;
+  createdAt: string;
+}
+
+export interface CreatePendingProcessMessageResponse {
+  message: PendingProcessMessage;
+}
+
+export interface TurnDeleteResponse {
+  id: string;
+  turnIndex: number;
+  deletedAt: string | null;
+}
+
+export interface TurnPinResponse {
+  id: string;
+  turnIndex: number;
+  pinnedAt: string | null;
+  archived?: boolean;
+}
+
+export interface TurnArchiveResponse {
+  id: string;
+  turnIndex: number;
+  archived: boolean;
+}
+
+export interface PinnedTurnsResponse {
+  turns: ConversationTurn[];
+}
+
+export interface ProcessForkResponse {
+  process: AIProcess;
+}
+
+export interface ProcessResumeCliResponse extends JsonObject {
+  launched?: boolean;
+  command?: string;
+}
+
 export interface ProcessOutputResponse {
   content: string;
   format: string;

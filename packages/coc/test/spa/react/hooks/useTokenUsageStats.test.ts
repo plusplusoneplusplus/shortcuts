@@ -7,13 +7,15 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useTokenUsageStats } from '../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats';
 import type { ClientTokenUsageStatsResponse } from '../../../../src/server/spa/client/react/types/dashboard';
 
-// Mock fetchApi
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
-}));
+const mockTokenUsage = vi.fn();
 
-import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        stats: {
+            tokenUsage: mockTokenUsage,
+        },
+    }),
+}));
 
 function makeResponse(overrides?: Partial<ClientTokenUsageStatsResponse>): ClientTokenUsageStatsResponse {
     return {
@@ -49,12 +51,12 @@ function makeResponse(overrides?: Partial<ClientTokenUsageStatsResponse>): Clien
 
 describe('useTokenUsageStats', () => {
     beforeEach(() => {
-        mockFetchApi.mockReset();
+        mockTokenUsage.mockReset();
     });
 
     it('returns data matching ClientTokenUsageStatsResponse shape on successful fetch', async () => {
         const response = makeResponse();
-        mockFetchApi.mockResolvedValue(response);
+        mockTokenUsage.mockResolvedValue(response);
 
         const { result } = renderHook(() => useTokenUsageStats());
 
@@ -73,7 +75,7 @@ describe('useTokenUsageStats', () => {
     it('sets loading=true while fetchApi is in-flight, then false after resolution', async () => {
         let resolve!: (v: ClientTokenUsageStatsResponse) => void;
         const pending = new Promise<ClientTokenUsageStatsResponse>(r => { resolve = r; });
-        mockFetchApi.mockReturnValue(pending);
+        mockTokenUsage.mockReturnValue(pending);
 
         const { result } = renderHook(() => useTokenUsageStats());
 
@@ -86,7 +88,7 @@ describe('useTokenUsageStats', () => {
     });
 
     it('sets error when fetchApi throws, data remains null', async () => {
-        mockFetchApi.mockRejectedValue(new Error('network failure'));
+        mockTokenUsage.mockRejectedValue(new Error('network failure'));
 
         const { result } = renderHook(() => useTokenUsageStats());
 
@@ -97,26 +99,26 @@ describe('useTokenUsageStats', () => {
         expect(result.current.loading).toBe(false);
     });
 
-    it('calls fetchApi with /stats/token-usage when days is undefined', async () => {
-        mockFetchApi.mockResolvedValue(makeResponse());
+    it('calls typed stats client without a days query when days is undefined', async () => {
+        mockTokenUsage.mockResolvedValue(makeResponse());
 
         const { result } = renderHook(() => useTokenUsageStats());
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(mockFetchApi).toHaveBeenCalledWith('/stats/token-usage');
+        expect(mockTokenUsage).toHaveBeenCalledWith(undefined);
     });
 
-    it('calls fetchApi with /stats/token-usage?days=30 when days=30', async () => {
-        mockFetchApi.mockResolvedValue(makeResponse({ totalDays: 30 }));
+    it('calls typed stats client with days when days=30', async () => {
+        mockTokenUsage.mockResolvedValue(makeResponse({ totalDays: 30 }));
 
         const { result } = renderHook(() => useTokenUsageStats(30));
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(mockFetchApi).toHaveBeenCalledWith('/stats/token-usage?days=30');
+        expect(mockTokenUsage).toHaveBeenCalledWith({ days: 30 });
     });
 
     it('re-fetches with updated URL when days changes', async () => {
-        mockFetchApi.mockResolvedValue(makeResponse());
+        mockTokenUsage.mockResolvedValue(makeResponse());
 
         const { result, rerender } = renderHook(
             ({ days }) => useTokenUsageStats(days),
@@ -124,9 +126,9 @@ describe('useTokenUsageStats', () => {
         );
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(mockFetchApi).toHaveBeenLastCalledWith('/stats/token-usage');
+        expect(mockTokenUsage).toHaveBeenLastCalledWith(undefined);
 
         rerender({ days: 14 });
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalledWith('/stats/token-usage?days=14'));
+        await waitFor(() => expect(mockTokenUsage).toHaveBeenCalledWith({ days: 14 }));
     });
 });

@@ -125,3 +125,13 @@ export interface QueueTaskMutationResponse {
   unadmitted?: boolean;
   [key: string]: unknown;
 }
+
+export interface QueueSummarizeRequest {
+  processIds: string[];
+  workspaceId: string;
+  userPrompt?: string;
+}
+
+export interface QueueSummarizeResponse {
+  taskId: string;
+}

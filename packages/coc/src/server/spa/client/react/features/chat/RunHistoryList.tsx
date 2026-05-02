@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import type { RunRecord } from '../schedules/scheduleTypes';
 
@@ -40,8 +40,8 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
     const refreshHistory = useCallback(async () => {
         setRefreshing(true);
         try {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/schedules/${encodeURIComponent(scheduleId)}/history`);
-            setHistory(data?.history || []);
+            const history = await getSpaCocClient().schedules.history(wsId, scheduleId);
+            setHistory(history);
         } catch { /* ignore */ }
         setRefreshing(false);
     }, [wsId, scheduleId]);

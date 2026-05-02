@@ -9,7 +9,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Card, Button, cn, FilterDropdown } from '../../ui';
 import type { FilterItem } from '../../ui';
-import { getApiBase } from '../../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { buildRows } from './conversation/ConversationMetadataPopover';
@@ -17,7 +16,7 @@ import { useQueueDragDrop } from '../../queue/hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { RenameDialog } from '../../ui/RenameDialog';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { getDraft } from './hooks/useDraftStore';
 import { useLongPress } from '../../hooks/ui/useLongPress';
@@ -460,18 +459,17 @@ export function ChatListPane({
     const [showArchived, setShowArchived] = useState(false);
 
     const handleCancel = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        await getSpaCocClient().queue.cancel(taskId);
         fetchQueue();
     };
 
     const deleteChatDirect = async (taskId: string) => {
-        const url = workspaceId
-            ? getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/history/' + encodeURIComponent(taskId)
-            : getApiBase() + '/queue/history/' + encodeURIComponent(taskId);
-        const res = await fetch(url, { method: 'DELETE' });
-        if (res.ok) {
-            fetchQueue();
+        if (workspaceId) {
+            await getSpaCocClient().workspaces.deleteHistory(workspaceId, taskId);
+        } else {
+            await getSpaCocClient().queue.deleteHistoryEntry(taskId);
         }
+        fetchQueue();
     };
 
     const handleDeleteChat = async (taskId: string) => {
@@ -480,27 +478,27 @@ export function ChatListPane({
     };
 
     const handleMoveUp = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-up', { method: 'POST' });
+        await getSpaCocClient().queue.moveUp(taskId);
         fetchQueue();
     };
 
     const handleMoveToTop = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to-top', { method: 'POST' });
+        await getSpaCocClient().queue.moveToTop(taskId);
         fetchQueue();
     };
 
     const handleMoveToPosition = async (taskId: string, newIndex: number) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to/' + newIndex, { method: 'POST' });
+        await getSpaCocClient().queue.moveToPosition(taskId, newIndex);
         fetchQueue();
     };
 
     const handleFreeze = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/freeze', { method: 'POST' });
+        await getSpaCocClient().queue.freeze(taskId);
         fetchQueue();
     };
 
     const handleUnfreeze = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/unfreeze', { method: 'POST' });
+        await getSpaCocClient().queue.unfreeze(taskId);
         fetchQueue();
     };
 
@@ -509,7 +507,7 @@ export function ChatListPane({
     const handleAdmit = async (taskId: string) => {
         setIsAdmitting(true);
         try {
-            await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
+            await getSpaCocClient().queue.admit(taskId);
             await fetchQueue();
         } finally {
             setIsAdmitting(false);
@@ -517,22 +515,18 @@ export function ChatListPane({
     };
 
     const handleUnadmit = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/unadmit', { method: 'POST' });
+        await getSpaCocClient().queue.unadmit(taskId);
         fetchQueue();
     };
 
     const handleInsertPauseMarker = async (afterIndex: number) => {
         setInsertingPauseAt(null);
-        await fetch(getApiBase() + '/queue/pause-marker', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) }),
-        });
+        await getSpaCocClient().queue.insertPauseMarker({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) });
         fetchQueue();
     };
 
     const handleRemovePauseMarker = async (markerId: string) => {
-        await fetch(getApiBase() + '/queue/pause-marker/' + encodeURIComponent(markerId), { method: 'DELETE' });
+        await getSpaCocClient().queue.removePauseMarker(markerId);
         fetchQueue();
     };
 
@@ -636,11 +630,7 @@ export function ChatListPane({
         const processId = ensureQueueProcessId(renameTarget.taskId);
         setRenameTarget(null);
         try {
-            await fetchApi(`/processes/${encodeURIComponent(processId)}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: newTitle }),
-            });
+            await getSpaCocClient().processes.update(processId, { title: newTitle });
             fetchQueue();
         } catch { /* WS will sync eventually */ }
     }, [renameTarget, fetchQueue]);
@@ -1645,19 +1635,14 @@ export function ChatListPane({
             chatCount={summarizeDialogIds.length}
             onClose={() => setSummarizeDialogOpen(false)}
             onConfirm={async (userPrompt) => {
-                const res = await fetch(getApiBase() + '/queue/summarize', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ processIds: summarizeDialogIds, workspaceId, userPrompt: userPrompt || undefined }),
+                const data = await getSpaCocClient().queue.summarize({
+                    processIds: summarizeDialogIds,
+                    workspaceId,
+                    userPrompt: userPrompt || undefined,
                 });
-                if (!res.ok) {
-                    const data = await res.json().catch(() => ({}));
-                    throw new Error(data.error || `Request failed (${res.status})`);
-                }
-                const data = await res.json();
                 setSummarizeDialogOpen(false);
-                if (data.task?.id) {
-                    onSelectTask(data.task.id);
+                if (data.taskId) {
+                    onSelectTask(data.taskId);
                 }
                 fetchQueue();
             }}

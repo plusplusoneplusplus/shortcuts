@@ -18,6 +18,7 @@ describe('QueueClient', () => {
     await client.pause({ repoId: 'repo/b' });
     await client.cancel('task/1');
     await client.moveToTop('task/1');
+    await client.summarize({ processIds: ['proc/1', 'proc/2'], workspaceId: 'repo/a', userPrompt: 'focus on risks' });
 
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/queue',
@@ -31,10 +32,15 @@ describe('QueueClient', () => {
       '/queue/pause',
       '/queue/task%2F1',
       '/queue/task%2F1/move-to-top',
+      '/queue/summarize',
     ]);
     expect(adapter.calls[0].options?.query).toEqual({ workspace: 'repo/a', type: 'chat' });
     expect(adapter.calls[2].options?.body).toEqual({ type: 'chat', payload: { prompt: 'hi' } });
     expect(adapter.calls[3].options?.body).toEqual({ type: 'chat', payload: { prompt: 'hi from tasks alias' } });
     expect(adapter.calls[8].options?.query).toEqual({ repoId: 'repo/b' });
+    expect(adapter.calls[11].options).toMatchObject({
+      method: 'POST',
+      body: { processIds: ['proc/1', 'proc/2'], workspaceId: 'repo/a', userPrompt: 'focus on risks' },
+    });
   });
 });

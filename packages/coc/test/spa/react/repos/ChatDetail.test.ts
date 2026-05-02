@@ -132,11 +132,11 @@ describe('ChatDetail', () => {
         });
 
         it('sends selectedMode in follow-up message body', () => {
-            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
+            const requestBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest') + 1200,
             );
-            expect(sendBlock).toContain('mode: selectedMode');
+            expect(requestBlock).toContain('mode: selectedMode');
         });
 
         it('initializes selectedMode from draft mode on load', () => {
@@ -203,7 +203,7 @@ describe('ChatDetail', () => {
         });
 
         it('fetches skills from the workspaces API', () => {
-            expect(source).toContain("/skills/all'");
+            expect(source).toContain('getSpaCocClient().skills.listAllWorkspace');
         });
 
         it('initializes useSlashCommands with augmentedSkills', () => {
@@ -231,8 +231,12 @@ describe('ChatDetail', () => {
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
+            const requestBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest') + 1200,
+            );
             expect(sendBlock).toContain('slashCommands.parseAndExtract(');
-            expect(sendBlock).toContain('skillNames');
+            expect(requestBlock).toContain('skillNames');
         });
 
         it('dismisses slash menu on send', () => {
@@ -266,7 +270,7 @@ describe('ChatDetail', () => {
         });
 
         it('includes images in sendFollowUp POST body', () => {
-            const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
+            const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'));
             expect(sendFollowUpSection).toContain('images: images.length > 0');
             expect(sendFollowUpSection).toContain('? images');
             expect(sendFollowUpSection).toContain(': undefined');
@@ -285,8 +289,8 @@ describe('ChatDetail', () => {
     });
 
     describe('follow-up send', () => {
-        it('POSTs to /processes/:id/message endpoint', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`');
+        it('sends through the typed processes client message endpoint', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('getSpaCocClient().processes.sendMessage');
         });
 
         it('sends content in the body', () => {
@@ -311,7 +315,7 @@ describe('ChatDetail', () => {
 
     describe('session expiry (410)', () => {
         it('detects 410 status on follow-up', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain('response.status === 410');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('err instanceof CocApiError && err.status === 410');
         });
 
         it('sets session expired flag', () => {
@@ -349,14 +353,14 @@ describe('ChatDetail', () => {
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
-            // Should NOT set lastFailedMessageRef eagerly before the fetch request
-            const preamble = sendBlock.substring(0, sendBlock.indexOf('const response = await fetch'));
+            // Should NOT set lastFailedMessageRef eagerly before the typed client request
+            const preamble = sendBlock.substring(0, sendBlock.indexOf('await getSpaCocClient().processes.sendMessage'));
             expect(preamble).not.toContain('lastFailedMessageRef.current = rawContent');
 
-            // Should set it on each error path (410, !ok, catch)
+            // Typed client failures converge through the catch path.
             const matches = sendBlock.match(/lastFailedMessageRef\.current = rawContent/g);
             expect(matches).not.toBeNull();
-            expect(matches!.length).toBeGreaterThanOrEqual(3);
+            expect(matches!.length).toBeGreaterThanOrEqual(1);
         });
 
         it('clears lastFailedMessageRef on successful send', () => {
@@ -1045,7 +1049,7 @@ describe('ChatDetail', () => {
                 source.indexOf('planPatchedRef.current = true'),
                 source.indexOf('planPatchedRef.current = true') + 400,
             );
-            expect(patchBlock).toContain("method: 'PATCH'");
+            expect(patchBlock).toContain('getSpaCocClient().processes.update');
         });
 
         it('PATCH guard checks: no detectedPlanFile, or planPath already set, or metadata already has it', () => {
@@ -1203,8 +1207,7 @@ describe('ChatDetail', () => {
             const handleStopIdx = source.indexOf('handleStop');
             expect(handleStopIdx).toBeGreaterThan(-1);
             const handleStopBlock = source.substring(handleStopIdx, handleStopIdx + 300);
-            expect(handleStopBlock).toContain('/cancel');
-            expect(handleStopBlock).toContain("method: 'POST'");
+            expect(handleStopBlock).toContain('getSpaCocClient().processes.cancel');
         });
 
         it('ChatDetail passes onStop={handleStop} to FollowUpInputArea', () => {

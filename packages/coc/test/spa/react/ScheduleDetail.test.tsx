@@ -90,6 +90,16 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        schedules: {
+            history: (workspaceId: string, scheduleId: string) => mockFetchApi(
+                `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/history`,
+            ).then((data: any) => data?.history ?? []),
+        },
+    }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));

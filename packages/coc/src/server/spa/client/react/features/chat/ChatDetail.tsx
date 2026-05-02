@@ -8,9 +8,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
@@ -225,11 +223,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!detectedPlanFile || planPath || task?.metadata?.planFilePath || !processId) return;
         planPatchedRef.current = true;
         const merged = { ...(task?.metadata ?? {}), planFilePath: detectedPlanFile };
-        fetchApi(`/processes/${encodeURIComponent(processId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ metadata: merged }),
-        })
+        getSpaCocClient().processes.update(processId, { metadata: merged })
             .then((data: any) => {
                 if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
             })
@@ -267,7 +261,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // a value already received via SSE (conversation-snapshot / token-usage).
     useEffect(() => {
         if (!sessionModel || sessionTokenLimit !== undefined) return;
-        fetchApi('/models')
+        getSpaCocClient().models.list()
             .then((data: ModelInfo[]) => {
                 if (!Array.isArray(data)) return;
                 const info = data.find(m => m.id === sessionModel);
@@ -297,7 +291,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const refreshConversation = useCallback(async (pid: string) => {
         try {
-            const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+            const data = await getSpaCocClient().processes.get(pid);
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
             // Preserve client-only costTimeMs across server refresh
@@ -389,7 +383,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => {
         setSkills([]);
         if (!workspaceId) return;
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
+        getSpaCocClient().skills.listAllWorkspace(workspaceId)
             .then((data: any) => {
                 if (data?.merged && Array.isArray(data.merged)) {
                     setSkills(data.merged);
@@ -454,7 +448,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 // try loading from /processes/ first.
                 if (isQueueProcessId(taskId)) {
                     const pid = taskId;
-                    const processData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    const processData = await getSpaCocClient().processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
                     const loadedProcess = processData?.process ?? null;
 
@@ -501,7 +495,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata
-                    fetchApi(`/processes/${encodeURIComponent(pid)}`)
+                    getSpaCocClient().processes.get(pid)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
                             // Sync queued follow-ups from server
@@ -514,7 +508,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
-                    const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    const procData = await getSpaCocClient().processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
 
                     // Reconcile: process status is authoritative over queue status
@@ -592,7 +586,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             try {
                 // For processId-keyed taskIds, try loading process directly first
                 if (isQueueProcessId(taskId)) {
-                    const procData = await fetchApi(`/processes/${encodeURIComponent(taskId)}`);
+                    const procData = await getSpaCocClient().processes.get(taskId);
                     if (procData?.process) {
                         setTask({
                             id: taskId,
@@ -620,7 +614,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     return;
                 }
 
-                const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                const procData = await getSpaCocClient().processes.get(pid);
 
                 // Reconcile: process status is authoritative over queue status
                 const procStatus = procData?.process?.status;
@@ -697,7 +691,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const handleStop = useCallback(async () => {
         if (!processId) return;
         try {
-            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
+            await getSpaCocClient().processes.cancel(processId);
         } catch { /* best-effort: SSE will reflect the actual state */ }
     }, [processId]);
 
@@ -707,7 +701,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const handleDeleteTurn = useCallback((turnIndex: number) => {
         if (!processId) return;
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
+        getSpaCocClient().processes.deleteTurn(processId, turnIndex).catch(() => {
             setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         });
         if (undoDelete) clearTimeout(undoDelete.timer);
@@ -721,11 +715,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const { turnIndex } = undoDelete;
         setUndoDelete(null);
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        }).catch(() => {});
+        getSpaCocClient().processes.restoreTurn(processId, turnIndex).catch(() => {});
     }, [undoDelete, processId]);
 
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
@@ -735,11 +725,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
                 : t
         ));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pinned }),
-        }).catch(() => {
+        getSpaCocClient().processes.pinTurn(processId, turnIndex, pinned).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex
                     ? { ...t, pinnedAt: pinned ? undefined : new Date().toISOString() }
@@ -753,11 +739,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTurns(prev => prev.map(t =>
             t.turnIndex === turnIndex ? { ...t, archived } : t
         ));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ archived }),
-        }).catch(() => {
+        getSpaCocClient().processes.archiveTurn(processId, turnIndex, archived).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
             ));
@@ -769,17 +751,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setResumeLaunching(true);
         setResumeFeedback(null);
         try {
-            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/resume-cli`, { method: 'POST' });
-            const body = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(body?.error || `Failed to launch resume command (${response.status})`);
-            const launched = body?.launched !== false;
+            const body = await getSpaCocClient().processes.resumeCli(processId);
+            const launched = body.launched !== false;
             setResumeFeedback({
                 type: 'success',
                 message: launched ? 'Opened Terminal with Copilot resume command.' : 'Auto-launch unavailable. Run this command manually.',
                 command: !launched && typeof body?.command === 'string' ? body.command : undefined,
             });
-        } catch (err: any) {
-            setResumeFeedback({ type: 'error', message: err?.message || 'Failed to launch Copilot resume command.' });
+        } catch (err) {
+            setResumeFeedback({ type: 'error', message: getSpaCocClientErrorMessage(err, 'Failed to launch Copilot resume command.') });
         } finally {
             setResumeLaunching(false);
         }
@@ -789,11 +769,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!processId || forking) return;
         setForking(true);
         try {
-            const data = await fetchApi(`/processes/${encodeURIComponent(processId)}/fork`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
+            const data = await getSpaCocClient().processes.fork(processId);
             if (data?.process?.id && workspaceId) {
                 location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(data.process.id);
             }

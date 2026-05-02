@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -21,7 +21,7 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ProcessHistoryItem } from '../../../../../../shared/process-history-item';
+import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 
@@ -100,9 +100,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const selectedTaskRef = useRef<any>(null);
 
     const fetchHistory = useCallback(async (offset = 0) => {
-        const data = await fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/history?limit=100&offset=${offset}`
-        ).catch(() => null);
+        const data = await getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
         const items = (data?.history as ProcessHistoryItem[]) || [];
         if (offset === 0) {
             setHistory(items);
@@ -114,7 +112,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
     const fetchQueue = useCallback(async () => {
         try {
-            const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
+            const data = await getSpaCocClient().queue.list({ repoId: workspaceId });
             const nextRunning = data?.running || [];
             const nextQueued = data?.queued || [];
             const nextStats = data?.stats || undefined;
@@ -222,13 +220,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
         let cancelled = false;
         // selectedTaskId is always a processId; probe /processes/ first, fall back to /queue/
-        const probeProcess = fetchApi(`/processes/${encodeURIComponent(selectedTaskId)}`)
+        const probeProcess = getSpaCocClient().processes.get(selectedTaskId)
             .then((data: any) => {
                 if (cancelled) return;
                 if (data?.process) return; // found
                 // Not found as process — try queue with derived bare taskId
                 const bareId = isQueueProcessId(selectedTaskId) ? toTaskId(selectedTaskId) : selectedTaskId;
-                return fetchApi(`/queue/${encodeURIComponent(bareId)}`).then((qData: any) => {
+                return getSpaCocClient().queue.getTask(bareId).then((qData: any) => {
                     if (cancelled) return;
                     if (!qData?.task) throw new Error('not found');
                 });
@@ -361,8 +359,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     async function handlePauseResume() {
         setIsPauseResumeLoading(true);
         try {
-            const endpoint = isPaused ? '/queue/resume' : '/queue/pause';
-            await fetchApi(endpoint + '?repoId=' + encodeURIComponent(workspaceId), { method: 'POST' });
+            if (isPaused) {
+                await getSpaCocClient().queue.resume({ repoId: workspaceId });
+            } else {
+                await getSpaCocClient().queue.pause({ repoId: workspaceId });
+            }
             await fetchQueue();
         } finally {
             setIsPauseResumeLoading(false);
@@ -372,10 +373,11 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     async function handlePauseResumeAutopilot() {
         setIsAutopilotPauseLoading(true);
         try {
-            const endpoint = isAutopilotPaused
-                ? '/queue/resume-autopilot'
-                : '/queue/pause-autopilot';
-            await fetchApi(endpoint + '?repoId=' + encodeURIComponent(workspaceId), { method: 'POST' });
+            if (isAutopilotPaused) {
+                await getSpaCocClient().queue.resumeAutopilot({ repoId: workspaceId });
+            } else {
+                await getSpaCocClient().queue.pauseAutopilot({ repoId: workspaceId });
+            }
             await fetchQueue();
         } finally {
             setIsAutopilotPauseLoading(false);

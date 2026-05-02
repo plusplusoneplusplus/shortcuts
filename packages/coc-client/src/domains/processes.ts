@@ -2,15 +2,23 @@ import type {
   AIProcess,
   CreateProcessRequest,
   ProcessDetailResponse,
+  CreatePendingProcessMessageResponse,
   ProcessListQuery,
   ProcessListResponse,
+  PendingProcessMessage,
+  PinnedTurnsResponse,
+  ProcessForkResponse,
   ProcessMessageRequest,
   ProcessMessageResponse,
   ProcessOutputQuery,
   ProcessOutputResponse,
+  ProcessResumeCliResponse,
   ProcessSearchQuery,
   ProcessSearchResponse,
   ProcessSummariesResponse,
+  TurnArchiveResponse,
+  TurnDeleteResponse,
+  TurnPinResponse,
 } from '../contracts';
 import { ProcessSseClient } from '../realtime/sse';
 import type { CocRequestOptions, NormalizedCocClientOptions, ProcessStreamOptions, QueryPrimitive, RequestAdapter } from '../types';
@@ -93,6 +101,66 @@ export class ProcessesClient {
       method: 'POST',
       query,
       body: { ...request },
+    });
+  }
+
+  createPendingMessage(processId: string, request: Pick<PendingProcessMessage, 'content' | 'mode'>, query?: Pick<ProcessListQuery, 'workspace'>): Promise<CreatePendingProcessMessageResponse> {
+    return this.transport.request<CreatePendingProcessMessageResponse>(`/processes/${encodePathSegment(processId)}/pending-messages`, {
+      method: 'POST',
+      query,
+      body: { ...request },
+    });
+  }
+
+  deletePendingMessage(processId: string, messageId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<void> {
+    return this.transport.request<void>(
+      `/processes/${encodePathSegment(processId)}/pending-messages/${encodePathSegment(messageId)}`,
+      { method: 'DELETE', query },
+    );
+  }
+
+  deleteTurn(processId: string, turnIndex: number): Promise<TurnDeleteResponse> {
+    return this.transport.request<TurnDeleteResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}`, {
+      method: 'DELETE',
+    });
+  }
+
+  restoreTurn(processId: string, turnIndex: number): Promise<TurnDeleteResponse> {
+    return this.transport.request<TurnDeleteResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/restore`, {
+      method: 'PATCH',
+      body: {},
+    });
+  }
+
+  pinTurn(processId: string, turnIndex: number, pinned: boolean): Promise<TurnPinResponse> {
+    return this.transport.request<TurnPinResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/pin`, {
+      method: 'PATCH',
+      body: { pinned },
+    });
+  }
+
+  archiveTurn(processId: string, turnIndex: number, archived: boolean): Promise<TurnArchiveResponse> {
+    return this.transport.request<TurnArchiveResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/archive`, {
+      method: 'PATCH',
+      body: { archived },
+    });
+  }
+
+  pinnedTurns(processId: string): Promise<PinnedTurnsResponse> {
+    return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`);
+  }
+
+  resumeCli(processId: string): Promise<ProcessResumeCliResponse> {
+    return this.transport.request<ProcessResumeCliResponse>(`/processes/${encodePathSegment(processId)}/resume-cli`, {
+      method: 'POST',
+    });
+  }
+
+  fork(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<ProcessForkResponse> {
+    return this.transport.request<ProcessForkResponse>(`/processes/${encodePathSegment(processId)}/fork`, {
+      method: 'POST',
+      query,
+      body: {},
     });
   }
 

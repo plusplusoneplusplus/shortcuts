@@ -171,6 +171,31 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workspaces: {
+            history: (workspaceId: string, query?: { limit?: number; offset?: number }) => {
+                const params = new URLSearchParams();
+                if (query?.limit !== undefined) params.set('limit', String(query.limit));
+                if (query?.offset !== undefined) params.set('offset', String(query.offset));
+                const suffix = params.toString() ? `?${params.toString()}` : '';
+                return mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/history${suffix}`);
+            },
+        },
+        queue: {
+            list: (query?: { repoId?: string }) => mockFetchApi('/queue?repoId=' + encodeURIComponent(query?.repoId ?? '')),
+            getTask: (taskId: string) => mockFetchApi(`/queue/${encodeURIComponent(taskId)}`),
+            pause: (scope?: { repoId?: string }) => mockFetchApi('/queue/pause?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            resume: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            pauseAutopilot: (scope?: { repoId?: string }) => mockFetchApi('/queue/pause-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            resumeAutopilot: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+        },
+        processes: {
+            get: (processId: string) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`),
+        },
+    }),
+}));
+
 // ── Import component under test (after mocks) ─────────────────────────
 
 import { RepoChatTab } from '../../../../src/server/spa/client/react/features/chat/RepoChatTab';

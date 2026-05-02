@@ -1,22 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
-import { ClientTokenUsageStatsResponse } from '../../../types/dashboard';
+import { getSpaCocClient } from '../../../api/cocClient';
+import type { TokenUsageStatsResponse } from '@plusplusoneplusplus/coc-client';
 
 export function useTokenUsageStats(days?: number): {
-    data: ClientTokenUsageStatsResponse | null;
+    data: TokenUsageStatsResponse | null;
     loading: boolean;
     error: string | null;
     reload: () => void;
 } {
-    const [data, setData] = useState<ClientTokenUsageStatsResponse | null>(null);
+    const [data, setData] = useState<TokenUsageStatsResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const path = '/stats/token-usage' + (days ? '?days=' + days : '');
-            const result = await fetchApi(path);
+            const result = await getSpaCocClient().stats.tokenUsage(days ? { days } : undefined);
             setData(result);
         } catch (e) {
             setError(String(e));

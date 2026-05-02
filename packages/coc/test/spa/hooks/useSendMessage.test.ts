@@ -122,6 +122,7 @@ describe('useSendMessage', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             status: 200,
+            text: () => Promise.resolve('{}'),
         });
         const opts = makeOptions({ setSending });
         const { result } = renderHook(() => useSendMessage(opts));
@@ -165,7 +166,7 @@ describe('useSendMessage', () => {
     });
 
     it('POSTs to /message when sending=true (second message while first in-flight)', async () => {
-        mockFetch.mockResolvedValue({ ok: true, status: 200 });
+        mockFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
         // sending=true simulates first message is in-flight
         const opts = makeOptions({ sending: true });
         const { result } = renderHook(() => useSendMessage(opts));
@@ -176,7 +177,7 @@ describe('useSendMessage', () => {
     });
 
     it('POSTs to /api/processes/:id/message with correct content', async () => {
-        mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve('{}') });
         const opts = makeOptions();
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('Hello World'); });
@@ -188,7 +189,7 @@ describe('useSendMessage', () => {
 
     it('calls setTurnsAndRef to add optimistic user and assistant turns', async () => {
         const setTurnsAndRef = vi.fn();
-        mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve('{}') });
         const opts = makeOptions({ setTurnsAndRef });
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('Hello'); });
@@ -210,7 +211,7 @@ describe('useSendMessage', () => {
 
     it('clears lastFailedMessageRef on successful send', async () => {
         const lastFailedMessageRef = { current: 'previous failure' };
-        mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve('{}') });
         const opts = makeOptions({ lastFailedMessageRef });
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('New message'); });

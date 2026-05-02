@@ -19,6 +19,7 @@ describe('WorkspacesClient', () => {
     await client.getInstructions('repo/a');
     await client.updateInstruction('repo/a', 'ask', { content: 'Ask carefully' });
     await client.deleteInstruction('repo/a', 'ask');
+    await client.history('repo/a', { limit: 100, offset: 200 });
     await client.deleteHistory('repo/a', 'proc/1');
     await client.syncMyWork({ actionItems: ['Review PR'] });
     await client.generateMyWorkSummary();
@@ -38,6 +39,7 @@ describe('WorkspacesClient', () => {
       '/workspaces/repo%2Fa/instructions',
       '/workspaces/repo%2Fa/instructions/ask',
       '/workspaces/repo%2Fa/instructions/ask',
+      '/workspaces/repo%2Fa/history',
       '/workspaces/repo%2Fa/history/proc%2F1',
       '/my-work/sync',
       '/my-work/generate-summary',
@@ -60,11 +62,12 @@ describe('WorkspacesClient', () => {
       body: { content: 'Ask carefully' },
     });
     expect(adapter.calls[11].options).toMatchObject({ method: 'DELETE' });
-    expect(adapter.calls[13].options).toMatchObject({
+    expect(adapter.calls[12].options?.query).toEqual({ limit: 100, offset: 200 });
+    expect(adapter.calls[14].options).toMatchObject({
       method: 'POST',
       body: { actionItems: ['Review PR'] },
     });
-    expect(adapter.calls[15].options).toMatchObject({
+    expect(adapter.calls[16].options).toMatchObject({
       method: 'POST',
       body: { goals: ['Exercise'] },
     });

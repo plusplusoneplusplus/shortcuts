@@ -15,6 +15,8 @@ import type {
   RegisterWorkspaceRequest,
   UpdateWorkspaceInstructionRequest,
   UpdateWorkspaceMcpConfigRequest,
+  ProcessHistoryResponse,
+  WorkspaceHistoryQuery,
   WorkspaceInfo,
   WorkspaceInstructionMode,
   WorkspaceInstructionResponse,
@@ -37,6 +39,14 @@ function serializeHistoryFilters(filters?: DeleteWorkspaceHistoryFilters): CocRe
   return {
     since: filters.since,
     until: filters.until,
+  };
+}
+
+function serializeHistoryQuery(query?: WorkspaceHistoryQuery): CocRequestOptions['query'] {
+  if (!query) return undefined;
+  return {
+    limit: query.limit,
+    offset: query.offset,
   };
 }
 
@@ -153,6 +163,12 @@ export class WorkspacesClient {
     return this.transport.request(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
       method: 'DELETE',
       body: { processIds: [...processIds] },
+    });
+  }
+
+  history(workspaceId: string, query?: WorkspaceHistoryQuery): Promise<ProcessHistoryResponse> {
+    return this.transport.request<ProcessHistoryResponse>(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
+      query: serializeHistoryQuery(query),
     });
   }
 

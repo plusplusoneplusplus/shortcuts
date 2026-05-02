@@ -238,9 +238,9 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('handleDeleteChat');
         });
 
-        it('calls DELETE /queue/history/:taskId endpoint', () => {
-            expect(source).toContain("'/queue/history/' + encodeURIComponent(taskId)");
-            expect(source).toContain("method: 'DELETE'");
+        it('deletes chat history through the typed client', () => {
+            expect(source).toContain('getSpaCocClient().workspaces.deleteHistory');
+            expect(source).toContain('getSpaCocClient().queue.deleteHistoryEntry');
         });
 
         it('shows a confirmation before deleting', () => {
@@ -511,11 +511,11 @@ describe('ChatListPane pinned chats', () => {
                 expect(bulkBlock).toContain('`Summarize ${ids.length} chats`');
             });
 
-            it('summarize calls POST /queue/summarize', () => {
+            it('summarize uses the typed queue summarize client', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain("'/queue/summarize'");
+                expect(block).toContain('getSpaCocClient().queue.summarize');
             });
 
             it('summarize sends processIds and workspaceId in body', () => {
@@ -546,7 +546,7 @@ describe('ChatListPane pinned chats', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain('onSelectTask(data.task.id)');
+                expect(block).toContain('onSelectTask(data.taskId)');
             });
 
             it('useMemo deps include workspaceId, onSelectTask, fetchQueue', () => {
@@ -559,11 +559,11 @@ describe('ChatListPane pinned chats', () => {
                 expect(depsBlock).toContain('fetchQueue');
             });
 
-            it('summarize uses POST method in fetch call', () => {
+            it('summarize delegates POST serialization to the typed client', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain("method: 'POST'");
+                expect(block).toContain('getSpaCocClient().queue.summarize');
             });
 
             it('summarize calls closeContextMenu before fetch', () => {
@@ -580,25 +580,25 @@ describe('ChatListPane pinned chats', () => {
                 expect(block).toContain('fetchQueue()');
             });
 
-            it('summarize sends Content-Type application/json header', () => {
+            it('summarize passes request data to the typed client', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain("'Content-Type': 'application/json'");
+                expect(block).toContain('processIds: summarizeDialogIds');
             });
 
-            it('summarize uses JSON.stringify for request body', () => {
+            it('summarize sends optional user prompt through the typed client', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain('JSON.stringify');
+                expect(block).toContain('userPrompt: userPrompt || undefined');
             });
 
-            it('summarize checks res.ok before navigating', () => {
+            it('summarize relies on typed client errors before navigating', () => {
                 const dialogIdx = source.indexOf('<SummarizeChatDialog');
                 expect(dialogIdx).toBeGreaterThan(-1);
                 const block = source.substring(dialogIdx, dialogIdx + 1500);
-                expect(block).toContain('res.ok');
+                expect(block).toContain('if (data.taskId)');
             });
         });
     });

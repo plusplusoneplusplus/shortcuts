@@ -61,7 +61,7 @@ describe('Refresh button spin during mutations', () => {
         });
 
         it('awaits both the admit POST and fetchQueue before clearing isAdmitting', () => {
-            const admitBlock = activityListSource.match(/handleAdmit[\s\S]*?await fetch[\s\S]*?await fetchQueue/);
+            const admitBlock = activityListSource.match(/handleAdmit[\s\S]*?queue\.admit[\s\S]*?await fetchQueue/);
             expect(admitBlock).not.toBeNull();
         });
     });

@@ -90,6 +90,39 @@ export interface DeleteWorkspaceHistoryFilters {
   until?: string;
 }
 
+export interface WorkspaceHistoryQuery {
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProcessHistoryItem {
+  id: string;
+  type: string;
+  status: string;
+  title: string;
+  promptPreview?: string;
+  startTime: number;
+  endTime?: number;
+  error?: string;
+  mode?: string;
+  model?: string;
+  workspaceId: string;
+  planFilePath?: string;
+  workItemId?: string;
+  turnCount: number;
+  lastActivityAt?: number;
+  seenAt?: string;
+  pinnedAt?: string;
+  archived?: boolean;
+}
+
+export interface ProcessHistoryResponse {
+  history: ProcessHistoryItem[];
+  hasMore: boolean;
+  offset: number;
+  limit: number;
+}
+
 export interface DiscoverWorkspacesResponse {
   repos: Array<{ path: string; name: string }>;
 }

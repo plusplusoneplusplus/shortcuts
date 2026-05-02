@@ -14,7 +14,7 @@ import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -791,7 +791,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         if (!taskId) return;
         setImageLoadState('loading');
         try {
-            const data = await fetchApi(`/queue/${encodeURIComponent(taskId)}/images`);
+            const data = await getSpaCocClient().queue.images(taskId);
             setFetchedImages(data.images || []);
             setImageLoadState('loaded');
         } catch {
