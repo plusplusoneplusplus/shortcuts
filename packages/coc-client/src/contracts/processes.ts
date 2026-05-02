@@ -37,6 +37,8 @@ export interface ProcessListQuery {
   offset?: number;
   exclude?: 'conversation' | 'toolCalls' | Array<'conversation' | 'toolCalls'>;
   sdkSessionId?: string;
+  archived?: boolean;
+  q?: string;
 }
 
 export interface ProcessListResponse {
@@ -70,7 +72,7 @@ export interface CreateProcessRequest extends Partial<AIProcess> {
 export interface ProcessMessageRequest {
   content: string;
   mode?: 'ask' | 'plan' | 'autopilot';
-  deliveryMode?: 'immediate' | 'enqueue';
+  deliveryMode?: 'immediate' | 'enqueue' | 'steer';
   images?: string[];
   skillNames?: string[];
   model?: string;
@@ -82,4 +84,10 @@ export interface ProcessMessageResponse extends JsonObject {}
 export interface ProcessOutputResponse {
   content: string;
   format: string;
+}
+
+export interface ProcessOutputQuery {
+  workspace?: string;
+  range?: string;
+  offset?: number;
 }

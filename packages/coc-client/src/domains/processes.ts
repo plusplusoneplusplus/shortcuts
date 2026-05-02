@@ -6,6 +6,7 @@ import type {
   ProcessListResponse,
   ProcessMessageRequest,
   ProcessMessageResponse,
+  ProcessOutputQuery,
   ProcessOutputResponse,
   ProcessSummariesResponse,
 } from '../contracts';
@@ -17,9 +18,22 @@ function serializeListQuery(query?: ProcessListQuery): CocRequestOptions['query'
   if (!query) return undefined;
   return {
     ...query,
-    status: Array.isArray(query.status) ? query.status.join(',') : query.status,
-    exclude: Array.isArray(query.exclude) ? query.exclude.join(',') : query.exclude,
+    status: Array.isArray(query.status) ? serializeArrayQuery(query.status) : query.status,
+    exclude: Array.isArray(query.exclude) ? serializeArrayQuery(query.exclude) : query.exclude,
   } as Record<string, QueryPrimitive>;
+}
+
+function serializeArrayQuery<T>(value: T[]): string | undefined {
+  return value.length > 0 ? value.join(',') : undefined;
+}
+
+function serializeOutputQuery(query?: ProcessOutputQuery): CocRequestOptions['query'] {
+  if (!query) return undefined;
+  return {
+    workspace: query.workspace,
+    range: query.range,
+    offset: query.offset,
+  };
 }
 
 export class ProcessesClient {
@@ -73,8 +87,10 @@ export class ProcessesClient {
     });
   }
 
-  output(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<ProcessOutputResponse> {
-    return this.transport.request<ProcessOutputResponse>(`/processes/${encodePathSegment(processId)}/output`, { query });
+  output(processId: string, query?: ProcessOutputQuery): Promise<ProcessOutputResponse | string> {
+    return this.transport.request<ProcessOutputResponse | string>(`/processes/${encodePathSegment(processId)}/output`, {
+      query: serializeOutputQuery(query),
+    });
   }
 
   streamUrl(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): string {
