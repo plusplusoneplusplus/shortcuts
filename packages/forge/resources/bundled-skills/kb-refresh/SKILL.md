@@ -10,7 +10,11 @@ metadata:
 
 Automatically distill past CoC conversations into improvements for a knowledge-base skill. Each run processes only chats since the last run (timestamp watermark).
 
-Delegates all chat access to the `coc-chat` skill. Read-only on the chat side, write-only on the skill side.
+Prefer the built-in conversation-history tools for chat access:
+- `search_conversations` with no query to browse recent session metadata by workspace and time window.
+- `get_conversation` to fetch selected transcripts by process ID.
+
+Use the `coc-chat` skill only as a fallback for workspace resolution or when the conversation-history tools are unavailable. Read-only on the chat side, write-only on the skill side.
 
 ## Step 1 — Parse Intent
 
@@ -33,13 +37,13 @@ If not found at all, stop and report: **"Skill '<name>' not found."**
 
 ## Step 3 — Resolve Workspace
 
-Use the `coc-chat` skill to resolve the workspace:
+Use `--workspace` directly when the user provides a workspace ID. If the user provides a local path/name or no workspace value, use the `coc-chat` skill only for workspace resolution because `search_conversations` scopes by `workspaceId` but does not resolve paths:
 
 ```bash
 python <coc-chat-skill-dir>/scripts/coc_chat.py resolve-workspace <current-working-directory>
 ```
 
-If `--workspace` was provided, use that value instead. If no workspace matches, run `workspaces` and prompt the user to pick one.
+If no workspace matches, run `workspaces` and prompt the user to pick one.
 
 ## Step 4 — Read Cursor
 
@@ -53,11 +57,21 @@ Print status:
 
 ## Step 5 — Scan Chats
 
-Use the `coc-chat` skill to list completed chats:
+Prefer `search_conversations` in recent-session browse mode. Omit `query`; include `since` only when `lastRunAt` exists. Use `until` if the run needs a fixed upper bound.
 
-```bash
-python <coc-chat-skill-dir>/scripts/coc_chat.py list <wsId> --status completed [--since <lastRunAt>] --limit <limit>
+```json
+{
+  "workspaceId": "<workspaceId>",
+  "since": "<lastRunAt if present>",
+  "until": "<optional ISO upper bound>",
+  "limit": "<limit>",
+  "offset": 0
+}
 ```
+
+Treat only completed chat conversations as refresh candidates. Filter out rows whose `status` is not `completed`; if `type` is present, keep `chat` unless the user explicitly asked for another process type. Skip the current process if it appears in results. Use `activityAt` or `lastEventAt` when reasoning about cursor windows; fall back to `startTime` only if needed.
+
+If the response has `hasMore: true` or the page reaches the requested limit, continue with `offset` pagination until exhausted or until the configured cap is reached.
 
 Print: `"Found N new chats to scan."`
 
@@ -65,15 +79,32 @@ If N is 0: print `"Nothing new since last run."`, advance the cursor (Step 11), 
 
 ## Step 6 — Read Conversations
 
-For each process from Step 5, read the full conversation:
+For each selected process from Step 5, fetch the transcript with `get_conversation`. Start prose-only for lower token cost and clearer durable-knowledge extraction:
+
+```json
+{
+  "processId": "<processId>",
+  "includeToolCalls": false,
+  "maxChars": 50000
+}
+```
+
+Re-call with `includeToolCalls: true` only when the prose references file edits, commands, tool failures, or outputs needed to verify the lesson. Use `fromTurn` and `toTurn` to page long conversations if `truncated` is true and more context is needed.
+
+Skip conversations with no substantive assistant prose, including processes where all assistant turns are pure tool-call-only.
+
+Collect for each: process ID, title, end time or activity time, and the transcript or relevant excerpts.
+
+### Conversation-History Fallback
+
+If `search_conversations` or `get_conversation` is unavailable, or if the tool result reports that recent listing/transcript retrieval is not available, fall back to the existing `coc-chat` commands:
 
 ```bash
+python <coc-chat-skill-dir>/scripts/coc_chat.py list <wsId> --status completed [--since <lastRunAt>] --limit <limit>
 python <coc-chat-skill-dir>/scripts/coc_chat.py conversation <wsId> <processId>
 ```
 
-Skip processes where all assistant turns are pure tool-call-only (no substantive text content).
-
-Collect for each: process ID, title, end time, and full turn content.
+Report that fallback was used so the user understands why the old path ran.
 
 ## Step 7 — Distill
 
