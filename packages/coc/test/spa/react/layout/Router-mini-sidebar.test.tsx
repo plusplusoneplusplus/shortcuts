@@ -110,6 +110,10 @@ describe('Router — no persistent mini sidebar on any tab', () => {
 });
 
 describe('Router activity deep-link handling', () => {
+    /**
+     * Virtual workspaces ('my_work', 'my_life') have always preserved the
+     * `activity` sub-tab. Regression coverage that this is unchanged.
+     */
     it.each(['my_work', 'my_life'])('preserves the activity tab for virtual workspace %s', (workspaceId) => {
         window.location.hash = `#repos/${workspaceId}/activity`;
 
@@ -121,8 +125,39 @@ describe('Router activity deep-link handling', () => {
         expect(dispatchedActions).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
     });
 
-    it('keeps rewriting legacy activity deep-links to chats for normal repos', () => {
+    /**
+     * Regression for the mobile blank-screen bug:
+     *
+     * Previously the Router unconditionally redirected `/activity` →
+     * `/chats` for non-virtual repos. In classic UI mode, `RepoDetail` then
+     * gated the chat surface on `activeSubTab === 'activity'` only, so the
+     * redirected `'chats'` value collapsed the wrapper to `display:none` and
+     * the mobile activity page rendered blank when a user tapped a finished
+     * chat.
+     *
+     * The fix removes the redirect: `/activity` deep-links keep dispatching
+     * `SET_REPO_SUB_TAB tab: 'activity'` for every repo (virtual or not),
+     * and `RepoDetail` accepts both `'activity'` and `'chats'` keys
+     * interchangeably so cross-mode URLs render in either layout mode.
+     */
+    it('preserves activity sub-tab for normal repos (no redirect to chats)', () => {
         window.location.hash = '#repos/feature-repo/activity';
+
+        render(<Router />);
+
+        const dispatchedActions = mockDispatch.mock.calls.map(([action]) => action);
+        expect(dispatchedActions).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'feature-repo' });
+        expect(dispatchedActions).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(dispatchedActions).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+    });
+
+    /**
+     * Both `/activity/<id>` and `/chats/<id>` are valid deep-link aliases
+     * for the chat surface. Each should preserve its sub-tab key as-is and
+     * select the queue task — no implicit redirects either way.
+     */
+    it('preserves chats sub-tab for normal repos when /chats deep-link is used', () => {
+        window.location.hash = '#repos/feature-repo/chats';
 
         render(<Router />);
 
@@ -130,6 +165,24 @@ describe('Router activity deep-link handling', () => {
         expect(dispatchedActions).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'feature-repo' });
         expect(dispatchedActions).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         expect(dispatchedActions).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
+
+    it('selects queue task when /activity/<taskId> deep-link is used', () => {
+        window.location.hash = '#repos/feature-repo/activity/task-42';
+
+        render(<Router />);
+
+        const queueActions = mockQueueDispatch.mock.calls.map(([action]) => action);
+        expect(queueActions).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-42', repoId: 'feature-repo' });
+    });
+
+    it('selects queue task when /chats/<taskId> deep-link is used', () => {
+        window.location.hash = '#repos/feature-repo/chats/task-77';
+
+        render(<Router />);
+
+        const queueActions = mockQueueDispatch.mock.calls.map(([action]) => action);
+        expect(queueActions).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-77', repoId: 'feature-repo' });
     });
 });
 

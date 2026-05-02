@@ -11,6 +11,8 @@ import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
+import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
+import type { UiLayoutMode } from '../types/dashboard';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
@@ -295,7 +297,20 @@ export function buildWorkItemCommitHash(wsId: string, itemId: string, commitHash
 }
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(REPO_SUB_TAB_VALUES);
-const ACTIVITY_VIRTUAL_WORKSPACE_IDS: Set<string> = new Set(['my_work', 'my_life']);
+
+/**
+ * Resolve the canonical chat-tab segment for the current UI layout mode.
+ * Classic mode names the chat surface `'activity'`; dev-workflow names it
+ * `'chats'`. Used by the keyboard-shortcut handler to ensure Alt+A produces
+ * the correct sub-tab key + URL for the user's current layout mode.
+ *
+ * The render path in `RepoDetail` accepts both keys interchangeably so cross-
+ * mode URLs work without needing to redirect or rewrite the hash (which would
+ * race with the asynchronous preferences fetch).
+ */
+export function resolveChatSubTab(mode: UiLayoutMode): RepoSubTab {
+    return mode === 'classic' ? 'activity' : 'chats';
+}
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(SETTINGS_SECTION_VALUES);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
@@ -416,17 +431,6 @@ export function Router() {
                 if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
                     const repoId = decodeURIComponent(parts[1]);
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
-                    // Redirect legacy #repos/:id/activity deep-links to chats
-                    if (parts[2] === 'activity' && !ACTIVITY_VIRTUAL_WORKSPACE_IDS.has(repoId)) {
-                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' as RepoSubTab });
-                        const suffix = parts.slice(3).join('/');
-                        if (suffix) {
-                            const rawId = decodeURIComponent(parts[3]);
-                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
-                        }
-                        location.replace('#repos/' + parts[1] + '/chats' + (suffix ? '/' + suffix : ''));
-                        return;
-                    }
                     // Redirect legacy #repos/:id/workflows deep-links to workflows tab
                     if (parts[2] === 'workflows') {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
@@ -483,11 +487,13 @@ export function Router() {
                     } else if (parts[2] === 'schedules') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
                     }
-                    // Chats deep-link handling — select task when ID present
-                    if (parts[2] === 'chats' && parts[3]) {
+                    // Chats / activity deep-link handling — select task when ID present.
+                    // Both URL segments are aliases for the chat surface (the canonical
+                    // key differs by layout mode). Treat them identically here.
+                    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
-                    } else if (parts[2] === 'chats') {
+                    } else if (parts[2] === 'chats' || parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Tasks deep-link handling — select task when ID present
@@ -668,10 +674,13 @@ export function Router() {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId: state.selectedRepoId });
                     return;
                 }
-                const tab = REPO_TAB_SHORTCUTS[letter];
-                if (tab) {
-                    if (tab === 'terminal' && !isTerminalEnabled()) return;
-                    if (tab === 'notes' && !isNotesEnabled()) return;
+                const rawTab = REPO_TAB_SHORTCUTS[letter];
+                if (rawTab) {
+                    if (rawTab === 'terminal' && !isTerminalEnabled()) return;
+                    if (rawTab === 'notes' && !isNotesEnabled()) return;
+                    // The 'chats' shortcut maps to the chat surface, whose canonical
+                    // sub-tab key differs by layout mode (`'activity'` in classic).
+                    const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab(getUiLayoutMode()) : rawTab;
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;

@@ -88,14 +88,36 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab rendering', () => {
-    it('activity sub-tab renders RepoChatTab in classic layout mode', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'activity' ? undefined : 'none'");
+    it('classic-mode chat wrapper renders RepoChatTab keyed for activity', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-activity`}');
     });
 
-    it('chats sub-tab renders RepoChatTab with mode="chats"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'chats' ? undefined : 'none'");
+    it('dev-workflow chat wrapper renders RepoChatTab with mode="chats"', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-chats`}');
+    });
+
+    /**
+     * Regression: a previous unconditional Router redirect from `/activity` to
+     * `/chats` set `activeSubTab='chats'` even in classic mode, which gated
+     * the activity wrapper on `activeSubTab === 'activity'` only and rendered
+     * blank. The wrapper now accepts BOTH keys interchangeably so cross-mode
+     * URLs (and any race during the async preferences fetch) still render.
+     */
+    it('classic-mode chat wrapper accepts both activity and chats keys', () => {
+        // Anchor on the `RepoChatTab key=...-activity` line and inspect the preceding wrapper.
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<RepoChatTab key={`${ws.id}-activity`}');
+        expect(anchor).toBeGreaterThan(-1);
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 600), anchor);
+        expect(block).toContain("uiLayoutMode === 'classic'");
+        expect(block).toMatch(/activeSubTab === 'activity'.*\|\|.*activeSubTab === 'chats'/s);
+    });
+
+    it('dev-workflow chat wrapper accepts both chats and activity keys', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<RepoChatTab key={`${ws.id}-chats`}');
+        expect(anchor).toBeGreaterThan(-1);
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 600), anchor);
+        expect(block).toContain("uiLayoutMode === 'dev-workflow'");
+        expect(block).toMatch(/activeSubTab === 'chats'.*\|\|.*activeSubTab === 'activity'/s);
     });
 
     it('activity sub-tab uses overflow-hidden layout', () => {

@@ -183,3 +183,4 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
 });
 
 export { expect };
+export type { Page };

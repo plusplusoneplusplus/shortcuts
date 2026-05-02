@@ -20,8 +20,16 @@ describe('mobile repo tab height chain', () => {
     });
 
     it('uses flex-1 min-h-0 for all display-toggled RepoDetail panes', () => {
-        const displayToggledPanePattern = /style=\{\{ display: activeSubTab === '[^']+' \? undefined : 'none' \}\} className="([^"]+)"/g;
-        const paneClasses = Array.from(repoDetailSource.matchAll(displayToggledPanePattern), match => match[1]);
+        // Accept both simple `activeSubTab === 'X'` and compound predicates
+        // like `(activeSubTab === 'activity' || activeSubTab === 'chats')` —
+        // the chat-surface wrapper uses the compound form so cross-mode URLs
+        // still render in either UI layout mode.
+        const simple = /style=\{\{ display: activeSubTab === '[^']+' \? undefined : 'none' \}\} className="([^"]+)"/g;
+        const compound = /style=\{\{ display: \(activeSubTab === '[^']+'(?: \|\| activeSubTab === '[^']+')+\) \? undefined : 'none' \}\} className="([^"]+)"/g;
+        const paneClasses = [
+            ...Array.from(repoDetailSource.matchAll(simple), match => match[1]),
+            ...Array.from(repoDetailSource.matchAll(compound), match => match[1]),
+        ];
 
         expect(paneClasses).toHaveLength(7);
         expect(paneClasses).toEqual(Array(7).fill('flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden'));

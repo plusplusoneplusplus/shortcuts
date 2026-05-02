@@ -33,11 +33,27 @@ function getSnapshot(): UiLayoutMode {
     return currentMode;
 }
 
+/**
+ * Read the current UI layout mode synchronously without subscribing.
+ * Use from non-component code (e.g. the Router hash parser) where a hook
+ * isn't available. Returns the cached mode; the server-fetched value
+ * propagates through useSyncExternalStore once the hook mounts.
+ */
+export function getUiLayoutMode(): UiLayoutMode {
+    return currentMode;
+}
+
 /** @internal Reset module-level state for testing. */
 export function __resetForTesting(): void {
     currentMode = DEFAULT_MODE;
     serverFetched = false;
     listeners.clear();
+}
+
+/** @internal Force a specific mode for testing without API calls. */
+export function __setModeForTesting(mode: UiLayoutMode): void {
+    currentMode = mode;
+    notifyAll();
 }
 
 function setSharedMode(next: UiLayoutMode): void {

@@ -563,13 +563,22 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
+                        {/*
+                          The chat surface is rendered under either `activeSubTab === 'activity'`
+                          (classic) or `activeSubTab === 'chats'` (dev-workflow). Accepting both
+                          keys here makes the activity content render even when the URL form
+                          doesn't match the user's current layout mode (e.g. classic-mode user
+                          opening a `/chats/<id>` link, or a deep-link arriving before the async
+                          preferences fetch settles). Without this, the hidden display:none
+                          wrapper collapsed the chat detail to 0×0 → blank screen.
+                        */}
                         {uiLayoutMode === 'classic' && (
-                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
                         {uiLayoutMode === 'dev-workflow' && (
-                            <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            <div style={{ display: (activeSubTab === 'chats' || activeSubTab === 'activity') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                             </div>
                         )}
