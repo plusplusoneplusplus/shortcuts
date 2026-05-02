@@ -1,45 +1,35 @@
 /**
  * Typed API client for workflow CRUD endpoints.
- * Uses raw fetch() + getApiBase() for full HTTP method support.
+ * Delegates to the coc-client WorkflowClient via getSpaCocClient().
  */
 
-import { getApiBase } from '../../utils/config';
-import type { PipelineInfo } from '../../repos/repoGrouping';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import type {
+    WorkflowDefinition,
+    GenerateWorkflowResponse,
+    RunWorkflowResponse,
+} from '@plusplusoneplusplus/coc-client';
 
-function workflowsUrl(workspaceId: string): string {
-    return `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/workflows`;
-}
+export type GenerateResult = GenerateWorkflowResponse;
+export type RefineResult = GenerateWorkflowResponse;
 
-function workflowUrl(workspaceId: string, name: string): string {
-    return `${workflowsUrl(workspaceId)}/${encodeURIComponent(name)}`;
-}
-
-function workflowContentUrl(workspaceId: string, name: string): string {
-    return `${workflowUrl(workspaceId, name)}/content`;
-}
-
-function workflowRefineUrl(workspaceId: string): string {
-    return `${workflowsUrl(workspaceId)}/refine`;
-}
-
-export async function fetchWorkflows(workspaceId: string): Promise<PipelineInfo[]> {
-    const res = await fetch(`${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/summary`);
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+export async function fetchWorkflows(workspaceId: string): Promise<WorkflowDefinition[]> {
+    try {
+        return await getSpaCocClient().workflow.list(workspaceId);
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to fetch workflows'));
     }
-    const data = await res.json();
-    return data.workflows || [];
 }
 
 export async function fetchWorkflowContent(
     workspaceId: string,
     pipelineName: string
 ): Promise<{ content: string; path: string }> {
-    const res = await fetch(workflowContentUrl(workspaceId, pipelineName));
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+    try {
+        return await getSpaCocClient().workflow.content(workspaceId, pipelineName);
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to fetch workflow content'));
     }
-    return res.json();
 }
 
 export async function saveWorkflowContent(
@@ -47,24 +37,12 @@ export async function saveWorkflowContent(
     pipelineName: string,
     content: string
 ): Promise<void> {
-    const res = await fetch(workflowContentUrl(workspaceId, pipelineName), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+    try {
+        await getSpaCocClient().workflow.saveContent(workspaceId, pipelineName, content);
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to save workflow'));
     }
 }
-
-export interface GenerateResult {
-    yaml: string;
-    valid: boolean;
-    validationError?: string;
-    suggestedName?: string;
-}
-
-export type RefineResult = GenerateResult;
 
 export async function generateWorkflow(
     workspaceId: string,
@@ -72,21 +50,15 @@ export async function generateWorkflow(
     description: string,
     signal?: AbortSignal
 ): Promise<GenerateResult> {
-    const body: Record<string, string> = { description };
-    if (name) {
-        body.name = name;
+    try {
+        return await getSpaCocClient().workflow.generate(
+            workspaceId,
+            { description, name },
+            { signal },
+        );
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to generate workflow'));
     }
-    const res = await fetch(`${workflowsUrl(workspaceId)}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-    });
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `API error: ${res.status} ${res.statusText}`);
-    }
-    return res.json();
 }
 
 export async function refineWorkflow(
@@ -97,21 +69,15 @@ export async function refineWorkflow(
     model?: string,
     signal?: AbortSignal
 ): Promise<RefineResult> {
-    const body: Record<string, string> = { instruction, currentYaml };
-    if (model !== undefined) {
-        body.model = model;
+    try {
+        return await getSpaCocClient().workflow.refine(
+            workspaceId,
+            { instruction, currentYaml, model },
+            { signal },
+        );
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to refine workflow'));
     }
-    const res = await fetch(workflowRefineUrl(workspaceId), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-    });
-    if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || `API error: ${res.status} ${res.statusText}`);
-    }
-    return res.json();
 }
 
 export async function createWorkflow(
@@ -120,20 +86,10 @@ export async function createWorkflow(
     template?: string,
     content?: string
 ): Promise<void> {
-    const body: Record<string, string> = { name };
-    if (template !== undefined) {
-        body.template = template;
-    }
-    if (content !== undefined) {
-        body.content = content;
-    }
-    const res = await fetch(workflowsUrl(workspaceId), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+    try {
+        await getSpaCocClient().workflow.create(workspaceId, { name, template, content });
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to create workflow'));
     }
 }
 
@@ -141,26 +97,20 @@ export async function deleteWorkflow(
     workspaceId: string,
     pipelineName: string
 ): Promise<void> {
-    const res = await fetch(workflowUrl(workspaceId, pipelineName), {
-        method: 'DELETE',
-    });
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+    try {
+        await getSpaCocClient().workflow.delete(workspaceId, pipelineName);
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to delete workflow'));
     }
 }
 
 export async function runWorkflow(
     workspaceId: string,
     pipelineName: string
-): Promise<{ task: any }> {
-    const res = await fetch(`${workflowUrl(workspaceId, pipelineName)}/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `API error: ${res.status} ${res.statusText}`);
+): Promise<RunWorkflowResponse> {
+    try {
+        return await getSpaCocClient().workflow.run(workspaceId, pipelineName);
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to run workflow'));
     }
-    return res.json();
 }

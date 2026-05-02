@@ -7,7 +7,7 @@ import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/c
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import { TaskDefs } from '../../../../../tasks/task-types';
-import type { PipelineInfo } from '../../repos/repoGrouping';
+import type { WorkflowDefinition } from '@plusplusoneplusplus/coc-client';
 
 type ActionKind = 'workflow' | 'prompt' | 'script' | 'notes-auto-commit';
 type SchedulePreset = 'every-30-minutes' | 'hourly' | 'daily-9' | 'weekdays-9' | 'custom-interval' | 'custom-cron';
@@ -218,7 +218,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(initialTemplateId);
     const [params, setParams] = useState<Record<string, string>>(initialValues?.params ? { ...initialValues.params } : applyTemplateParams(initialTemplateId));
-    const [pipelines, setPipelines] = useState<PipelineInfo[]>([]);
+    const [pipelines, setPipelines] = useState<WorkflowDefinition[]>([]);
     const [pipelinesLoading, setPipelinesLoading] = useState(false);
     const [manualPipeline, setManualPipeline] = useState(false);
     const [advancedOpen, setAdvancedOpen] = useState(hasAdvancedValues(initialValues, workspaceId, initialPreset));

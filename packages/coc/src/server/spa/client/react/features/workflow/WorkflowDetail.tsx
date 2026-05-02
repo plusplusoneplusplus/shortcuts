@@ -73,7 +73,7 @@ export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
         setRunning(true);
         try {
             const data = await runWorkflow(workspaceId, pipeline.name);
-            const taskIdShort = data.task?.id ? data.task.id.slice(0, 8) : '';
+            const taskIdShort = data.taskId ? data.taskId.slice(0, 8) : '';
             addToast(`Workflow queued${taskIdShort ? ` (${taskIdShort})` : ''}`, 'success');
             onRunSuccess?.();
         } catch (err: any) {
