@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -29,12 +29,18 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     ),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const repositoryServiceMocks = vi.hoisted(() => ({
+    browseWorkspaceFolders: vi.fn(),
+    registerWorkspace: vi.fn(),
+    updateWorkspace: vi.fn(),
+    getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string, networkFallback?: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        return networkFallback ?? fallback;
+    }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => '/api',
+vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({
@@ -48,7 +54,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/diff/colorUtils
 }));
 
 import { AddRepoDialog } from '../../../../../src/server/spa/client/react/repos/AddRepoDialog';
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -107,9 +112,18 @@ function getSubmitBtn() {
 
 describe('AddRepoDialog', () => {
     beforeEach(() => {
-        vi.restoreAllMocks();
-        // Default: global fetch resolves 200
-        vi.stubGlobal('fetch', vi.fn());
+        vi.clearAllMocks();
+        repositoryServiceMocks.registerWorkspace.mockResolvedValue({});
+        repositoryServiceMocks.updateWorkspace.mockResolvedValue({ workspace: {} });
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({
+            path: '',
+            parent: null,
+            entries: [],
+        });
+        repositoryServiceMocks.getRepositoryApiErrorMessage.mockImplementation((error: unknown, fallback: string, networkFallback?: string) => {
+            if (error instanceof Error && error.message) return error.message;
+            return networkFallback ?? fallback;
+        });
     });
 
     // =======================================================================
@@ -183,7 +197,7 @@ describe('AddRepoDialog', () => {
 
             const msg = screen.getByTestId('repo-validation');
             expect(msg.textContent).toContain('Path is required');
-            expect(fetch).not.toHaveBeenCalled();
+            expect(repositoryServiceMocks.registerWorkspace).not.toHaveBeenCalled();
         });
     });
 
@@ -196,10 +210,7 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
 
             renderDialog({ onSuccess, onClose });
 
@@ -210,12 +221,8 @@ describe('AddRepoDialog', () => {
                 fireEvent.click(getSubmitBtn());
             });
 
-            expect(fetch).toHaveBeenCalledTimes(1);
-            const [url, opts] = (fetch as unknown as Mock).mock.calls[0];
-            expect(url).toBe('/api/workspaces');
-            expect(opts.method).toBe('POST');
-
-            const body = JSON.parse(opts.body);
+            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
+            const body = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
             expect(body.name).toBe('My Repo');
             expect(body.rootPath).toBe('/my/repo');
             expect(body.id).toMatch(/^ws-/);
@@ -225,10 +232,7 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
 
             renderDialog({ onSuccess, onClose });
 
@@ -243,10 +247,7 @@ describe('AddRepoDialog', () => {
         });
 
         it('derives name from path leaf when name is empty', async () => {
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
 
             renderDialog();
 
@@ -256,15 +257,12 @@ describe('AddRepoDialog', () => {
                 fireEvent.click(getSubmitBtn());
             });
 
-            const body = JSON.parse((fetch as unknown as Mock).mock.calls[0][1].body);
+            const body = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
             expect(body.name).toBe('my-project');
         });
 
         it('resolves auto color before submitting', async () => {
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
 
             renderDialog();
 
@@ -274,7 +272,7 @@ describe('AddRepoDialog', () => {
                 fireEvent.click(getSubmitBtn());
             });
 
-            const body = JSON.parse((fetch as unknown as Mock).mock.calls[0][1].body);
+            const body = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
             // resolveAutoColor mock returns first palette entry: '#0078d4'
             expect(body.color).toBe('#0078d4');
         });
@@ -291,7 +289,7 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({ ok: true });
+            repositoryServiceMocks.updateWorkspace.mockResolvedValueOnce({ workspace: repo.workspace });
 
             renderDialog({ editId: 'ws-edit', repos: [repo], onSuccess, onClose });
 
@@ -301,12 +299,9 @@ describe('AddRepoDialog', () => {
                 fireEvent.click(getSubmitBtn());
             });
 
-            expect(fetch).toHaveBeenCalledTimes(1);
-            const [url, opts] = (fetch as unknown as Mock).mock.calls[0];
-            expect(url).toBe('/api/workspaces/ws-edit');
-            expect(opts.method).toBe('PATCH');
-
-            const body = JSON.parse(opts.body);
+            expect(repositoryServiceMocks.updateWorkspace).toHaveBeenCalledTimes(1);
+            const [workspaceId, body] = repositoryServiceMocks.updateWorkspace.mock.calls[0];
+            expect(workspaceId).toBe('ws-edit');
             expect(body.name).toBe('New Name');
             expect(body.color).toBeDefined();
         });
@@ -315,7 +310,7 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({ ok: true });
+            repositoryServiceMocks.updateWorkspace.mockResolvedValueOnce({ workspace: repo.workspace });
 
             renderDialog({ editId: 'ws-edit', repos: [repo], onSuccess, onClose });
 
@@ -337,10 +332,7 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: false,
-                json: async () => ({ error: 'Workspace already exists' }),
-            });
+            repositoryServiceMocks.registerWorkspace.mockRejectedValueOnce(new Error('Workspace already exists'));
 
             renderDialog({ onSuccess, onClose });
 
@@ -359,10 +351,8 @@ describe('AddRepoDialog', () => {
         });
 
         it('shows generic error when POST response body has no error field', async () => {
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: false,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.getRepositoryApiErrorMessage.mockReturnValueOnce('Failed to add repo');
+            repositoryServiceMocks.registerWorkspace.mockRejectedValueOnce({});
 
             renderDialog();
 
@@ -380,7 +370,8 @@ describe('AddRepoDialog', () => {
             const onSuccess = vi.fn();
             const onClose = vi.fn();
 
-            (fetch as unknown as Mock).mockRejectedValueOnce(new Error('Network failure'));
+            repositoryServiceMocks.getRepositoryApiErrorMessage.mockReturnValueOnce('Network error');
+            repositoryServiceMocks.registerWorkspace.mockRejectedValueOnce(new Error('Network failure'));
 
             renderDialog({ onSuccess, onClose });
 
@@ -410,10 +401,7 @@ describe('AddRepoDialog', () => {
                 remoteUrl: 'https://github.com/user/repo.git',
             });
 
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ remoteUrl: 'https://github.com/user/repo.git' }),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({ remoteUrl: 'https://github.com/user/repo.git' });
 
             renderDialog({ repos: [existingRepo] });
 
@@ -426,7 +414,7 @@ describe('AddRepoDialog', () => {
             await waitFor(() => {
                 const msg = screen.queryByTestId('repo-validation');
                 // The clone message or onSuccess/onClose should have been triggered
-                expect(fetch).toHaveBeenCalledTimes(1);
+                expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
             });
         });
     });
@@ -448,7 +436,7 @@ describe('AddRepoDialog', () => {
 
     describe('filesystem browser', () => {
         it('opens browser panel when Browse is clicked', async () => {
-            (fetchApi as Mock).mockResolvedValueOnce({
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
                 path: '/home',
                 parent: '/',
                 entries: [{ name: 'projects', isGitRepo: false }],
@@ -464,7 +452,7 @@ describe('AddRepoDialog', () => {
         });
 
         it('displays directory entries from API response', async () => {
-            (fetchApi as Mock).mockResolvedValueOnce({
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
                 path: '/home/user',
                 parent: '/home',
                 entries: [
@@ -484,7 +472,7 @@ describe('AddRepoDialog', () => {
         });
 
         it('selects current browser path and populates name from path leaf', async () => {
-            (fetchApi as Mock).mockResolvedValueOnce({
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
                 path: '/home/user/my-project',
                 parent: '/home/user',
                 entries: [],
@@ -505,7 +493,7 @@ describe('AddRepoDialog', () => {
         });
 
         it('shows error message when browse API fails', async () => {
-            (fetchApi as Mock).mockRejectedValueOnce(new Error('Permission denied'));
+            repositoryServiceMocks.browseWorkspaceFolders.mockRejectedValueOnce(new Error('Permission denied'));
 
             renderDialog();
 
@@ -540,10 +528,7 @@ describe('AddRepoDialog', () => {
         });
 
         it('submits with selected color instead of auto', async () => {
-            (fetch as unknown as Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({}),
-            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
 
             renderDialog();
 
@@ -558,7 +543,7 @@ describe('AddRepoDialog', () => {
                 fireEvent.click(getSubmitBtn());
             });
 
-            const body = JSON.parse((fetch as unknown as Mock).mock.calls[0][1].body);
+            const body = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
             expect(body.color).toBe('#107c10');
         });
     });

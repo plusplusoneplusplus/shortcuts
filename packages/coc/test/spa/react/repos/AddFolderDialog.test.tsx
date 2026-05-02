@@ -42,11 +42,24 @@ const DISCOVERED_REPOS = {
 };
 
 function ok(body: any) {
-    return { ok: true, status: 200, json: () => Promise.resolve(body) };
+    return {
+        ok: true,
+        status: 200,
+        headers: { get: (key: string) => key.toLowerCase() === 'content-type' ? 'application/json' : null },
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+    };
 }
 
 function err(status: number, body: any) {
-    return { ok: false, status, statusText: 'Error', json: () => Promise.resolve(body) };
+    return {
+        ok: false,
+        status,
+        statusText: 'Error',
+        headers: { get: (key: string) => key.toLowerCase() === 'content-type' ? 'application/json' : null },
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+    };
 }
 
 function networkError(): never {
@@ -306,7 +319,7 @@ describe('AddFolderDialog', () => {
         it('shows scan error when discover API fails', async () => {
             mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/workspaces/discover')) {
-                    return Promise.reject(new Error('Scan failed'));
+                    return Promise.resolve(err(500, { error: 'Scan failed' }));
                 }
                 return defaultFetchRouter(url);
             });

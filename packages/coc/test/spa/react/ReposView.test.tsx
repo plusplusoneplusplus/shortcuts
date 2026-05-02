@@ -27,6 +27,22 @@ import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRep
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
 import { RepoDetail } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
+const repositoryServiceMocks = vi.hoisted(() => ({
+    browseWorkspaceFolders: vi.fn(),
+    getGlobalPreferences: vi.fn(),
+    getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string, networkFallback?: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        return networkFallback ?? fallback;
+    }),
+    registerWorkspace: vi.fn(),
+    updateGlobalPreferences: vi.fn(),
+    updateWorkspace: vi.fn(),
+}));
+
+vi.mock('../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
+}));
+
 // Mock ReposContext so ReposView renders without making real API calls
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
@@ -86,6 +102,19 @@ function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
 if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = vi.fn();
 }
+
+beforeEach(() => {
+    vi.clearAllMocks();
+    repositoryServiceMocks.getGlobalPreferences.mockResolvedValue({});
+    repositoryServiceMocks.updateGlobalPreferences.mockResolvedValue({});
+    repositoryServiceMocks.registerWorkspace.mockResolvedValue({});
+    repositoryServiceMocks.updateWorkspace.mockResolvedValue({ workspace: {} });
+    repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({ path: '', parent: null, entries: [] });
+    repositoryServiceMocks.getRepositoryApiErrorMessage.mockImplementation((error: unknown, fallback: string, networkFallback?: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        return networkFallback ?? fallback;
+    });
+});
 
 // ============================================================================
 // repoGrouping.ts utility tests
@@ -477,9 +506,12 @@ describe('ReposGrid', () => {
 
 describe('AddRepoDialog', () => {
     beforeEach(() => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
+        repositoryServiceMocks.registerWorkspace.mockResolvedValue({});
+        repositoryServiceMocks.updateWorkspace.mockResolvedValue({ workspace: {} });
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({
+            path: '',
+            parent: null,
+            entries: [],
         });
     });
 
@@ -520,44 +552,29 @@ describe('AddRepoDialog', () => {
     });
 
     it('auto-detects name from Windows-style path when alias is empty', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-        });
-        global.fetch = fetchMock as any;
-
         render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
         fireEvent.change(screen.getByTestId('repo-path'), { target: { value: 'D:\\projects\\my-repo' } });
         fireEvent.click(screen.getByText('Add Repo'));
 
-        // AppProvider no longer fetches /preferences; only the form submit fetch happens.
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-        const [, init] = fetchMock.mock.calls[0];
-        const requestBody = JSON.parse(String(init?.body ?? '{}'));
+        await waitFor(() => expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1));
+        const requestBody = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
         expect(requestBody.name).toBe('my-repo');
     });
 
     it('joins Windows paths correctly when navigating browser entries', async () => {
-        const fetchMock = vi.fn()
+        repositoryServiceMocks.browseWorkspaceFolders
             .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    path: 'D:\\projects',
-                    parent: 'D:\\',
-                    entries: [{ name: 'my-repo', isGitRepo: true }],
-                    drives: ['C:\\', 'D:\\'],
-                }),
+                path: 'D:\\projects',
+                parent: 'D:\\',
+                entries: [{ name: 'my-repo', isGitRepo: true }],
+                drives: ['C:\\', 'D:\\'],
             })
             .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    path: 'D:\\projects\\my-repo',
-                    parent: 'D:\\projects',
-                    entries: [],
-                    drives: ['C:\\', 'D:\\'],
-                }),
+                path: 'D:\\projects\\my-repo',
+                parent: 'D:\\projects',
+                entries: [],
+                drives: ['C:\\', 'D:\\'],
             });
-        global.fetch = fetchMock as any;
 
         render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
         fireEvent.change(screen.getByTestId('repo-path'), { target: { value: 'D:\\projects' } });
@@ -567,43 +584,35 @@ describe('AddRepoDialog', () => {
         const entry = await screen.findByTestId('path-browser-entry');
         fireEvent.click(entry);
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        const [secondUrl] = fetchMock.mock.calls[1];
-        expect(String(secondUrl)).toContain(encodeURIComponent('D:\\projects\\my-repo'));
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2));
+        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, 'D:\\projects\\my-repo');
     });
 
     it('renders browse roots and navigates to WSL home from the browser', async () => {
         const wslHome = String.raw`\\wsl$\Ubuntu-24.04\home\georgeqiao`;
-        const fetchMock = vi.fn()
+        repositoryServiceMocks.browseWorkspaceFolders
             .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    path: 'C:\\Users\\georgeqiao',
-                    parent: 'C:\\Users',
-                    entries: [],
-                    drives: ['C:\\', 'Q:\\'],
-                    browseRoots: [
-                        { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
-                        { label: 'C:\\', path: 'C:\\' },
-                        { label: 'Q:\\', path: 'Q:\\' },
-                    ],
-                }),
+                path: 'C:\\Users\\georgeqiao',
+                parent: 'C:\\Users',
+                entries: [],
+                drives: ['C:\\', 'Q:\\'],
+                browseRoots: [
+                    { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
+                    { label: 'C:\\', path: 'C:\\' },
+                    { label: 'Q:\\', path: 'Q:\\' },
+                ],
             })
             .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    path: wslHome,
-                    parent: String.raw`\\wsl$\Ubuntu-24.04\home`,
-                    entries: [{ name: 'Storage-BOSS', isGitRepo: true }],
-                    drives: ['C:\\', 'Q:\\'],
-                    browseRoots: [
-                        { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
-                        { label: 'C:\\', path: 'C:\\' },
-                        { label: 'Q:\\', path: 'Q:\\' },
-                    ],
-                }),
+                path: wslHome,
+                parent: String.raw`\\wsl$\Ubuntu-24.04\home`,
+                entries: [{ name: 'Storage-BOSS', isGitRepo: true }],
+                drives: ['C:\\', 'Q:\\'],
+                browseRoots: [
+                    { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
+                    { label: 'C:\\', path: 'C:\\' },
+                    { label: 'Q:\\', path: 'Q:\\' },
+                ],
             });
-        global.fetch = fetchMock as any;
 
         render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
         fireEvent.click(screen.getByTestId('browse-btn'));
@@ -611,9 +620,8 @@ describe('AddRepoDialog', () => {
         const wslButton = await screen.findByRole('button', { name: 'WSL Home (Ubuntu-24.04)' });
         fireEvent.click(wslButton);
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        const [secondUrl] = fetchMock.mock.calls[1];
-        expect(String(secondUrl)).toContain(encodeURIComponent(wslHome));
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2));
+        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, wslHome);
     });
 });
 
@@ -893,7 +901,7 @@ describe('ReposContext — process event throttling', () => {
         // Should NOT call fetchRepos() directly in the process-event handler
         const onMessageBlock = source.substring(
             source.indexOf('onMessage: useCallback'),
-            source.indexOf('], [refreshPipelinesForWorkspace, fetchRepos])'),
+            source.indexOf('], [refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos])'),
         );
         // The old pattern was a bare fetchRepos() call; now it should be inside setTimeout
         const processBlock = onMessageBlock.substring(onMessageBlock.indexOf('process-added'));
@@ -914,20 +922,19 @@ describe('ReposContext — process event throttling', () => {
         expect(source).toContain('selectedRepoIdRef.current = appState.selectedRepoId');
         // Inside fetchRepos body, selectedRepoIdRef.current should be used instead of state.selectedRepoId
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
-        // Find the `, [dispatch]);` that closes fetchRepos (skip earlier occurrences like handleBack)
-        const fetchReposEnd = source.indexOf('}, [dispatch]);', fetchReposStart);
+        const fetchReposEnd = source.indexOf('}, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);', fetchReposStart);
         const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd + 15);
         expect(fetchReposBody).toContain('selectedRepoIdRef.current');
         // fetchRepos dependency array should NOT include state.selectedRepoId
         expect(fetchReposBody).not.toContain(', state.selectedRepoId');
     });
 
-    it('fetchRepos useCallback depends only on dispatch', () => {
-        expect(source).toContain('}, [dispatch]);');
+    it('fetchRepos useCallback does not depend on selectedRepoId', () => {
         // Verify no selectedRepoId in the dependency
         const depsMatch = source.match(/const fetchRepos = useCallback\(async[\s\S]*?\}, \[([^\]]*)\]\)/);
         expect(depsMatch).not.toBeNull();
-        expect(depsMatch![1].trim()).toBe('dispatch');
+        expect(depsMatch![1]).toContain('dispatch');
+        expect(depsMatch![1]).not.toContain('selectedRepoId');
     });
 });
 
@@ -949,7 +956,7 @@ describe('ReposContext — async git-info', () => {
 
     it('calls setLoading(false) and setRepos before git-info fetches (phase 1 renders first)', () => {
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
-        const fetchReposEnd = source.indexOf('}, [dispatch]);', fetchReposStart);
+        const fetchReposEnd = source.indexOf('}, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);', fetchReposStart);
         const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd);
         // setRepos and setLoading(false) should appear before the phase-2 git-info loop
         const setReposIdx = fetchReposBody.indexOf('setRepos(enriched)');
@@ -984,13 +991,13 @@ describe('ReposContext — async git-info', () => {
         const phase2Idx = source.indexOf('Phase 2');
         expect(phase2Idx).toBeGreaterThan(-1);
         const phase2Body = source.substring(phase2Idx, phase2Idx + 800);
-        expect(phase2Body).toContain('/git-info/batch');
+        expect(phase2Body).toContain('getWorkspaceGitInfoBatch');
     });
 
     it('uses AbortController for batch git-info requests', () => {
         expect(source).toContain('gitInfoAbortRef');
         expect(source).toContain('new AbortController()');
-        expect(source).toContain('signal: abortController.signal');
+        expect(source).toContain('getWorkspaceGitInfoBatch(wsIds, abortController.signal)');
     });
 
     it('handles git-changed WebSocket events', () => {
@@ -1001,7 +1008,7 @@ describe('ReposContext — async git-info', () => {
     it('has a targeted refreshGitInfoForWorkspace callback', () => {
         expect(source).toContain('refreshGitInfoForWorkspace');
         // Should use the per-workspace git-info endpoint for targeted refresh
-        expect(source).toContain('/git-info');
+        expect(source).toContain('getWorkspaceGitInfo(wsId)');
     });
 });
 

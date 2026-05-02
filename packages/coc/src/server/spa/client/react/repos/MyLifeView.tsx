@@ -12,11 +12,11 @@ import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
-import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../contexts/AppContext';
 import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
+import { generateMyLifeSummary, syncMyLife } from './repositoryService';
 
 export const MY_LIFE_WORKSPACE_ID = 'my_life';
 
@@ -52,11 +52,7 @@ export function MyLifeView() {
         setSyncing(true);
         setStatusMsg(null);
         try {
-            const result = await fetchApi('/my-life/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
+            const result = await syncMyLife();
             const count = (result.goalCount ?? 0) + (result.entryCount ?? 0);
             setStatusMsg(count > 0 ? `Synced ${count} items` : 'No new items');
             setTimeout(() => setStatusMsg(null), 4000);
@@ -71,9 +67,7 @@ export function MyLifeView() {
         setGenerating(true);
         setStatusMsg(null);
         try {
-            const result = await fetchApi('/my-life/generate-summary', {
-                method: 'POST',
-            });
+            const result = await generateMyLifeSummary();
             if (result.path) {
                 setStatusMsg(`Summary saved to ${result.path}`);
                 location.hash = `#repos/${MY_LIFE_WORKSPACE_ID}/notes/${encodeURIComponent(result.path)}`;

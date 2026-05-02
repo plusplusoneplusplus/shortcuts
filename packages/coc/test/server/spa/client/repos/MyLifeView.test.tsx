@@ -20,8 +20,13 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const repositoryServiceMocks = vi.hoisted(() => ({
+    syncMyLife: vi.fn(),
+    generateMyLifeSummary: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
@@ -78,9 +83,12 @@ function renderView() {
 
 describe('MyLifeView', () => {
     beforeEach(() => {
+        vi.clearAllMocks();
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockDispatch.mockClear();
+        repositoryServiceMocks.syncMyLife.mockResolvedValue({ goalCount: 0, entryCount: 0 });
+        repositoryServiceMocks.generateMyLifeSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
         location.hash = '';
     });
 
@@ -199,6 +207,29 @@ describe('MyLifeView', () => {
 
     it('exports MY_LIFE_WORKSPACE_ID constant', () => {
         expect(MY_LIFE_WORKSPACE_ID).toBe('my_life');
+    });
+
+    describe('actions', () => {
+        it('syncs My Life through the typed repository service', async () => {
+            repositoryServiceMocks.syncMyLife.mockResolvedValueOnce({ goalCount: 2, entryCount: 1 });
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-life-sync-btn'));
+
+            expect(repositoryServiceMocks.syncMyLife).toHaveBeenCalledTimes(1);
+            expect(await screen.findByText('Synced 3 items')).toBeTruthy();
+        });
+
+        it('generates a summary through the typed repository service', async () => {
+            repositoryServiceMocks.generateMyLifeSummary.mockResolvedValueOnce({ path: 'Weekly/2026-W18.md' });
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-life-generate-btn'));
+
+            expect(repositoryServiceMocks.generateMyLifeSummary).toHaveBeenCalledTimes(1);
+            expect(await screen.findByText('Summary saved to Weekly/2026-W18.md')).toBeTruthy();
+            expect(location.hash).toBe('#repos/my_life/notes/Weekly%2F2026-W18.md');
+        });
     });
 
     describe('git tab', () => {

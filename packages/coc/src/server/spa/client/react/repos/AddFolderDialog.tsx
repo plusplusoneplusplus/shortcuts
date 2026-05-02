@@ -8,9 +8,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button } from '../ui';
-import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
 import { hashString } from './repoGrouping';
+import {
+    browseWorkspaceFolders,
+    discoverWorkspaces,
+    getRepositoryApiErrorMessage,
+    registerWorkspace,
+} from './repositoryService';
 
 interface BrowserEntry {
     name: string;
@@ -94,7 +98,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         setBrowserLoading(true);
         setBrowserError(null);
         try {
-            const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dir)}`) as BrowserResponse;
+            const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
@@ -114,13 +118,12 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         setScanning(true);
         setScanError(null);
         try {
-            const data = await fetchApi(`/workspaces/discover?path=${encodeURIComponent(browserPath)}`) as { repos: DiscoveredRepo[] };
+            const data = await discoverWorkspaces(browserPath) as { repos: DiscoveredRepo[] };
             setRepos(data.repos);
             setChecked(new Set(data.repos.map(r => r.path)));
             setPhase('checklist');
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Failed to scan folder';
-            setScanError(msg);
+        } catch (error: unknown) {
+            setScanError(getRepositoryApiErrorMessage(error, 'Failed to scan folder'));
         }
         setScanning(false);
     }, [browserPath]);
@@ -154,21 +157,13 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setAddingIdx(i + 1);
             const repo = selected[i];
             try {
-                const res = await fetch(getApiBase() + '/workspaces', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: 'ws-' + hashString(repo.path),
-                        name: repo.name,
-                        rootPath: repo.path,
-                    }),
+                await registerWorkspace({
+                    id: 'ws-' + hashString(repo.path),
+                    name: repo.name,
+                    rootPath: repo.path,
                 });
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({ error: 'Failed' }));
-                    newErrors.push(`${repo.name}: ${(body as any).error || 'Failed'}`);
-                }
-            } catch {
-                newErrors.push(`${repo.name}: Network error`);
+            } catch (error) {
+                newErrors.push(`${repo.name}: ${getRepositoryApiErrorMessage(error, 'Failed', 'Network error')}`);
             }
         }
 
@@ -411,7 +406,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
                     {addedCount > 0 && (
                         <span className="text-green-700 dark:text-green-400">
-                            ✓ Added {addedCount} repository{addedCount !== 1 ? 'ies' : 'y'}.
+                            ✓ Added {addedCount} repositor{addedCount !== 1 ? 'ies' : 'y'}.
                         </span>
                     )}
                 </div>

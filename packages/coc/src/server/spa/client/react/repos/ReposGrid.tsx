@@ -7,7 +7,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
-import { fetchApi } from '../hooks/useApi';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { Button, cn } from '../ui';
@@ -17,7 +16,7 @@ import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
 import { groupReposByRemote, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
-import { getApiBase } from '../utils/config';
+import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
 
 const GROUP_DRAG_MIME = 'application/x-git-group-drag';
 const GROUP_EXPANDED_KEY = 'coc-git-group-expanded-state';
@@ -63,7 +62,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     // Load persisted group order from global preferences
     useEffect(() => {
         let cancelled = false;
-        fetchApi('/preferences').then((prefs: any) => {
+        getGlobalPreferences().then((prefs: any) => {
             if (!cancelled && Array.isArray(prefs?.gitGroupOrder)) {
                 setGroupOrder(prefs.gitGroupOrder);
             }
@@ -187,11 +186,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
         setGroupOrder(newOrder);
 
         // Persist (fire-and-forget)
-        fetch(getApiBase() + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gitGroupOrder: newOrder }),
-        }).catch(() => {});
+        updateGlobalPreferences({ gitGroupOrder: newOrder }).catch(() => {});
     }, [groups]);
 
     // ── Footer stats ───────────────────────────────────────────────────

@@ -5,11 +5,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
-import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
 import { hashString, normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
 import { resolveAutoColor } from '../features/git/diff/colorUtils';
+import {
+    browseWorkspaceFolders,
+    getRepositoryApiErrorMessage,
+    registerWorkspace,
+    updateWorkspace,
+} from './repositoryService';
 
 const AUTO_VALUE = 'auto';
 
@@ -117,7 +121,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         setBrowserLoading(true);
         setBrowserError(null);
         try {
-            const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dir)}`) as BrowserResponse;
+            const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
@@ -165,29 +169,18 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
         try {
             if (isEdit && editId) {
-                await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(editId), {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name.trim(), color: resolvedColor }),
-                });
+                await updateWorkspace(editId, { name: name.trim(), color: resolvedColor });
             } else {
                 const wsName = name.trim() || getPathLeaf(trimmedPath) || 'repo';
                 const id = 'ws-' + hashString(trimmedPath);
-                const res = await fetch(getApiBase() + '/workspaces', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, name: wsName, rootPath: trimmedPath, color: resolvedColor }),
+                const created = await registerWorkspace({
+                    id,
+                    name: wsName,
+                    rootPath: trimmedPath,
+                    color: resolvedColor,
                 });
 
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({ error: 'Failed' }));
-                    setValidation({ msg: body.error || 'Failed to add repo', ok: false });
-                    setSubmitting(false);
-                    return;
-                }
-
                 // Clone detection
-                const created = await res.json().catch(() => null);
                 if (created?.remoteUrl) {
                     const normalized = normalizeRemoteUrl(created.remoteUrl);
                     const clones = repos.filter(r => {
@@ -206,8 +199,15 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
             onSuccess();
             onClose();
-        } catch {
-            setValidation({ msg: 'Network error', ok: false });
+        } catch (error) {
+            setValidation({
+                msg: getRepositoryApiErrorMessage(
+                    error,
+                    isEdit ? 'Failed to update repo' : 'Failed to add repo',
+                    'Network error',
+                ),
+                ok: false,
+            });
         }
         setSubmitting(false);
     };

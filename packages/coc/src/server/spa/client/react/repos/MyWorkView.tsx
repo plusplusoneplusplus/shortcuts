@@ -12,11 +12,11 @@ import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
-import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../contexts/AppContext';
 import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
+import { generateMyWorkSummary, syncMyWork } from './repositoryService';
 
 export const MY_WORK_WORKSPACE_ID = 'my_work';
 
@@ -52,11 +52,7 @@ export function MyWorkView() {
         setSyncing(true);
         setStatusMsg(null);
         try {
-            const result = await fetchApi('/my-work/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
+            const result = await syncMyWork();
             const count = (result.actionItemCount ?? 0) + (result.followUpCount ?? 0);
             setStatusMsg(count > 0 ? `Synced ${count} items` : 'No new items');
             setTimeout(() => setStatusMsg(null), 4000);
@@ -71,9 +67,7 @@ export function MyWorkView() {
         setGenerating(true);
         setStatusMsg(null);
         try {
-            const result = await fetchApi('/my-work/generate-summary', {
-                method: 'POST',
-            });
+            const result = await generateMyWorkSummary();
             if (result.path) {
                 setStatusMsg(`Summary saved to ${result.path}`);
                 location.hash = `#repos/${MY_WORK_WORKSPACE_ID}/notes/${encodeURIComponent(result.path)}`;

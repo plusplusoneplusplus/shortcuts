@@ -13,17 +13,29 @@ import { useRef, useLayoutEffect, type ReactNode } from 'react';
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
     useWebSocket: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
-}));
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     computeUnseenCount: vi.fn(() => 0),
 }));
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', () => ({
+    fetchUnseenCount: vi.fn().mockResolvedValue(0),
+}));
 
-import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
+const repositoryServiceMocks = vi.hoisted(() => ({
+    getWorkspaceGitInfo: vi.fn(),
+    getWorkspaceGitInfoBatch: vi.fn(),
+    getWorkspaceSummary: vi.fn(),
+    listProcessSummaries: vi.fn(),
+    listQueueRepos: vi.fn(),
+    listWorkspaces: vi.fn(),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
+}));
+
 import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/contexts/ReposContext';
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
@@ -122,6 +134,15 @@ function SelectedRepoConsumer() {
 }
 
 describe('ReposContext', () => {
+    beforeEach(() => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([]);
+        repositoryServiceMocks.listProcessSummaries.mockResolvedValue({ summaries: [], total: 0, limit: 5000, offset: 0 });
+        repositoryServiceMocks.getWorkspaceSummary.mockResolvedValue({ workflows: [], tasks: null });
+        repositoryServiceMocks.getWorkspaceGitInfoBatch.mockResolvedValue({ results: {} });
+        repositoryServiceMocks.getWorkspaceGitInfo.mockResolvedValue({ branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
+        repositoryServiceMocks.listQueueRepos.mockResolvedValue({ repos: [] });
+    });
+
     it('throws when useRepos is used outside ReposProvider', () => {
         // Suppress React error boundary console noise
         const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -136,15 +157,13 @@ describe('ReposContext', () => {
     });
 
     it('starts in loading state', () => {
-        (fetchApi as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+        repositoryServiceMocks.listWorkspaces.mockReturnValue(new Promise(() => {}));
         render(<ProviderWithConsumer />);
         expect(screen.getByTestId('loading')).toBeTruthy();
     });
 
     it('fetches and provides repo list on mount', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1', 'Repo One')])) // /workspaces
-            .mockResolvedValue(null); // subsequent calls (workflows, tasks, processes, queue)
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1', 'Repo One')]).workspaces);
 
         render(<ProviderWithConsumer />);
         await waitFor(() => {
@@ -154,27 +173,19 @@ describe('ReposContext', () => {
     });
 
     it('fetches a single global /processes/summaries instead of per-workspace calls', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')])) // /workspaces
-            .mockResolvedValue(null); // subsequent calls
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')]).workspaces);
 
         render(<ProviderWithConsumer />);
         await waitFor(() => {
             expect(screen.getByTestId('repo-ws-1')).toBeTruthy();
         });
 
-        const calls = (fetchApi as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => c[0]);
-        const processCalls = calls.filter((url: string) => url?.includes('/processes'));
-        expect(processCalls.length).toBe(1);
-        expect(processCalls[0]).toBe('/processes/summaries?limit=5000');
-        // No per-workspace process calls
-        expect(processCalls.some((url: string) => url?.includes('workspace='))).toBe(false);
+        expect(repositoryServiceMocks.listProcessSummaries).toHaveBeenCalledTimes(1);
+        expect(repositoryServiceMocks.listProcessSummaries).toHaveBeenCalledWith(5000);
     });
 
     it('shows empty list when workspaces API returns empty array', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([]))
-            .mockResolvedValue(null);
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([]).workspaces);
 
         render(<ProviderWithConsumer />);
         await waitFor(() => {
@@ -183,7 +194,7 @@ describe('ReposContext', () => {
     });
 
     it('handles fetch error gracefully (empty repo list)', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network fail'));
+        repositoryServiceMocks.listWorkspaces.mockRejectedValueOnce(new Error('Network fail'));
         render(<ProviderWithConsumer />);
         await waitFor(() => {
             expect(screen.getByTestId('empty')).toBeTruthy();
@@ -191,12 +202,10 @@ describe('ReposContext', () => {
     });
 
     it('excludes virtual workspaces from repo list', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
                 makeWorkspace('real-ws'),
                 { ...makeWorkspace('virtual-ws'), virtual: true },
-            ]))
-            .mockResolvedValue(null);
+            ]).workspaces);
 
         render(<ProviderWithConsumer />);
         await waitFor(() => {
@@ -206,9 +215,7 @@ describe('ReposContext', () => {
     });
 
     it('exposes refreshUnseenCounts as a function', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')]))
-            .mockResolvedValue(null);
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')]).workspaces);
 
         render(<ProviderWithConsumer />);
         await waitFor(() => {
@@ -222,12 +229,10 @@ describe('ReposContext', () => {
         // (which excludes virtual workspaces) to decide whether to clear selection.
         // Virtual workspaces like my_work were never in that list, so every
         // refresh would dispatch SET_SELECTED_REPO(null).
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
                 makeWorkspace('real-ws'),
                 { ...makeWorkspace('my_work', 'My Work'), virtual: true },
-            ]))
-            .mockResolvedValue(null);
+            ]).workspaces);
 
         render(<ProviderWithPreselectedRepo repoId="my_work" />);
 
@@ -242,12 +247,10 @@ describe('ReposContext', () => {
 
     it('clears selection when a non-virtual repo is removed', async () => {
         // The guard should still clear selection for repos that genuinely disappear
-        (fetchApi as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(makeWorkspacesResponse([
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
                 makeWorkspace('remaining-ws'),
                 // 'removed-ws' is NOT in the response — it was unregistered
-            ]))
-            .mockResolvedValue(null);
+            ]).workspaces);
 
         render(<ProviderWithPreselectedRepo repoId="removed-ws" />);
 

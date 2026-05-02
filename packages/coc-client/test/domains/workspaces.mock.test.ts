@@ -35,6 +35,13 @@ describe('WorkspacesClient mock server contract', () => {
   it('serializes discovery query parameters and git info paths with null branches', async () => {
     mock = await startMockServer();
     const discovery = { repos: [{ path: 'C:\\repos\\repo-a', name: 'repo-a' }] };
+    const browse = {
+      path: 'C:\\repos with spaces',
+      parent: 'C:\\',
+      entries: [{ name: 'repo-a', type: 'directory', isGitRepo: true }],
+      drives: ['C:\\'],
+    };
+    const summary = { workflows: [{ name: 'review' }], tasks: { name: 'tasks' } };
     const gitInfo: GitInfoResponse = {
       branch: null,
       dirty: false,
@@ -42,14 +49,23 @@ describe('WorkspacesClient mock server contract', () => {
       remoteUrl: null,
     };
     mock.on('GET', '/api/workspaces/discover', { body: discovery });
+    mock.on('GET', '/api/fs/browse', { body: browse });
+    mock.on('GET', '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/summary', { body: summary });
     mock.on('GET', '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/git-info', { body: gitInfo });
+    mock.on('POST', '/api/git-info/batch', { body: { results: { 'repo/a space%雪': gitInfo } } });
     const client = createClient(mock);
 
     await expect(client.workspaces.discover('C:\\repos with spaces')).resolves.toEqual(discovery);
+    await expect(client.workspaces.browseFolders('C:\\repos with spaces', { showHidden: true })).resolves.toEqual(browse);
+    await expect(client.workspaces.summary('repo/a space%雪', { folder: 'flows', showArchived: true })).resolves.toEqual(summary);
     await expect(client.workspaces.gitInfo('repo/a space%雪')).resolves.toEqual(gitInfo);
+    await expect(client.workspaces.gitInfoBatch(['repo/a space%雪'])).resolves.toEqual({ results: { 'repo/a space%雪': gitInfo } });
 
     expectGetRequest(mock.requests[0], '/api/workspaces/discover', { path: 'C:\\repos with spaces' });
-    expectGetRequest(mock.requests[1], '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/git-info');
+    expectGetRequest(mock.requests[1], '/api/fs/browse', { path: 'C:\\repos with spaces', showHidden: 'true' });
+    expectGetRequest(mock.requests[2], '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/summary', { folder: 'flows', showArchived: 'true' });
+    expectGetRequest(mock.requests[3], '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/git-info');
+    expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', { workspaceIds: ['repo/a space%雪'] });
   });
 
   it('sends register, update, delete, and history deletion shapes exactly', async () => {
@@ -136,6 +152,39 @@ describe('WorkspacesClient mock server contract', () => {
     expect(mock.requests.map(request => request.path)).toEqual(ids.map(id => (
       `/api/workspaces/${encodeURIComponent(id)}/git-info`
     )));
+  });
+
+  it('calls virtual workspace sync and summary routes', async () => {
+    mock = await startMockServer();
+    mock.on('POST', '/api/my-work/sync', {
+      body: { synced: true, date: 'May 2', actionItemCount: 1, followUpCount: 2 },
+    });
+    mock.on('POST', '/api/my-work/generate-summary', {
+      body: { generated: true, path: 'Weekly/2026-W18.md', completedCount: 1, inProgressCount: 2, waitingOnCount: 3 },
+    });
+    mock.on('POST', '/api/my-life/sync', {
+      body: { synced: true, date: 'May 2', goalCount: 1, entryCount: 2 },
+    });
+    mock.on('POST', '/api/my-life/generate-summary', {
+      body: { generated: true, path: 'Weekly/2026-W18.md', completedCount: 1, inProgressCount: 2, journalCount: 3 },
+    });
+    const client = createClient(mock);
+
+    await expect(client.repos.syncMyWork({ actionItems: ['Ship'], followUps: { Team: ['Review'] } })).resolves.toMatchObject({ actionItemCount: 1 });
+    await expect(client.repos.generateMyWorkSummary()).resolves.toMatchObject({ waitingOnCount: 3 });
+    await expect(client.repos.syncMyLife({ goals: ['Read'], entries: { Journal: ['Note'] } })).resolves.toMatchObject({ goalCount: 1 });
+    await expect(client.repos.generateMyLifeSummary()).resolves.toMatchObject({ journalCount: 3 });
+
+    expectJsonRequest(mock.requests[0], 'POST', '/api/my-work/sync', {
+      actionItems: ['Ship'],
+      followUps: { Team: ['Review'] },
+    });
+    expectEmptyJsonRequest(mock.requests[1], 'POST', '/api/my-work/generate-summary');
+    expectJsonRequest(mock.requests[2], 'POST', '/api/my-life/sync', {
+      goals: ['Read'],
+      entries: { Journal: ['Note'] },
+    });
+    expectEmptyJsonRequest(mock.requests[3], 'POST', '/api/my-life/generate-summary');
   });
 
   it('propagates workspace error envelopes as CocApiError instances', async () => {
@@ -233,6 +282,21 @@ function expectEmptyRequest(
     method,
     path,
     query,
+    rawBody: '',
+    body: undefined,
+  });
+  expect(request.headers['content-type']).toBeUndefined();
+}
+
+function expectEmptyJsonRequest(
+  request: RecordedRequest,
+  method: string,
+  path: string,
+): void {
+  expect(request).toMatchObject({
+    method,
+    path,
+    query: {},
     rawBody: '',
     body: undefined,
   });

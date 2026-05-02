@@ -20,8 +20,13 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const repositoryServiceMocks = vi.hoisted(() => ({
+    syncMyWork: vi.fn(),
+    generateMyWorkSummary: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
@@ -84,9 +89,12 @@ function renderView() {
 
 describe('MyWorkView', () => {
     beforeEach(() => {
+        vi.clearAllMocks();
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockDispatch.mockClear();
+        repositoryServiceMocks.syncMyWork.mockResolvedValue({ actionItemCount: 0, followUpCount: 0 });
+        repositoryServiceMocks.generateMyWorkSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
         location.hash = '';
     });
 
@@ -233,6 +241,29 @@ describe('MyWorkView', () => {
             renderView();
             const notesView = screen.getByTestId('notes-view');
             expect(notesView.getAttribute('data-has-toggle')).toBe('false');
+        });
+    });
+
+    describe('actions', () => {
+        it('syncs My Work through the typed repository service', async () => {
+            repositoryServiceMocks.syncMyWork.mockResolvedValueOnce({ actionItemCount: 2, followUpCount: 1 });
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-work-sync-btn'));
+
+            expect(repositoryServiceMocks.syncMyWork).toHaveBeenCalledTimes(1);
+            expect(await screen.findByText('Synced 3 items')).toBeTruthy();
+        });
+
+        it('generates a summary through the typed repository service', async () => {
+            repositoryServiceMocks.generateMyWorkSummary.mockResolvedValueOnce({ path: 'Weekly/2026-W18.md' });
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-work-generate-btn'));
+
+            expect(repositoryServiceMocks.generateMyWorkSummary).toHaveBeenCalledTimes(1);
+            expect(await screen.findByText('Summary saved to Weekly/2026-W18.md')).toBeTruthy();
+            expect(location.hash).toBe('#repos/my_work/notes/Weekly%2F2026-W18.md');
         });
     });
 

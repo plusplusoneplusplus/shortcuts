@@ -16,10 +16,17 @@ import {
 } from 'react';
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
-import { fetchApi } from '../hooks/useApi';
 import { fetchUnseenCount } from '../hooks/preferences/seenStateApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
+import {
+    getWorkspaceGitInfo,
+    getWorkspaceGitInfoBatch,
+    getWorkspaceSummary,
+    listProcessSummaries,
+    listQueueRepos,
+    listWorkspaces,
+} from '../repos/repositoryService';
 
 import type { RepoData } from '../repos/repoGrouping';
 
@@ -59,7 +66,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)
     const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {
         try {
-            const queueReposRes = await fetchApi('/queue/repos');
+            const queueReposRes = await listQueueRepos();
             const queueRepos = queueReposRes?.repos || [];
             for (const qr of queueRepos) {
                 const match = enriched.find(r => r.workspace.rootPath === qr.rootPath);
@@ -98,11 +105,10 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const fetchRepos = useCallback(async () => {
         try {
             // Fetch workspaces and all process summaries in parallel
-            const [wsRes, processRes] = await Promise.all([
-                fetchApi('/workspaces'),
-                fetchApi('/processes/summaries?limit=5000').catch(() => null),
+            const [workspaces, processRes] = await Promise.all([
+                listWorkspaces(),
+                listProcessSummaries(5000).catch(() => null),
             ]);
-            const workspaces = wsRes?.workspaces || wsRes || [];
             if (!Array.isArray(workspaces)) {
                 setRepos([]);
                 setLoading(false);
@@ -122,7 +128,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Per-workspace: fetch summary only; derive process stats from global data
             const enriched: RepoData[] = await Promise.all(
                 visibleWorkspaces.map(async (ws: any) => {
-                    const summaryRes = await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/summary`).catch(() => null);
+                    const summaryRes = await getWorkspaceSummary(ws.id).catch(() => null);
 
                     // Derive process stats by filtering global summaries
                     const wsProcesses = allSummaries.filter((p: any) => p.workspaceId === ws.id);
@@ -137,7 +143,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                         workspace: ws,
                         gitInfo: { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },
                         gitInfoLoading: true,
-                        workflows: summaryRes?.workflows || [],
+                        workflows: (summaryRes?.workflows || []) as any[],
                         stats,
                         taskCount: countTasks(summaryRes?.tasks ?? null),
                     };
@@ -167,12 +173,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             gitInfoAbortRef.current = abortController;
 
             const wsIds = enriched.map(r => r.workspace.id);
-            fetchApi('/git-info/batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workspaceIds: wsIds }),
-                signal: abortController.signal,
-            }).then((data: any) => {
+            getWorkspaceGitInfoBatch(wsIds, abortController.signal).then((data: any) => {
                 if (abortController.signal.aborted) return;
                 const results = data?.results || {};
                 setRepos(prev => prev.map(r => ({
@@ -180,21 +181,21 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     gitInfo: results[r.workspace.id] || undefined,
                     gitInfoLoading: false,
                 })));
-            }).catch((err) => {
-                if (err.name === 'AbortError') return;
+            }).catch((err: unknown) => {
+                if (err instanceof Error && err.name === 'AbortError') return;
                 setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
             });
         } catch {
             setRepos([]);
             setLoading(false);
         }
-    }, [dispatch]);
+    }, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);
 
     // Targeted workflow refresh for a single workspace
     const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
         try {
-            const summaryRes = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/summary`);
-            const updated = summaryRes?.workflows ?? [];
+            const summaryRes = await getWorkspaceSummary(wsId);
+            const updated = (summaryRes?.workflows ?? []) as any[];
             setRepos(prev => prev.map(r =>
                 r.workspace.id === wsId ? { ...r, workflows: updated } : r
             ));
@@ -203,7 +204,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     // Targeted git-info refresh for a single workspace (triggered by WebSocket)
     const refreshGitInfoForWorkspace = useCallback((wsId: string) => {
-        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/git-info`)
+        getWorkspaceGitInfo(wsId)
             .catch(() => null)
             .then((gitInfo: any) => {
                 setRepos(prev => prev.map(r =>

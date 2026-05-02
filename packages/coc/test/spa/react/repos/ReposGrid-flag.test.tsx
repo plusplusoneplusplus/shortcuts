@@ -7,6 +7,22 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
     SHOW_WELCOME_TUTORIAL: false,
 }));
 
+const repositoryServiceMocks = vi.hoisted(() => ({
+    browseWorkspaceFolders: vi.fn().mockResolvedValue({ path: '', parent: null, entries: [] }),
+    getGlobalPreferences: vi.fn().mockResolvedValue({}),
+    getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string, networkFallback?: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        return networkFallback ?? fallback;
+    }),
+    registerWorkspace: vi.fn().mockResolvedValue({}),
+    updateGlobalPreferences: vi.fn().mockResolvedValue({}),
+    updateWorkspace: vi.fn().mockResolvedValue({ workspace: {} }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    ...repositoryServiceMocks,
+}));
+
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
@@ -25,15 +41,12 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 afterEach(() => {
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
 });
 
 describe('ReposGrid with SHOW_WELCOME_TUTORIAL = false', () => {
     it('shows ReposEmptyState instead of FirstStepsCard when flag is false and no repos', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-        }));
         render(
             <Wrap>
                 <ReposGrid repos={[]} onRefresh={vi.fn()} />
@@ -48,10 +61,6 @@ describe('ReposGrid with SHOW_WELCOME_TUTORIAL = false', () => {
     });
 
     it('CTA button click opens AddRepoDialog', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-        }));
         render(
             <Wrap>
                 <ReposGrid repos={[]} onRefresh={vi.fn()} />

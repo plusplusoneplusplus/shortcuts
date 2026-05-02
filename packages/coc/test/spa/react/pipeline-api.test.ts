@@ -485,8 +485,8 @@ describe('ReposContext WebSocket integration', () => {
         expect(reposContextSource).toContain("import { useWebSocket }");
     });
 
-    it('uses fetchApi for summary endpoint instead of fetchWorkflows', () => {
-        expect(reposContextSource).toContain('/summary');
+    it('uses the typed repository service for workspace summaries instead of fetchWorkflows', () => {
+        expect(reposContextSource).toContain('getWorkspaceSummary');
     });
 
     it('handles workflows-changed message type', () => {
