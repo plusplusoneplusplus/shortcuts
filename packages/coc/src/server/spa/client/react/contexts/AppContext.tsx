@@ -6,7 +6,7 @@
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
 // ── Sidebar persistence ────────────────────────────────────────────────
@@ -334,11 +334,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'TOGGLE_REPOS_SIDEBAR': {
             const next = !state.reposSidebarCollapsed;
             try { localStorage.setItem(SIDEBAR_KEY, String(next)); } catch { /* SSR / test */ }
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reposSidebarCollapsed: next }),
-            }).catch(() => {});
+            getSpaCocClient().preferences.patchGlobal({ reposSidebarCollapsed: next }).catch(() => {});
             return { ...state, reposSidebarCollapsed: next };
         }
         case 'SET_REPOS_SIDEBAR_COLLAPSED':
@@ -574,8 +570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
         }
         const wsId = state.workspace;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences')
-            .then(r => r.ok ? r.json() as Promise<any> : {})
+        getSpaCocClient().preferences.getRepo(wsId)
             .then((prefs: any) => {
                 const sf: string = prefs.activityFilters?.statusFilter ?? '__all';
                 const tf: string = prefs.activityFilters?.typeFilter ?? '__all';
@@ -604,11 +599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (filterSaveRef.current) clearTimeout(filterSaveRef.current);
         filterSaveRef.current = setTimeout(() => {
-            fetch(getApiBase() + '/workspaces/' + encodeURIComponent(state.workspace) + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ activityFilters: { statusFilter: state.statusFilter, typeFilter: state.typeFilter } }),
-            }).catch(() => {});
+            getSpaCocClient().preferences.patchRepo(state.workspace, { activityFilters: { statusFilter: state.statusFilter, typeFilter: state.typeFilter } } as any).catch(() => {});
         }, 500);
 
         return () => { if (filterSaveRef.current) clearTimeout(filterSaveRef.current); };
@@ -624,11 +615,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (workspaceSaveRef.current) clearTimeout(workspaceSaveRef.current);
         workspaceSaveRef.current = setTimeout(() => {
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ activityFilters: { workspace: state.workspace } }),
-            }).catch(() => {});
+            getSpaCocClient().preferences.patchGlobal({ activityFilters: { workspace: state.workspace } } as any).catch(() => {});
         }, 500);
 
         return () => { if (workspaceSaveRef.current) clearTimeout(workspaceSaveRef.current); };
@@ -648,11 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (myWorkFilterSaveRef.current) clearTimeout(myWorkFilterSaveRef.current);
         myWorkFilterSaveRef.current = setTimeout(() => {
-            fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ activityFilters: { myWorkExcludedTypes: cur } }),
-            }).catch(() => {});
+            getSpaCocClient().preferences.patchGlobal({ activityFilters: { myWorkExcludedTypes: cur } } as any).catch(() => {});
         }, 500);
 
         return () => { if (myWorkFilterSaveRef.current) clearTimeout(myWorkFilterSaveRef.current); };

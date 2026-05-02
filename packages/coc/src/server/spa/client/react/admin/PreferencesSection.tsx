@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
@@ -29,12 +29,10 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
     const loadPreferences = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/preferences');
-            if (!res.ok) throw new Error('Failed to load preferences');
-            const data: UserPreferences = await res.json();
+            const data = await getSpaCocClient().preferences.getGlobal() as UserPreferences;
             setPrefs(data);
-        } catch (err: any) {
-            onError(err.message || 'Failed to load preferences');
+        } catch (err: unknown) {
+            onError(getSpaCocClientErrorMessage(err, 'Failed to load preferences'));
         } finally {
             setLoading(false);
         }
@@ -47,20 +45,11 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
     const patchPreference = useCallback(async (patch: Partial<UserPreferences>) => {
         setSaving(true);
         try {
-            const res = await fetch(getApiBase() + '/preferences', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(patch),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error((body as any).error || 'Save failed');
-            }
-            const updated: UserPreferences = await res.json();
+            const updated = await getSpaCocClient().preferences.patchGlobal(patch as any) as UserPreferences;
             setPrefs(updated);
             onSuccess('Preference saved');
-        } catch (err: any) {
-            onError(err.message || 'Save failed');
+        } catch (err: unknown) {
+            onError(getSpaCocClientErrorMessage(err, 'Save failed'));
         } finally {
             setSaving(false);
         }

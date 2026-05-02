@@ -3,7 +3,7 @@
  * Returns ModelInfo[] for interface compatibility with consumers.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 export interface ModelInfo {
     id: string;
@@ -53,16 +53,12 @@ export function useModels(): { models: ModelInfo[]; loading: boolean; error: str
     const load = useCallback(() => {
         setLoading(true);
         setError(null);
-        fetch(getApiBase() + '/models')
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
+        getSpaCocClient().models.list()
             .then((data: unknown) => {
                 const arr = Array.isArray(data) ? data.map(mapModel) : [];
                 setModels(arr);
             })
-            .catch((e) => { setError(e?.message ?? 'Failed to load models'); })
+            .catch((e: unknown) => { setError(getSpaCocClientErrorMessage(e, 'Failed to load models')); })
             .finally(() => setLoading(false));
     }, []);
 
@@ -95,12 +91,7 @@ export function useModelConfig(): {
         try {
             const updated = localModels.map(m => m.id === modelId ? { ...m, enabled } : m);
             const enabledModels = updated.filter(m => m.id === modelId ? enabled : m.enabled).map(m => m.id);
-            const res = await fetch(getApiBase() + '/models/enabled', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabledModels }),
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await getSpaCocClient().models.setEnabled(enabledModels);
         } catch {
             // Revert optimistic update on error
             setLocalModels(models);

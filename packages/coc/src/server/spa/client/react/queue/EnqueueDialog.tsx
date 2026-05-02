@@ -15,7 +15,6 @@ import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { AttachmentPreviews } from '../ui/AttachmentPreviews';
 import { filterGitMetadataFolders } from '../tasks/hooks/useTaskTree';
-import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
 import { SlashCommandMenu } from '../features/chat/SlashCommandMenu';
@@ -394,11 +393,7 @@ export function EnqueueDialog() {
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ skillName: sk }),
-                    }).catch(() => { /* ignore */ });
+                    getSpaCocClient().preferences.recordSkillUsage(workspaceId, sk).catch(() => { /* ignore */ });
                 }
             }
             clearAttachments();

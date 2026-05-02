@@ -3,6 +3,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+    preferences: {
+        getGlobal: vi.fn().mockResolvedValue({}),
+        patchGlobal: vi.fn().mockResolvedValue({}),
+        getRepo: vi.fn().mockResolvedValue({}),
+        patchRepo: vi.fn().mockResolvedValue({}),
+    },
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ preferences: mocks.preferences }),
+}));
+
 import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
@@ -399,7 +413,7 @@ describe('AppContext reducer', () => {
     describe('repos sidebar', () => {
         beforeEach(() => {
             localStorage.clear();
-            globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+            mocks.preferences.patchGlobal.mockReset().mockResolvedValue({});
         });
         afterEach(() => {
             vi.restoreAllMocks();
@@ -427,15 +441,11 @@ describe('AppContext reducer', () => {
             expect(localStorage.getItem(SIDEBAR_KEY)).toBe('false');
         });
 
-        it('TOGGLE_REPOS_SIDEBAR fires PATCH to server', () => {
+        it('TOGGLE_REPOS_SIDEBAR patches preferences via cocClient', () => {
             const state = makeState({ reposSidebarCollapsed: false });
             appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
-            expect(globalThis.fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/preferences'),
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ reposSidebarCollapsed: true }),
-                }),
+            expect(mocks.preferences.patchGlobal).toHaveBeenCalledWith(
+                expect.objectContaining({ reposSidebarCollapsed: true }),
             );
         });
 

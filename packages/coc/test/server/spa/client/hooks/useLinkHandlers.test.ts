@@ -5,28 +5,30 @@
  *
  * Covers:
  * - Default state (all enabled)
- * - Fetching server config on mount
- * - setHandlerEnabled() updates state and PATCHes preferences
+ * - Fetching server config on mount via cocClient
+ * - setHandlerEnabled() updates state and patches preferences
  * - getLinkHandlersConfig() returns current snapshot for non-React code
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
-vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => '/api',
+const mocks = vi.hoisted(() => ({
+    preferences: {
+        getGlobal: vi.fn(),
+        patchGlobal: vi.fn(),
+    },
 }));
 
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ preferences: mocks.preferences }),
+}));
 
 describe('useLinkHandlers', () => {
     beforeEach(async () => {
         vi.resetModules();
-        mockFetch.mockReset();
-        vi.doMock('../../../../../src/server/spa/client/react/utils/config', () => ({
-            getApiBase: () => '/api',
-        }));
+        mocks.preferences.getGlobal.mockReset();
+        mocks.preferences.patchGlobal.mockReset();
     });
 
     afterEach(() => {
@@ -34,10 +36,7 @@ describe('useLinkHandlers', () => {
     });
 
     it('starts with all built-in handlers enabled', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ linkHandlers: {} }),
-        });
+        mocks.preferences.getGlobal.mockResolvedValueOnce({ linkHandlers: {} });
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
         );
@@ -51,10 +50,7 @@ describe('useLinkHandlers', () => {
     });
 
     it('loads server config on mount and preserves enabled defaults for missing handlers', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ linkHandlers: { teams: false } }),
-        });
+        mocks.preferences.getGlobal.mockResolvedValueOnce({ linkHandlers: { teams: false } });
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
         );
@@ -68,10 +64,7 @@ describe('useLinkHandlers', () => {
     });
 
     it('does not crash when server returns no linkHandlers field', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({}),
-        });
+        mocks.preferences.getGlobal.mockResolvedValueOnce({});
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
         );
@@ -85,10 +78,9 @@ describe('useLinkHandlers', () => {
         });
     });
 
-    it('setHandlerEnabled updates config and calls PATCH', async () => {
-        mockFetch
-            .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // GET preferences
-            .mockResolvedValueOnce({ ok: true, json: async () => ({}) }); // PATCH preferences
+    it('setHandlerEnabled updates config and calls patchGlobal', async () => {
+        mocks.preferences.getGlobal.mockResolvedValueOnce({});
+        mocks.preferences.patchGlobal.mockResolvedValueOnce({});
 
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
@@ -103,19 +95,15 @@ describe('useLinkHandlers', () => {
         const [config] = result.current;
         expect(config.teams).toBe(true);
 
-        // Should have PATCHed preferences
-        const patchCall = mockFetch.mock.calls.find(
-            c => c[1]?.method === 'PATCH'
-        );
-        expect(patchCall).toBeDefined();
-        const patchBody = JSON.parse(patchCall![1].body);
-        expect(patchBody.linkHandlers.teams).toBe(true);
+        // Should have patched preferences
+        expect(mocks.preferences.patchGlobal).toHaveBeenCalled();
+        const patchArg = mocks.preferences.patchGlobal.mock.calls[0][0];
+        expect(patchArg.linkHandlers.teams).toBe(true);
     });
 
     it('setHandlerEnabled can disable a handler', async () => {
-        mockFetch
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ linkHandlers: { teams: true } }) })
-            .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        mocks.preferences.getGlobal.mockResolvedValueOnce({ linkHandlers: { teams: true } });
+        mocks.preferences.patchGlobal.mockResolvedValueOnce({});
 
         const { useLinkHandlers } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'
@@ -137,10 +125,8 @@ describe('useLinkHandlers', () => {
 describe('getLinkHandlersConfig', () => {
     beforeEach(async () => {
         vi.resetModules();
-        mockFetch.mockReset();
-        vi.doMock('../../../../../src/server/spa/client/react/utils/config', () => ({
-            getApiBase: () => '/api',
-        }));
+        mocks.preferences.getGlobal.mockReset();
+        mocks.preferences.patchGlobal.mockReset();
     });
 
     afterEach(() => {
@@ -148,9 +134,8 @@ describe('getLinkHandlersConfig', () => {
     });
 
     it('returns the current module-level config snapshot', async () => {
-        mockFetch
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ linkHandlers: { onenote: true } }) })
-            .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        mocks.preferences.getGlobal.mockResolvedValueOnce({ linkHandlers: { onenote: true } });
+        mocks.preferences.patchGlobal.mockResolvedValueOnce({});
 
         const { useLinkHandlers, getLinkHandlersConfig } = await import(
             '../../../../../src/server/spa/client/react/hooks/useLinkHandlers'

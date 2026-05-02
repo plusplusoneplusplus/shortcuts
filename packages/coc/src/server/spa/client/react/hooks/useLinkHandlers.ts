@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 import { DEFAULT_LINK_HANDLERS_CONFIG } from '../utils/link-handler';
 
 // ── Module-level shared store ────────────────────────────────────────────────
@@ -52,11 +52,7 @@ function setSharedHandlerEnabled(name: string, enabled: boolean): void {
     const next = { ...currentConfig, [name]: enabled };
     currentConfig = next;
     notifyAll();
-    fetch(getApiBase() + '/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ linkHandlers: next }),
-    }).catch(() => {});
+    getSpaCocClient().preferences.patchGlobal({ linkHandlers: next } as any).catch(() => {});
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -72,10 +68,8 @@ export function useLinkHandlers(): [
         serverFetched = true;
         (async () => {
             try {
-                const res = await fetch(getApiBase() + '/preferences');
-                if (!res.ok) return;
-                const prefs = await res.json();
-                const serverHandlers = prefs.linkHandlers;
+                const prefs = await getSpaCocClient().preferences.getGlobal();
+                const serverHandlers = (prefs as any).linkHandlers;
                 if (typeof serverHandlers === 'object' && serverHandlers !== null) {
                     currentConfig = {
                         ...DEFAULT_LINK_HANDLERS_CONFIG,

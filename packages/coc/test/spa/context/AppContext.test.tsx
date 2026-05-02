@@ -5,6 +5,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        preferences: {
+            getGlobal: vi.fn().mockResolvedValue({}),
+            patchGlobal: vi.fn().mockResolvedValue({}),
+            getRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: vi.fn().mockResolvedValue({}),
+        },
+    }),
+}));
+
 import { AppProvider, useApp, appReducer, type AppContextState, type AppAction, type OnboardingProgress } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 // ── Reducer unit tests ────────────────────────────────────────────────────────

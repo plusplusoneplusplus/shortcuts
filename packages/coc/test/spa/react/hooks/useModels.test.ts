@@ -1,40 +1,41 @@
 /**
- * Tests for useModels — fetches model list from /models API.
+ * Tests for useModels — fetches model list from /models API via typed cocClient.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { useModels } from '../../../../src/server/spa/client/react/hooks/useModels';
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { useModels, useModelConfig } from '../../../../src/server/spa/client/react/hooks/useModels';
 
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => '/api',
+const mocks = vi.hoisted(() => ({
+    models: {
+        list: vi.fn(),
+        setEnabled: vi.fn(),
+    },
 }));
 
-const fetchMock = vi.fn();
-global.fetch = fetchMock as any;
-
-function makeModelResponse(models: any[]) {
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>();
     return {
-        ok: true,
-        json: async () => models,
-    } as Response;
-}
+        ...actual,
+        getSpaCocClient: () => ({ models: mocks.models }),
+    };
+});
 
 describe('useModels', () => {
-    beforeEach(() => { fetchMock.mockReset(); });
+    beforeEach(() => { mocks.models.list.mockReset(); mocks.models.setEnabled.mockReset(); });
     afterEach(() => { vi.clearAllMocks(); });
 
     it('starts with loading=true and empty models', () => {
-        fetchMock.mockReturnValue(new Promise(() => {})); // never resolves
+        mocks.models.list.mockReturnValue(new Promise(() => {})); // never resolves
         const { result } = renderHook(() => useModels());
         expect(result.current.loading).toBe(true);
         expect(result.current.models).toEqual([]);
     });
 
-    it('fetches models from GET /api/models on mount', async () => {
-        fetchMock.mockResolvedValue(makeModelResponse([]));
+    it('fetches models via cocClient.models.list() on mount', async () => {
+        mocks.models.list.mockResolvedValue([]);
         renderHook(() => useModels());
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/models'));
+        await waitFor(() => expect(mocks.models.list).toHaveBeenCalled());
     });
 
     it('returns parsed model list and loading=false after fetch', async () => {
@@ -46,7 +47,7 @@ describe('useModels', () => {
                 capabilities: { limits: { max_context_window_tokens: 8192 } },
             },
         ];
-        fetchMock.mockResolvedValue(makeModelResponse(rawModels));
+        mocks.models.list.mockResolvedValue(rawModels);
         const { result } = renderHook(() => useModels());
 
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -63,8 +64,8 @@ describe('useModels', () => {
         });
     });
 
-    it('returns empty models on non-ok response and sets error', async () => {
-        fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => [] } as Response);
+    it('returns empty models on rejection and sets error', async () => {
+        mocks.models.list.mockRejectedValue(new Error('HTTP 500'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
@@ -72,7 +73,7 @@ describe('useModels', () => {
     });
 
     it('returns empty models on fetch error and sets error', async () => {
-        fetchMock.mockRejectedValue(new Error('network error'));
+        mocks.models.list.mockRejectedValue(new Error('network error'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
@@ -80,7 +81,7 @@ describe('useModels', () => {
     });
 
     it('defaults tokenLimit to 0 and enabled to false when capabilities are missing', async () => {
-        fetchMock.mockResolvedValue(makeModelResponse([{ id: 'basic', name: 'Basic' }]));
+        mocks.models.list.mockResolvedValue([{ id: 'basic', name: 'Basic' }]);
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].tokenLimit).toBe(0);
@@ -89,19 +90,19 @@ describe('useModels', () => {
     });
 
     it('handles non-array response gracefully', async () => {
-        fetchMock.mockResolvedValue({ ok: true, json: async () => null } as any);
+        mocks.models.list.mockResolvedValue(null);
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
     });
 
     it('reload clears error and re-fetches', async () => {
-        fetchMock.mockRejectedValueOnce(new Error('fail'));
+        mocks.models.list.mockRejectedValueOnce(new Error('fail'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.error).toBe('fail');
 
-        fetchMock.mockResolvedValueOnce(makeModelResponse([{ id: 'm1', name: 'M1' }]));
+        mocks.models.list.mockResolvedValueOnce([{ id: 'm1', name: 'M1' }]);
         result.current.reload();
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.error).toBe(null);
@@ -117,10 +118,34 @@ describe('useModels', () => {
                 limits: { max_context_window_tokens: 200000 },
             },
         }];
-        fetchMock.mockResolvedValue(makeModelResponse(raw));
+        mocks.models.list.mockResolvedValue(raw);
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].capabilities?.supports?.vision).toBe(true);
         expect(result.current.models[0].capabilities?.supports?.reasoningEffort).toBe(true);
+    });
+});
+
+describe('useModelConfig', () => {
+    beforeEach(() => { mocks.models.list.mockReset(); mocks.models.setEnabled.mockReset(); });
+    afterEach(() => { vi.clearAllMocks(); });
+
+    it('toggleModel calls models.setEnabled with PUT semantics', async () => {
+        mocks.models.list.mockResolvedValue([
+            { id: 'a', name: 'A', enabled: true },
+            { id: 'b', name: 'B', enabled: false },
+        ]);
+        mocks.models.setEnabled.mockResolvedValue({ enabledModels: ['a'] });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.toggleModel('b', true);
+        });
+
+        expect(mocks.models.setEnabled).toHaveBeenCalledWith(
+            expect.arrayContaining(['a', 'b'])
+        );
     });
 });

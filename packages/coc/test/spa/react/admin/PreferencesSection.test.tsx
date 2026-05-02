@@ -1,18 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { PreferencesSection } from '../../../../src/server/spa/client/react/admin/PreferencesSection';
 
-const mockFetch = vi.fn();
+const mocks = vi.hoisted(() => ({
+    preferences: {
+        getGlobal: vi.fn(),
+        patchGlobal: vi.fn(),
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>();
+    return {
+        ...actual,
+        getSpaCocClient: () => ({ preferences: mocks.preferences }),
+    };
+});
+
 const onError = vi.fn();
 const onSuccess = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetch.mockReset();
+    mocks.preferences.getGlobal.mockReset();
+    mocks.preferences.patchGlobal.mockReset();
     onError.mockReset();
     onSuccess.mockReset();
-    global.fetch = mockFetch;
 });
 
 function renderSection() {
@@ -25,24 +40,21 @@ function renderSection() {
 
 describe('PreferencesSection', () => {
     it('renders the Preferences section', async () => {
-        mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+        mocks.preferences.getGlobal.mockResolvedValue({});
         await act(async () => { renderSection(); });
         expect(screen.getByTestId('preferences-section')).toBeDefined();
     });
 
     it('shows spinner while loading', () => {
-        mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
+        mocks.preferences.getGlobal.mockReturnValue(new Promise(() => {})); // never resolves
         renderSection();
         expect(screen.getByText('Loading…')).toBeDefined();
     });
 
     it('populates controls from fetched preferences', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                theme: 'dark',
-                reposSidebarCollapsed: true,
-            }),
+        mocks.preferences.getGlobal.mockResolvedValue({
+            theme: 'dark',
+            reposSidebarCollapsed: true,
         });
 
         await act(async () => { renderSection(); });
@@ -56,16 +68,9 @@ describe('PreferencesSection', () => {
         });
     });
 
-    it('calls PATCH when theme select changes', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ theme: 'light' }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ theme: 'auto' }) });
-        });
+    it('calls patchGlobal when theme select changes', async () => {
+        mocks.preferences.getGlobal.mockResolvedValue({ theme: 'auto' });
+        mocks.preferences.patchGlobal.mockResolvedValue({ theme: 'light' });
 
         await act(async () => { renderSection(); });
 
@@ -78,27 +83,17 @@ describe('PreferencesSection', () => {
         });
 
         await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
+            expect(mocks.preferences.patchGlobal).toHaveBeenCalledWith(
+                expect.objectContaining({ theme: 'light' })
             );
-            expect(patchCalls.length).toBeGreaterThan(0);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.theme).toBe('light');
         });
 
         expect(onSuccess).toHaveBeenCalledWith('Preference saved');
     });
 
-    it('calls PATCH when reposSidebarCollapsed toggle changes', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ reposSidebarCollapsed: true }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ reposSidebarCollapsed: false }) });
-        });
+    it('calls patchGlobal when reposSidebarCollapsed toggle changes', async () => {
+        mocks.preferences.getGlobal.mockResolvedValue({ reposSidebarCollapsed: false });
+        mocks.preferences.patchGlobal.mockResolvedValue({ reposSidebarCollapsed: true });
 
         await act(async () => { renderSection(); });
 
@@ -111,17 +106,14 @@ describe('PreferencesSection', () => {
         });
 
         await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
+            expect(mocks.preferences.patchGlobal).toHaveBeenCalledWith(
+                expect.objectContaining({ reposSidebarCollapsed: true })
             );
-            expect(patchCalls.length).toBeGreaterThan(0);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(typeof body.reposSidebarCollapsed).toBe('boolean');
         });
     });
 
-    it('calls onError when fetch fails on load', async () => {
-        mockFetch.mockResolvedValue({ ok: false, json: () => Promise.resolve({}) });
+    it('calls onError when getGlobal rejects on load', async () => {
+        mocks.preferences.getGlobal.mockRejectedValue(new Error('connection refused'));
 
         await act(async () => { renderSection(); });
 
@@ -130,16 +122,11 @@ describe('PreferencesSection', () => {
         });
     });
 
-    it('calls onError when PATCH fails', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: false,
-                    json: () => Promise.resolve({ error: 'Write failed' }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ theme: 'auto' }) });
-        });
+    it('calls onError when patchGlobal rejects', async () => {
+        mocks.preferences.getGlobal.mockResolvedValue({ theme: 'auto' });
+        mocks.preferences.patchGlobal.mockRejectedValue(
+            new CocApiError({ status: 400, statusText: 'Bad Request', url: '/preferences', message: 'Save failed', body: { error: 'Write failed' } })
+        );
 
         await act(async () => { renderSection(); });
 
@@ -157,10 +144,7 @@ describe('PreferencesSection', () => {
     });
 
     it('renders UI Mode dropdown with correct default', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-        });
+        mocks.preferences.getGlobal.mockResolvedValue({});
 
         await act(async () => { renderSection(); });
 
@@ -171,10 +155,7 @@ describe('PreferencesSection', () => {
     });
 
     it('renders UI Mode dropdown with server value', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ uiLayoutMode: 'dev-workflow' }),
-        });
+        mocks.preferences.getGlobal.mockResolvedValue({ uiLayoutMode: 'dev-workflow' });
 
         await act(async () => { renderSection(); });
 
@@ -184,16 +165,9 @@ describe('PreferencesSection', () => {
         });
     });
 
-    it('calls PATCH when UI Mode select changes', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ uiLayoutMode: 'dev-workflow' }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ uiLayoutMode: 'classic' }) });
-        });
+    it('calls patchGlobal when UI Mode select changes', async () => {
+        mocks.preferences.getGlobal.mockResolvedValue({ uiLayoutMode: 'classic' });
+        mocks.preferences.patchGlobal.mockResolvedValue({ uiLayoutMode: 'dev-workflow' });
 
         await act(async () => { renderSection(); });
 
@@ -206,12 +180,9 @@ describe('PreferencesSection', () => {
         });
 
         await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
+            expect(mocks.preferences.patchGlobal).toHaveBeenCalledWith(
+                expect.objectContaining({ uiLayoutMode: 'dev-workflow' })
             );
-            expect(patchCalls.length).toBeGreaterThan(0);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.uiLayoutMode).toBe('dev-workflow');
         });
 
         expect(onSuccess).toHaveBeenCalledWith('Preference saved');
