@@ -1,6 +1,7 @@
 export * from './common';
 export * from './preferences';
 export * from './processes';
+export * from './pull-requests';
 export * from './queue';
 export * from './work-items';
 export * from './workspaces';

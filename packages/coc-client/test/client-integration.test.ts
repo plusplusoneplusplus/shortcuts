@@ -8,6 +8,7 @@ import {
   ModelsClient,
   PreferencesClient,
   ProcessesClient,
+  PullRequestsClient,
   QueueClient,
   WorkItemsClient,
   WorkspacesClient,
@@ -99,6 +100,7 @@ describe('CocClient integration wiring', () => {
     expect(client.models).toBeInstanceOf(ModelsClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
     expect(client.processes).toBeInstanceOf(ProcessesClient);
+    expect(client.pullRequests).toBeInstanceOf(PullRequestsClient);
     expect(client.queue).toBeInstanceOf(QueueClient);
     expect(client.workItems).toBeInstanceOf(WorkItemsClient);
     expect(client.workspaces).toBeInstanceOf(WorkspacesClient);
@@ -118,6 +120,7 @@ describe('CocClient integration wiring', () => {
       client.models,
       client.preferences,
       client.processes,
+      client.pullRequests,
       client.queue,
       client.workItems,
       client.workspaces,
@@ -133,6 +136,7 @@ describe('CocClient integration wiring', () => {
     await client.models.list();
     await client.preferences.getGlobal();
     await client.processes.list();
+    await client.pullRequests.getProviderConfig();
     await client.queue.list();
     await client.workItems.list('repo-a');
     await client.workspaces.list();
@@ -143,6 +147,7 @@ describe('CocClient integration wiring', () => {
       '/models',
       '/preferences',
       '/processes',
+      '/providers/config',
       '/queue',
       '/workspaces/repo-a/work-items',
       '/workspaces',

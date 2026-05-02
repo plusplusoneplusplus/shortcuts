@@ -1,4 +1,4 @@
-import { HealthClient, ModelsClient, PreferencesClient, ProcessesClient, QueueClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { HealthClient, ModelsClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -9,6 +9,7 @@ export class CocClient {
   readonly models: ModelsClient;
   readonly preferences: PreferencesClient;
   readonly processes: ProcessesClient;
+  readonly pullRequests: PullRequestsClient;
   readonly queue: QueueClient;
   readonly workflow: WorkflowClient;
   readonly workItems: WorkItemsClient;
@@ -25,6 +26,7 @@ export class CocClient {
     this.models = new ModelsClient(this.transport);
     this.preferences = new PreferencesClient(this.transport);
     this.processes = new ProcessesClient(this.transport, this.options);
+    this.pullRequests = new PullRequestsClient(this.transport);
     this.queue = new QueueClient(this.transport);
     this.workflow = new WorkflowClient(this.transport);
     this.workItems = new WorkItemsClient(this.transport);

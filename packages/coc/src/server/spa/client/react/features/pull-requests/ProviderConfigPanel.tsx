@@ -6,7 +6,8 @@
  */
 
 import { useState } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { CocApiError, CocNetworkError, type ProviderConfigRequest } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export interface ProviderConfigPanelProps {
     detected: 'GitHub' | 'ADO' | string | null;
@@ -26,19 +27,15 @@ export function ProviderConfigPanel({ detected, remoteUrl, noCredentials, onConf
     const handleSave = async () => {
         setSaving(true);
         setSaveError(null);
-        const body = detected === 'ADO'
+        const body: ProviderConfigRequest = detected === 'ADO'
             ? { ado: { token, orgUrl } }
             : { github: { token } };
         try {
-            await fetchApi('/providers/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
+            await getSpaCocClient().pullRequests.saveProviderConfig(body);
             setSaveSuccess(true);
             setTimeout(() => onConfigured(), 800);
-        } catch (err: any) {
-            setSaveError(err.message ?? 'Failed to save');
+        } catch (err: unknown) {
+            setSaveError(formatSaveError(err));
         } finally {
             setSaving(false);
         }
@@ -161,4 +158,17 @@ export function ProviderConfigPanel({ detected, remoteUrl, noCredentials, onConf
             </p>
         </div>
     );
+}
+
+function formatSaveError(err: unknown): string {
+    if (err instanceof CocApiError) {
+        return `API error: ${err.status} ${err.statusText}`;
+    }
+    if (err instanceof CocNetworkError && err.cause instanceof Error) {
+        return err.cause.message;
+    }
+    if (err instanceof Error) {
+        return err.message;
+    }
+    return 'Failed to save';
 }

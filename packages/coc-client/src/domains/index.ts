@@ -2,6 +2,7 @@ export { HealthClient } from './health';
 export { ModelsClient } from './models';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';
+export { PullRequestsClient } from './pull-requests';
 export { QueueClient } from './queue';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';

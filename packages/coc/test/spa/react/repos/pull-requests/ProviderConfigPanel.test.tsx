@@ -4,10 +4,18 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
-// Mock getApiBase so fetch URLs are predictable.
-vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => '',
+const { saveProviderConfig } = vi.hoisted(() => ({
+    saveProviderConfig: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        pullRequests: {
+            saveProviderConfig,
+        },
+    }),
 }));
 
 async function renderPanel(props: { detected?: 'GitHub' | 'ADO' | string | null; remoteUrl?: string; onConfigured?: () => void } = {}) {
@@ -29,6 +37,7 @@ async function renderPanel(props: { detected?: 'GitHub' | 'ADO' | string | null;
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
+    saveProviderConfig.mockResolvedValue(undefined);
     vi.useRealTimers();
 });
 
@@ -93,41 +102,39 @@ describe('save button disabled state', () => {
 // ── Successful save ────────────────────────────────────────────────────────────
 
 describe('successful save', () => {
-    it('calls PUT /api/providers/config with GitHub payload', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as any);
-        const { onConfigured } = await act(async () => renderPanel({ detected: 'GitHub' }));
+    it('saves GitHub provider config through the typed pull requests client', async () => {
+        await act(async () => { await renderPanel({ detected: 'GitHub' }); });
 
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'ghp_tok' } });
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
-        await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
-            '/providers/config',
-            expect.objectContaining({
-                method: 'PUT',
-                body: JSON.stringify({ github: { token: 'ghp_tok' } }),
-            }),
-        ));
+        await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({ github: { token: 'ghp_tok' } }));
     });
 
-    it('calls PUT /api/providers/config with ADO payload', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as any);
+    it('saves ADO provider config through the typed pull requests client', async () => {
         await act(async () => { await renderPanel({ detected: 'ADO' }); });
 
         fireEvent.change(screen.getByTestId('org-url-input'), { target: { value: 'https://dev.azure.com/myorg' } });
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'my-pat' } });
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
-        await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
-            '/providers/config',
-            expect.objectContaining({
-                method: 'PUT',
-                body: JSON.stringify({ ado: { token: 'my-pat', orgUrl: 'https://dev.azure.com/myorg' } }),
-            }),
-        ));
+        await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({
+            ado: { token: 'my-pat', orgUrl: 'https://dev.azure.com/myorg' },
+        }));
+    });
+
+    it('preserves server-side ADO org URL validation by saving an empty org URL when only token is entered', async () => {
+        await act(async () => { await renderPanel({ detected: 'ADO' }); });
+
+        fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'my-pat' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
+
+        await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({
+            ado: { token: 'my-pat', orgUrl: '' },
+        }));
     });
 
     it('shows success message after save', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as any);
         await act(async () => { await renderPanel({ detected: 'GitHub' }); });
 
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'ghp_tok' } });
@@ -138,7 +145,6 @@ describe('successful save', () => {
     });
 
     it('calls onConfigured after successful save', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as any);
         const { onConfigured } = await act(async () => renderPanel({ detected: 'GitHub' }));
 
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'ghp_tok' } });
@@ -154,26 +160,28 @@ describe('successful save', () => {
 
 describe('failed save', () => {
     it('displays inline error message on failed save', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: false,
+        saveProviderConfig.mockRejectedValue(new CocApiError({
             status: 400,
             statusText: 'Bad Request',
-        } as any);
+            url: '/providers/config',
+            message: 'ado.orgUrl must be a non-empty string',
+        }));
         await act(async () => { await renderPanel({ detected: 'GitHub' }); });
 
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'bad-token' } });
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
         await waitFor(() => expect(screen.getByTestId('save-error')).toBeInTheDocument());
-        expect(screen.getByText(/Error:/)).toBeInTheDocument();
+        expect(screen.getByText(/Error: API error: 400 Bad Request/)).toBeInTheDocument();
     });
 
     it('does not call onConfigured on failed save', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: false,
+        saveProviderConfig.mockRejectedValue(new CocApiError({
             status: 401,
             statusText: 'Unauthorized',
-        } as any);
+            url: '/providers/config',
+            message: 'Unauthorized',
+        }));
         const { onConfigured } = await act(async () => renderPanel({ detected: 'GitHub' }));
 
         fireEvent.change(screen.getByTestId('token-input'), { target: { value: 'bad-token' } });
