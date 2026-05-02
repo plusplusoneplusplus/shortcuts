@@ -107,6 +107,48 @@ describe('ProcessesClient mock server contract', () => {
     });
   });
 
+  it('searches conversations with workspace, status, type, and pagination filters', async () => {
+    mock = await startMockServer();
+    const response = {
+      results: [{
+        processId: 'proc-1',
+        turnIndex: 0,
+        role: 'user',
+        snippet: '<mark>needle</mark>',
+        rank: -1.25,
+        promptPreview: 'Find needle',
+        processStatus: 'completed',
+        processType: 'chat',
+        workspaceId: 'repo/with/slashes',
+        startTime: '2026-05-02T00:00:00.000Z',
+      }],
+      total: 1,
+      query: 'needle',
+      limit: 5,
+      offset: 10,
+    };
+    mock.on('GET', '/api/processes/search', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.processes.search({
+      q: 'needle',
+      workspace: 'repo/with/slashes',
+      status: ['completed', 'failed'],
+      type: 'chat',
+      limit: 5,
+      offset: 10,
+    })).resolves.toEqual(response);
+
+    expectGetRequest(mock.requests[0], '/api/processes/search', {
+      q: 'needle',
+      workspace: 'repo/with/slashes',
+      status: 'completed,failed',
+      type: 'chat',
+      limit: '5',
+      offset: '10',
+    });
+  });
+
   it('gets process details with encoded IDs, workspace query, and 404 errors', async () => {
     mock = await startMockServer();
     const detail = mockProcessDetailResponse(mockProcess({ id: 'proc/with/slashes' }));

@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
+import { CocNetworkError } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export interface ProcessSearchResult {
     processId: string;
@@ -47,6 +48,16 @@ export interface UseProcessSearchReturn {
     loadingMore: boolean;
 }
 
+function getSearchErrorMessage(error: unknown): string {
+    if (error instanceof CocNetworkError && error.cause instanceof Error) {
+        return error.cause.message;
+    }
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return 'Search failed';
+}
+
 export function useProcessSearch(
     query: string,
     options: UseProcessSearchOptions = {},
@@ -73,24 +84,14 @@ export function useProcessSearch(
     queryRef.current = query;
 
     const executeSearch = useCallback(async (q: string, signal: AbortSignal, offset = 0) => {
-        const params = new URLSearchParams({ q });
-        if (workspace && workspace !== '__all') {
-            params.set('workspaceId', workspace);
-        }
-        if (statusFilter && statusFilter !== '__all') {
-            params.set('status', statusFilter);
-        }
-        if (typeFilter) {
-            params.set('type', typeFilter);
-        }
-        params.set('limit', String(limit));
-        if (offset > 0) params.set('offset', String(offset));
-        const url = getApiBase() + '/processes/search?' + params.toString();
-        const res = await fetch(url, { signal });
-        if (!res.ok) {
-            throw new Error(`Search failed: ${res.status}`);
-        }
-        return res.json() as Promise<ProcessSearchResponse>;
+        return getSpaCocClient().processes.search({
+            q,
+            ...(workspace && workspace !== '__all' ? { workspace } : {}),
+            ...(statusFilter && statusFilter !== '__all' ? { status: statusFilter } : {}),
+            ...(typeFilter ? { type: typeFilter } : {}),
+            limit,
+            ...(offset > 0 ? { offset } : {}),
+        }, { signal });
     }, [workspace, statusFilter, typeFilter, limit]);
 
     useEffect(() => {
@@ -132,7 +133,7 @@ export function useProcessSearch(
                     if (!controller.signal.aborted) {
                         setResults([]);
                         setTotal(0);
-                        setError(err?.message || 'Search failed');
+                        setError(getSearchErrorMessage(err));
                         setLoading(false);
                     }
                 });
@@ -158,7 +159,7 @@ export function useProcessSearch(
             })
             .catch((err) => {
                 if (!controller.signal.aborted) {
-                    setError(err?.message || 'Load more failed');
+                    setError(getSearchErrorMessage(err));
                     setLoadingMore(false);
                 }
             });

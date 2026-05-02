@@ -11,11 +11,10 @@ import { Card, Badge, Button, cn } from '../ui';
 import { RenameDialog } from '../ui/RenameDialog';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useLongPress } from '../hooks/ui/useLongPress';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
-import { getApiBase } from '../utils/config';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -92,11 +91,7 @@ export function ProcessesSidebar() {
         if (!renameTarget) return;
         setRenameTarget(null);
         try {
-            await fetchApi(`/processes/${encodeURIComponent(renameTarget.id)}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: newTitle }),
-            });
+            await getSpaCocClient().processes.update(renameTarget.id, { title: newTitle });
             dispatch({ type: 'PROCESS_UPDATED', process: { id: renameTarget.id, title: newTitle } });
         } catch { /* WS will sync eventually */ }
     }, [renameTarget, dispatch]);
@@ -178,9 +173,12 @@ export function ProcessesSidebar() {
     async function handlePauseResume() {
         setIsPauseResumeLoading(true);
         try {
-            const endpoint = stats.isPaused ? '/queue/resume' : '/queue/pause';
-            await fetch(getApiBase() + endpoint, { method: 'POST' });
-            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            if (stats.isPaused) {
+                await getSpaCocClient().queue.resume();
+            } else {
+                await getSpaCocClient().queue.pause();
+            }
+            const data = await getSpaCocClient().queue.list();
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
         } finally {
             setIsPauseResumeLoading(false);
@@ -191,8 +189,8 @@ export function ProcessesSidebar() {
         if (!confirm('Clear all queued tasks?')) return;
         setIsClearLoading(true);
         try {
-            await fetch(getApiBase() + '/queue', { method: 'DELETE' });
-            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            await getSpaCocClient().queue.clear();
+            const data = await getSpaCocClient().queue.list();
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
         } finally {
             setIsClearLoading(false);

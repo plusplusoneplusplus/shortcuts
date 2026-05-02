@@ -13,17 +13,23 @@ vi.mock('../../../../../../src/server/spa/client/react/hooks/ui/useModifierKey',
     useModifierKey: () => mockModHeld,
 }));
 
-vi.mock('../../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue({
-        process: {
-            id: 'proc-1',
-            status: 'completed',
-            promptPreview: 'Hello',
-            result: 'World',
-            conversationTurns: [
-                { role: 'user', content: 'Hello', timeline: [] },
-                { role: 'assistant', content: 'World', timeline: [] },
-            ],
+vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        processes: {
+            get: vi.fn().mockResolvedValue({
+                process: {
+                    id: 'proc-1',
+                    status: 'completed',
+                    promptPreview: 'Hello',
+                    result: 'World',
+                    conversationTurns: [
+                        { role: 'user', content: 'Hello', timeline: [] },
+                        { role: 'assistant', content: 'World', timeline: [] },
+                    ],
+                },
+            }),
+            sendMessage: vi.fn().mockResolvedValue({}),
+            stream: vi.fn(() => ({ close: vi.fn() })),
         },
     }),
 }));

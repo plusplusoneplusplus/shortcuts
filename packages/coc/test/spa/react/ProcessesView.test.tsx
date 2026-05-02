@@ -7,6 +7,11 @@ import type { BreakpointState } from '../../../src/server/spa/client/react/hooks
 
 let mockBreakpoint: BreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
 const mockQueueDispatch = vi.fn();
+const mockQueueList = vi.fn();
+const mockQueueHistory = vi.fn();
+const mockQueueGetTask = vi.fn();
+const mockQueuePause = vi.fn();
+const mockQueueResume = vi.fn();
 let mockQueueState: any = {
     selectedTaskId: null,
     running: [],
@@ -50,8 +55,16 @@ vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', 
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue({ running: [], queued: [], history: [], stats: {} }),
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        queue: {
+            list: mockQueueList,
+            history: mockQueueHistory,
+            getTask: mockQueueGetTask,
+            pause: mockQueuePause,
+            resume: mockQueueResume,
+        },
+    }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/features/chat/ChatListPane', () => ({
@@ -99,6 +112,11 @@ describe('ProcessesView', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mockQueueList.mockResolvedValue({ running: [], queued: [], stats: {} });
+        mockQueueHistory.mockResolvedValue({ history: [] });
+        mockQueueGetTask.mockResolvedValue({ task: { id: 'task-1' } });
+        mockQueuePause.mockResolvedValue({ stats: { isPaused: true } });
+        mockQueueResume.mockResolvedValue({ stats: { isPaused: false } });
         setBreakpoint('desktop');
         mockQueueState = {
             selectedTaskId: null,
@@ -188,8 +206,7 @@ describe('ProcessesView', () => {
 
     // Test 8: fetchQueue filters out tasks with a repoId (repo-specific tasks)
     it('passes through all tasks from server (server scopes to global workspace)', async () => {
-        const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockQueueList
             .mockResolvedValueOnce({
                 running: [
                     { id: 'r2', type: 'chat' },                          // global task
@@ -199,8 +216,8 @@ describe('ProcessesView', () => {
                     { id: 'pm1', kind: 'pause-marker' },                 // pause-marker — always keep
                 ],
                 stats: {},
-            })
-            .mockResolvedValueOnce({ history: [
+            });
+        mockQueueHistory.mockResolvedValueOnce({ history: [
                 { id: 'h2', type: 'chat' },                              // global task
             ] });
 
@@ -242,9 +259,8 @@ describe('ProcessesView', () => {
 
     // Test 10: WS context updates pass through directly (no client-side filtering needed)
     it('WS context update: all tasks pass through (server-scoped)', async () => {
-        const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
         // fetchQueue also runs on mount
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockQueueList
             .mockResolvedValueOnce({
                 running: [
                     { id: 'r2', type: 'chat' },
@@ -253,8 +269,8 @@ describe('ProcessesView', () => {
                     { id: 'q2', type: 'chat' },
                 ],
                 stats: {},
-            })
-            .mockResolvedValueOnce({ history: [
+            });
+        mockQueueHistory.mockResolvedValueOnce({ history: [
                 { id: 'h2', type: 'chat' },
             ] });
 

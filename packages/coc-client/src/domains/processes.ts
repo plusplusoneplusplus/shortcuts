@@ -8,6 +8,8 @@ import type {
   ProcessMessageResponse,
   ProcessOutputQuery,
   ProcessOutputResponse,
+  ProcessSearchQuery,
+  ProcessSearchResponse,
   ProcessSummariesResponse,
 } from '../contracts';
 import { ProcessSseClient } from '../realtime/sse';
@@ -48,6 +50,13 @@ export class ProcessesClient {
 
   summaries(query?: ProcessListQuery): Promise<ProcessSummariesResponse> {
     return this.transport.request<ProcessSummariesResponse>('/processes/summaries', { query: serializeListQuery(query) });
+  }
+
+  search(query: ProcessSearchQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessSearchResponse> {
+    return this.transport.request<ProcessSearchResponse>('/processes/search', {
+      query: serializeListQuery(query),
+      signal: options?.signal,
+    });
   }
 
   create(request: CreateProcessRequest): Promise<AIProcess> {

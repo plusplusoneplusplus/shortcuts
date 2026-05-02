@@ -53,6 +53,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAtta
 }));
 
 import { ItemConversationPanel } from '../../../../src/server/spa/client/react/processes/dag/ItemConversationPanel';
+import { resetSpaCocClientForTests } from '../../../../src/server/spa/client/react/api/cocClient';
 
 function makeProcessResponse(overrides: Record<string, any> = {}) {
     return {
@@ -96,6 +97,7 @@ describe('ItemConversationPanel', () => {
     });
 
     afterEach(() => {
+        resetSpaCocClientForTests();
         vi.restoreAllMocks();
         delete (window as any).__DASHBOARD_CONFIG__;
     });
@@ -366,7 +368,7 @@ describe('ItemConversationPanel', () => {
 
         // Simulate SSE 'done' event — triggers re-fetch
         await act(async () => {
-            eventListeners['done']?.();
+            eventListeners['done']?.({ data: '{}', lastEventId: '' });
         });
 
         await waitFor(() => {

@@ -48,6 +48,39 @@ export interface ProcessListResponse {
   offset: number;
 }
 
+export interface ProcessSearchResult {
+  processId: string;
+  turnIndex: number;
+  role: string;
+  snippet: string;
+  rank: number;
+  processTitle?: string;
+  promptPreview: string;
+  processStatus: string;
+  processType: string;
+  workspaceId: string;
+  startTime: string;
+}
+
+export interface ProcessSearchQuery {
+  q: string;
+  workspace?: string;
+  status?: AIProcessStatus | AIProcessStatus[] | string;
+  type?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProcessSearchResponse {
+  results: ProcessSearchResult[];
+  total: number;
+  query: string;
+  limit: number;
+  offset: number;
+}
+
 export interface ProcessSummariesResponse {
   summaries: JsonObject[];
   total: number;

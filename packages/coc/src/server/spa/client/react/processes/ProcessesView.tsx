@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../ui';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -54,14 +54,14 @@ export function ProcessesView() {
 
     const fetchQueue = useCallback(async () => {
         try {
-            const data = await fetchApi('/queue');
+            const data = await getSpaCocClient().queue.list();
             const nextRunning = data?.running || [];
             const nextQueued = data?.queued || [];
             const nextStats = data?.stats || undefined;
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
-            const historyData = await fetchApi('/queue/history').catch(() => null);
+            const historyData = await getSpaCocClient().queue.history().catch(() => null);
             const nextHistory = historyData?.history || [];
             setHistory(nextHistory);
 
@@ -103,7 +103,7 @@ export function ProcessesView() {
         if (allTasks.find(t => t.id === selectedTaskId)) return;
 
         let cancelled = false;
-        fetchApi(`/queue/${encodeURIComponent(selectedTaskId)}`)
+        getSpaCocClient().queue.getTask(selectedTaskId)
             .then((data: any) => {
                 if (cancelled) return;
                 if (!data?.task) throw new Error('not found');
@@ -181,8 +181,11 @@ export function ProcessesView() {
     async function handlePauseResume() {
         setIsPauseResumeLoading(true);
         try {
-            const endpoint = isPaused ? '/queue/resume' : '/queue/pause';
-            await fetchApi(endpoint, { method: 'POST' });
+            if (isPaused) {
+                await getSpaCocClient().queue.resume();
+            } else {
+                await getSpaCocClient().queue.pause();
+            }
             await fetchQueue();
         } finally {
             setIsPauseResumeLoading(false);

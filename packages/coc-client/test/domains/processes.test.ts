@@ -8,13 +8,18 @@ describe('ProcessesClient', () => {
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
 
     await client.list({ workspace: 'repo/a', status: ['running', 'queued'], exclude: ['conversation', 'toolCalls'], limit: 5 });
+    await client.search({ q: 'needle', workspace: 'repo/a', status: 'completed', type: 'chat', limit: 10 });
     await client.get('proc/1', { workspace: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/processes',
       options: { query: { workspace: 'repo/a', status: 'running,queued', exclude: 'conversation,toolCalls', limit: 5 } },
     });
-    expect(adapter.calls[1].path).toBe('/processes/proc%2F1');
+    expect(adapter.calls[1]).toMatchObject({
+      path: '/processes/search',
+      options: { query: { q: 'needle', workspace: 'repo/a', status: 'completed', type: 'chat', limit: 10 } },
+    });
+    expect(adapter.calls[2].path).toBe('/processes/proc%2F1');
   });
 
   it('encodes process IDs once in detail paths and stream URLs', async () => {

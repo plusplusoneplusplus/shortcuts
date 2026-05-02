@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { WorkflowDetailView } from '../../../../src/server/spa/client/react/processes/dag/WorkflowDetailView';
 import { MapItemGrid } from '../../../../src/server/spa/client/react/processes/dag/MapItemGrid';
+import { resetSpaCocClientForTests } from '../../../../src/server/spa/client/react/api/cocClient';
 
 function makeProcessResponse(overrides: Record<string, any> = {}) {
     return {
@@ -74,6 +75,7 @@ describe('WorkflowDetailView + ItemConversationPanel integration', () => {
     });
 
     afterEach(() => {
+        resetSpaCocClientForTests();
         vi.restoreAllMocks();
         delete (window as any).__DASHBOARD_CONFIG__;
     });

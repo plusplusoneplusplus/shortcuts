@@ -9,6 +9,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
+import { resetSpaCocClientForTests } from '../../../src/server/spa/client/react/api/cocClient';
 
 // Portal passthrough so ContextMenu and RenameDialog render inline
 vi.mock('react-dom', async (importOriginal) => {
@@ -137,6 +138,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    resetSpaCocClientForTests();
     vi.restoreAllMocks();
 });
 

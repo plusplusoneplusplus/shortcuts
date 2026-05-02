@@ -7,7 +7,7 @@ import { ItemConversationPanel } from './ItemConversationPanel';
 import { useWorkflowPhase } from '../../features/workflow/hooks/useWorkflowPhase';
 import { useItemProcessEvents } from '../hooks/useItemProcessEvents';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { formatDuration, statusIcon } from '../../utils/format';
 import { detectDarkMode } from '../../utils/theme';
 import { BottomSheet } from '../../ui';
@@ -38,7 +38,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
         setLoading(true);
         setError(null);
 
-        fetchApi(`/processes/${encodeURIComponent(processId)}`)
+        getSpaCocClient().processes.get(processId)
             .then((data) => {
                 if (cancelled) return;
                 setProcess(data.process ?? data);
@@ -71,7 +71,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
 
         if (!isRunning) return;
 
-        const es = new EventSource(`/api/processes/${encodeURIComponent(processId)}/stream`);
+        const es = new EventSource(getSpaCocClient().processes.streamUrl(processId));
         eventSourceRef.current = es;
 
         es.onerror = () => {

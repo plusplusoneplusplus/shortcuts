@@ -5,8 +5,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { fetchApi } from '../../hooks/useApi';
-import { getApiBase } from '../../utils/config';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Badge, Button, Spinner, SendButton } from '../../ui';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { ConversationTurnBubble } from '../../features/chat/conversation/ConversationTurnBubble';
@@ -63,7 +63,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
     const [sessionExpired, setSessionExpired] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const eventSourceRef = useRef<EventSource | null>(null);
+    const streamRef = useRef<{ close: () => void } | null>(null);
     const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     // Fetch process data on mount
@@ -72,7 +72,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         setLoading(true);
         setError(null);
 
-        fetchApi(`/processes/${encodeURIComponent(processId)}`)
+        getSpaCocClient().processes.get(processId)
             .then(data => {
                 if (cancelled) return;
                 setProcessData(data);
@@ -121,29 +121,30 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         };
     }, [onClose]);
 
-    // Cleanup EventSource on unmount
+    // Cleanup active process stream on unmount
     useEffect(() => {
         return () => {
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-                eventSourceRef.current = null;
+            if (streamRef.current) {
+                streamRef.current.close();
+                streamRef.current = null;
             }
         };
     }, []);
 
     const waitForFollowUpCompletion = useCallback((pid: string) => {
         return new Promise<void>(resolve => {
-            const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`);
-            eventSourceRef.current = es;
+            const client = getSpaCocClient();
             let done = false;
+            let timeout: ReturnType<typeof setTimeout>;
 
             const finish = () => {
                 if (done) return;
                 done = true;
-                es.close();
-                eventSourceRef.current = null;
+                clearTimeout(timeout);
+                streamRef.current?.close();
+                streamRef.current = null;
                 // Re-fetch full process to get complete turns
-                fetchApi(`/processes/${encodeURIComponent(pid)}`)
+                client.processes.get(pid)
                     .then(data => {
                         setProcessData(data);
                         setTurns(getConversationTurns(data));
@@ -152,24 +153,31 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     .finally(() => resolve());
             };
 
-            const timeout = setTimeout(finish, 90_000);
+            timeout = setTimeout(finish, 90_000);
 
-            es.addEventListener('done', () => { clearTimeout(timeout); finish(); });
-            es.addEventListener('status', (e) => {
-                try {
-                    const status = JSON.parse(e.data)?.status;
-                    if (status && !['running', 'queued'].includes(status)) {
-                        clearTimeout(timeout); finish();
+            streamRef.current = client.processes.stream(pid, {
+                onEvent: () => {},
+                onDone: finish,
+                onError: finish,
+                onTypedEvent: (eventType, data) => {
+                    if (eventType === 'status') {
+                        const status = typeof data === 'object' && data !== null && 'status' in data
+                            ? String((data as { status?: unknown }).status)
+                            : '';
+                        if (status && !['running', 'queued'].includes(status)) {
+                            finish();
+                        }
+                    } else if (
+                        eventType === 'conversation-snapshot'
+                        && typeof data === 'object'
+                        && data !== null
+                        && 'turns' in data
+                        && Array.isArray((data as { turns?: unknown }).turns)
+                    ) {
+                        setTurns((data as { turns: ClientConversationTurn[] }).turns);
                     }
-                } catch { /* ignore */ }
+                },
             });
-            es.addEventListener('conversation-snapshot', (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.turns) setTurns(data.turns);
-                } catch { /* ignore */ }
-            });
-            es.onerror = () => { clearTimeout(timeout); finish(); };
         });
     }, []);
 
@@ -187,10 +195,10 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
             richTextRef.current?.setValue('');
             clearAttachments();
             setTurns(prev => [...prev, { role: 'user', content, timestamp: new Date().toISOString(), timeline: [] }]);
-            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, deliveryMode, ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}) }),
+            getSpaCocClient().processes.sendMessage(processId, {
+                content,
+                deliveryMode,
+                ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
             }).catch(() => {});
             return;
         }
@@ -209,34 +217,24 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         ]);
 
         try {
-            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, deliveryMode, ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}) }),
+            await getSpaCocClient().processes.sendMessage(processId, {
+                content,
+                deliveryMode,
+                ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
             });
 
-            if (response.status === 410) {
+            // Subscribe to SSE for streaming response
+            await waitForFollowUpCompletion(processId);
+        } catch (error) {
+            if (error instanceof CocApiError && error.status === 410) {
                 setSessionExpired(true);
                 // Remove streaming placeholder
                 setTurns(prev => prev.filter(t => !t.streaming));
                 setSending(false);
                 return;
             }
-
-            if (!response.ok) {
-                // Mark last assistant turn as error
-                setTurns(prev => prev.map((t, i) =>
-                    i === prev.length - 1 ? { ...t, content: 'Failed to send message.', streaming: false, isError: true } : t
-                ));
-                setSending(false);
-                return;
-            }
-
-            // Subscribe to SSE for streaming response
-            await waitForFollowUpCompletion(processId);
-        } catch {
             setTurns(prev => prev.map((t, i) =>
-                i === prev.length - 1 ? { ...t, content: 'Network error.', streaming: false, isError: true } : t
+                i === prev.length - 1 ? { ...t, content: error instanceof CocApiError ? 'Failed to send message.' : 'Network error.', streaming: false, isError: true } : t
             ));
         } finally {
             setSending(false);
@@ -261,26 +259,16 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     ...prev,
                     { role: 'assistant', content: '', timestamp, streaming: true, timeline: [] },
                 ]);
-                fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, deliveryMode: 'enqueue' as DeliveryMode }),
-                }).then(async response => {
-                    if (!response.ok) {
+                getSpaCocClient().processes.sendMessage(processId, { content, deliveryMode: 'enqueue' as DeliveryMode })
+                    .then(async () => {
+                        await waitForFollowUpCompletion(processId);
+                        setSending(false);
+                    }).catch((error) => {
                         setTurns(prev => prev.map((t, i) =>
-                            i === prev.length - 1 ? { ...t, content: 'Failed to send message.', streaming: false, isError: true } : t
+                            i === prev.length - 1 ? { ...t, content: error instanceof CocApiError ? 'Failed to send message.' : 'Network error.', streaming: false, isError: true } : t
                         ));
                         setSending(false);
-                        return;
-                    }
-                    await waitForFollowUpCompletion(processId);
-                    setSending(false);
-                }).catch(() => {
-                    setTurns(prev => prev.map((t, i) =>
-                        i === prev.length - 1 ? { ...t, content: 'Network error.', streaming: false, isError: true } : t
-                    ));
-                    setSending(false);
-                });
+                    });
             }, 0);
         }
     }, [turns, processId, waitForFollowUpCompletion]);

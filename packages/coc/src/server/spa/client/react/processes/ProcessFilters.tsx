@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useProcessSearch } from './hooks/useProcessSearch';
 
 export function ProcessFilters() {
@@ -65,13 +65,12 @@ export function ProcessFilters() {
 
     const onWorkspaceChange = useCallback(async (workspaceId: string) => {
         dispatch({ type: 'SET_WORKSPACE_FILTER', value: workspaceId });
-        const path = workspaceId === '__all' ? '/processes' : '/processes?workspace=' + encodeURIComponent(workspaceId);
         try {
-            const data = await fetchApi(path);
+            const data = await getSpaCocClient().processes.list(
+                workspaceId === '__all' ? undefined : { workspace: workspaceId },
+            );
             if (data?.processes && Array.isArray(data.processes)) {
                 dispatch({ type: 'SET_PROCESSES', processes: data.processes });
-            } else if (Array.isArray(data)) {
-                dispatch({ type: 'SET_PROCESSES', processes: data });
             }
             dispatch({ type: 'SELECT_PROCESS', id: null });
         } catch { /* ignore */ }

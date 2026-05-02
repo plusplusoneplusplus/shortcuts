@@ -93,7 +93,7 @@ describe('useProcessSearch', () => {
         expect(abortSignals[0].aborted).toBe(true);
     });
 
-    it('passes workspace and status filters as query params', async () => {
+    it('passes workspace and status filters through client.processes.search', async () => {
         renderHook(
             () => useProcessSearch('test', { workspace: 'ws-abc', statusFilter: 'completed', debounceMs: 0 }),
         );
@@ -103,7 +103,7 @@ describe('useProcessSearch', () => {
         });
         const calledUrl = fetchSpy.mock.calls[0][0] as string;
         expect(calledUrl).toContain('q=test');
-        expect(calledUrl).toContain('workspaceId=ws-abc');
+        expect(calledUrl).toContain('workspace=ws-abc');
         expect(calledUrl).toContain('status=completed');
     });
 
@@ -114,7 +114,7 @@ describe('useProcessSearch', () => {
             expect(fetchSpy).toHaveBeenCalledTimes(1);
         });
         const calledUrl = fetchSpy.mock.calls[0][0] as string;
-        expect(calledUrl).not.toContain('workspaceId');
+        expect(calledUrl).not.toContain('workspace=');
     });
 
     it('falls back to empty results on fetch error', async () => {
