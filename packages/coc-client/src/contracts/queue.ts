@@ -32,9 +32,20 @@ export interface QueuedTask {
   [key: string]: unknown;
 }
 
+export interface QueueTaskSummary extends Partial<QueuedTask> {
+  id: string;
+}
+
+export interface QueuePauseMarker {
+  kind: 'pause-marker';
+  id: string;
+  createdAt: number;
+  [key: string]: unknown;
+}
+
 export interface QueueListResponse {
-  queued: JsonObject[];
-  running: JsonObject[];
+  queued: Array<QueueTaskSummary | QueuePauseMarker>;
+  running: QueueTaskSummary[];
   stats: QueueStats;
 }
 
@@ -54,7 +65,11 @@ export interface EnqueueTaskRequest {
 }
 
 export interface EnqueueTaskResponse {
-  task: Partial<QueuedTask> & { id: string };
+  task: QueueTaskSummary;
+}
+
+export interface QueueHistoryResponse {
+  history: QueueTaskSummary[];
 }
 
 export interface QueueModelsResponse {

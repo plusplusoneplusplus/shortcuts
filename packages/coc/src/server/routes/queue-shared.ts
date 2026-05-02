@@ -19,6 +19,7 @@ import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../task-types';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
 import * as path from 'path';
+import type { ParsedUrlQuery } from 'querystring';
 
 // ============================================================================
 // Constants
@@ -58,6 +59,16 @@ export interface QueueRouteContext {
     store: ProcessStore | undefined;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
+}
+
+export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {
+    return firstStringQueryValue(query.workspace) ?? firstStringQueryValue(query.repoId);
+}
+
+function firstStringQueryValue(value: unknown): string | undefined {
+    if (typeof value === 'string' && value) return value;
+    if (Array.isArray(value)) return value.find((item): item is string => typeof item === 'string' && item.length > 0);
+    return undefined;
 }
 
 // ============================================================================

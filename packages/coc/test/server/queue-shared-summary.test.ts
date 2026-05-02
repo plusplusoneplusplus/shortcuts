@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { serializeTaskSummary, serializeQueueItemSummary } from '../../src/server/routes/queue-shared';
+import { getRepoIdentifierFromQuery, serializeTaskSummary, serializeQueueItemSummary } from '../../src/server/routes/queue-shared';
 
 function makeTask(overrides: Partial<QueuedTask> = {}): QueuedTask {
     return {
@@ -227,5 +227,18 @@ describe('serializeQueueItemSummary', () => {
         expect(out).not.toHaveProperty('result');
         expect(out).not.toHaveProperty('config');
         expect(out).toEqual(serializeTaskSummary(task));
+    });
+});
+
+describe('getRepoIdentifierFromQuery', () => {
+    it('accepts workspace as the preferred queue repo identifier alias', () => {
+        expect(getRepoIdentifierFromQuery({ workspace: 'workspace-a', repoId: 'repo-a' })).toBe('workspace-a');
+        expect(getRepoIdentifierFromQuery({ repoId: 'repo-a' })).toBe('repo-a');
+    });
+
+    it('ignores empty and non-string query values', () => {
+        expect(getRepoIdentifierFromQuery({ workspace: '', repoId: 'repo-a' })).toBe('repo-a');
+        expect(getRepoIdentifierFromQuery({ workspace: ['workspace-a', 'workspace-b'] })).toBe('workspace-a');
+        expect(getRepoIdentifierFromQuery({ workspace: [], repoId: [] })).toBeUndefined();
     });
 });

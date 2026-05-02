@@ -1,4 +1,4 @@
-import type { AIProcess, ProcessDetailResponse, ProcessListResponse, QueueListResponse, WorkItem, WorkItemListResponse, WorkspaceInfo, WorkspacesResponse } from '../../src';
+import type { AIProcess, ProcessDetailResponse, ProcessListResponse, QueuedTask, QueueListResponse, QueueStats, WorkItem, WorkItemListResponse, WorkspaceInfo, WorkspacesResponse } from '../../src';
 
 const now = '2026-01-01T00:00:00.000Z';
 
@@ -72,20 +72,42 @@ export function mockWorkItemListResponse(items: WorkItem[] = [mockWorkItem()]): 
   };
 }
 
-export function mockQueueListResponse(): QueueListResponse {
+export function mockQueueStats(overrides: Partial<QueueStats> = {}): QueueStats {
   return {
-    queued: [],
+    queued: 1,
+    running: 0,
+    completed: 2,
+    failed: 0,
+    cancelled: 0,
+    total: 3,
+    isPaused: false,
+    isDraining: false,
+    isAutopilotPaused: false,
+    ...overrides,
+  };
+}
+
+export function mockQueuedTask(overrides: Partial<QueuedTask> = {}): QueuedTask {
+  return {
+    id: 'task-1',
+    repoId: 'repo-a',
+    type: 'chat',
+    priority: 'normal',
+    status: 'queued',
+    createdAt: 1770000000000,
+    payload: { prompt: 'Summarize the repo' },
+    config: { model: 'gpt-5.4' },
+    displayName: 'Summarize repo',
+    processId: 'proc-1',
+    ...overrides,
+  };
+}
+
+export function mockQueueListResponse(overrides: Partial<QueueListResponse> = {}): QueueListResponse {
+  return {
+    queued: [mockQueuedTask()],
     running: [],
-    stats: {
-      queued: 0,
-      running: 0,
-      completed: 0,
-      failed: 0,
-      cancelled: 0,
-      total: 0,
-      isPaused: false,
-      isDraining: false,
-      isAutopilotPaused: false,
-    },
+    stats: mockQueueStats(),
+    ...overrides,
   };
 }

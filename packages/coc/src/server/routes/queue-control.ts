@@ -30,6 +30,7 @@ import * as url from 'url';
 import {
     getAggregateStats,
     getManagerByRepoIdentifier,
+    getRepoIdentifierFromQuery,
     type QueueRouteContext,
 } from './queue-shared';
 
@@ -44,7 +45,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue/pause',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
@@ -73,7 +74,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue/resume',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
@@ -102,7 +103,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue/pause-autopilot',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
@@ -131,7 +132,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue/resume-autopilot',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
@@ -272,9 +273,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
-                ? parsed.query.repoId
-                : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             let count = 0;
             if (repoId) {
@@ -301,9 +300,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         pattern: '/api/queue/history',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
-                ? parsed.query.repoId
-                : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             // Also clear in-memory history for backward compat
             for (const m of bridge.registry.getAllQueues().values()) {

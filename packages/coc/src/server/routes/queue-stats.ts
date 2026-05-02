@@ -21,6 +21,7 @@ import {
     serializeQueueItemSummary,
     getAggregateStats,
     getManagerByRepoIdentifier,
+    getRepoIdentifierFromQuery,
     VALID_TASK_TYPES,
     type QueueRouteContext,
 } from './queue-shared';
@@ -37,9 +38,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
         pattern: '/api/queue',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
-                ? parsed.query.repoId
-                : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
             const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
                 ? parsed.query.type
                 : undefined;
@@ -88,9 +87,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
         pattern: '/api/queue/stats',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
-                ? parsed.query.repoId
-                : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
@@ -112,9 +109,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
         pattern: '/api/queue/history',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
-                ? parsed.query.repoId
-                : undefined;
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
             const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
                 ? parsed.query.type
                 : undefined;
