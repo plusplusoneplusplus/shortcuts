@@ -109,7 +109,7 @@ function patchResponse(comment: DiffComment) {
 }
 
 function deleteResponse() {
-    return { ok: true };
+    return { ok: true, status: 204 };
 }
 
 // ============================================================================

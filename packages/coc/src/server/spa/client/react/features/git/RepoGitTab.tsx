@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Spinner } from '../../ui';
 import { CommitList } from './commits/CommitList';
 import { CommitDetail } from './commits/CommitDetail';
@@ -53,14 +53,7 @@ async function rebindCommitChat(
 ): Promise<void> {
     if (oldHash === newHash) return;
     try {
-        await fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings/rebind`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldHash, newHash }),
-            }
-        );
+        await getSpaCocClient().git.rebindCommitChatBinding(workspaceId, oldHash, newHash);
     } catch {
         // Best-effort — binding may not exist; ignore errors
     }
@@ -193,7 +186,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
 
     const fetchRepoState = useCallback(() => {
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/repo-state`)
+        getSpaCocClient().git.getRepoState(workspaceId)
             .then(data => setRepoState(data))
             .catch(() => setRepoState(null));
     }, [workspaceId]);
@@ -213,10 +206,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 }
             }
         }
-        const skipQs = skipOffset > 0 ? `&skip=${skipOffset}` : '';
-        const refreshQs = refresh ? '&refresh=true' : '';
-        const searchQs = search ? `&search=${encodeURIComponent(search)}` : '';
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${skipQs}${refreshQs}${searchQs}`)
+        return getSpaCocClient().git.listCommits(workspaceId, {
+            limit: 50,
+            skip: skipOffset > 0 ? skipOffset : undefined,
+            refresh,
+            search: search || undefined,
+        })
             .then(data => {
                 const loaded = data.commits || [];
                 if (skipOffset > 0) {
@@ -252,8 +247,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 return Promise.resolve(cached.data);
             }
         }
-        const qs = refresh ? '?refresh=true' : '';
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range${qs}`)
+        return getSpaCocClient().git.getBranchRange(workspaceId, { refresh })
             .then(data => {
                 if (data.onDefaultBranch) {
                     setOnDefaultBranch(true);
@@ -460,7 +454,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 }, 500);
                 // If we're tracking a pull job, re-fetch its status on git-changed
                 if (pullJobRef.current) {
-                    fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(pullJobRef.current)}`)
+                    getSpaCocClient().git.getOperation(workspaceId, pullJobRef.current)
                         .then((job: any) => {
                             if (job && job.status !== 'running') {
                                 stopPullPolling();
@@ -491,7 +485,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (pullPollRef.current) clearInterval(pullPollRef.current);
         pullPollRef.current = setInterval(async () => {
             try {
-                const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(jobId)}`);
+                const job = await getSpaCocClient().git.getOperation(workspaceId, jobId);
                 if (!job || job.status !== 'running') {
                     stopPullPolling();
                     if (job?.status === 'failed') {
@@ -514,7 +508,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // Recover pull status on mount (page refresh recovery)
     useEffect(() => {
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/latest?op=pull`)
+        getSpaCocClient().git.getLatestOperation(workspaceId, { op: 'pull' })
             .then((job: any) => {
                 if (!job) return;
                 if (job.status === 'running') {
@@ -537,9 +531,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setFetching(true);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/fetch`, {
-                method: 'POST',
-            });
+            const result = await getSpaCocClient().git.fetch(workspaceId);
             if (result.success === false) throw new Error(result.error || 'Fetch failed');
             refreshAll();
         } catch (err: any) {
@@ -554,11 +546,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPulling(true);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/pull`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ rebase: true }),
-            });
+            const result = await getSpaCocClient().git.pull(workspaceId, { rebase: true });
             if (result.jobId) {
                 // Async pull — start polling for job completion
                 startPullPolling(result.jobId);
@@ -579,11 +567,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPushing(true);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
+            const result = await getSpaCocClient().git.push(workspaceId);
             if (result.success === false) throw new Error(result.error || 'Push failed');
             refreshAll();
         } catch (err: any) {
@@ -598,11 +582,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPushing(true);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push-to`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commitHash: commit.hash }),
-            });
+            const result = await getSpaCocClient().git.pushTo(workspaceId, commit.hash);
             if (result.success === false) throw new Error(result.error || 'Push failed');
             refreshAll();
         } catch (err: any) {
@@ -617,15 +597,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRebasing(true);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/rebase-autosquash`, {
-                method: 'POST',
-            });
+            const result = await getSpaCocClient().git.rebaseAutosquash(workspaceId);
             if (result.jobId) {
                 // Async rebase — poll for job completion
                 const jobId: string = result.jobId;
                 const poll = setInterval(async () => {
                     try {
-                        const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(jobId)}`);
+                        const job = await getSpaCocClient().git.getOperation(workspaceId, jobId);
                         if (!job || job.status !== 'running') {
                             clearInterval(poll);
                             setRebasing(false);
@@ -743,11 +721,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (!window.confirm(`Reset to ${shortHash}? This will discard all uncommitted changes.`)) return;
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/reset`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hash: commit.hash, mode: 'hard' }),
-            });
+            const result = await getSpaCocClient().git.reset(workspaceId, commit.hash, 'hard');
             if (result.success === false) throw new Error(result.error || 'Reset failed');
             refreshAll();
         } catch (err: any) {
@@ -761,15 +735,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (!window.confirm(`Cherry pick commit ${shortHash}?`)) return;
         setActionError(null);
         try {
-            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/git/cherry-pick`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hash: commit.hash }),
-            });
-            const result = await res.json();
-            if (res.status === 409 || result.conflicts) {
+            const result = await getSpaCocClient().git.cherryPick(workspaceId, commit.hash);
+            if (result.conflicts) {
                 setActionError(`Cherry-pick has conflicts — resolve them and run \`git cherry-pick --continue\``);
-            } else if (!res.ok || result.success === false) {
+            } else if (result.success === false) {
                 throw new Error(result.error || 'Cherry-pick failed');
             } else {
                 refreshAll();
@@ -777,6 +746,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 setTimeout(() => setEnqueueToast(null), 3000);
             }
         } catch (err: any) {
+            if (err?.status === 409 || err?.body?.conflicts) {
+                setActionError(`Cherry-pick has conflicts — resolve them and run \`git cherry-pick --continue\``);
+                return;
+            }
             setActionError(err.message || 'Cherry-pick failed');
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
@@ -786,11 +759,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setAmendingCommit(null);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/amend`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, body }),
-            });
+            const result = await getSpaCocClient().git.amend(workspaceId, title, body);
             if (result.error) throw new Error(result.error);
             // Rebind commit-chat if the amend produced a new hash
             if (result.hash && result.hash !== amendingCommit.hash) {
@@ -809,11 +778,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRewordingCommit(null);
         setActionError(null);
         try {
-            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/reword`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hash: rewordingCommit.hash, title }),
-            });
+            const result = await getSpaCocClient().git.reword(workspaceId, rewordingCommit.hash, title);
             if (result.error) throw new Error(result.error);
             refreshAll();
             setEnqueueToast('Commit title amended.');
@@ -916,24 +881,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     ? `${pendingSkillRun.commits.length} commits`
                     : branchName || 'branch';
 
-        await fetch(getApiBase() + '/queue/tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                type: 'chat',
-                priority: 'normal',
-                displayName: `Skill: ${pendingSkillRun.skillName} — ${shortId}`,
-                payload: {
-                    kind: 'chat',
-                    mode: 'autopilot',
-                    prompt: promptContent,
-                    workingDirectory: ws?.rootPath || '',
-                    workspaceId,
-                    context: {
-                        skills: [pendingSkillRun.skillName],
-                    },
+        await getSpaCocClient().queue.enqueueTask({
+            type: 'chat',
+            priority: 'normal',
+            displayName: `Skill: ${pendingSkillRun.skillName} — ${shortId}`,
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: promptContent,
+                workingDirectory: ws?.rootPath || '',
+                workspaceId,
+                context: {
+                    skills: [pendingSkillRun.skillName],
                 },
-            }),
+            },
         });
 
         setPendingSkillRun(null);
@@ -994,21 +955,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
         try {
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    displayName: `Squash ${selectedCommits.length} commits`,
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: promptContent,
-                        workingDirectory: ws?.rootPath || '',
-                        workspaceId,
-                    },
-                }),
+            await getSpaCocClient().queue.enqueueTask({
+                type: 'chat',
+                priority: 'normal',
+                displayName: `Squash ${selectedCommits.length} commits`,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: promptContent,
+                    workingDirectory: ws?.rootPath || '',
+                    workspaceId,
+                },
             });
             setEnqueueToast(`Squash task enqueued (${selectedCommits.length} commits)`);
             setTimeout(() => setEnqueueToast(null), 3000);
@@ -1030,21 +987,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         const promptContent = `The repository has a ${repoState.operation} in progress with conflicts in the following files:\n<files>\n${files}\n</files>\n\nFor each conflicted file, resolve the conflict markers (<<<<<<< / ======= / >>>>>>>) by choosing the best resolution that preserves both sides' intent. Then stage the resolved files with \`git add\`. After staging all resolved files, run \`${continueCmd}\`. If new conflicts arise, repeat the resolution and continue cycle until the entire operation completes successfully.`;
         try {
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    displayName: `Resolve ${repoState.operation} conflicts`,
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: promptContent,
-                        workingDirectory: ws?.rootPath || '',
-                        workspaceId,
-                    },
-                }),
+            await getSpaCocClient().queue.enqueueTask({
+                type: 'chat',
+                priority: 'normal',
+                displayName: `Resolve ${repoState.operation} conflicts`,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: promptContent,
+                    workingDirectory: ws?.rootPath || '',
+                    workspaceId,
+                },
             });
             setEnqueueToast('Conflict resolution task enqueued');
             setTimeout(() => setEnqueueToast(null), 3000);
@@ -1058,9 +1011,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (!repoState || repoState.operation === 'none') return;
         const endpoint = repoState.operation === 'merge' ? 'merge-continue' : 'rebase-continue';
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/${endpoint}`, {
-                method: 'POST',
-            });
+            if (endpoint === 'merge-continue') {
+                await getSpaCocClient().git.mergeContinue(workspaceId);
+            } else {
+                await getSpaCocClient().git.rebaseContinue(workspaceId);
+            }
             setEnqueueToast(`${repoState.operation} continue started`);
             setTimeout(() => setEnqueueToast(null), 3000);
             setTimeout(refreshAll, 2000);
@@ -1074,9 +1029,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (!confirm(`Abort the in-progress ${repoState.operation}? This will discard conflict resolutions.`)) return;
         const endpoint = repoState.operation === 'merge' ? 'merge-abort' : 'rebase-abort';
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/${endpoint}`, {
-                method: 'POST',
-            });
+            if (endpoint === 'merge-abort') {
+                await getSpaCocClient().git.mergeAbort(workspaceId);
+            } else {
+                await getSpaCocClient().git.rebaseAbort(workspaceId);
+            }
             refreshAll();
         } catch (err: any) {
             setActionError(`Abort failed: ${err.message || 'Unknown error'}`);
@@ -1094,11 +1051,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         const reorderedUnpushed = pendingReorder.slice(0, unpushedCount);
         const commitHashes = [...reorderedUnpushed].reverse().map(c => c.hash);
         try {
-            const resp = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/rebase-reorder`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commits: commitHashes }),
-            });
+            const resp = await getSpaCocClient().git.rebaseReorder(workspaceId, commitHashes);
             setEnqueueToast('Reorder started');
             setTimeout(() => setEnqueueToast(null), 3000);
             setPendingReorder(null);
@@ -1106,7 +1059,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             if (resp?.jobId) {
                 const poll = setInterval(async () => {
                     try {
-                        const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${resp.jobId}`);
+                        const job = await getSpaCocClient().git.getOperation(workspaceId, resp.jobId);
                         if (job?.status === 'success' || job?.status === 'failed') {
                             clearInterval(poll);
                             if (job.status === 'failed') {

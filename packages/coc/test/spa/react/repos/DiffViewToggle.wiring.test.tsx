@@ -35,6 +35,19 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: () => Promise.resolve({ diff: '@@ -1,2 +1,2 @@\n-old\n+new' }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            commitDiffPath: (workspaceId: string, hash: string) =>
+                `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`,
+            getWorkingTreeFileDiff: () => Promise.resolve({ diff: '@@ -1,2 +1,2 @@\n-old\n+new' }),
+        },
+        explorer: {
+            readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
+        },
+    }),
+}));
+
 vi.mock('react-dom', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-dom')>();
     return { ...actual, createPortal: (children: React.ReactNode) => children };

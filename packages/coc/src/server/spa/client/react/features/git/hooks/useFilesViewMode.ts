@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FilesViewMode } from '../diff/FileTree';
-import { getApiBase } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 const DEFAULT_MODE: FilesViewMode = 'tree';
 
@@ -24,12 +24,9 @@ export function useFilesViewMode(workspaceId?: string): UseFilesViewModeResult {
         setModeState(DEFAULT_MODE);
         if (!workspaceId) return;
         let cancelled = false;
-        const url = getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/preferences';
         (async () => {
             try {
-                const res = await fetch(url);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const prefs = await getSpaCocClient().preferences.getRepo(workspaceId);
                 if (!cancelled && (prefs.filesViewMode === 'flat' || prefs.filesViewMode === 'tree')) {
                     setModeState(prefs.filesViewMode);
                 }
@@ -43,11 +40,7 @@ export function useFilesViewMode(workspaceId?: string): UseFilesViewModeResult {
     const setMode = useCallback((m: FilesViewMode) => {
         setModeState(m);
         if (!workspaceId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filesViewMode: m }),
-        }).catch(() => {});
+        getSpaCocClient().preferences.updateRepo(workspaceId, { filesViewMode: m }).catch(() => {});
     }, [workspaceId]);
 
     return { mode, setMode };

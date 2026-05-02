@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -53,7 +53,7 @@ export function WorkingTreeAllComments({ workspaceId }: WorkingTreeAllCommentsPr
     const fetchComments = useCallback(() => {
         setLoading(true);
         setError(null);
-        fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?newRef=working-tree`)
+        getSpaCocClient().git.listDiffComments(workspaceId, { newRef: 'working-tree' })
             .then((data: { comments?: DiffComment[] }) => setComments(data.comments ?? []))
             .catch((err: any) => setError(err.message || 'Failed to load comments'))
             .finally(() => setLoading(false));

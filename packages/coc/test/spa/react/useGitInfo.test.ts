@@ -20,14 +20,13 @@ describe('useGitInfo hook source', () => {
         expect(HOOK_SOURCE).toContain('workspaceId: string');
     });
 
-    it('fetches from /workspaces/:id/git-info endpoint', () => {
-        expect(HOOK_SOURCE).toContain('/git-info');
-        expect(HOOK_SOURCE).toContain('workspaceId');
+    it('fetches git info through typed workspace client', () => {
+        expect(HOOK_SOURCE).toContain('workspaces.gitInfo(workspaceId)');
     });
 
-    it('imports fetchApi from useApi', () => {
-        expect(HOOK_SOURCE).toContain("from '../../../hooks/useApi'");
-        expect(HOOK_SOURCE).toContain('fetchApi');
+    it('imports typed CoC client', () => {
+        expect(HOOK_SOURCE).toContain("from '../../../api/cocClient'");
+        expect(HOOK_SOURCE).toContain('getSpaCocClient');
     });
 
     it('exports GitInfo interface', () => {
@@ -53,8 +52,8 @@ describe('useGitInfo hook source', () => {
         expect(catchBlock).toContain('behind: 0');
     });
 
-    it('encodes workspaceId in the URL', () => {
-        expect(HOOK_SOURCE).toContain('encodeURIComponent(workspaceId)');
+    it('delegates workspaceId encoding to the typed client', () => {
+        expect(HOOK_SOURCE).toContain('gitInfo(workspaceId)');
     });
 
     it('cancels in-flight fetch when workspaceId changes (cleanup)', () => {

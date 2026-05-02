@@ -171,8 +171,8 @@ describe('BranchPickerModal', () => {
             expect(source).toContain('setIsLoadingMore');
         });
 
-        it('fetches from /git/branches endpoint', () => {
-            expect(source).toContain('/git/branches');
+        it('fetches branches through typed client', () => {
+            expect(source).toContain('listBranches(workspaceId');
         });
 
         it('uses type=local query parameter', () => {
@@ -182,13 +182,12 @@ describe('BranchPickerModal', () => {
     });
 
     describe('switch flow', () => {
-        it('calls /git/branches/switch endpoint with POST', () => {
-            expect(source).toContain('/git/branches/switch');
-            expect(source).toContain("method: 'POST'");
+        it('switches branches through typed client', () => {
+            expect(source).toContain('switchBranch(workspaceId, branchName');
         });
 
         it('sends branch name in request body', () => {
-            expect(source).toContain("name: branchName");
+            expect(source).toContain('switchBranch(workspaceId, branchName');
         });
 
         it('sends force: false by default', () => {
@@ -220,8 +219,8 @@ describe('BranchPickerModal', () => {
             expect(source).toContain('branchName === currentBranch');
         });
 
-        it('sends Content-Type header', () => {
-            expect(source).toContain("'Content-Type': 'application/json'");
+        it('delegates JSON request details to the client', () => {
+            expect(source).toContain('getSpaCocClient().git');
         });
     });
 
@@ -276,12 +275,12 @@ describe('BranchPickerModal', () => {
     });
 
     describe('API integration', () => {
-        it('imports fetchApi from hooks', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('imports typed CoC client', () => {
+            expect(source).toContain("import { getSpaCocClient } from '../../../api/cocClient'");
         });
 
-        it('uses encodeURIComponent for workspaceId', () => {
-            expect(source).toContain('encodeURIComponent(workspaceId)');
+        it('uses typed client for workspace ID encoding', () => {
+            expect(source).toContain('listBranches(workspaceId');
         });
 
         it('tracks isLoading state', () => {

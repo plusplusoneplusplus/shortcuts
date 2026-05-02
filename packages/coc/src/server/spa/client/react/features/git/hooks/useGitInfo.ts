@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface GitInfo {
     branch: string | null;
@@ -32,7 +32,7 @@ export function useGitInfo(workspaceId: string): GitInfo {
     useEffect(() => {
         let cancelled = false;
         setState(prev => ({ ...prev, loading: true, error: false }));
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git-info`)
+        getSpaCocClient().workspaces.gitInfo(workspaceId)
             .then((data: any) => {
                 if (cancelled) return;
                 setState({

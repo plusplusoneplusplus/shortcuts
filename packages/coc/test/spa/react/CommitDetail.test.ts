@@ -88,8 +88,8 @@ describe('CommitDetail', () => {
             expect(source).toContain('const diffUrl = ');
         });
 
-        it('constructs full commit diff URL by default', () => {
-            expect(source).toContain('/git/commits/${hash}/diff');
+        it('constructs full commit diff URL through typed client', () => {
+            expect(source).toContain('commitDiffPath(workspaceId, hash)');
         });
 
         it('does not construct per-file diff URLs', () => {

@@ -14,7 +14,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 // Mock getApiBase before importing the hook
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => 'http://localhost:4000/api',
+    getApiBase: () => '/api',
 }));
 
 import { useFilesViewMode } from '../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode';
@@ -50,7 +50,8 @@ describe('useFilesViewMode', () => {
         });
 
         expect(fetchSpy).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws-1/preferences'
+            '/api/workspaces/ws-1/preferences',
+            {}
         );
     });
 
@@ -125,7 +126,7 @@ describe('useFilesViewMode', () => {
         });
 
         const patchCall = fetchSpy.mock.calls[1];
-        expect(patchCall[0]).toBe('http://localhost:4000/api/workspaces/ws-6/preferences');
+        expect(patchCall[0]).toBe('/api/workspaces/ws-6/preferences');
         const opts = patchCall[1] as RequestInit;
         expect(opts.method).toBe('PATCH');
         expect(JSON.parse(opts.body as string)).toEqual({ filesViewMode: 'flat' });

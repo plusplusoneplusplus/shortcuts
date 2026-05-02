@@ -11,7 +11,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase, getWsPath } from '../../../utils/config';
+import { getWsPath } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface CommitCommentCounts {
     open: number;
@@ -33,17 +34,14 @@ export function useCommitCommentTotals(
             setTotals(new Map());
             return;
         }
-        const base = `${getApiBase()}/diff-comment-totals/${encodeURIComponent(wsId)}`;
-        const openParams = new URLSearchParams({ commits: commitsKey, status: 'open' });
-        const resolvedParams = new URLSearchParams({ commits: commitsKey, status: 'resolved' });
-
+        const commits = commitsKey.split(',').filter(Boolean);
         Promise.all([
-            fetch(`${base}?${openParams}`)
-                .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
-                .then((data: { totals: Record<string, number> }) => data.totals),
-            fetch(`${base}?${resolvedParams}`)
-                .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
-                .then((data: { totals: Record<string, number> }) => data.totals),
+            getSpaCocClient().git
+                .getDiffCommentTotals(wsId, { commits, status: 'open' })
+                .then(data => data.totals),
+            getSpaCocClient().git
+                .getDiffCommentTotals(wsId, { commits, status: 'resolved' })
+                .then(data => data.totals),
         ])
             .then(([openTotals, resolvedTotals]) => {
                 const map = new Map<string, CommitCommentCounts>();

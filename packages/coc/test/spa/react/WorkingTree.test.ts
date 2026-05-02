@@ -206,8 +206,8 @@ describe('WorkingTree', () => {
             expect(source).toContain('allWorkingComments.length');
         });
 
-        it('fetches working-tree comments using newRef=working-tree', () => {
-            expect(source).toContain('newRef=working-tree');
+        it('fetches working-tree comments through typed git client', () => {
+            expect(source).toContain("listDiffComments(workspaceId, { newRef: 'working-tree' })");
         });
 
         it('stops click propagation on the all-comments button', () => {
@@ -216,13 +216,12 @@ describe('WorkingTree', () => {
     });
 
     describe('batch staging endpoints', () => {
-        it('handleStageAll uses stage-batch endpoint', () => {
-            expect(source).toContain('stage-batch');
-            expect(source).toContain("filePaths: files.map(f => f.filePath)");
+        it('handleStageAll uses typed stageFiles method', () => {
+            expect(source).toContain('stageFiles(workspaceId, files.map(f => f.filePath))');
         });
 
-        it('handleUnstageAll uses unstage-batch endpoint', () => {
-            expect(source).toContain('unstage-batch');
+        it('handleUnstageAll uses typed unstageFiles method', () => {
+            expect(source).toContain('unstageFiles(workspaceId, files.map(f => f.filePath))');
         });
 
         it('handleStageAll sends a single POST request (no per-file loop)', () => {

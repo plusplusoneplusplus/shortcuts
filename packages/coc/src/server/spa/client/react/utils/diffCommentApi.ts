@@ -9,6 +9,7 @@
 import { getApiBase } from './config';
 import type { DiffComment, DiffCommentContext } from '../../comments/diff-comment-types';
 import type { UpdateDiffCommentRequest } from '../features/git/hooks/useDiffComments';
+import { getSpaCocClient } from '../api/cocClient';
 
 // ============================================================================
 // Storage key
@@ -52,13 +53,7 @@ export async function patchDiffComment(
     id: string,
     updates: UpdateDiffCommentRequest,
 ): Promise<DiffComment> {
-    const res = await fetch(buildDiffCommentUrl(wsId, storageKey, id), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-    });
-    if (!res.ok) throw new Error('Failed to update diff comment');
-    const data = await res.json();
+    const data = await getSpaCocClient().git.updateDiffComment(wsId, storageKey, id, updates);
     return data.comment as DiffComment;
 }
 
@@ -68,6 +63,5 @@ export async function deleteDiffCommentById(
     storageKey: string,
     id: string,
 ): Promise<void> {
-    const res = await fetch(buildDiffCommentUrl(wsId, storageKey, id), { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete diff comment');
+    await getSpaCocClient().git.deleteDiffComment(wsId, storageKey, id);
 }

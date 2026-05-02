@@ -174,8 +174,8 @@ describe('useDiffComments', () => {
         // Both context URLs should have appeared
         const urls: string[] = fetchMock.mock.calls.map((c: any[]) => c[0] as string);
         const diffUrls = urls.filter(u => u.includes('diff-comments'));
-        expect(diffUrls.some(u => u.includes('src%2Findex.ts') || u.includes('src/index.ts'))).toBe(true);
-        expect(diffUrls.some(u => u.includes('src%2Fother.ts') || u.includes('src/other.ts'))).toBe(true);
+        expect(diffUrls.some(u => u.includes('oldRef=abc123') && u.includes('newRef=def456'))).toBe(true);
+        expect(diffUrls.some(u => u.includes('oldRef=aaa111') && u.includes('newRef=bbb222'))).toBe(true);
     });
 
     // ── 4. addComment posts and appends to state ─────────────────────

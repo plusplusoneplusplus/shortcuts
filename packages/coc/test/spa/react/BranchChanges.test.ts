@@ -86,8 +86,8 @@ describe('BranchChanges', () => {
     });
 
     describe('API integration', () => {
-        it('imports fetchApi from hooks/useApi', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('imports typed CoC client', () => {
+            expect(source).toContain("import { getSpaCocClient } from '../../../api/cocClient'");
         });
 
         it('derives rangeInfo from branchRangeData prop (lifted to parent)', () => {
@@ -95,11 +95,11 @@ describe('BranchChanges', () => {
         });
 
         it('fetches from /git/branch-range/files endpoint for file list', () => {
-            expect(source).toContain('/git/branch-range/files');
+            expect(source).toContain('listBranchRangeFiles(workspaceId)');
         });
 
-        it('encodes workspaceId in fetch URL', () => {
-            expect(source).toContain('encodeURIComponent(workspaceId)');
+        it('uses typed client for workspace-scoped routes', () => {
+            expect(source).toContain('getSpaCocClient().git');
         });
     });
 
@@ -159,6 +159,7 @@ describe('BranchChanges', () => {
             // The useEffect for files depends on expanded state
             expect(source).toContain('expanded');
             expect(source).toContain('files.length');
+            expect(source).toContain('listBranchRangeFiles(workspaceId)');
         });
 
         it('shows expand/collapse indicators', () => {
@@ -320,9 +321,7 @@ describe('BranchChanges', () => {
             });
 
             it('fetches per-file diff from correct API endpoint', () => {
-                expect(source).toContain('/git/branch-range/files/');
-                expect(source).toContain('/diff');
-                expect(source).toContain('encodeURIComponent(filePath)');
+                expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath)');
             });
 
             it('resets fileDiff to null when switching files', () => {

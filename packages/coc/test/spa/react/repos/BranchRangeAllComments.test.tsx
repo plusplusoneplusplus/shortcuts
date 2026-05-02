@@ -28,10 +28,14 @@ const COMPONENT_PATH = path.resolve(
 // Module mocks (hoisted by Vitest)
 // ============================================================================
 
-const mockFetchApi = vi.fn();
+const mockListDiffComments = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            listDiffComments: (...args: any[]) => mockListDiffComments(...args),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/tasks/comments/CommentSidebar', () => ({
@@ -128,8 +132,7 @@ describe('BranchRangeAllComments — source structure', () => {
     });
 
     it('builds API URL with oldRef and newRef query params', () => {
-        expect(source).toContain('oldRef=');
-        expect(source).toContain('newRef=');
+        expect(source).toContain('listDiffComments(workspaceId, { oldRef: baseRef, newRef: headRef })');
     });
 });
 
@@ -143,7 +146,7 @@ describe('BranchRangeAllComments — rendering', () => {
     });
 
     it('shows loading state initially', async () => {
-        mockFetchApi.mockReturnValue(new Promise(() => {})); // never resolves
+        mockListDiffComments.mockReturnValue(new Promise(() => {})); // never resolves
         await act(async () => {
             render(React.createElement(BranchRangeAllComments, DEFAULT_PROPS));
         });
@@ -151,62 +154,62 @@ describe('BranchRangeAllComments — rendering', () => {
     });
 
     it('shows error state when fetch fails', async () => {
-        mockFetchApi.mockRejectedValue(new Error('Network error'));
+        mockListDiffComments.mockRejectedValue(new Error('Network error'));
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('branch-range-all-comments-error')).toBeTruthy());
         expect(screen.getByTestId('branch-range-all-comments-error').textContent).toContain('Network error');
     });
 
     it('shows a fallback error message when error has no message', async () => {
-        mockFetchApi.mockRejectedValue({});
+        mockListDiffComments.mockRejectedValue({});
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('branch-range-all-comments-error')).toBeTruthy());
         expect(screen.getByTestId('branch-range-all-comments-error').textContent).toContain('Failed to load comments');
     });
 
     it('renders main container after successful fetch', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [] });
+        mockListDiffComments.mockResolvedValue({ comments: [] });
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('branch-range-all-comments')).toBeTruthy());
     });
 
     it('renders sidebar after successful fetch', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment()] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('branch-range-all-comments-sidebar')).toBeTruthy());
     });
 
     it('passes comments to sidebar', async () => {
         const comments = [makeDiffComment({ id: 'c1' }), makeDiffComment({ id: 'c2' })];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('comment-count').textContent).toBe('2'));
     });
 
     it('passes empty array to sidebar when API returns no comments field', async () => {
-        mockFetchApi.mockResolvedValue({});
+        mockListDiffComments.mockResolvedValue({});
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('comment-count').textContent).toBe('0'));
     });
 
     it('renders branchLabel in the header', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [] });
+        mockListDiffComments.mockResolvedValue({ comments: [] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('branch-range-all-comments'));
         expect(screen.getByText(/feature\/my-branch/)).toBeTruthy();
     });
 
     it('constructs API URL with encoded workspaceId, baseRef, and headRef', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [] });
+        mockListDiffComments.mockResolvedValue({ comments: [] });
         const props = { workspaceId: 'ws/123', baseRef: 'origin/main', headRef: 'feat/x', branchLabel: 'feat/x' };
         await act(async () => {
             render(React.createElement(BranchRangeAllComments, props));
         });
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalled());
-        const calledUrl: string = mockFetchApi.mock.calls[0][0];
-        expect(calledUrl).toContain(encodeURIComponent('ws/123'));
-        expect(calledUrl).toContain('oldRef=' + encodeURIComponent('origin/main'));
-        expect(calledUrl).toContain('newRef=' + encodeURIComponent('feat/x'));
+        await waitFor(() => expect(mockListDiffComments).toHaveBeenCalled());
+        expect(mockListDiffComments).toHaveBeenCalledWith('ws/123', {
+            oldRef: 'origin/main',
+            newRef: 'feat/x',
+        });
     });
 });
 
@@ -223,13 +226,13 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
     });
 
     it('renders copy prompt button when there are open comments', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment()] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('copy-prompt-btn')).toBeTruthy());
     });
 
     it('calls clipboard.writeText when copy prompt button is clicked', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment()] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -237,7 +240,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
     });
 
     it('prompt contains file path', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment({ context: { filePath: 'src/bar.ts' } })] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment({ context: { filePath: 'src/bar.ts' } })] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -246,7 +249,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
     });
 
     it('prompt contains comment text', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment({ comment: 'refactor me' })] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment({ comment: 'refactor me' })] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -255,7 +258,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
     });
 
     it('prompt includes branchLabel', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment()] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -268,7 +271,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
             makeDiffComment({ id: 'c1', context: { filePath: 'src/a.ts' }, comment: 'comment A' }),
             makeDiffComment({ id: 'c2', context: { filePath: 'src/b.ts' }, comment: 'comment B' }),
         ];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -283,7 +286,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
             makeDiffComment({ id: 'c1', context: { filePath: 'src/a.ts' }, comment: 'first' }),
             makeDiffComment({ id: 'c2', context: { filePath: 'src/a.ts' }, comment: 'second' }),
         ];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -298,7 +301,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
             makeDiffComment({ id: 'c1', status: 'open', comment: 'open comment' }),
             makeDiffComment({ id: 'c2', status: 'resolved', comment: 'resolved comment' }),
         ];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -309,7 +312,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
 
     it('does not call clipboard.writeText when there are no open comments', async () => {
         const comments = [makeDiffComment({ id: 'c1', status: 'resolved' })];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         // sidebar mock always renders copy-prompt-btn when onCopyPrompt is defined —
         // trigger it directly to verify early return
@@ -325,7 +328,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
                 selectedText: 'let y = 2;',
             }),
         ];
-        mockFetchApi.mockResolvedValue({ comments });
+        mockListDiffComments.mockResolvedValue({ comments });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));
@@ -335,7 +338,7 @@ describe('BranchRangeAllComments — copyAllCommentsAsPrompt', () => {
     });
 
     it('prompt ends with "Please address these comments."', async () => {
-        mockFetchApi.mockResolvedValue({ comments: [makeDiffComment()] });
+        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
         await renderComponent();
         await waitFor(() => screen.getByTestId('copy-prompt-btn'));
         fireEvent.click(screen.getByTestId('copy-prompt-btn'));

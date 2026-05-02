@@ -149,7 +149,7 @@ describe('patchDiffComment', () => {
 
         await expect(
             patchDiffComment('ws-1', deterministicKey(), 'c1', { status: 'resolved' })
-        ).rejects.toThrow('Failed to update diff comment');
+        ).rejects.toThrow('CoC API request failed: 500');
     });
 });
 
@@ -159,7 +159,7 @@ describe('patchDiffComment', () => {
 
 describe('deleteDiffCommentById', () => {
     it('sends a DELETE request', async () => {
-        fetchMock.mockResolvedValue({ ok: true });
+        fetchMock.mockResolvedValue({ ok: true, status: 204 });
 
         await deleteDiffCommentById('ws-1', deterministicKey(), 'c1');
 
@@ -174,6 +174,6 @@ describe('deleteDiffCommentById', () => {
 
         await expect(
             deleteDiffCommentById('ws-1', deterministicKey(), 'c1')
-        ).rejects.toThrow('Failed to delete diff comment');
+        ).rejects.toThrow('CoC API request failed: 404');
     });
 });

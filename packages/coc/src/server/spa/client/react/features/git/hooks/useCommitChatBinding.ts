@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 
 export interface UseCommitChatBindingOptions {
@@ -33,11 +33,11 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         setError(null);
         setTaskId(null);
 
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings/${encodeURIComponent(commitHash)}`)
+        getSpaCocClient().git.getCommitChatBinding(workspaceId, commitHash)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
             .catch(err => {
                 if (cancelled) return;
-                if (err?.message?.includes('404')) setTaskId(null);
+                if (err?.status === 404 || err?.message?.includes('404')) setTaskId(null);
                 else setError('Failed to load commit chat');
             })
             .finally(() => { if (!cancelled) setLoading(false); });
@@ -50,35 +50,25 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         if (!commitHash) return null;
         try {
             // Create queue task
-            const res = await fetchApi('/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: 'ask',
-                        prompt,
-                        workspaceId,
-                        ...(attachments && attachments.length > 0 ? { attachments } : {}),
-                        context: {
-                            commitChat: { commitHash, commitMessage },
-                        },
+            const res = await getSpaCocClient().queue.enqueueTask({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt,
+                    workspaceId,
+                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    context: {
+                        commitChat: { commitHash, commitMessage },
                     },
-                }),
+                },
             });
-            const newTaskId = res.task?.id ?? res.id;
+            const newTaskId = res.task?.id ?? (res as { id?: string }).id;
+            if (!newTaskId) throw new Error('Failed to create commit chat task');
 
             // Save binding
-            await fetchApi(
-                `/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ commitHash, taskId: newTaskId }),
-                }
-            );
+            await getSpaCocClient().git.createCommitChatBinding(workspaceId, commitHash, newTaskId);
 
             setTaskId(newTaskId);
             return newTaskId;

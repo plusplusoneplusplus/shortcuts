@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -55,10 +55,7 @@ export function BranchRangeAllComments({ workspaceId, baseRef, headRef, branchLa
     const fetchComments = useCallback(() => {
         setLoading(true);
         setError(null);
-        fetchApi(
-            `/diff-comments/${encodeURIComponent(workspaceId)}` +
-            `?oldRef=${encodeURIComponent(baseRef)}&newRef=${encodeURIComponent(headRef)}`
-        )
+        getSpaCocClient().git.listDiffComments(workspaceId, { oldRef: baseRef, newRef: headRef })
             .then((data: { comments?: DiffComment[] }) => setComments(data.comments ?? []))
             .catch((err: any) => setError(err.message || 'Failed to load comments'))
             .finally(() => setLoading(false));

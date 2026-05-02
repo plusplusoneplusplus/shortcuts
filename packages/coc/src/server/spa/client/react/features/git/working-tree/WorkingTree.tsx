@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui';
 import { copyToClipboard } from '../../../utils/format';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
@@ -266,7 +266,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
 
     const fetchChanges = useCallback(() => {
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/changes`)
+        return getSpaCocClient().git.getWorkingTreeChanges(workspaceId)
             .then(data => setChanges(data.changes ?? []))
             .catch(err => setError(err.message || 'Failed to load changes'));
     }, [workspaceId]);
@@ -279,7 +279,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     // Fetch working-tree comment count for the badge in the header.
     useEffect(() => {
-        fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?newRef=working-tree`)
+        getSpaCocClient().git.listDiffComments(workspaceId, { newRef: 'working-tree' })
             .then((data: { comments?: DiffComment[] }) => setAllWorkingComments(data.comments ?? []))
             .catch(() => setAllWorkingComments([]));
     }, [workspaceId]);
@@ -318,31 +318,14 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setActionError(null);
         try {
             let result: { success: boolean; error?: string };
-            const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/changes`;
             if (action === 'stage') {
-                result = await fetchApi(`${base}/stage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath }),
-                });
+                result = await getSpaCocClient().git.stageFile(workspaceId, filePath);
             } else if (action === 'unstage') {
-                result = await fetchApi(`${base}/unstage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath }),
-                });
+                result = await getSpaCocClient().git.unstageFile(workspaceId, filePath);
             } else if (action === 'discard') {
-                result = await fetchApi(`${base}/discard`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath }),
-                });
+                result = await getSpaCocClient().git.discardFile(workspaceId, filePath);
             } else {
-                result = await fetchApi(`${base}/untracked`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath }),
-                });
+                result = await getSpaCocClient().git.deleteUntrackedFile(workspaceId, filePath);
             }
             if (result.success === false) throw new Error(result.error || `${action} failed`);
             await fetchChanges();
@@ -358,12 +341,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setStagingAll(true);
         setActionError(null);
         try {
-            const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/changes`;
-            const result = await fetchApi(`${base}/stage-batch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filePaths: files.map(f => f.filePath) }),
-            });
+            const result = await getSpaCocClient().git.stageFiles(workspaceId, files.map(f => f.filePath));
             if (result.success === false) {
                 throw new Error(result.errors?.join(', ') || 'Stage failed');
             }
@@ -380,12 +358,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setStagingAll(true);
         setActionError(null);
         try {
-            const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/changes`;
-            const result = await fetchApi(`${base}/unstage-batch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filePaths: files.map(f => f.filePath) }),
-            });
+            const result = await getSpaCocClient().git.unstageFiles(workspaceId, files.map(f => f.filePath));
             if (result.success === false) {
                 throw new Error(result.errors?.join(', ') || 'Unstage failed');
             }

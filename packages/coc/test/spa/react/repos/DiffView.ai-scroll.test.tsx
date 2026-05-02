@@ -21,6 +21,14 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: () => Promise.resolve({ diff: '+added line\n context' }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            getWorkingTreeFileDiff: () => Promise.resolve({ diff: '+added line\n context' }),
+        },
+    }),
+}));
+
 vi.mock('react-dom', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-dom')>();
     return { ...actual, createPortal: (children: React.ReactNode) => children };

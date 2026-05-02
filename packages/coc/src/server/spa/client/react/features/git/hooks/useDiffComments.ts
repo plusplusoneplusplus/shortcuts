@@ -7,11 +7,12 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase, getWsPath } from '../../../utils/config';
+import { getWsPath } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../../../utils/relocateDiffAnchor';
-import { computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
+import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../contexts/GitReviewPopOutContext';
 import type { GitReviewPopOutMessage } from '../../../contexts/GitReviewPopOutContext';
 
@@ -69,31 +70,15 @@ export interface UseDiffCommentsReturn {
 // Utilities
 // ============================================================================
 
-// computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById
-// are imported from ../utils/diffCommentApi
+// computeStorageKey, patchDiffComment, deleteDiffCommentById are imported from ../utils/diffCommentApi.
 
-/** Base collection URL used for GET (list) and POST (create). */
-function diffCommentsUrl(wsId: string, ctx: DiffCommentContext): string {
-    const params = new URLSearchParams({
-        repo: ctx.repositoryId,
-        oldRef: ctx.oldRef,
-        newRef: ctx.newRef,
-        file: ctx.filePath,
-    });
-    return `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}?${params}`;
-}
-
-/** Per-comment URL for PATCH / DELETE / ask-ai — delegates to buildDiffCommentUrl from diffCommentApi. */
-// (kept for any remaining internal callers; prefer buildDiffCommentUrl directly)
 /** Poll a queued task until it completes or fails. Returns the task result. */
 async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
     const start = Date.now();
     let delay = 1000;
     while (Date.now() - start < timeoutMs) {
         await new Promise(r => setTimeout(r, delay));
-        const res = await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId));
-        if (!res.ok) throw new Error('Failed to fetch task status');
-        const { task } = await res.json();
+        const { task } = await getSpaCocClient().queue.getTask(taskId);
         if (task.status === 'completed') {
             return task.result as T;
         }
@@ -158,9 +143,10 @@ export function useDiffComments(
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(diffCommentsUrl(wsId, ctx));
-            if (!res.ok) throw new Error('Failed to load diff comments');
-            const data = await res.json();
+            const data = await getSpaCocClient().git.listDiffComments(wsId, {
+                oldRef: ctx.oldRef,
+                newRef: ctx.newRef,
+            });
             if (mountedRef.current) {
                 // Server may return all workspace comments; keep only those for this context.
                 const filtered = (data.comments ?? [] as DiffComment[]).filter(
@@ -194,22 +180,13 @@ export function useDiffComments(
     ): Promise<DiffComment> => {
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
-        const res = await fetch(
-            `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    context: ctx,
-                    selection,
-                    selectedText,
-                    comment: text,
-                    ...(category !== undefined ? { category } : {}),
-                }),
-            }
-        );
-        if (!res.ok) throw new Error('Failed to create diff comment');
-        const data = await res.json();
+        const data = await getSpaCocClient().git.createDiffComment(wsId, {
+            context: ctx,
+            selection,
+            selectedText,
+            comment: text,
+            ...(category !== undefined ? { category } : {}),
+        });
         const comment: DiffComment = data.comment;
         if (mountedRef.current) {
             setComments(prev => [...prev, comment]);
@@ -295,14 +272,7 @@ export function useDiffComments(
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
         try {
             const storageKey = await computeStorageKey(ctx);
-            const url = buildDiffCommentUrl(wsId, storageKey, id) + '/ask-ai';
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commandId, customQuestion }),
-            });
-            if (!res.ok) throw new Error('AI request failed');
-            const data = await res.json();
+            const data = await getSpaCocClient().git.askDiffCommentAI(wsId, storageKey, id, { commandId, customQuestion });
             let aiResponse: string | undefined;
             if (data.aiResponse) {
                 aiResponse = data.aiResponse as string;
@@ -407,19 +377,13 @@ export function useDiffComments(
         if (!ctx) throw new Error('No diff context');
         setResolving(true);
         try {
-            const response = await fetch(
-                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
-                }
-            );
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || 'Batch resolve failed');
-            }
-            const data = await response.json();
+            const data = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+                oldRef: ctx.oldRef,
+                newRef: ctx.newRef,
+                filePath: ctx.filePath,
+                ...(userContext ? { userContext } : {}),
+                ...(skills?.length ? { skills } : {}),
+            });
             if (data.taskId) {
                 await pollTaskResult(data.taskId as string);
             }
@@ -439,16 +403,14 @@ export function useDiffComments(
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
         try {
-            const response = await fetch(
-                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, commentId: id, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
-                }
-            );
-            if (!response.ok) throw new Error('Fix with AI failed');
-            const data = await response.json();
+            const data = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+                oldRef: ctx.oldRef,
+                newRef: ctx.newRef,
+                filePath: ctx.filePath,
+                commentId: id,
+                ...(userContext ? { userContext } : {}),
+                ...(skills?.length ? { skills } : {}),
+            });
             if (data.taskId) {
                 await pollTaskResult(data.taskId as string);
             }

@@ -37,8 +37,8 @@ describe('BranchAllFilesDiff', () => {
     });
 
     describe('imports', () => {
-        it('imports fetchApi', () => {
-            expect(source).toContain("fetchApi");
+        it('imports typed CoC client', () => {
+            expect(source).toContain("getSpaCocClient");
         });
 
         it('imports Spinner', () => {
@@ -96,8 +96,7 @@ describe('BranchAllFilesDiff', () => {
 
     describe('API integration', () => {
         it('calls branch-range/files/:filePath/diff endpoint', () => {
-            expect(source).toContain('/git/branch-range/files/');
-            expect(source).toContain('/diff');
+            expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath)');
         });
 
         it('lazy-fetches diff only when expanding', () => {

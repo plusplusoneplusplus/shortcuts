@@ -1,5 +1,6 @@
 import type { DiffCommentContext } from '../../../../comments/diff-comment-types';
 import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 /**
  * Result of fetching a diff, including truncation metadata.
@@ -85,18 +86,17 @@ export function createCommitDiffSource(
         files?: string[];
     },
 ): DiffSource {
-    const enc = encodeURIComponent;
     const shortHash = hash.slice(0, 7);
     return {
         label: `Commit ${shortHash}`,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
-            const base = `/workspaces/${enc(workspaceId)}/git/commits/${hash}/files/${enc(filePath)}/diff`;
+            const base = getSpaCocClient().git.commitFileDiffPath(workspaceId, hash, filePath);
             return full ? `${base}?full=true` : base;
         },
 
         fullDiffUrl(): string {
-            return `/workspaces/${enc(workspaceId)}/git/commits/${hash}/diff`;
+            return getSpaCocClient().git.commitDiffPath(workspaceId, hash);
         },
 
         commentContext(filePath: string): DiffCommentContext {
@@ -121,10 +121,8 @@ export function createCommitDiffSource(
         cacheKey: `commit:${hash}`,
 
         async fetchFileList(): Promise<string[]> {
-            const data: { path: string }[] | { files?: { path: string }[] } =
-                await fetchApi(`/workspaces/${enc(workspaceId)}/git/commits/${hash}/files`);
-            const arr = Array.isArray(data) ? data : (data.files ?? []);
-            return arr.map(f => f.path).sort();
+            const data = await getSpaCocClient().git.listCommitFiles(workspaceId, hash);
+            return (data.files ?? []).map(f => f.path).sort();
         },
     };
 }
@@ -135,12 +133,11 @@ export function createBranchRangeDiffSource(
         files?: string[];
     },
 ): DiffSource {
-    const enc = encodeURIComponent;
     return {
         label: 'Branch diff',
 
         fileDiffUrl(filePath: string, full?: boolean): string {
-            const base = `/workspaces/${enc(workspaceId)}/git/branch-range/files/${enc(filePath)}/diff`;
+            const base = getSpaCocClient().git.branchRangeFileDiffPath(workspaceId, filePath);
             return full ? `${base}?full=true` : base;
         },
 

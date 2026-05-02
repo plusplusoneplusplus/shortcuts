@@ -9,13 +9,18 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
+const mockGetWorkingTreeFileDiff = vi.fn(() => Promise.resolve({ diff: '+added line\n context' }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: () => Promise.resolve({ diff: '+added line\n context' }),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            getWorkingTreeFileDiff: mockGetWorkingTreeFileDiff,
+        },
+    }),
 }));
 
 vi.mock('react-dom', async (importOriginal) => {
@@ -89,6 +94,7 @@ function makeHook(overrides: Record<string, unknown> = {}) {
 describe('WorkingTreeFileDiff — comment integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockGetWorkingTreeFileDiff.mockResolvedValue({ diff: '+added line\n context' });
         mockAddComment.mockResolvedValue({ id: 'new-c' });
         mockUseDiffComments.mockReturnValue(makeHook());
     });

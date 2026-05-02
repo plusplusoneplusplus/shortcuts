@@ -34,20 +34,20 @@ describe('RepoGitTab', () => {
     });
 
     describe('API integration', () => {
-        it('fetches from /workspaces/:id/git/commits endpoint', () => {
-            expect(source).toContain('/git/commits');
+        it('fetches commits through typed git client', () => {
+            expect(source).toContain('listCommits(workspaceId');
         });
 
         it('passes limit=50 query parameter', () => {
-            expect(source).toContain('limit=50');
+            expect(source).toContain('limit: 50');
         });
 
-        it('imports fetchApi from hooks', () => {
-            expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
+        it('imports typed CoC client', () => {
+            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
         });
 
         it('fetches branch-range data', () => {
-            expect(source).toContain('/git/branch-range');
+            expect(source).toContain('getBranchRange(workspaceId');
         });
 
         it('defines fetchCommits callback', () => {
@@ -231,39 +231,39 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const handlePush = useCallback');
         });
 
-        it('handleFetch POSTs to /git/fetch endpoint', () => {
+        it('handleFetch calls typed fetch operation', () => {
             const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
             expect(fetchBlock).toBeTruthy();
-            expect(fetchBlock![0]).toContain('/git/fetch');
+            expect(fetchBlock![0]).toContain('.git.fetch(workspaceId)');
         });
 
-        it('handlePull POSTs to /git/pull endpoint', () => {
+        it('handlePull calls typed pull operation', () => {
             const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
             expect(pullBlock).toBeTruthy();
-            expect(pullBlock![0]).toContain('/git/pull');
+            expect(pullBlock![0]).toContain('.git.pull(workspaceId');
         });
 
-        it('handlePush POSTs to /git/push endpoint', () => {
+        it('handlePush calls typed push operation', () => {
             const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
             expect(pushBlock).toBeTruthy();
-            expect(pushBlock![0]).toContain('/git/push');
+            expect(pushBlock![0]).toContain('.git.push(workspaceId)');
         });
 
-        it('handlePull sends rebase: true in body', () => {
-            expect(source).toContain("JSON.stringify({ rebase: true })");
+        it('handlePull sends rebase: true through typed client', () => {
+            expect(source).toContain('{ rebase: true }');
         });
 
-        it('handlePull sets Content-Type header', () => {
-            expect(source).toContain("'Content-Type': 'application/json'");
+        it('delegates Content-Type handling to typed client', () => {
+            expect(source).toContain('getSpaCocClient().git.pull');
         });
 
-        it('all action handlers use POST method', () => {
+        it('all action handlers use typed git methods', () => {
             const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
             const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
             const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
-            expect(fetchBlock![0]).toContain("method: 'POST'");
-            expect(pullBlock![0]).toContain("method: 'POST'");
-            expect(pushBlock![0]).toContain("method: 'POST'");
+            expect(fetchBlock![0]).toContain('getSpaCocClient().git.fetch');
+            expect(pullBlock![0]).toContain('getSpaCocClient().git.pull');
+            expect(pushBlock![0]).toContain('getSpaCocClient().git.push');
         });
 
         it('handleFetch guards against concurrent calls', () => {
@@ -342,16 +342,16 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const handlePushToCommit = useCallback');
         });
 
-        it('handlePushToCommit POSTs to /git/push-to endpoint', () => {
+        it('handlePushToCommit calls typed pushTo operation', () => {
             const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('/git/push-to');
+            expect(block![0]).toContain('.git.pushTo(workspaceId, commit.hash)');
         });
 
-        it('handlePushToCommit sends commitHash in body', () => {
+        it('handlePushToCommit sends commit hash through typed client', () => {
             const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('commitHash: commit.hash');
+            expect(block![0]).toContain('commit.hash');
         });
 
         it('handlePushToCommit calls closeContextMenu', () => {
@@ -865,8 +865,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu'");
         });
 
-        it('imports getApiBase utility', () => {
-            expect(source).toContain("import { getApiBase } from '../../utils/config'");
+        it('imports typed CoC client utility', () => {
+            expect(source).toContain("import { getSpaCocClient } from '../../api/cocClient'");
         });
 
         it('imports useMemo from react', () => {
@@ -1018,8 +1018,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain('promptContent');
         });
 
-        it('handleConfirmSkillRun POSTs to /queue/tasks via getApiBase', () => {
-            expect(source).toContain("getApiBase() + '/queue/tasks'");
+        it('handleConfirmSkillRun enqueues through typed queue client', () => {
+            expect(source).toContain('getSpaCocClient().queue.enqueueTask');
         });
 
         it('handleConfirmSkillRun appends user context to prompt when non-empty', () => {
@@ -1511,8 +1511,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setHasMore(loaded.length === 50)');
         });
 
-        it('fetchCommits passes skip query param when skipOffset > 0', () => {
-            expect(source).toContain('skipOffset > 0 ? `&skip=${skipOffset}` : \'\'');
+        it('fetchCommits passes skip option when skipOffset > 0', () => {
+            expect(source).toContain('skip: skipOffset > 0 ? skipOffset : undefined');
         });
 
         it('defines handleLoadMore callback', () => {

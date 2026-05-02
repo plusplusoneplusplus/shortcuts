@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
@@ -113,10 +113,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
         setLoading(true);
         setError(null);
         setDiff(null);
-        const fullParam = full ? '&full=true' : '';
-        fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/git/changes/files/${encodeURIComponent(filePath)}/diff?stage=${stage}${fullParam}`
-        )
+        getSpaCocClient().git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full })
             .then(data => {
                 setDiff(data.diff ?? '');
                 setTruncated(!!data.truncated);

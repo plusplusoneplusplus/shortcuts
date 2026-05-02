@@ -23,8 +23,14 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileComme
 }));
 
 const mockFetchApi = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            getDiffCommentTotals: () => Promise.resolve({ totals: {} }),
+            listCommitFiles: (workspaceId: string, hash: string) =>
+                mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files`),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

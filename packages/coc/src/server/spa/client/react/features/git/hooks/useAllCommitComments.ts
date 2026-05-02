@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWsPath } from '../../../utils/config';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import type { UpdateDiffCommentRequest } from './useDiffComments';
@@ -44,17 +44,13 @@ export interface UseAllCommitCommentsReturn {
 // Hook
 // ============================================================================
 
-import { getApiBase } from '../../../utils/config';
-
 /** Poll a queued task until it completes or fails. */
 async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
     const start = Date.now();
     let delay = 1000;
     while (Date.now() - start < timeoutMs) {
         await new Promise(r => setTimeout(r, delay));
-        const res = await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId));
-        if (!res.ok) throw new Error('Failed to fetch task status');
-        const { task } = await res.json();
+        const { task } = await getSpaCocClient().queue.getTask(taskId);
         if (task.status === 'completed') return task.result as T;
         if (task.status === 'failed' || task.status === 'cancelled') {
             throw new Error(task.error || `Task ${task.status}`);
@@ -88,8 +84,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         if (!wsId || !hash) return;
         setLoading(true);
         try {
-            const params = new URLSearchParams({ oldRef: `${hash}^`, newRef: hash });
-            const data = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}?${params}`);
+            const data = await getSpaCocClient().git.listDiffComments(wsId, { oldRef: `${hash}^`, newRef: hash });
             if (mountedRef.current) {
                 setComments(data.comments ?? []);
             }
@@ -142,10 +137,11 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     const resolveWithAI = useCallback(async (userContext?: string, skills?: string[]) => {
         setResolving(true);
         try {
-            const response = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldRef: `${hash}^`, newRef: hash, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
+            const response = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+                oldRef: `${hash}^`,
+                newRef: hash,
+                ...(userContext ? { userContext } : {}),
+                ...(skills?.length ? { skills } : {}),
             });
             if (response.taskId) await pollTaskResult(response.taskId as string);
             await fetchComments();
@@ -163,17 +159,13 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         if (!comment) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
         try {
-            const response = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    oldRef: comment.context.oldRef,
-                    newRef: comment.context.newRef,
-                    filePath: comment.context.filePath,
-                    commentId: id,
-                    ...(userContext ? { userContext } : {}),
-                    ...(skills?.length ? { skills } : {}),
-                }),
+            const response = await getSpaCocClient().git.resolveDiffCommentsWithAI(wsId, {
+                oldRef: comment.context.oldRef,
+                newRef: comment.context.newRef,
+                filePath: comment.context.filePath,
+                commentId: id,
+                ...(userContext ? { userContext } : {}),
+                ...(skills?.length ? { skills } : {}),
             });
             if (response.taskId) await pollTaskResult(response.taskId as string);
             await fetchComments();

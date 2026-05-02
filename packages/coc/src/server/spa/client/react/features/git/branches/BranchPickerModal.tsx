@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 const PAGE_SIZE = 50;
 
@@ -51,17 +51,12 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
             }
             setError(null);
             try {
-                const params = new URLSearchParams({
+                const data = await getSpaCocClient().git.listBranches(workspaceId, {
                     type: 'local',
-                    limit: String(PAGE_SIZE),
-                    offset: String(newOffset),
+                    limit: PAGE_SIZE,
+                    offset: newOffset,
+                    search: search || undefined,
                 });
-                if (search) {
-                    params.set('search', search);
-                }
-                const data = await fetchApi(
-                    `/workspaces/${encodeURIComponent(workspaceId)}/git/branches?${params}`
-                );
                 const fetched: GitBranch[] = data.local?.branches ?? [];
                 const more: boolean = data.local?.hasMore ?? false;
                 if (append) {
@@ -122,14 +117,7 @@ export function BranchPickerModal({ workspaceId, currentBranch, isOpen, onClose,
             setIsSwitching(true);
             setError(null);
             try {
-                const result = await fetchApi(
-                    `/workspaces/${encodeURIComponent(workspaceId)}/git/branches/switch`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: branchName, force: false }),
-                    }
-                );
+                const result = await getSpaCocClient().git.switchBranch(workspaceId, branchName, { force: false });
                 if (result.success === false) {
                     throw new Error(result.error || 'Switch failed');
                 }

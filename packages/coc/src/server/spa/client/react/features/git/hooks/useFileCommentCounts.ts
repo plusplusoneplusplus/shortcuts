@@ -9,7 +9,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase, getWsPath } from '../../../utils/config';
+import { getWsPath } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export function useFileCommentCounts(
     wsId: string,
@@ -23,9 +24,7 @@ export function useFileCommentCounts(
             setCounts(new Map());
             return;
         }
-        const params = new URLSearchParams({ oldRef, newRef, status: 'open' });
-        fetch(`${getApiBase()}/diff-comment-counts/${encodeURIComponent(wsId)}?${params}`)
-            .then(res => (res.ok ? res.json() : Promise.reject(new Error('fetch failed'))))
+        getSpaCocClient().git.getDiffCommentCounts(wsId, { oldRef, newRef, status: 'open' })
             .then((data: { counts: Record<string, number> }) => {
                 const map = new Map<string, number>();
                 for (const [k, v] of Object.entries(data.counts)) {

@@ -22,6 +22,7 @@ import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
+import { getSpaCocClient } from '../../../api/cocClient';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { GitCommitItem } from './CommitList';
@@ -66,7 +67,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     const [manualOverride, setManualOverride] = useState(false);
 
     const diffUrl = hash
-        ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`
+        ? getSpaCocClient().git.commitDiffPath(workspaceId, hash)
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);

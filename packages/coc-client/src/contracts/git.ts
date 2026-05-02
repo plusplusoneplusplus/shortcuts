@@ -55,3 +55,195 @@ export type GitBranchRangeResponse = GitBranchRangeInfo | GitDefaultBranchRespon
 export interface GitBranchRangeFilesResponse {
   files: GitFileChange[];
 }
+
+export interface GitFileContentResponse {
+  path: string;
+  fileName: string;
+  lines: string[];
+  totalLines: number;
+  truncated: boolean;
+  language: string;
+  resolvedRef: string;
+}
+
+export interface GitBranch {
+  name: string;
+  isCurrent: boolean;
+  isRemote: boolean;
+  remoteName?: string;
+  lastCommitSubject?: string;
+  lastCommitDate?: string;
+}
+
+export interface GitPaginatedBranchResult {
+  branches: GitBranch[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export interface GitBranchesResponse {
+  local?: GitPaginatedBranchResult;
+  remote?: GitPaginatedBranchResult;
+}
+
+export interface GitBranchStatus {
+  name: string;
+  isDetached: boolean;
+  detachedHash?: string;
+  ahead: number;
+  behind: number;
+  trackingBranch?: string;
+  hasUncommittedChanges: boolean;
+}
+
+export type GitRepoOperationType = 'none' | 'merge' | 'rebase' | 'cherry-pick' | string;
+
+export interface GitRepoState {
+  operation: GitRepoOperationType;
+  conflictFiles: string[];
+}
+
+export type GitOpType =
+  | 'pull'
+  | 'push'
+  | 'fetch'
+  | 'rebase-autosquash'
+  | 'rebase-continue'
+  | 'rebase-abort'
+  | 'merge-continue'
+  | 'merge-abort'
+  | 'rebase-reorder'
+  | 'reword'
+  | string;
+
+export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted' | string;
+
+export interface GitOpJob {
+  id: string;
+  workspaceId: string;
+  op: GitOpType;
+  status: GitOpStatus;
+  startedAt: string;
+  finishedAt?: string;
+  output?: string;
+  error?: string;
+  pid?: number;
+}
+
+export interface GitOperationResult {
+  success: boolean;
+  error?: string;
+  message?: string;
+  conflicts?: boolean;
+  [key: string]: unknown;
+}
+
+export interface GitAsyncJobResponse extends Partial<GitOperationResult> {
+  jobId?: string;
+  taskId?: string;
+}
+
+export interface GitAmendResponse {
+  hash?: string;
+  error?: string;
+}
+
+export interface GitWorkingTreeChange {
+  filePath: string;
+  originalPath?: string;
+  oldPath?: string;
+  status: string;
+  stage: 'staged' | 'unstaged' | 'untracked' | string;
+  repositoryRoot: string;
+  repositoryName: string;
+}
+
+export interface GitWorkingTreeChangesResponse {
+  changes: GitWorkingTreeChange[];
+  repoState: GitRepoState;
+}
+
+export interface GitCommitChatBinding {
+  commitHash: string;
+  taskId: string;
+}
+
+export interface GitCommitChatBindingListResponse {
+  bindings: GitCommitChatBinding[];
+}
+
+export interface GitCommitChatRebindResponse {
+  oldHash: string;
+  newHash: string;
+  taskId: string;
+}
+
+export interface GitDiffCommentSelection {
+  diffLineStart: number;
+  diffLineEnd: number;
+  side: 'added' | 'removed' | 'context' | string;
+  oldLineStart?: number;
+  oldLineEnd?: number;
+  newLineStart?: number;
+  newLineEnd?: number;
+  startColumn: number;
+  endColumn: number;
+}
+
+export interface GitDiffCommentContext {
+  repositoryId: string;
+  filePath: string;
+  oldRef: string;
+  newRef: string;
+  commitHash?: string;
+}
+
+export interface GitDiffCommentReply {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+  isAI?: boolean;
+}
+
+export interface GitDiffComment {
+  id: string;
+  context: GitDiffCommentContext;
+  selection: GitDiffCommentSelection;
+  selectedText: string;
+  comment: string;
+  status: 'open' | 'resolved' | 'orphaned' | string;
+  createdAt: string;
+  updatedAt: string;
+  author?: string;
+  tags?: string[];
+  replies?: GitDiffCommentReply[];
+  aiResponse?: string;
+  [key: string]: unknown;
+}
+
+export interface GitDiffCommentsResponse {
+  comments: GitDiffComment[];
+}
+
+export interface GitDiffCommentResponse {
+  comment: GitDiffComment;
+}
+
+export interface GitDiffCommentReplyResponse {
+  reply: GitDiffCommentReply;
+}
+
+export interface GitDiffCommentCountsResponse {
+  counts: Record<string, number>;
+}
+
+export interface GitDiffCommentTotalsResponse {
+  totals: Record<string, number>;
+}
+
+export interface GitDiffCommentResolveResponse {
+  taskId?: string;
+  totalCount?: number;
+  aiResponse?: string;
+}

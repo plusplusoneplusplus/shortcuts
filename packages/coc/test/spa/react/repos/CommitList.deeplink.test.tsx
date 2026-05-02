@@ -18,8 +18,15 @@ import { mockViewport } from '../../../spa/helpers/viewport-mock';
 // --- Module mocks ---
 
 const mockFetchApi = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            getDiffCommentTotals: () => Promise.resolve({ totals: {} }),
+            getDiffCommentCounts: () => Promise.resolve({ counts: {} }),
+            listCommitFiles: (workspaceId: string, hash: string) =>
+                mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files`),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

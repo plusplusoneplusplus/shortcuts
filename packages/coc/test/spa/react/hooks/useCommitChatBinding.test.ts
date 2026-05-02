@@ -35,8 +35,7 @@ describe('useCommitChatBinding', () => {
 
     describe('binding fetch on mount', () => {
         it('fetches binding via GET when commitHash changes', () => {
-            expect(source).toContain('fetchApi(`/workspaces/');
-            expect(source).toContain('/commit-chat-bindings/');
+            expect(source).toContain('getCommitChatBinding(workspaceId, commitHash)');
         });
 
         it('sets taskId from binding response', () => {
@@ -56,7 +55,7 @@ describe('useCommitChatBinding', () => {
 
     describe('binding 404 → empty state', () => {
         it('treats 404 as no binding (not an error)', () => {
-            expect(source).toContain("err?.message?.includes('404')");
+            expect(source).toContain("err?.status === 404 || err?.message?.includes('404')");
             // On 404, taskId stays null — no error state
             expect(source).toMatch(/includes\('404'\)\)\s*setTaskId\(null\)/);
         });
@@ -87,8 +86,7 @@ describe('useCommitChatBinding', () => {
 
     describe('createChat creates task + binding', () => {
         it('POSTs to /queue/tasks with chat payload', () => {
-            expect(source).toContain("fetchApi('/queue/tasks'");
-            expect(source).toContain("method: 'POST'");
+            expect(source).toContain('queue.enqueueTask');
             expect(source).toContain("kind: 'chat'");
             expect(source).toContain("mode: 'ask'");
         });
@@ -103,12 +101,11 @@ describe('useCommitChatBinding', () => {
         });
 
         it('extracts taskId from nested task object (server returns { task: { id } })', () => {
-            expect(source).toContain('res.task?.id ?? res.id');
+            expect(source).toContain("res.task?.id ?? (res as { id?: string }).id");
         });
 
         it('POSTs binding after task creation', () => {
-            expect(source).toContain('/commit-chat-bindings');
-            expect(source).toContain('body: JSON.stringify({ commitHash, taskId: newTaskId })');
+            expect(source).toContain('createCommitChatBinding(workspaceId, commitHash, newTaskId)');
         });
 
         it('sets taskId on success', () => {

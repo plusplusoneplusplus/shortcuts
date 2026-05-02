@@ -159,13 +159,12 @@ describe('CommitList', () => {
             expect(source).toContain('setFilesLoading');
         });
 
-        it('fetches files from /git/commits/:hash/files API', () => {
-            expect(source).toContain('/git/commits/');
-            expect(source).toContain('/files');
+        it('fetches files through typed git client', () => {
+            expect(source).toContain('listCommitFiles(workspaceId');
         });
 
-        it('imports fetchApi for file list fetching', () => {
-            expect(source).toContain("import { fetchApi }");
+        it('imports typed CoC client for file list fetching', () => {
+            expect(source).toContain("import { getSpaCocClient }");
         });
 
         it('toggles expand/collapse on commit click via handleCommitClick', () => {
