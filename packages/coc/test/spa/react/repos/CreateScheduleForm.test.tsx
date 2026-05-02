@@ -7,8 +7,22 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+    mockSchedulesClient: {
+        create: vi.fn(),
+        update: vi.fn(),
+    },
+    mockModelsClient: {
+        list: vi.fn(),
+    },
+}));
+
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
@@ -40,6 +54,9 @@ async function renderForm(overrides: Partial<Parameters<typeof import('../../../
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mockSchedulesClient.create.mockResolvedValue({});
+    mockSchedulesClient.update.mockResolvedValue({});
+    mockModelsClient.list.mockResolvedValue([]);
     mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
 });
 
@@ -156,8 +173,7 @@ describe('CreateScheduleForm — payload compatibility', () => {
         await user.click(screen.getByRole('button', { name: /create/i }));
 
         await waitFor(() => expect(onCreated).toHaveBeenCalled());
-        const postCall = mockFetch.mock.calls.find((call: any[]) => call[1]?.method === 'POST');
-        const body = JSON.parse(postCall![1].body);
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
         expect(body).toMatchObject({
             name: 'Weekly Health',
             target: 'Run the weekly repo health check',
@@ -179,10 +195,9 @@ describe('CreateScheduleForm — payload compatibility', () => {
         await user.click(screen.getByRole('button', { name: /create/i }));
 
         await waitFor(() => {
-            expect(mockFetch.mock.calls.some((call: any[]) => call[1]?.method === 'POST')).toBe(true);
+            expect(mockSchedulesClient.create).toHaveBeenCalled();
         });
-        const postCall = mockFetch.mock.calls.find((call: any[]) => call[1]?.method === 'POST');
-        const body = JSON.parse(postCall![1].body);
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
         expect(body.targetType).toBe('script');
         expect(body.params).toEqual({ workingDirectory: './reports' });
         expect(body.mode).toBeUndefined();

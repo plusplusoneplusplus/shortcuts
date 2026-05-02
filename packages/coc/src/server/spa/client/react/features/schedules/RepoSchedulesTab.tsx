@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../contexts/AppContext';
@@ -62,8 +62,8 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
     const fetchSchedules = useCallback(async () => {
         try {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules`);
-            setSchedules(data?.schedules || []);
+            const nextSchedules = await getSpaCocClient().schedules.list(workspaceId);
+            setSchedules(nextSchedules);
         } catch {
             setSchedules([]);
         }
@@ -96,9 +96,9 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     useEffect(() => {
         if (!selectedId) return;
         let cancelled = false;
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(selectedId)}/history`)
-            .then(data => {
-                if (!cancelled) setHistory(data?.history || []);
+        getSpaCocClient().schedules.history(workspaceId, selectedId)
+            .then(nextHistory => {
+                if (!cancelled) setHistory(nextHistory);
             })
             .catch(() => {
                 if (!cancelled) setHistory([]);
@@ -117,23 +117,20 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     }, [schedules, selectedId, workspaceId, dispatch]);
 
     const handlePauseResume = async (schedule: Schedule) => {
-        const newStatus = schedule.status === 'active' ? 'paused' : 'active';
-        await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(schedule.id)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus }),
-        });
+        if (schedule.status === 'active') {
+            await getSpaCocClient().schedules.disable(workspaceId, schedule.id);
+        } else {
+            await getSpaCocClient().schedules.enable(workspaceId, schedule.id);
+        }
         fetchSchedules();
     };
 
     const handleRunNow = async (scheduleId: string) => {
-        await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/run`, {
-            method: 'POST',
-        });
+        await getSpaCocClient().schedules.run(workspaceId, scheduleId);
         fetchSchedules();
         if (selectedId === scheduleId) {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/history`);
-            setHistory(data?.history || []);
+            const nextHistory = await getSpaCocClient().schedules.history(workspaceId, scheduleId);
+            setHistory(nextHistory);
         }
     };
 
@@ -144,9 +141,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             ? `This will permanently delete .github/schedules/${slug}.yaml. This cannot be undone. Continue?`
             : 'Delete this schedule?';
         if (!confirm(message)) return;
-        await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`, {
-            method: 'DELETE',
-        });
+        await getSpaCocClient().schedules.delete(workspaceId, scheduleId);
         if (selectedId === scheduleId) {
             setSelectedId(null);
             dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
@@ -156,11 +151,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     };
 
     const handleMove = async (scheduleId: string, destination: 'user' | 'repo') => {
-        await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/move`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ destination }),
-        });
+        await getSpaCocClient().schedules.move(workspaceId, scheduleId, destination);
         fetchSchedules();
     };
 

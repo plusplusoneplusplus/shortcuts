@@ -4,6 +4,7 @@ export * from './preferences';
 export * from './processes';
 export * from './pull-requests';
 export * from './queue';
+export * from './schedules';
 export * from './templates';
 export * from './work-items';
 export * from './workspaces';

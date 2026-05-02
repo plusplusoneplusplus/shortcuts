@@ -9,6 +9,18 @@ import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppCo
 import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 
+const { mockSchedulesClient } = vi.hoisted(() => ({
+    mockSchedulesClient: {
+        list: vi.fn(),
+        history: vi.fn(),
+        disable: vi.fn(),
+        enable: vi.fn(),
+        delete: vi.fn(),
+        move: vi.fn(),
+        run: vi.fn(),
+    },
+}));
+
 const MOCK_SCHEDULE_PROMPT = {
     id: 'sched-prompt',
     name: 'Prompt Schedule',
@@ -54,6 +66,10 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
@@ -89,11 +105,26 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 async function renderWithSchedules(schedules: any[]) {
+    mockSchedulesClient.list.mockResolvedValue(schedules);
+    mockSchedulesClient.history.mockResolvedValue([]);
+    mockSchedulesClient.disable.mockResolvedValue({});
+    mockSchedulesClient.enable.mockResolvedValue({});
+    mockSchedulesClient.delete.mockResolvedValue({ deleted: true });
+    mockSchedulesClient.move.mockResolvedValue({});
+    mockSchedulesClient.run.mockResolvedValue({ run: {} });
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });
     });
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/schedules') && url.includes('/history')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: [] }) });
+        }
+        if (url.includes('/schedules') && (!url.includes('/schedules/') || url.endsWith('/schedules'))) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ schedules }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
 
     const { RepoSchedulesTab } = await import(
         '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
@@ -150,35 +181,25 @@ describe('RepoSchedulesTab — pause and resume', () => {
         vi.clearAllMocks();
     });
 
-    it('clicking Pause sends PATCH with status=paused for active schedule', async () => {
+    it('clicking Pause disables the active schedule through the typed client', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
         await waitFor(() => expect(screen.getByRole('button', { name: /pause schedule/i })).toBeTruthy());
         fireEvent.click(screen.getByRole('button', { name: /pause schedule/i }));
 
         await waitFor(() => {
-            const patchCall = mockFetch.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'PATCH' && (c[0] as string).includes('/schedules/'),
-            );
-            expect(patchCall).toBeTruthy();
-            const body = JSON.parse(patchCall![1].body);
-            expect(body.status).toBe('paused');
+            expect(mockSchedulesClient.disable).toHaveBeenCalledWith('ws-1', 'sched-prompt');
         });
     });
 
-    it('clicking Resume sends PATCH with status=active for paused schedule', async () => {
+    it('clicking Resume enables the paused schedule through the typed client', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PAUSED]);
 
         await waitFor(() => expect(screen.getByRole('button', { name: /resume schedule/i })).toBeTruthy());
         fireEvent.click(screen.getByRole('button', { name: /resume schedule/i }));
 
         await waitFor(() => {
-            const patchCall = mockFetch.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'PATCH' && (c[0] as string).includes('/schedules/'),
-            );
-            expect(patchCall).toBeTruthy();
-            const body = JSON.parse(patchCall![1].body);
-            expect(body.status).toBe('active');
+            expect(mockSchedulesClient.enable).toHaveBeenCalledWith('ws-1', 'sched-paused');
         });
     });
 });
@@ -194,17 +215,14 @@ describe('RepoSchedulesTab — delete', () => {
         vi.stubGlobal('confirm', () => true);
     });
 
-    it('clicking Delete sends DELETE request to schedules endpoint', async () => {
+    it('clicking Delete deletes through the typed client', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
         await waitFor(() => expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy());
         fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await waitFor(() => {
-            const deleteCall = mockFetch.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'DELETE' && (c[0] as string).includes('/schedules/'),
-            );
-            expect(deleteCall).toBeTruthy();
+            expect(mockSchedulesClient.delete).toHaveBeenCalledWith('ws-1', 'sched-prompt');
         });
     });
 
@@ -216,23 +234,17 @@ describe('RepoSchedulesTab — delete', () => {
         fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await new Promise(r => setTimeout(r, 100));
-        const deleteCall = mockFetch.mock.calls.find(
-            (c: any[]) => c[1]?.method === 'DELETE',
-        );
-        expect(deleteCall).toBeFalsy();
+        expect(mockSchedulesClient.delete).not.toHaveBeenCalled();
     });
 
-    it('DELETE request targets the correct schedule ID', async () => {
+    it('delete targets the correct schedule ID', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
         await waitFor(() => expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy());
         fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await waitFor(() => {
-            const deleteCall = mockFetch.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'DELETE' && (c[0] as string).includes('/sched-prompt'),
-            );
-            expect(deleteCall).toBeTruthy();
+            expect(mockSchedulesClient.delete).toHaveBeenCalledWith('ws-1', 'sched-prompt');
         });
     });
 });

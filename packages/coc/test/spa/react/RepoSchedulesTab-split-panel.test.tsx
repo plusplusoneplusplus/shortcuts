@@ -11,6 +11,23 @@ import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppCo
 import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 
+const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+    mockSchedulesClient: {
+        list: vi.fn(),
+        history: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        disable: vi.fn(),
+        enable: vi.fn(),
+        delete: vi.fn(),
+        move: vi.fn(),
+        run: vi.fn(),
+    },
+    mockModelsClient: {
+        list: vi.fn(),
+    },
+}));
+
 const MOCK_SCHEDULE = {
     id: 'sched-1',
     name: 'Test Schedule',
@@ -47,6 +64,10 @@ vi.stubGlobal('fetch', mockFetch);
 const mockFetchApi = vi.fn();
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -90,11 +111,23 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
+    mockSchedulesClient.list.mockResolvedValue(schedules);
+    mockSchedulesClient.history.mockResolvedValue([]);
+    mockSchedulesClient.create.mockResolvedValue({});
+    mockModelsClient.list.mockResolvedValue([]);
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });
     });
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/schedules') && url.includes('/history')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: [] }) });
+        }
+        if (url.includes('/schedules') && (!url.includes('/schedules/') || url.endsWith('/schedules'))) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ schedules }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
 
     const { RepoSchedulesTab } = await import(
         '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
@@ -111,6 +144,10 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
 }
 
 async function renderEmpty() {
+    mockSchedulesClient.list.mockResolvedValue([]);
+    mockSchedulesClient.history.mockResolvedValue([]);
+    mockSchedulesClient.create.mockResolvedValue({});
+    mockModelsClient.list.mockResolvedValue([]);
     mockFetchApi.mockResolvedValue({ schedules: [] });
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
@@ -253,11 +290,22 @@ describe('Split-panel layout', () => {
 
     it('right panel shows placeholder when schedules exist but none selected', async () => {
         // Render with schedules but manually override to have no auto-select effect fire yet
+        mockSchedulesClient.list.mockResolvedValue([MOCK_SCHEDULE]);
+        mockSchedulesClient.history.mockResolvedValue([]);
+        mockModelsClient.list.mockResolvedValue([]);
         mockFetchApi.mockImplementation((url: string) => {
             if (url.includes('/history')) return Promise.resolve({ history: [] });
             return Promise.resolve({ schedules: [MOCK_SCHEDULE] });
         });
-        mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/schedules') && url.includes('/history')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: [] }) });
+            }
+            if (url.includes('/schedules') && (!url.includes('/schedules/') || url.endsWith('/schedules'))) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ schedules: [MOCK_SCHEDULE] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
 
         const { RepoSchedulesTab } = await import(
             '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'

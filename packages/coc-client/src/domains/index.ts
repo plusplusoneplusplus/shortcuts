@@ -5,6 +5,7 @@ export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';
 export { PullRequestsClient } from './pull-requests';
 export { QueueClient } from './queue';
+export { SchedulesClient } from './schedules';
 export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';

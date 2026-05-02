@@ -10,6 +10,23 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { parseCronToInterval } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
+const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+    mockSchedulesClient: {
+        list: vi.fn(),
+        history: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        disable: vi.fn(),
+        enable: vi.fn(),
+        delete: vi.fn(),
+        move: vi.fn(),
+        run: vi.fn(),
+    },
+    mockModelsClient: {
+        list: vi.fn(),
+    },
+}));
+
 const MOCK_SCHEDULE = {
     id: 'sched-1',
     name: 'Test Schedule',
@@ -34,6 +51,10 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
@@ -55,11 +76,29 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
+    mockSchedulesClient.list.mockResolvedValue(schedules);
+    mockSchedulesClient.history.mockResolvedValue([]);
+    mockSchedulesClient.create.mockResolvedValue({});
+    mockSchedulesClient.update.mockResolvedValue({});
+    mockSchedulesClient.disable.mockResolvedValue({});
+    mockSchedulesClient.enable.mockResolvedValue({});
+    mockSchedulesClient.delete.mockResolvedValue({ deleted: true });
+    mockSchedulesClient.move.mockResolvedValue({});
+    mockSchedulesClient.run.mockResolvedValue({ run: {} });
+    mockModelsClient.list.mockResolvedValue([]);
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });
     });
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/schedules') && url.includes('/history')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: [] }) });
+        }
+        if (url.includes('/schedules') && (!url.includes('/schedules/') || url.endsWith('/schedules'))) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ schedules }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
 
     const { RepoSchedulesTab } = await import(
         '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
@@ -203,7 +242,7 @@ describe('Schedule edit mode', () => {
         });
     });
 
-    it('Save sends a PATCH request with updated fields', async () => {
+    it('Save updates the schedule through the typed client with updated fields', async () => {
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
         await renderWithSchedules();
@@ -222,17 +261,11 @@ describe('Schedule edit mode', () => {
         fireEvent.click(saveBtn);
 
         await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'PATCH' && (c[0] as string).includes('/schedules/'),
-            );
-            expect(patchCalls.length).toBeGreaterThan(0);
+            expect(mockSchedulesClient.update).toHaveBeenCalled();
         });
 
-        const patchCall = mockFetch.mock.calls.find(
-            (c: any[]) => c[1]?.method === 'PATCH' && (c[0] as string).includes('/schedules/sched-1'),
-        );
-        expect(patchCall).toBeTruthy();
-        const body = JSON.parse(patchCall![1].body);
+        const [, scheduleId, body] = mockSchedulesClient.update.mock.calls[0];
+        expect(scheduleId).toBe('sched-1');
         expect(body.name).toBe('Updated Schedule');
         expect(body.target).toBe('pipelines/test/pipeline.yaml');
     });
@@ -324,7 +357,7 @@ describe('Schedule duplicate', () => {
         });
     });
 
-    it('Duplicate submits as POST (create), not PATCH', async () => {
+    it('Duplicate submits through create, not update', async () => {
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
         await renderWithSchedules();
@@ -338,17 +371,9 @@ describe('Schedule duplicate', () => {
         fireEvent.click(createBtn);
 
         await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
-            );
-            expect(postCalls.length).toBeGreaterThan(0);
+            expect(mockSchedulesClient.create).toHaveBeenCalled();
         });
-
-        // Should NOT have any PATCH call
-        const patchCalls = mockFetch.mock.calls.filter(
-            (c: any[]) => c[1]?.method === 'PATCH',
-        );
-        expect(patchCalls.length).toBe(0);
+        expect(mockSchedulesClient.update).not.toHaveBeenCalled();
     });
 });
 

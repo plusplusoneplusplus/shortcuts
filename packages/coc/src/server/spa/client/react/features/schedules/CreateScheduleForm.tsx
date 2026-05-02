@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 import { fetchWorkflows } from '../workflow/workflow-api';
 import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
@@ -253,9 +253,8 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/models')
-            .then(r => r.ok ? r.json() : null)
-            .then((data: any[]) => {
+        getSpaCocClient().models.list()
+            .then(data => {
                 if (!cancelled) {
                     setModels(Array.isArray(data) ? data.map(m => m.id ?? m) : []);
                 }
@@ -368,18 +367,10 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 model: model.trim() || undefined,
                 mode: targetType === 'prompt' ? chatMode : undefined,
             };
-            const url = formMode === 'edit' && scheduleId
-                ? getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`
-                : getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules`;
-            const res = await fetch(url, {
-                method: formMode === 'edit' ? 'PATCH' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                setError(data.error || `Failed (${res.status})`);
-                return;
+            if (formMode === 'edit' && scheduleId) {
+                await getSpaCocClient().schedules.update(workspaceId, scheduleId, payload);
+            } else {
+                await getSpaCocClient().schedules.create(workspaceId, payload);
             }
             onCreated();
         } catch (err) {

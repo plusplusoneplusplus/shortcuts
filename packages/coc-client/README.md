@@ -35,6 +35,7 @@ const { items } = await coc.workItems.list(workspaceId);
 | Models | `coc.models` | model list and enabled-model configuration |
 | Processes | `coc.processes` | list, summaries, detail, create, update, delete, cancel, follow-up message, output, stream helper |
 | Queue | `coc.queue` | list, stats, history, enqueue, pause/resume, cancel |
+| Schedules | `coc.schedules` | repo-scoped list, create, update, enable/disable, move, delete, run, history |
 | Work items | `coc.workItems` | list, grouped list, create, get, update, delete, plan, execute |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
 | Preferences | `coc.preferences` | global and per-repo preferences, skill usage |

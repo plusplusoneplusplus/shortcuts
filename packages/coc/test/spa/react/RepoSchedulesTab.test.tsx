@@ -10,6 +10,23 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { SCHEDULE_TEMPLATES, describeCron, CRON_EXAMPLES } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
+const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+    mockSchedulesClient: {
+        list: vi.fn(),
+        history: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        disable: vi.fn(),
+        enable: vi.fn(),
+        delete: vi.fn(),
+        move: vi.fn(),
+        run: vi.fn(),
+    },
+    mockModelsClient: {
+        list: vi.fn(),
+    },
+}));
+
 // Mock fetch and fetchApi so the component can render without a real server
 const mockFetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -20,6 +37,10 @@ vi.stubGlobal('fetch', mockFetch);
 const mockFetchApi = vi.fn().mockResolvedValue({ schedules: [] });
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -126,6 +147,10 @@ describe('SCHEDULE_TEMPLATES', () => {
 describe('CreateScheduleForm action-card UI', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockSchedulesClient.list.mockResolvedValue([]);
+        mockSchedulesClient.history.mockResolvedValue([]);
+        mockSchedulesClient.create.mockResolvedValue({});
+        mockModelsClient.list.mockResolvedValue([]);
         mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
@@ -267,17 +292,10 @@ describe('CreateScheduleForm action-card UI', () => {
 
         // Wait for the POST call (form submits asynchronously)
         await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
-            );
-            expect(postCalls.length).toBeGreaterThan(0);
+            expect(mockSchedulesClient.create).toHaveBeenCalled();
         });
 
-        const postCall = mockFetch.mock.calls.find(
-            (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
-        );
-        expect(postCall).toBeTruthy();
-        const body = JSON.parse(postCall![1].body);
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
         expect(body.params).toEqual({
             workingDirectory: '.',
         });
@@ -313,6 +331,10 @@ describe('CreateScheduleForm action-card UI', () => {
 describe('Workflow dropdown selector (target field)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockSchedulesClient.list.mockResolvedValue([]);
+        mockSchedulesClient.history.mockResolvedValue([]);
+        mockSchedulesClient.create.mockResolvedValue({});
+        mockModelsClient.list.mockResolvedValue([]);
         mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
@@ -567,16 +589,10 @@ describe('Workflow dropdown selector (target field)', () => {
 
         // Verify POST body contains params.pipeline
         await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
-            );
-            expect(postCalls.length).toBeGreaterThan(0);
+            expect(mockSchedulesClient.create).toHaveBeenCalled();
         });
 
-        const postCall = mockFetch.mock.calls.find(
-            (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
-        );
-        const body = JSON.parse(postCall![1].body);
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
         expect(body.params.pipeline).toBe('pipelines/daily-report/pipeline.yaml');
         expect(body.target).toBe('pipelines/daily-report/pipeline.yaml');
     });
@@ -617,11 +633,23 @@ const MOCK_SCHEDULE_2 = {
 };
 
 async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
+    mockSchedulesClient.list.mockResolvedValue(schedules);
+    mockSchedulesClient.history.mockResolvedValue([]);
+    mockSchedulesClient.create.mockResolvedValue({});
+    mockModelsClient.list.mockResolvedValue([]);
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });
     });
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/schedules') && url.includes('/history')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: [] }) });
+        }
+        if (url.includes('/schedules') && (!url.includes('/schedules/') || url.endsWith('/schedules'))) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ schedules }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
     return renderSchedulesTab();
 }
 
@@ -815,6 +843,10 @@ describe('CRON_EXAMPLES', () => {
 describe('Cron hint panel UI', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockSchedulesClient.list.mockResolvedValue([]);
+        mockSchedulesClient.history.mockResolvedValue([]);
+        mockSchedulesClient.create.mockResolvedValue({});
+        mockModelsClient.list.mockResolvedValue([]);
         mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
