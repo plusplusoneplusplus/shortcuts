@@ -16,6 +16,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 |---------|----------|---------|-------------|
 | **VS Code Extension** | `packages/vscode-extension/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML workflows — **FROZEN: do not modify** |
 | **CoC CLI** | `packages/coc/` | Node.js | CLI for executing YAML-based AI workflows (`coc run\|validate\|list\|serve\|wipe-data`) |
+| **CoC Client** | `packages/coc-client/` | Node.js/browser | Framework-free TypeScript client for CoC REST and realtime APIs |
 | **Deep Wiki** | `packages/deep-wiki/` | Node.js | CLI that auto-generates comprehensive wikis for codebases (`deep-wiki seeds\|discover\|generate\|theme\|init`) |
 
 | Shared Package | Location | Description |
@@ -26,7 +27,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 ## Package Management & Publishing
 
-All three packages (`forge`, `coc`, `deep-wiki`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
+All published packages (`forge`, `coc`, `coc-client`, `deep-wiki`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
 
 **How forge is consumed:** `coc` and `deep-wiki` depend on the published `@plusplusoneplusplus/forge` package via a caret range (`^1.0.0`). During local development, npm workspaces symlink forge automatically. There is no bundling or copying of forge into consumer packages — forge is resolved from `node_modules` at runtime.
 
@@ -43,7 +44,7 @@ All three packages (`forge`, `coc`, `deep-wiki`) are published to npm under the 
 
 ## Build & Test
 
-- **Build all:** `npm run build` · **Build extension:** `npm run compile` · **Watch:** `npm run watch`
+- **Build packages:** `npm run build:packages` · **Build extension:** `npm run compile` · **Watch:** `npm run watch`
 - **Test all:** `npm run test` (extension Mocha tests, 6900+)
 - **Test packages:** `npm run test:run` in any package directory (Vitest)
 - **Lint:** `npm run lint` · **Package:** `npm run vsce:package` · **Publish:** `npm run vsce:publish`

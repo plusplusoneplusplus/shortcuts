@@ -43,14 +43,9 @@ describe('useWebSocket — onConnect callback', () => {
         expect(source).toMatch(/onConnectRef\.current\?\.\(\)/);
     });
 
-    it('calls onConnect after ping interval is set up', () => {
-        const onopenMatch = source.match(/ws\.onopen\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\};/);
-        expect(onopenMatch).not.toBeNull();
-        const onopenBody = onopenMatch![1];
-        const pingIndex = onopenBody.indexOf('setInterval');
-        const connectIndex = onopenBody.indexOf('onConnectRef.current');
-        expect(pingIndex).toBeGreaterThan(-1);
-        expect(connectIndex).toBeGreaterThan(pingIndex);
+    it('delegates open lifecycle to the shared CoC client', () => {
+        expect(source).toContain('getSpaCocClient().events.connect');
+        expect(source).toContain('onOpen: () => onConnectRef.current?.()');
     });
 });
 

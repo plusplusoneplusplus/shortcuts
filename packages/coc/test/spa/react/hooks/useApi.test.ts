@@ -1,8 +1,8 @@
 /**
  * Tests for useApi.ts — fetchApi helper.
  *
- * Static source analysis verifying the fetchApi function accepts and
- * forwards an optional RequestInit options parameter to fetch().
+ * Static source analysis verifying the fetchApi function accepts an optional
+ * RequestInit options parameter and delegates transport to the CoC client.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -28,17 +28,21 @@ describe('useApi — fetchApi', () => {
         expect(source).toMatch(/fetchApi\(path:\s*string,\s*options\?:\s*RequestInit\)/);
     });
 
-    it('forwards options to fetch() only when provided', () => {
-        // Options are passed to fetch (empty object when not provided)
-        expect(source).toMatch(/fetch\(url,\s*options\s*\?\?\s*\{\}\)/);
+    it('forwards options to the shared CoC client', () => {
+        expect(source).toContain('getSpaCocClient().request(path');
+        expect(source).toContain('method: options?.method');
+        expect(source).toContain('headers: options?.headers');
+        expect(source).toContain('rawBody: options?.body');
+        expect(source).toContain('signal: options?.signal');
     });
 
-    it('throws on non-ok responses', () => {
-        expect(source).toContain('if (!res.ok)');
-        expect(source).toContain('throw new Error');
+    it('preserves legacy error messages for API failures', () => {
+        expect(source).toContain('error instanceof CocApiError');
+        expect(source).toContain('API error: ${error.status} ${error.statusText}');
     });
 
-    it('returns parsed JSON on success', () => {
-        expect(source).toContain('res.json()');
+    it('preserves legacy network rejection behavior', () => {
+        expect(source).toContain('error instanceof CocNetworkError');
+        expect(source).toContain('throw error.cause');
     });
 });

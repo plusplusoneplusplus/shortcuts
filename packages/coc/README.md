@@ -94,6 +94,34 @@ A web-based dashboard for monitoring AI processes across workspaces:
 
 Start with `coc serve` and open `http://localhost:4000`.
 
+### Client Library
+
+Use `@plusplusoneplusplus/coc-client` from Node tools or browser integrations to call a running CoC server without copying dashboard transport code:
+
+```ts
+import { CocClient } from '@plusplusoneplusplus/coc-client';
+
+const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
+const health = await coc.health.get();
+const { items } = await coc.workItems.list(workspaceId);
+```
+
+The client covers core REST domains and realtime process events. Repo-scoped calls require an explicit workspace ID, and follow-up routing remains server-authoritative.
+
+### Client Library
+
+Use `@plusplusoneplusplus/coc-client` from Node tools or browser integrations to call a running CoC server without copying dashboard transport code:
+
+```ts
+import { CocClient } from '@plusplusoneplusplus/coc-client';
+
+const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
+const health = await coc.health.get();
+const { items } = await coc.workItems.list(workspaceId);
+```
+
+The client covers core REST domains and realtime process events. Repo-scoped calls require an explicit workspace ID, and follow-up routing remains server-authoritative.
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
