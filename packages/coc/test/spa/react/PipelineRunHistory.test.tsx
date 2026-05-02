@@ -10,10 +10,16 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
 
-// Mock fetchApi
-const mockFetchApi = vi.fn();
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+const { mockRunHistory } = vi.hoisted(() => ({
+    mockRunHistory: vi.fn(),
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workflow: {
+            runHistory: mockRunHistory,
+        },
+    }),
 }));
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -30,12 +36,12 @@ function Wrap({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetchApi.mockReset();
+    mockRunHistory.mockReset();
 });
 
 describe('WorkflowRunHistory', () => {
     it('renders empty state when no history', async () => {
-        mockFetchApi.mockResolvedValue({ history: [] });
+        mockRunHistory.mockResolvedValue({ history: [] });
         render(
             <Wrap>
                 <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
@@ -48,7 +54,7 @@ describe('WorkflowRunHistory', () => {
     });
 
     it('renders history items with status badges', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockRunHistory.mockResolvedValue({
             history: [
                 { id: 't1', status: 'completed', startedAt: '2026-01-15T10:00:00Z', durationMs: 3000 },
                 { id: 't2', status: 'failed', startedAt: '2026-01-15T09:00:00Z', durationMs: 1000 },
@@ -67,7 +73,7 @@ describe('WorkflowRunHistory', () => {
     });
 
     it('clicking a history item navigates to workflow view', async () => {
-        mockFetchApi.mockResolvedValueOnce({
+        mockRunHistory.mockResolvedValueOnce({
             history: [
                 { id: 't1', status: 'completed', processId: 'proc-1' },
             ],
@@ -90,7 +96,7 @@ describe('WorkflowRunHistory', () => {
     });
 
     it('clicking a history item without processId uses queue_ prefix', async () => {
-        mockFetchApi.mockResolvedValueOnce({
+        mockRunHistory.mockResolvedValueOnce({
             history: [
                 { id: 't2', status: 'completed' },
             ],
@@ -113,7 +119,7 @@ describe('WorkflowRunHistory', () => {
     });
 
     it('does not render WorkflowResultCard after click', async () => {
-        mockFetchApi.mockResolvedValueOnce({
+        mockRunHistory.mockResolvedValueOnce({
             history: [
                 { id: 't1', status: 'completed', processId: 'proc-1' },
             ],
@@ -136,7 +142,7 @@ describe('WorkflowRunHistory', () => {
     });
 
     it('re-fetches on refreshKey change', async () => {
-        mockFetchApi.mockResolvedValue({ history: [] });
+        mockRunHistory.mockResolvedValue({ history: [] });
 
         const { rerender } = render(
             <Wrap>
@@ -144,7 +150,7 @@ describe('WorkflowRunHistory', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledTimes(1);
+            expect(mockRunHistory).toHaveBeenCalledTimes(1);
         });
 
         rerender(
@@ -153,12 +159,12 @@ describe('WorkflowRunHistory', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledTimes(2);
+            expect(mockRunHistory).toHaveBeenCalledTimes(2);
         });
     });
 
     it('renders Run History heading', async () => {
-        mockFetchApi.mockResolvedValue({ history: [] });
+        mockRunHistory.mockResolvedValue({ history: [] });
         render(
             <Wrap>
                 <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
@@ -169,17 +175,15 @@ describe('WorkflowRunHistory', () => {
         });
     });
 
-    it('fetches history with correct pipelineName query param', async () => {
-        mockFetchApi.mockResolvedValue({ history: [] });
+    it('fetches history through the workflow client with workspace and pipeline name', async () => {
+        mockRunHistory.mockResolvedValue({ history: [] });
         render(
             <Wrap>
                 <WorkflowRunHistory workspaceId="ws-1" pipelineName="Bug Triage" />
             </Wrap>
         );
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledWith(
-                expect.stringContaining('pipelineName=Bug%20Triage')
-            );
+            expect(mockRunHistory).toHaveBeenCalledWith('ws-1', 'Bug Triage');
         });
     });
 });

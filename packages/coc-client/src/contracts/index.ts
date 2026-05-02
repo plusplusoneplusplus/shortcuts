@@ -4,3 +4,4 @@ export * from './processes';
 export * from './queue';
 export * from './work-items';
 export * from './workspaces';
+export * from './workflows';

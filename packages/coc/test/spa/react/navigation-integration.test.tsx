@@ -25,6 +25,7 @@ import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/co
 import { WorkflowRunHistory } from '../../../src/server/spa/client/react/features/workflow/WorkflowRunHistory';
 import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { useWorkflowProgress } from '../../../src/server/spa/client/react/features/workflow/hooks/useWorkflowProgress';
+import { resetSpaCocClientForTests } from '../../../src/server/spa/client/react/api/cocClient';
 import { createMockFetch } from './test-utils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -178,9 +179,11 @@ describe('WorkflowRunHistory: workflow navigation', () => {
         fetchMock = createMockFetch({
             '/queue/history': { body: { history: [] } },
         });
+        resetSpaCocClientForTests();
     });
 
     afterEach(() => {
+        resetSpaCocClientForTests();
         vi.restoreAllMocks();
     });
 

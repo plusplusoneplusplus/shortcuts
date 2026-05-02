@@ -6,11 +6,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useQueue } from '../../contexts/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/format';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { TaskDefs } from '../../../../../task-types';
+import type { QueueTaskSummary } from '@plusplusoneplusplus/coc-client';
 
 export interface WorkflowRunHistoryProps {
     workspaceId: string;
@@ -20,14 +21,12 @@ export interface WorkflowRunHistoryProps {
 
 export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: WorkflowRunHistoryProps) {
     const { state: queueState } = useQueue();
-    const [history, setHistory] = useState<any[]>([]);
+    const [history, setHistory] = useState<QueueTaskSummary[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchHistory = useCallback(async () => {
         try {
-            const data = await fetchApi(
-                `/queue/history?repoId=${encodeURIComponent(workspaceId)}&pipelineName=${encodeURIComponent(pipelineName)}`
-            );
+            const data = await getSpaCocClient().workflow.runHistory(workspaceId, pipelineName);
             setHistory(data.history || []);
         } catch {
             setHistory([]);
@@ -100,7 +99,7 @@ export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: Wo
 // ── RunHistoryItem ──────────────────────────────────────────────────────
 
 interface RunHistoryItemProps {
-    task: any;
+    task: QueueTaskSummary;
     onClick: () => void;
 }
 

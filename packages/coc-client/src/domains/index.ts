@@ -5,3 +5,4 @@ export { ProcessesClient } from './processes';
 export { QueueClient } from './queue';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';
+export { WorkflowClient } from './workflows';

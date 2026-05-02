@@ -14,9 +14,13 @@ import { TemplatesTab } from '../../../src/server/spa/client/react/features/temp
 import type { RepoData, WorkflowInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
 import * as pipelineApi from '../../../src/server/spa/client/react/features/workflow/workflow-api';
 
-// Mock fetchApi used by WorkflowRunHistory (rendered inside WorkflowDetail)
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue({ history: [] }),
+// Mock the typed client used by WorkflowRunHistory (rendered inside WorkflowDetail).
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workflow: {
+            runHistory: vi.fn().mockResolvedValue({ history: [] }),
+        },
+    }),
 }));
 
 const mockAddToast = vi.fn();

@@ -12,9 +12,13 @@ import { WorkflowDetail } from '../../../../src/server/spa/client/react/features
 import type { WorkflowInfo } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 import * as pipelineApi from '../../../../src/server/spa/client/react/features/workflow/workflow-api';
 
-// Mock fetchApi used by WorkflowRunHistory
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue({ history: [] }),
+// Mock the typed client used by WorkflowRunHistory.
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workflow: {
+            runHistory: vi.fn().mockResolvedValue({ history: [] }),
+        },
+    }),
 }));
 
 // Mock WorkflowAIRefinePanel to expose onApply/onCancel via testids
