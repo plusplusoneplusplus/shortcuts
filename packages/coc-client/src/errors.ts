@@ -63,6 +63,21 @@ export class CocNetworkError extends Error {
   }
 }
 
+export class CocSseError extends Error {
+  readonly url: string;
+  readonly lastEventId: string;
+  readonly code = 'SSE_ERROR';
+  readonly cause?: unknown;
+
+  constructor(message: string, options: { url: string; lastEventId?: string; cause?: unknown }) {
+    super(message);
+    this.name = 'CocSseError';
+    this.url = options.url;
+    this.lastEventId = options.lastEventId ?? '';
+    this.cause = options.cause;
+  }
+}
+
 export async function createApiError(response: Response, url: string): Promise<CocApiError> {
   const statusText = response.statusText || '';
   const contentType = response.headers?.get?.('content-type') ?? '';

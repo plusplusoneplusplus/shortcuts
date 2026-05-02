@@ -86,7 +86,9 @@ export interface ConnectEventsOptions {
 export interface ProcessStreamOptions {
   workspaceId?: string;
   signal?: AbortSignal;
+  withCredentials?: boolean;
   onEvent: (event: unknown) => void;
+  onTypedEvent?: (eventType: string, event: unknown, rawEvent: MessageEvent) => void;
   onDone?: () => void;
   onError?: (error: unknown) => void;
 }
