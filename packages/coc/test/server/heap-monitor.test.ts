@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { HeapMonitor, getHeapSnapshot, registerHeapRoutes } from '../../src/server/heap-monitor';
-import type { HeapSnapshot, HeapMonitorConfig } from '../../src/server/heap-monitor';
+import { HeapMonitor, getHeapSnapshot, registerHeapRoutes } from '../../src/server/admin/heap-monitor';
+import type { HeapSnapshot, HeapMonitorConfig } from '../../src/server/admin/heap-monitor';
 import type { Route } from '../../src/server/shared/router';
 import http from 'http';
 

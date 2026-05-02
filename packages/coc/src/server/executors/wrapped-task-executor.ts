@@ -11,7 +11,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import { resolveSkill, SkillResolverError, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import type { ITaskExecutor } from './executor-types';
 
 // ============================================================================

@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GitInfoCacheService, REFRESH_PERIOD_MS, STALE_THRESHOLD_MS } from '../../src/server/git-info-cache';
-import type { GitInfoResult } from '../../src/server/git-info-cache';
+import { GitInfoCacheService, REFRESH_PERIOD_MS, STALE_THRESHOLD_MS } from '../../src/server/git/git-info-cache';
+import type { GitInfoResult } from '../../src/server/git/git-info-cache';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

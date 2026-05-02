@@ -15,7 +15,7 @@ import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import {
     buildBatchResolvePrompt,
     type TaskComment,
-} from '../../src/server/task-comments-handler';
+} from '../../src/server/tasks/comments/task-comments-handler';
 
 
 // ============================================================================

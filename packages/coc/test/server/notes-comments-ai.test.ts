@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildNotesBatchResolvePrompt } from '../../src/server/notes-comments-ai';
-import type { CommentThread, TextAnchor, Comment } from '../../src/server/notes-comments-types';
+import { buildNotesBatchResolvePrompt } from '../../src/server/notes/notes-comments-ai';
+import type { CommentThread, TextAnchor, Comment } from '../../src/server/notes/notes-comments-types';
 
 describe('buildNotesBatchResolvePrompt', () => {
     const createComment = (id: string, content: string, createdAt: string): Comment => ({

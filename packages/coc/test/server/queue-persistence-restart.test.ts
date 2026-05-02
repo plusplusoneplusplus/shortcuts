@@ -35,7 +35,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createExecutionServer } from '../../src/server/index';
-import { GLOBAL_WORKSPACE_ID } from '../../src/server/global-workspace';
+import { GLOBAL_WORKSPACE_ID } from '../../src/server/workspaces/global-workspace';
 
 // ============================================================================
 // Helpers

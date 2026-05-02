@@ -31,7 +31,7 @@ vi.mock('../../src/ai-invoker', () => ({
     },
 }));
 
-import { invokeCommentAI } from '../../src/server/comments-ai-helpers';
+import { invokeCommentAI } from '../../src/server/tasks/comments/comments-ai-helpers';
 
 // ===========================================================================
 // Tests
@@ -141,7 +141,7 @@ describe('invokeCommentAI', () => {
             vi.doMock('../../src/ai-invoker', () => {
                 throw new Error('Module not found');
             });
-            const mod = await import('../../src/server/comments-ai-helpers');
+            const mod = await import('../../src/server/tasks/comments/comments-ai-helpers');
             const result = await mod.invokeCommentAI('prompt');
             expect(result).toEqual({
                 success: false,

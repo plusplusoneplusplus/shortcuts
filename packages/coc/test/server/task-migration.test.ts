@@ -7,7 +7,7 @@ import {
     isMigrationNeeded,
     migrateTasksToRepoScoped,
     migrateCommentHashes,
-} from '../../src/server/task-migration';
+} from '../../src/server/tasks/task-migration';
 
 describe('task-migration', () => {
     let tmpDir: string;

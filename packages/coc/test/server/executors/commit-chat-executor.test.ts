@@ -40,11 +40,11 @@ vi.mock('../../../src/server/executors/image-store', () => ({
 }));
 
 const mockResolveTaskRoot = vi.fn().mockReturnValue({ absolutePath: '/tasks-root' });
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => mockResolveTaskRoot(...args),
 }));
 
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: {
         saveOutput: vi.fn().mockResolvedValue(undefined),
     },
@@ -60,7 +60,7 @@ vi.mock('child_process', () => {
 });
 
 // Mock DiffCommentsManager
-vi.mock('../../../src/server/diff-comments-manager', () => ({
+vi.mock('../../../src/server/tasks/comments/diff-comments-manager', () => ({
     DiffCommentsManager: class {
         addComment = vi.fn().mockResolvedValue({ id: 'c1' });
         hashContext = vi.fn().mockReturnValue('abc'.repeat(21) + 'a');

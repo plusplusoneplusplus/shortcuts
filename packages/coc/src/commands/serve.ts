@@ -23,7 +23,7 @@ import {
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
 import { resolveLoggingConfig, loadConfigFile, createProcessStore } from '../config';
-import { setServerLogger, getServerLogger } from '../server/server-logger';
+import { setServerLogger, getServerLogger } from '../server/logging/server-logger';
 import type { ServeCommandOptions } from '../server/types';
 
 // ============================================================================

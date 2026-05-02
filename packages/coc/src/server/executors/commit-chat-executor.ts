@@ -21,8 +21,8 @@ import type {
     Tool,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
-import { DiffCommentsManager } from '../diff-comments-manager';
+import type { ChatPayload } from '../tasks/task-types';
+import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
 import { createAddDiffCommentTool } from '../llm-tools/add-diff-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -36,7 +36,7 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 // ============================================================================
 // CommitChatExecutor

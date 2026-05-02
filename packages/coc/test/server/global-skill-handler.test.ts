@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerGlobalSkillRoutes } from '../../src/server/global-skill-handler';
+import { registerGlobalSkillRoutes } from '../../src/server/skills/global-skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';

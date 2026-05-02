@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Readable } from 'stream';
-import { parseBody } from '../../src/server/api-handler';
+import { parseBody } from '../../src/server/core/api-handler';
 import * as http from 'http';
 
 /** Create a fake IncomingMessage from a string (or no data). */

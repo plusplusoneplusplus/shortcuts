@@ -13,7 +13,7 @@
 import { ImageBlobStore } from '../queue/image-blob-store';
 
 export { ImageBlobStore };
-export { saveImagesToTempFiles, cleanupTempDir, parseDataUrl, isImageDataUrl } from '../image-utils';
+export { saveImagesToTempFiles, cleanupTempDir, parseDataUrl, isImageDataUrl } from '../core/image-utils';
 
 /**
  * Rehydrate externalized images into a payload object.

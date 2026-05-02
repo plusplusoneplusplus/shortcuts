@@ -24,7 +24,7 @@ import {
     flattenWorkflowResult,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { RunWorkflowPayload } from '../task-types';
+import type { RunWorkflowPayload } from '../tasks/task-types';
 import { BaseExecutor } from './base-executor';
 import { createCLIAIInvoker } from '../../ai-invoker';
 

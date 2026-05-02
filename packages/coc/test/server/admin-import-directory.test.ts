@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import Database from 'better-sqlite3';
 import { createExecutionServer } from '../../src/server/index';
-import { resetDirectoryImportToken } from '../../src/server/admin-handler';
+import { resetDirectoryImportToken } from '../../src/server/admin/admin-handler';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
 import type {

@@ -23,7 +23,7 @@ import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './to
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
 import { ToolCallGroupView } from './tool-calls/ToolCallGroupView';
-import { TaskDefs } from '../../../../../../task-types';
+import { TaskDefs } from '../../../../../../tasks/task-types';
 import { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
 import { CommitStrip } from './CommitStrip';

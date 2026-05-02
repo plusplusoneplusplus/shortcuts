@@ -11,8 +11,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
-import { buildSummarizePrompt, serializeConversationForSummary } from '../../src/server/queue-handler';
-import type { SummarizeConversation } from '../../src/server/queue-handler';
+import { buildSummarizePrompt, serializeConversationForSummary } from '../../src/server/queue/queue-handler';
+import type { SummarizeConversation } from '../../src/server/queue/queue-handler';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';

@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import pino from 'pino';
 import { Writable } from 'stream';
-import { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, createQueueLogger } from '../../src/server/server-logger';
-import { clearLogBuffer, getLogHistory } from '../../src/server/server-log-capture';
+import { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, createQueueLogger } from '../../src/server/logging/server-logger';
+import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
 
 // ============================================================================
 // Helper: in-memory log capture stream

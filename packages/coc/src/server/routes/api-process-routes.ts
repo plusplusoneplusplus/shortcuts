@@ -18,12 +18,12 @@ import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueu
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, stripExcludedFields,
-} from '../api-handler';
-import type { QueueExecutorBridge } from '../api-handler';
+} from '../core/api-handler';
+import type { QueueExecutorBridge } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
-import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../sse-handler';
-import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-utils';
-import { processMessageAttachments } from '../attachment-utils';
+import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
+import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../core/image-utils';
+import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';

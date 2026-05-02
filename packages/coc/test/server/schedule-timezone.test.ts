@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
-import { nextCronTime } from '../../src/server/schedule-manager';
+import { nextCronTime } from '../../src/server/schedule/schedule-manager';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 

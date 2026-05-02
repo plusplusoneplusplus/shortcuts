@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../../src/server/templates-handler';
+import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../../src/server/templates/templates-handler';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, Workspace } from '@plusplusoneplusplus/forge';
 

@@ -24,8 +24,8 @@ import {
     dim,
 } from '../logger';
 import { loadConfigFile, createProcessStore } from '../config';
-import { DataWiper } from '../server/data-wiper';
-import type { WipeResult } from '../server/data-wiper';
+import { DataWiper } from '../server/storage/data-wiper';
+import type { WipeResult } from '../server/storage/data-wiper';
 
 // ============================================================================
 // Types

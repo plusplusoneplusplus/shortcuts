@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as http from 'http';
 import type { Duplex } from 'stream';
-import { attachWebSocketUpgradeHandler } from '../../../src/server/websocket';
+import { attachWebSocketUpgradeHandler } from '../../../src/server/streaming/websocket';
 
 // ============================================================================
 // Helpers

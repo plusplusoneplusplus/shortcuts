@@ -7,7 +7,7 @@
 
 import * as url from 'url';
 import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, missingFields } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';

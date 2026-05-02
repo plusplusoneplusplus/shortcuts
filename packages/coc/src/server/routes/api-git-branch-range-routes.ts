@@ -7,9 +7,9 @@
 
 import * as url from 'url';
 import { GitRangeService } from '@plusplusoneplusplus/forge';
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, badRequest } from '../errors';
-import { gitCache } from '../git-cache';
+import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';

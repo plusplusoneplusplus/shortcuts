@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
-import { ensureMyLifeWorkspace, MY_LIFE_WORKSPACE_ID, MY_LIFE_WORKSPACE_NAME } from '../../src/server/my-life-workspace';
+import { ensureMyLifeWorkspace, MY_LIFE_WORKSPACE_ID, MY_LIFE_WORKSPACE_NAME } from '../../src/server/workspaces/my-life-workspace';
 
 describe('ensureMyLifeWorkspace', () => {
     let tmpDir: string;

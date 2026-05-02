@@ -18,7 +18,7 @@ vi.mock('../../src/server/work-items/work-item-store', () => ({
     })),
 }));
 
-import { createBugTool, type CreateBugArgs } from '../../src/server/create-bug-tool';
+import { createBugTool, type CreateBugArgs } from '../../src/server/llm-tools/create-bug-tool';
 
 describe('createBugTool', () => {
     const dataDir = path.join(os.tmpdir(), 'coc-test-bug-tool');

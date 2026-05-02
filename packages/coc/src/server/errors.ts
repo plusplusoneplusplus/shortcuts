@@ -9,8 +9,8 @@
  */
 
 import * as http from 'http';
-import { sendJSON } from './api-handler';
-import { getServerLogger } from './server-logger';
+import { sendJSON } from './core/api-handler';
+import { getServerLogger } from './logging/server-logger';
 
 /**
  * Structured API error with HTTP status code and optional metadata.

@@ -15,8 +15,8 @@
 
 import type { DiffCommentContext, DiffCommentSelection, Tool } from '@plusplusoneplusplus/forge';
 import { defineTool } from '@plusplusoneplusplus/forge';
-import type { DiffCommentsManager } from '../diff-comments-manager';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 import {
     getFileDiff,
     parseUnifiedDiff,

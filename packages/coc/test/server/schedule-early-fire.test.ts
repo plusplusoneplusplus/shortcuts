@@ -13,8 +13,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ScheduleManager } from '../../src/server/schedule-manager';
-import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
+import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Helpers

@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
-import { SqliteScheduleRunPersistence } from '../src/server/sqlite-schedule-run-persistence';
-import type { ScheduleRunRecord } from '../src/server/schedule-manager';
+import { SqliteScheduleRunPersistence } from '../src/server/schedule/sqlite-schedule-run-persistence';
+import type { ScheduleRunRecord } from '../src/server/schedule/schedule-manager';
 
 // ============================================================================
 // Helpers

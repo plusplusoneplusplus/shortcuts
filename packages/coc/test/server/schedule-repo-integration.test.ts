@@ -9,9 +9,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ScheduleManager } from '../../src/server/schedule-manager';
-import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
-import { RepoScheduleOverrideStore } from '../../src/server/repo-schedule-overrides';
+import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
+import { RepoScheduleOverrideStore } from '../../src/server/schedule/repo-schedule-overrides';
 
 function makeTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'sm-repo-test-'));

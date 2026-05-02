@@ -10,8 +10,8 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { GitOpsStore } from '@plusplusoneplusplus/forge';
 import type Database from 'better-sqlite3';
 import type { Route } from '../types';
-import type { QueueExecutorBridge } from '../api-handler';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { QueueExecutorBridge } from '../core/api-handler';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 /**
  * Dependency context passed to every API route module.

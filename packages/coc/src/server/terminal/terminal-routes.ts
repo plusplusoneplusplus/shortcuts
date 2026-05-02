@@ -15,7 +15,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { TerminalSessionManager } from './terminal-session-manager';
 import type { ResolvedCLIConfig } from '../../config';
 import { toSessionInfo } from './terminal-session-manager';
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 

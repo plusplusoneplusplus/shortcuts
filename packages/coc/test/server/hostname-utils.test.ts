@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shortenHostname } from '../../src/server/hostname-utils';
+import { shortenHostname } from '../../src/server/core/hostname-utils';
 
 describe('shortenHostname', () => {
     it('strips .local suffix (macOS mDNS)', () => {

@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { OutputFileManager } from '../../src/server/output-file-manager';
+import { OutputFileManager } from '../../src/server/processes/output-file-manager';
 
 describe('OutputFileManager', () => {
     let tmpDir: string;

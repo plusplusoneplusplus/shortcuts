@@ -79,6 +79,11 @@ coc wipe-data               # Clear all stored data
 
 ## Architecture
 
+The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing
+(`index.ts`, `router.ts`, `types.ts`, `paths.ts`, `errors.ts`,
+`preferences-handler.ts`) stays at the root. Everything else lives in a
+focused subfolder.
+
 ```
 src/
 ├── index.ts              # Entry point (bin) - Parses CLI args and routes to commands
@@ -92,102 +97,214 @@ src/
 │   ├── skills.ts         # Skills management - list, install-bundled, install, delete subcommands
 │   └── options-resolver.ts  # Shared option resolution logic for commands
 ├── server/
-│   ├── index.ts          # Server factory - createExecutionServer(), imports router/API/WebSocket/SSE from @plusplusoneplusplus/coc-server
-│   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script); no-repoId branch scopes to global workspace
-│   ├── queue-executor-bridge.ts  # Bridges queue to AI/workflow/script execution — unified chat dispatch with context-based routing
-│   ├── queue-persistence.ts      # Persistent queue state — per-workspace files under ~/.coc/queues/repo-<workspaceId>.json
-│   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution — maintains repoId↔rootPath bidirectional maps
-│   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence — uses workspace ID for file naming
-│   ├── global-workspace.ts       # Global workspace bootstrapper — creates ~/.coc/global-workspace/ and registers virtual workspace (GLOBAL_WORKSPACE_ID)
-│   ├── my-work-workspace.ts      # My Work virtual workspace bootstrapper — creates ~/.coc/repos/my_work/ with notes structure (MY_WORK_WORKSPACE_ID)
-│   ├── my-work-handler.ts        # My Work REST API — sync, generate-summary, status endpoints
-│   ├── my-life-workspace.ts      # My Life virtual workspace bootstrapper — creates ~/.coc/repos/my_life/ with goals/journal notes (MY_LIFE_WORKSPACE_ID)
-│   ├── my-life-handler.ts        # My Life REST API — sync, generate-summary, status endpoints
-│   ├── workflows-handler.ts      # Workflow CRUD and listing API
-│   ├── workflow-watcher.ts       # File watcher for workflow changes
-│   ├── tasks-handler.ts          # Task management API — task root at ~/.coc/repos/<workspaceId>/tasks/
-│   ├── task-watcher.ts           # File watcher for task changes
-│   ├── task-comments-handler.ts  # Task comment/annotation API
-│   ├── task-generation-handler.ts # AI-powered task generation
-│   ├── stale-task-detector.ts    # Detects and flags stale tasks
-│   ├── schedule-handler.ts       # Scheduled execution API
-│   ├── schedule-manager.ts       # Schedule lifecycle management
-│   ├── task-root-resolver.ts     # Resolves task root path from workspaceId (requires workspaceId in TaskRootOptions)
-│   ├── process-resume-handler.ts # Resume interrupted processes
-│   ├── prompt-handler.ts         # Prompt management API
-│   ├── prompt-utils.ts           # Prompt utilities
-│   ├── stats-handler.ts          # Usage stats API — aggregates token usage and estimated token-price USD by day/model
-│   ├── preferences-handler.ts    # User preference storage API (global/per-repo prefs plus per-repo skill usage GET/PATCH; pin/archive moved to processes table)
-│   ├── pin-archive-handler.ts    # Pin/archive REST API (PATCH /api/processes/:id/pin, /archive; POST /api/processes/archive, /unarchive; GET /api/workspaces/:id/pinned)
-│   ├── admin-handler.ts          # Admin/diagnostic endpoints
-│   ├── heap-monitor.ts          # Heap memory pressure monitoring (periodic V8 heap checks, GET /api/admin/heap)
-│   ├── output-file-manager.ts    # Manage output file storage
-│   ├── output-pruner.ts          # Prune old output files
-│   ├── data-exporter.ts          # Export stored data
-│   ├── data-importer.ts          # Import data
-│   ├── data-wiper.ts             # Data cleanup/reset
-│   ├── diff-comments-handler.ts  # Git diff view comment CRUD API
-│   ├── commit-chat-binding-store.ts # SQLite store mapping commitHash → taskId for commit-chat
-│   ├── image-blob-store.ts       # Externalizes base64 images from queue persistence into JSON files
-│   ├── replicate-apply-handler.ts # Applies ReplicateResult changes to disk (idempotent)
-│   ├── llm-tools/                # AI tool factories for chat executors
-│   │   ├── index.ts              # Barrel re-exports
-│   │   ├── add-diff-comment-tool.ts # Factory for per-invocation add_diff_comment AI tool (commit chat)
-│   │   ├── diff-line-mapper.ts   # Unified diff parser and source-line → diff-index mapper
-│   │   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
-│   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 keyword search plus metadata-only recent/activity-window listing)
-│   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
-│   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
-│   ├── executors/                 # AI chat execution layer — process lifecycle, prompt building
-│   │   ├── base-executor.ts       # Abstract base: streaming, throttling, tool-event capture, session state, output persistence
-│   │   ├── chat-base-executor.ts  # Abstract chat executor: AI call lifecycle
-│   │   ├── chat-executor.ts       # Ask-mode executor (interactive)
-│   │   ├── plan-executor.ts       # Plan-mode executor
-│   │   ├── autopilot-executor.ts  # Autopilot-mode executor
-│   │   ├── follow-up-executor.ts  # Follow-up message executor with retry-on-client-death
-│   │   ├── process-lifecycle-runner.ts # Full process lifecycle orchestration
-│   │   └── prompt-builder.ts      # System message, memory context, repo instructions, skill injection
-│   ├── task-migration.ts         # One-time migration from legacy .vscode/tasks/ location
-│   ├── startup-process-migration.ts # Auto-migrates file-based process histories to SQLite on startup (renames processes/ → processes.migrated/)
-│   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes
-│   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
-│   ├── notes-watcher.ts          # File watcher for notes directories — debounced, .md-only, broadcasts notes-changed WS events
-│   ├── notes-read-handler.ts     # Notes tree/content/search API; page tree nodes include lastModifiedAt from file mtime
-│   ├── notes-order.ts            # .order.json helpers — readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename, applyOrder for per-directory custom sort order
-    │   ├── notes-git-types.ts        # Shared type definitions for notes git tracking (NotesGitConfig, NotesGitStatus, NotesGitLogEntry, NotesGitDiff)
-    │   ├── notes-git-service.ts      # Git operations for the notes directory — init, status, log, diff, commit against a standalone repo in ~/.coc/repos/<wsId>/notes/
-    │   ├── notes-git-handler.ts      # REST API routes for notes git operations — 6 routes: init, status, log, diff, diff/:hash, commit
-    │   ├── notes-git-autocommit.ts   # Auto-commit script generation (PS1/Bash) and schedule integration helpers — generateAutoCommitScript, writeAutoCommitScript, deleteAutoCommitScript, buildAutoCommitScheduleTarget, findAutoCommitSchedule
-    │   ├── notes-git-autocommit-handler.ts # REST API for notes auto-commit schedule — 4 routes: enable (POST), disable (DELETE), update (PATCH), status (GET)
-│   ├── wiki/                     # Wiki integration
-│   │   ├── index.ts              # Wiki module exports
-│   │   ├── types.ts              # Wiki types
-│   │   ├── wiki-manager.ts       # Wiki lifecycle management
-│   │   ├── wiki-data.ts          # Wiki data access layer
-│   │   ├── wiki-routes.ts        # Wiki HTTP routes
-│   │   ├── generate-handler.ts   # Wiki generation API
-│   │   ├── explore-handler.ts    # Wiki exploration API
-│   │   ├── ask-handler.ts        # Wiki Q&A endpoint
-│   │   ├── context-builder.ts    # Build context for wiki AI queries
-│   │   ├── conversation-session-manager.ts  # Manage wiki chat sessions
-│   │   ├── file-watcher.ts       # Watch wiki source files
-│   │   └── admin-handlers.ts     # Wiki admin endpoints
-│   ├── terminal/                  # WebSocket-based terminal
-│   │   ├── index.ts              # Barrel exports
-│   │   ├── types.ts              # Terminal session and message types (IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage)
-│   │   ├── terminal-session-manager.ts  # PTY lifecycle management (create, resize, destroy, idle cleanup)
-│   │   └── terminal-ws-server.ts # WebSocket server for /ws/terminal — per-workspace connections, multi-session per client, PTY I/O forwarding, heartbeat
-│   ├── memory/                  # Memory configuration and bounded-memory REST API
-│   │   ├── memory-config-handler.ts     # Memory config persistence (readMemoryConfig, writeMemoryConfig)
-│   │   ├── memory-routes.ts             # Global memory REST endpoints (config + bounded memory routes)
-│   │   ├── bounded-memory-routes.ts     # Global bounded memory REST endpoints (GET/PUT/DELETE /api/memory/bounded/*)
-│   │   ├── repo-memory-handler.ts       # Per-repo bounded MEMORY.md REST endpoints (GET/PUT /api/repos/:repoId/memory/*)
-│   │   ├── background-review.ts         # Background memory review (periodic AI pass to add/replace/remove entries)
-│   │   ├── background-review-executor.ts # Executor for background review tasks
-│   │   ├── memory-aggregate.ts          # Prompts, config, and helpers for queued raw-to-bounded aggregation
-│   │   ├── memory-aggregate-executor.ts # Queued executor: claims raw records, invokes AI reconciliation, rewrites MEMORY.md
-│   │   └── pre-compression-flush.ts     # Flush memory before compression to avoid data loss
-│   └── spa/              # Dashboard SPA
+│   ├── index.ts                      # Server factory — createExecutionServer(); orchestrates infra + route registration
+│   ├── router.ts                     # HTTP route table + dispatcher
+│   ├── types.ts                      # Cross-cutting Route/Match types
+│   ├── paths.ts                      # getRepoDataPath() — canonical per-repo path helper
+│   ├── errors.ts                     # AppError + sendError helpers
+│   ├── preferences-handler.ts        # Global + per-repo preference REST API (single large surface; not split)
+│   ├── core/                         # Cross-cutting plumbing used by every layer
+│   │   ├── api-handler.ts            # sendJSON helpers + low-level routing primitives
+│   │   ├── attachment-utils.ts       # Image/file attachment helpers for chat payloads
+│   │   ├── image-utils.ts            # PNG/JPEG sniffing, resizing, dataURL helpers
+│   │   ├── hostname-utils.ts         # Cross-platform hostname helpers
+│   │   └── build-info.ts             # Auto-generated build metadata (BUILD_COMMIT, BUILD_VERSION) — gitignored
+│   ├── streaming/                    # Real-time transport
+│   │   ├── websocket.ts              # ProcessWebSocketServer + attachWebSocketUpgradeHandler
+│   │   └── sse-handler.ts            # Per-process Server-Sent Events streaming
+│   ├── logging/                      # Server logger and log routes
+│   │   ├── server-logger.ts          # pino-backed logger
+│   │   ├── server-log-capture.ts     # In-memory ring buffer for /api/logs
+│   │   └── logs-routes.ts            # GET /api/logs and download endpoints
+│   ├── admin/                        # Admin diagnostics
+│   │   ├── admin-handler.ts          # /api/admin/* surface (config, system prompts, providers)
+│   │   ├── db-browser-handler.ts     # SQLite browser endpoints (read-only)
+│   │   ├── heap-monitor.ts           # Periodic V8 heap monitoring
+│   │   └── stats-handler.ts          # Token usage + cost stats
+│   ├── workspaces/                   # Workspace bootstrappers + virtual workspaces
+│   │   ├── global-workspace.ts       # GLOBAL_WORKSPACE_ID — ~/.coc/global-workspace/
+│   │   ├── my-work-workspace.ts      # MY_WORK_WORKSPACE_ID — ~/.coc/repos/my_work/
+│   │   ├── my-work-handler.ts        # My Work REST API
+│   │   ├── my-life-workspace.ts      # MY_LIFE_WORKSPACE_ID — ~/.coc/repos/my_life/
+│   │   ├── my-life-handler.ts        # My Life REST API
+│   │   └── workspace-summary-handler.ts  # Aggregated workspace summary endpoint
+│   ├── processes/                    # Process lifecycle (excluding execution loop)
+│   │   ├── in-memory-process-store.ts    # In-memory store for tests + dev
+│   │   ├── output-file-manager.ts        # Manages ~/.coc/repos/<id>/outputs/<processId>.md
+│   │   ├── output-pruner.ts              # Periodic prune of stale outputs
+│   │   ├── stale-task-detector.ts        # Flags processes whose tasks died
+│   │   ├── pin-archive-handler.ts        # PATCH/POST /api/processes/.../pin|archive
+│   │   ├── seen-state-handler.ts         # GET/PATCH /api/workspaces/:id/seen-state
+│   │   ├── turn-actions-handler.ts       # Per-turn delete/pin/archive on conversation_turns
+│   │   ├── process-history-handler.ts    # Conversation history listing & detail
+│   │   ├── process-resume-handler.ts     # Resume interrupted processes
+│   │   └── commit-chat-binding-store.ts  # SQLite store: commitHash → taskId
+│   ├── queue/                        # Queue layer (handler, bridges, blob store, partitioner)
+│   │   ├── queue-handler.ts                # /api/queue/* CRUD + validation
+│   │   ├── queue-executor-bridge.ts        # Bridges queue tasks to AI/workflow/script executors
+│   │   ├── multi-repo-executor-bridge.ts   # Multi-repo workflow execution + repoId↔rootPath maps
+│   │   ├── image-blob-store.ts             # Externalizes base64 images from persistence to JSON
+│   │   ├── queue-partitioner.ts            # Per-repo queue partitioning rules
+│   │   └── shared/                         # Queue shared utilities (queue-utils, process-history-mapper, ...)
+│   ├── schedule/                     # Scheduled execution
+│   │   ├── cron-utils.ts                       # parseCron, nextCronTime, describeCron, slugifyName
+│   │   ├── schedule-handler.ts                 # Schedule REST API
+│   │   ├── schedule-manager.ts                 # In-memory schedule registry + tick loop
+│   │   ├── schedule-run-persistence.ts         # Run-history persistence interface
+│   │   ├── sqlite-schedule-run-persistence.ts  # SQLite implementation
+│   │   ├── schedule-yaml-persistence.ts        # YAML import/export of schedule definitions
+│   │   ├── repo-schedule-loader.ts             # Load per-repo schedule overrides
+│   │   └── repo-schedule-overrides.ts          # Override resolution logic
+│   ├── tasks/                        # Tasks + comments domain
+│   │   ├── task-types.ts                # ChatPayload, TaskDefs, type guards
+│   │   ├── task-cache.ts                # In-memory cache for parsed tasks
+│   │   ├── task-watcher.ts              # File watcher for task changes
+│   │   ├── task-migration.ts            # Migration from legacy .vscode/tasks/ location
+│   │   ├── task-root-resolver.ts        # Resolves task root from workspaceId
+│   │   ├── task-generation-handler.ts   # AI-powered task generation
+│   │   ├── tasks-handler.ts             # Aggregator (re-exports read+write)
+│   │   ├── tasks-read-handler.ts        # Read-only task endpoints
+│   │   ├── tasks-write-handler.ts       # Mutating task endpoints
+│   │   ├── tasks-handler-utils.ts       # Shared validation + helpers
+│   │   └── comments/                     # Task + diff comment handlers (live together because they share base classes)
+│   │       ├── base-comments-manager.ts            # Common manager for sidecar JSON comments
+│   │       ├── comments-ai-helpers.ts              # Shared AI prompt/response utilities
+│   │       ├── task-comments-handler.ts            # /api/workspaces/:id/tasks/.../comments
+│   │       ├── task-comments-manager.ts            # File-backed manager
+│   │       ├── task-comments-relocation.ts         # Reanchor comments after edits
+│   │       ├── task-comments-ai.ts                 # AI prompts for task comments
+│   │       ├── diff-comments-handler.ts            # /api/workspaces/:id/diff-comments
+│   │       ├── diff-comments-manager.ts            # File-backed manager
+│   │       └── diff-comments-ai.ts                 # AI prompts for diff comments
+│   ├── notes/                        # Notes feature (read/write/comments/AI/files)
+│   │   ├── notes-handler.ts             # Aggregator that registers all notes routes
+│   │   ├── notes-constants.ts           # SYSTEM_FOLDER_NAMES and related
+│   │   ├── notes-watcher.ts             # Debounced .md file watcher
+│   │   ├── notes-read-handler.ts        # Tree/content/search read endpoints
+│   │   ├── notes-write-handler.ts       # Create/update/delete + .order.json
+│   │   ├── notes-order.ts               # .order.json helpers
+│   │   ├── notes-edits-handler.ts       # Note edit snapshot endpoints
+│   │   ├── notes-file-preview-handler.ts # Inline file preview from notes
+│   │   ├── notes-image-handler.ts       # Note image upload/serve
+│   │   ├── notes-ai-handler.ts          # AI tool: create new notes
+│   │   ├── notes-comments-handler.ts    # Per-note comment routes
+│   │   ├── notes-comments-manager.ts    # Sidecar storage (lives alongside)
+│   │   ├── notes-comments-ai.ts         # Batch resolve prompt for AI
+│   │   ├── notes-comments-types.ts      # Sidecar/comment thread types
+│   │   └── git/                          # Notes-specific git tracking
+│   │       ├── notes-git-types.ts                  # NotesGitConfig + status/log/diff types
+│   │       ├── notes-git-service.ts                # Standalone git ops on ~/.coc/repos/<id>/notes/
+│   │       ├── notes-git-handler.ts                # REST routes (init/status/log/diff/commit)
+│   │       ├── notes-git-autocommit.ts             # PS1/Bash auto-commit script + schedule helpers
+│   │       ├── notes-git-autocommit-handler.ts     # REST routes (enable/disable/update/status)
+│   │       └── notes-git-timer-manager.ts          # In-process auto-commit timer manager
+│   ├── workflows/                    # Workflow definitions
+│   │   ├── workflow-constants.ts         # Constants (workflow folder names, etc.)
+│   │   ├── workflow-utils.ts             # Path/spec helpers
+│   │   ├── workflow-watcher.ts           # File watcher
+│   │   ├── workflows-handler.ts          # Aggregator (read+write)
+│   │   ├── workflows-read-handler.ts     # List/read endpoints
+│   │   └── workflows-write-handler.ts    # Mutating endpoints
+│   ├── templates/                    # Template + replicate
+│   │   ├── template-watcher.ts           # Watches .vscode/templates/
+│   │   ├── templates-handler.ts          # Template CRUD API
+│   │   └── replicate-apply-handler.ts    # Applies ReplicateResult changes to disk
+│   ├── skills/                       # Skill + per-repo instructions REST
+│   │   ├── skill-handler.ts              # /api/workspaces/:id/skills/*
+│   │   ├── skill-route-handlers.ts       # Sub-route helpers
+│   │   ├── global-skill-handler.ts       # Global skills management
+│   │   └── instruction-handler.ts        # /api/workspaces/:id/instructions (per-mode .github/coc/instructions*.md)
+│   ├── prompts/                      # Prompt management
+│   │   ├── prompt-handler.ts             # Prompt CRUD API
+│   │   └── prompt-utils.ts               # Variable rendering and lookup helpers
+│   ├── git/                          # Git utilities (cache + repo path helpers)
+│   │   ├── git-cache.ts                  # Cache for git diff/log queries
+│   │   ├── git-info-cache.ts             # Cached git status/branch info
+│   │   └── repo-utils.ts                 # extractRepoId, findGitRoot, normalizeRepoPath
+│   ├── storage/                      # Persistence migrations + import/export
+│   │   ├── storage-migration.ts                  # Process file → SQLite migration helpers + serializers
+│   │   ├── startup-process-migration.ts          # Auto-migrate at server startup (idempotent)
+│   │   ├── startup-workspace-migration.ts        # Workspace registry JSON → SQLite
+│   │   ├── directory-history-importer.ts         # Import file-based history from a directory tree
+│   │   ├── data-exporter.ts                      # Export everything to a tarball
+│   │   ├── data-importer.ts                      # Import a previously exported tarball
+│   │   ├── data-wiper.ts                         # Wipe stored data
+│   │   └── export-import-types.ts                # Shared types for the above
+│   ├── llm-tools/                    # AI tool factories for chat executors
+│   │   ├── index.ts                          # Barrel re-exports
+│   │   ├── add-diff-comment-tool.ts          # Per-invocation add_diff_comment tool (commit chat)
+│   │   ├── ask-user-tool.ts                  # ask_user tool
+│   │   ├── create-bug-tool.ts                # create_bug tool (queues a bug work item)
+│   │   ├── create-work-item-tool.ts          # create_work_item tool
+│   │   ├── update-work-item-tool.ts          # update_work_item tool
+│   │   ├── diff-line-mapper.ts               # Unified diff parser + source-line ↔ diff-index mapper
+│   │   ├── get-conversation-tool.ts          # Conversation lookup tool
+│   │   ├── llm-tool-registry.ts              # LLM_TOOL_REGISTRY — canonical user-toggleable tool list
+│   │   ├── resolve-comment-tool.ts           # resolve_comment tool
+│   │   ├── search-conversations-tool.ts      # FTS5 keyword search + recent listing
+│   │   ├── suggest-follow-ups-tool.ts        # suggest_follow_ups tool
+│   │   ├── tavily-web-search-tool.ts         # Tavily web search tool
+│   │   └── update-task-status-tool.ts        # update_task_status tool
+│   ├── executors/                    # AI chat execution layer (process lifecycle, prompt building)
+│   │   ├── base-executor.ts          # Abstract base: streaming, throttling, tool-event capture, output persistence
+│   │   ├── chat-base-executor.ts     # Abstract chat executor: AI call lifecycle
+│   │   ├── chat-executor.ts          # Ask-mode executor (interactive)
+│   │   ├── plan-executor.ts          # Plan-mode executor
+│   │   ├── autopilot-executor.ts     # Autopilot-mode executor
+│   │   ├── follow-up-executor.ts     # Follow-up message executor with retry-on-client-death
+│   │   ├── note-chat-executor.ts     # Note chat executor
+│   │   ├── note-create-executor.ts   # Note create executor
+│   │   ├── commit-chat-executor.ts   # Commit chat executor
+│   │   ├── resolve-comments-executor.ts # Server-side comment resolution executor
+│   │   ├── workflow-executor.ts      # Workflow execution executor
+│   │   ├── shell-executor.ts         # Shell script executor
+│   │   ├── task-generation-executor.ts # Task-generation executor
+│   │   ├── wrapped-task-executor.ts  # Wrapper that gates execution behind preferences
+│   │   ├── process-lifecycle-runner.ts # Full process lifecycle orchestration + pending-message draining
+│   │   ├── prompt-builder.ts         # System message, memory context, repo instructions, skill injection
+│   │   ├── system-message-builder.ts # System message assembly
+│   │   ├── executor-registry.ts      # Executor instance registry
+│   │   ├── bounded-memory-addon.ts   # Wires bounded MEMORY.md into chat executors
+│   │   └── ...                       # Other helpers (skill-config-resolver, title-generator, etc.)
+│   ├── infrastructure/               # Server bootstrap layer (composition root)
+│   │   ├── websocket-infrastructure.ts   # Builds + attaches ProcessWebSocketServer
+│   │   ├── terminal-infrastructure.ts    # Builds TerminalWebSocketServer (when enabled)
+│   │   ├── watcher-infrastructure.ts     # Builds task/workflow/notes/template watchers
+│   │   └── ...                           # Other infra factories used by index.ts
+│   ├── routes/                       # Centralised route registration
+│   │   └── index.ts                      # registerAllRoutes(): wires every handler into router
+│   ├── providers/                    # Provider abstraction for AI/PRs/etc.
+│   ├── repos/                        # Repository management endpoints
+│   ├── shared/                       # Cross-handler helpers (handler-utils, router helpers)
+│   ├── task-strategies/              # Task strategy plug-ins (replicate-template, run-script, …)
+│   ├── work-items/                   # Work-items REST + executors
+│   ├── wiki/                         # Wiki integration
+│   │   ├── wiki-manager.ts                  # Lifecycle management
+│   │   ├── wiki-data.ts                     # Data access layer
+│   │   ├── wiki-routes.ts                   # HTTP routes
+│   │   ├── generate-handler.ts              # Generation API
+│   │   ├── explore-handler.ts               # Exploration API
+│   │   ├── ask-handler.ts                   # Q&A endpoint
+│   │   ├── context-builder.ts               # RAG-style retrieval
+│   │   ├── conversation-session-manager.ts  # Multi-turn chat sessions
+│   │   ├── file-watcher.ts                  # Watches wiki source files
+│   │   └── admin-handlers.ts                # Wiki admin endpoints
+│   ├── terminal/                     # WebSocket-based terminal (PTY layer)
+│   │   ├── types.ts                          # IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage
+│   │   ├── terminal-session-manager.ts       # PTY lifecycle (create, resize, destroy, idle cleanup)
+│   │   └── terminal-ws-server.ts             # /ws/terminal — per-workspace, multi-session
+│   ├── memory/                       # Memory configuration + bounded-memory REST API
+│   │   ├── memory-config-handler.ts          # readMemoryConfig, writeMemoryConfig
+│   │   ├── memory-routes.ts                  # Global memory REST endpoints
+│   │   ├── bounded-memory-routes.ts          # Global bounded memory REST (/api/memory/bounded/*)
+│   │   ├── repo-memory-handler.ts            # Per-repo MEMORY.md REST (/api/repos/:repoId/memory/*)
+│   │   ├── background-review.ts              # Periodic AI memory review
+│   │   ├── background-review-executor.ts     # Executor for background review tasks
+│   │   ├── memory-aggregate.ts               # Prompts/config/helpers for raw→bounded aggregation
+│   │   ├── memory-aggregate-executor.ts      # Queued executor: claim → reconcile → rewrite MEMORY.md
+│   │   └── pre-compression-flush.ts          # Flush memory before compression
+│   ├── models/                       # Model registry endpoints
+│   └── spa/                          # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/
 │       ├── index.ts          # Module exports - generateDashboardHtml + DashboardOptions
 │       ├── helpers.ts        # Template helpers

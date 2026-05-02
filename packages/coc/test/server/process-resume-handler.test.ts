@@ -14,7 +14,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { createRequestHandler, generateDashboardHtml, registerApiRoutes } from '../../src/server/index';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes, launchResumeCommandInTerminal, launchFreshChatInTerminal } from '../../src/server/process-resume-handler';
+import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes, launchResumeCommandInTerminal, launchFreshChatInTerminal } from '../../src/server/processes/process-resume-handler';
 import { spawn } from 'child_process';
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {

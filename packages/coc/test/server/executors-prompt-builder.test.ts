@@ -61,12 +61,12 @@ vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
 }));
 
 const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
-vi.mock('../../src/server/create-work-item-tool', () => ({
+vi.mock('../../src/server/llm-tools/create-work-item-tool', () => ({
     createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
 }));
 
 const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
-vi.mock('../../src/server/create-bug-tool', () => ({
+vi.mock('../../src/server/llm-tools/create-bug-tool', () => ({
     createBugTool: (...args: any[]) => mockCreateBugTool(...args),
 }));
 

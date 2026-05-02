@@ -13,7 +13,7 @@ import type {
     NotesGitLogEntry,
     NotesGitDiffFile,
     NotesGitDiff,
-} from '../../src/server/notes-git-types';
+} from '../../src/server/notes/git/notes-git-types';
 
 describe('NotesGitConfig', () => {
     it('accepts full config with all fields', () => {

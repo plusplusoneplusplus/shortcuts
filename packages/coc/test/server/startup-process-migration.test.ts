@@ -27,7 +27,7 @@ import type {
     SerializedAIProcess,
     SerializedConversationTurn,
 } from '@plusplusoneplusplus/forge';
-import { migrateProcessHistoryIfNeeded } from '../../src/server/startup-process-migration';
+import { migrateProcessHistoryIfNeeded } from '../../src/server/storage/startup-process-migration';
 
 // ============================================================================
 // Helpers

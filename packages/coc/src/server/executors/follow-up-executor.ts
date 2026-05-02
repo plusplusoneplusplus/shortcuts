@@ -22,7 +22,7 @@ import type {
     ProcessStore,
     SystemMessageConfig,
 } from '@plusplusoneplusplus/forge';
-import type { ChatMode } from '../task-types';
+import type { ChatMode } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -39,8 +39,8 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
-import { emitMessageSteering } from '../sse-handler';
-import { resolveTaskRoot } from '../task-root-resolver';
+import { emitMessageSteering } from '../streaming/sse-handler';
+import { resolveTaskRoot } from '../tasks/task-root-resolver';
 import { getRepoDataPath } from '../paths';
 import { BaseExecutor } from './base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';

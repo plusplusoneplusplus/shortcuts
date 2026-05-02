@@ -16,8 +16,8 @@ import type {
     PauseMarker,
 } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../task-types';
-import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../tasks/task-types';
+import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
 

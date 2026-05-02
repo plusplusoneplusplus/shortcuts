@@ -15,7 +15,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { resolveTaskRoot } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot } from '../../src/server/tasks/task-root-resolver';
 
 // Mock loadDefaultMcpConfig from forge to control the global MCP config in tests.
 const mockLoadDefaultMcpConfig = vi.fn().mockReturnValue({

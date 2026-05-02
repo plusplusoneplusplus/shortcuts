@@ -4,7 +4,7 @@
  * POST /api/queue/:id/resume-chat — Resume an expired chat session
  */
 
-import { sendJSON, sendError } from '../api-handler';
+import { sendJSON, sendError } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {

@@ -9,9 +9,9 @@
 import * as url from 'url';
 import { BranchService } from '@plusplusoneplusplus/forge';
 import type { GitOpJob } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody, execGitArgsSync } from '../api-handler';
+import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
-import { gitCache } from '../git-cache';
+import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 

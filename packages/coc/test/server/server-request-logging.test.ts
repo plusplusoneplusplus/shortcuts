@@ -13,7 +13,7 @@ import * as http from 'http';
 import pino from 'pino';
 import { Writable } from 'stream';
 import { createRouter } from '../../src/server/shared/router';
-import { setServerLogger } from '../../src/server/server-logger';
+import { setServerLogger } from '../../src/server/logging/server-logger';
 import { handleAPIError, APIError, badRequest, internalError } from '../../src/server/errors';
 import type { SharedRouterOptions } from '../../src/server/shared/router';
 

@@ -36,11 +36,11 @@ vi.mock('../../../src/server/executors/image-store', () => ({
     rehydrateImagesIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: { saveOutput: vi.fn().mockResolvedValue(undefined) },
 }));
 
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: vi.fn().mockReturnValue({ absolutePath: '/tasks-root' }),
 }));
 
@@ -253,7 +253,7 @@ describe('ResolveCommentsExecutor — multi-file diff comments', () => {
 
     it('resolves comments across different storageKeys', async () => {
         const mockUpdateComment = vi.fn().mockResolvedValue({});
-        vi.doMock('../../../src/server/diff-comments-manager', () => ({
+        vi.doMock('../../../src/server/tasks/comments/diff-comments-manager', () => ({
             DiffCommentsManager: class {
                 constructor() {}
                 updateComment = mockUpdateComment;

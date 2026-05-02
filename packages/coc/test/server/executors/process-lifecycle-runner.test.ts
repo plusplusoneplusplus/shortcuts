@@ -20,7 +20,7 @@ vi.mock('../../../src/server/executors/image-store', () => ({
 }));
 
 // Stub output-file-manager to avoid disk writes
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: { saveOutput: vi.fn().mockResolvedValue(undefined) },
 }));
 

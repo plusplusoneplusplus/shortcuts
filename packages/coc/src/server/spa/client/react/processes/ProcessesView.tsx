@@ -17,7 +17,7 @@ import { ChatListPane } from '../features/chat/ChatListPane';
 import { ChatDetailPane } from '../features/chat/ChatDetailPane';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../contexts/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
-import { TaskDefs } from '../../../../task-types';
+import { TaskDefs } from '../../../../tasks/task-types';
 
 export function ProcessesView() {
     const [running, setRunning] = useState<any[]>([]);

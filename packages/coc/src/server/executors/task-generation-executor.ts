@@ -36,8 +36,8 @@ import {
     gatherFeatureContext,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
-import { resolveTaskRoot } from '../task-root-resolver';
+import type { ChatPayload } from '../tasks/task-types';
+import { resolveTaskRoot } from '../tasks/task-root-resolver';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { isValidTaskFolder } from './auto-folder-utils';

@@ -28,7 +28,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-import { MultiRepoQueueExecutorBridge } from '../../src/server/multi-repo-executor-bridge';
+import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-executor-bridge';
 
 // ============================================================================
 // Helpers

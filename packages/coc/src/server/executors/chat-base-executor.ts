@@ -42,9 +42,9 @@ import {
     rewriteLargePrompt,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
-import { resolveTaskRoot } from '../task-root-resolver';
+import { resolveTaskRoot } from '../tasks/task-root-resolver';
 import { getRepoDataPath } from '../paths';
 import { BaseExecutor } from './base-executor';
 import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';

@@ -21,7 +21,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { createQueueInfrastructure } from '../../../src/server/infrastructure/queue-infrastructure';
-import { MultiRepoQueueExecutorBridge } from '../../../src/server/multi-repo-executor-bridge';
+import { MultiRepoQueueExecutorBridge } from '../../../src/server/queue/multi-repo-executor-bridge';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import * as os from 'os';

@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ScheduleYamlPersistence } from '../src/server/schedule-yaml-persistence';
+import { ScheduleYamlPersistence } from '../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Helpers

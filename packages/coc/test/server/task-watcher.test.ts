@@ -27,7 +27,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import * as fs from 'fs';
-import { TaskWatcher } from '../../src/server/task-watcher';
+import { TaskWatcher } from '../../src/server/tasks/task-watcher';
 
 // ============================================================================
 // Helpers

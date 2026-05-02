@@ -9,7 +9,7 @@
 
 import * as http from 'http';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { parseBody } from '../api-handler';
+import { parseBody } from '../core/api-handler';
 import { handleAPIError, invalidJSON, notFound } from '../errors';
 
 /**

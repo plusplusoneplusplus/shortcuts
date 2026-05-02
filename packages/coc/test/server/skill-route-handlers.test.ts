@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { createSkillRouteHandlers } from '../../src/server/skill-route-handlers';
+import { createSkillRouteHandlers } from '../../src/server/skills/skill-route-handlers';
 
 // Mock resolveClawHubToGitHub to avoid real HTTP requests
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
-import { CommitChatBindingStore } from '../../src/server/commit-chat-binding-store';
+import { CommitChatBindingStore } from '../../src/server/processes/commit-chat-binding-store';
 
 describe('CommitChatBindingStore', () => {
     let db: Database.Database;

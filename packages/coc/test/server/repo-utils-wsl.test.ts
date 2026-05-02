@@ -10,7 +10,7 @@ vi.mock('child_process', async () => {
 
 import * as childProcess from 'child_process';
 import { getWslExecutablePath } from '@plusplusoneplusplus/forge';
-import { findGitRoot, normalizeRepoPath } from '../../src/server/repo-utils';
+import { findGitRoot, normalizeRepoPath } from '../../src/server/git/repo-utils';
 
 describe('repo-utils (WSL)', () => {
     afterEach(() => {

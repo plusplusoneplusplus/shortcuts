@@ -13,10 +13,10 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 import type { Route } from '../types';
-import { sendJSON, parseBody } from '../api-handler';
+import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItemChange } from '../work-items/types';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 export interface WorkItemChangesRouteContext {
     routes: Route[];

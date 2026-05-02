@@ -14,8 +14,8 @@ import {
     listDirectoryFiles,
     listInstalledSkills,
     getSkillDetail,
-} from '../../src/server/skill-handler';
-import type { SkillInfo } from '../../src/server/skill-handler';
+} from '../../src/server/skills/skill-handler';
+import type { SkillInfo } from '../../src/server/skills/skill-handler';
 
 describe('shared skill helpers', () => {
     let tmpDir: string;

@@ -24,7 +24,7 @@ import {
     toForwardSlashes,
 } from '@plusplusoneplusplus/forge';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
-import type { ChatMode } from '../task-types';
+import type { ChatMode } from '../tasks/task-types';
 
 // ============================================================================
 // Internal step types

@@ -19,7 +19,7 @@ import {
     createQueueExecutor,
 } from '@plusplusoneplusplus/forge';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 

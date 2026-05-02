@@ -11,10 +11,10 @@ import * as fs from 'fs';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { BranchService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
-import { gitCache } from '../git-cache';
-import { gitInfoCache, type GitInfoResult } from '../git-info-cache';
+import { gitCache } from '../git/git-cache';
+import { gitInfoCache, type GitInfoResult } from '../git/git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import {

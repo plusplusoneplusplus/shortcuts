@@ -15,7 +15,7 @@ import { useNotesGit } from './hooks/useNotesGit';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { Button, Spinner, SectionHeader } from '../../ui';
 import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
-import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes-git-types';
+import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes/git/notes-git-types';
 
 interface NotesGitTabProps {
     workspaceId: string;

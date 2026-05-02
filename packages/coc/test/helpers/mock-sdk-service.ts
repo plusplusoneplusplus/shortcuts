@@ -9,7 +9,7 @@
  */
 
 import { vi } from 'vitest';
-import type { QueueExecutorBridge } from '../../src/server/queue-executor-bridge';
+import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 
 // ---------------------------------------------------------------------------
 // Interfaces

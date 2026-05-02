@@ -17,8 +17,8 @@ import {
     hasAttachments,
     processMessageAttachments,
     TEXT_EXTERNALIZE_THRESHOLD,
-} from '../../src/server/attachment-utils';
-import type { AttachmentPayload } from '../../src/server/attachment-utils';
+} from '../../src/server/core/attachment-utils';
+import type { AttachmentPayload } from '../../src/server/core/attachment-utils';
 
 // Track temp dirs for cleanup
 const tempDirs: string[] = [];

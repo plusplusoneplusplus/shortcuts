@@ -13,7 +13,7 @@ import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, Attachment } from '@plusplusoneplusplus/forge';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
-import type { QueueExecutorBridge } from '../../src/server/queue-executor-bridge';
+import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

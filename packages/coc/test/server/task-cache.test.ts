@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { TaskCacheService } from '../../src/server/task-cache';
+import { TaskCacheService } from '../../src/server/tasks/task-cache';
 
 let cache: TaskCacheService;
 

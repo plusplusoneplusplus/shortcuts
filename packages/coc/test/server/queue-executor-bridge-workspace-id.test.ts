@@ -29,7 +29,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -74,7 +74,7 @@ vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
 
 // Spy on resolveTaskRoot so we can assert what workspaceId was passed
 const mockResolveTaskRoot = vi.fn();
-vi.mock('../../src/server/task-root-resolver', () => ({
+vi.mock('../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => {
         mockResolveTaskRoot(...args);
         // Return a plausible result

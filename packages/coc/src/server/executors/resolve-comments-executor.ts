@@ -16,12 +16,12 @@
 
 import type { ProcessStore, QueuedTask, Tool } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import { createResolveCommentTool } from '../llm-tools/resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildModeSystemMessage } from './prompt-builder';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 // ============================================================================
 // ResolveCommentsExecutor
@@ -84,7 +84,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
             // Server-side resolution: persist comment status and broadcast WS events
             if (this.dataDir && rc?.wsId && commentIds.length > 0) {
                 try {
-                    const { TaskCommentsManager } = await import('../task-comments-handler');
+                    const { TaskCommentsManager } = await import('../tasks/comments/task-comments-handler');
                     const mgr = new TaskCommentsManager(this.dataDir);
                     const wsServer = this.getWsServer?.();
                     await Promise.all(
@@ -111,7 +111,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
             // Server-side resolution for multi-file diff comments
             if (this.dataDir && rdcm?.wsId && commentIds.length > 0) {
                 try {
-                    const { DiffCommentsManager } = await import('../diff-comments-manager');
+                    const { DiffCommentsManager } = await import('../tasks/comments/diff-comments-manager');
                     const manager = new DiffCommentsManager(this.dataDir);
                     const wsServer = this.getWsServer?.();
                     // Build a commentId→storageKey lookup from files[]

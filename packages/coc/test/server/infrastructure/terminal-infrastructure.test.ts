@@ -17,7 +17,7 @@ import { createMockProcessStore } from '../../helpers/mock-process-store';
 const warnSpy = vi.fn();
 const infoSpy = vi.fn();
 
-vi.mock('../../../src/server/server-logger', () => ({
+vi.mock('../../../src/server/logging/server-logger', () => ({
     getServerLogger: () => ({
         warn: warnSpy,
         info: infoSpy,
@@ -66,7 +66,7 @@ describe('createTerminalInfrastructure', () => {
         vi.resetModules();
 
         // Re-mock the logger after resetModules
-        vi.doMock('../../../src/server/server-logger', () => ({
+        vi.doMock('../../../src/server/logging/server-logger', () => ({
             getServerLogger: () => ({
                 warn: warnSpy,
                 info: infoSpy,

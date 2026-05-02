@@ -12,8 +12,8 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { slugifyName, ScheduleManager } from '../../src/server/schedule-manager';
-import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
+import { slugifyName, ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Helpers

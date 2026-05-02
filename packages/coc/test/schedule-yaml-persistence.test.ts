@@ -13,8 +13,8 @@ import {
     ScheduleYamlPersistence,
     getScheduleYamlDir,
     getScheduleYamlPath,
-} from '../src/server/schedule-yaml-persistence';
-import type { ScheduleEntry } from '../src/server/schedule-manager';
+} from '../src/server/schedule/schedule-yaml-persistence';
+import type { ScheduleEntry } from '../src/server/schedule/schedule-manager';
 
 // ============================================================================
 // Helpers

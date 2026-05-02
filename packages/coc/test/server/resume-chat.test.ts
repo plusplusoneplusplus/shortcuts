@@ -18,7 +18,7 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, ConversationTurn } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { buildContextPrompt } from '../../src/server/queue-handler';
+import { buildContextPrompt } from '../../src/server/queue/queue-handler';
 
 // ============================================================================
 // Helpers

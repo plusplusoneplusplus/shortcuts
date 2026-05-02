@@ -21,9 +21,9 @@ import * as os from 'os';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
-import { ScheduleManager } from '../../src/server/schedule-manager';
-import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
-import { SqliteScheduleRunPersistence } from '../../src/server/sqlite-schedule-run-persistence';
+import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
+import { SqliteScheduleRunPersistence } from '../../src/server/schedule/sqlite-schedule-run-persistence';
 import Database from 'better-sqlite3';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 

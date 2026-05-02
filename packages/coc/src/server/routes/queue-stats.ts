@@ -9,7 +9,7 @@
  * GET /api/queue/:id/resolved-prompt — Resolved prompt for a task
  */
 
-import { sendJSON, sendError } from '../api-handler';
+import { sendJSON, sendError } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';

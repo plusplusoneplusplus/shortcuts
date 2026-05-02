@@ -117,7 +117,7 @@ vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
 });
 
 // Import AFTER all vi.mock() declarations
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
 // Helpers

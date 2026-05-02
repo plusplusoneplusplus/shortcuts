@@ -4,7 +4,7 @@
  * GET /api/queue/:id/images — Load externalized image blobs for a task
  */
 
-import { sendJSON, sendError } from '../api-handler';
+import { sendJSON, sendError } from '../core/api-handler';
 import { ImageBlobStore } from '../queue/image-blob-store';
 import type { Route } from '../types';
 import type { QueueRouteContext } from './queue-shared';

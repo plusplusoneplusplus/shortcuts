@@ -6,7 +6,7 @@
  */
 
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import { createCLIAIInvoker } from '../../ai-invoker';
 import { replicateCommit } from '@plusplusoneplusplus/forge/templates';
 import type { ReplicateProgressCallback } from '@plusplusoneplusplus/forge/templates';

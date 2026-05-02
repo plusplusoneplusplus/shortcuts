@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SqliteProcessStore, FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { WorkspaceInfo, WikiInfo } from '@plusplusoneplusplus/forge';
-import { migrateWorkspaceRegistryIfNeeded } from '../../src/server/startup-workspace-migration';
+import { migrateWorkspaceRegistryIfNeeded } from '../../src/server/storage/startup-workspace-migration';
 
 function createTempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'ws-migration-test-'));

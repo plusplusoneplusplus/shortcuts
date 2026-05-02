@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import type { TaskComment } from '../../src/server/task-comments-handler';
+import type { TaskComment } from '../../src/server/tasks/comments/task-comments-handler';
 
 // Mock the ai-invoker module used by the ask-ai handler via dynamic import
 let mockAIResponse = { success: true, response: 'AI mock response' };

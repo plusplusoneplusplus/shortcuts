@@ -13,7 +13,7 @@
 import { spawn } from 'child_process';
 import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { RunScriptPayload } from '../task-types';
+import type { RunScriptPayload } from '../tasks/task-types';
 import { BaseExecutor } from './base-executor';
 import { formatScriptResponse } from '../task-strategies/run-script-strategy';
 

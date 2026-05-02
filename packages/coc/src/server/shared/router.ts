@@ -12,7 +12,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
-import { getServerLogger } from '../server-logger';
+import { getServerLogger } from '../logging/server-logger';
 
 // ============================================================================
 // Constants

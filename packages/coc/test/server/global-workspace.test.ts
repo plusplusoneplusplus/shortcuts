@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from '../../src/server/global-workspace';
+import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from '../../src/server/workspaces/global-workspace';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 
 describe('ensureGlobalWorkspace', () => {

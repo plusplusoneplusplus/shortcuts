@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseQueryParams } from '../../src/server/api-handler';
+import { parseQueryParams } from '../../src/server/core/api-handler';
 
 // ============================================================================
 // Section 1: Status Filter

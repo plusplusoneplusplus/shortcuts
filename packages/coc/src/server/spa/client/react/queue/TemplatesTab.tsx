@@ -8,7 +8,7 @@
 import React from 'react';
 import type { SkillTemplate } from '../features/templates/hooks/useSkillTemplates';
 import type { PostAction } from '../../../task-types';
-import { TaskDefs } from '../../../../task-types';
+import { TaskDefs } from '../../../../tasks/task-types';
 
 interface TemplatesTabProps {
     templates: SkillTemplate[];

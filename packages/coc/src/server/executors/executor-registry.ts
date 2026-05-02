@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryAggregatePayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryAggregatePayload } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -37,7 +37,7 @@ export interface ExecutorRegistryOptions {
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
-    getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
+    getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     /** Callback when capture-mode memory.add completes (triggers aggregate enqueue). */
     onMemoryCaptured?: (workspaceId: string, target: string) => void;
 }

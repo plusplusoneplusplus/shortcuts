@@ -18,7 +18,7 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 import {
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
@@ -30,7 +30,7 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 

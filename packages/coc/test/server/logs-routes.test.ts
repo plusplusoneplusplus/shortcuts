@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createRouter } from '../../src/server/shared/router';
-import { registerLogsRoutes } from '../../src/server/logs-routes';
+import { registerLogsRoutes } from '../../src/server/logging/logs-routes';
 import {
     captureEntry,
     clearLogBuffer,
@@ -16,9 +16,9 @@ import {
     getLogEmitter,
     buildLogEntry,
     numToLevel,
-} from '../../src/server/server-log-capture';
+} from '../../src/server/logging/server-log-capture';
 import type { Route } from '../../src/server/types';
-import type { LogEntry } from '../../src/server/server-log-capture';
+import type { LogEntry } from '../../src/server/logging/server-log-capture';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { StaleTaskDetector } from '../../src/server/stale-task-detector';
+import { StaleTaskDetector } from '../../src/server/processes/stale-task-detector';
 import { TaskQueueManager, createTaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput, TaskPriority, ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 

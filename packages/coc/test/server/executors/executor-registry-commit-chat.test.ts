@@ -34,11 +34,11 @@ vi.mock('../../../src/server/executors/image-store', () => ({
     rehydrateImagesIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: vi.fn().mockReturnValue({ absolutePath: '/tasks-root' }),
 }));
 
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: {
         saveOutput: vi.fn().mockResolvedValue(undefined),
     },

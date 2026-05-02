@@ -56,12 +56,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 // Mock task-root-resolver to avoid real filesystem calls
 const mockResolveTaskRoot = vi.fn().mockReturnValue({ absolutePath: '/tasks-root' });
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => mockResolveTaskRoot(...args),
 }));
 
 // Mock output-file-manager to avoid disk writes
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: {
         saveOutput: vi.fn().mockResolvedValue(undefined),
     },

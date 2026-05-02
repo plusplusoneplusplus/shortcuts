@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getBuiltInPrompts } from '../../src/server/admin-handler';
+import { getBuiltInPrompts } from '../../src/server/admin/admin-handler';
 
 describe('getBuiltInPrompts', () => {
     it('returns all 9 built-in prompts', () => {

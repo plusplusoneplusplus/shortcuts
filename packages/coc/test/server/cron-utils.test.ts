@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseCron, nextCronTime, describeCron, slugifyName } from '../../src/server/cron-utils';
-import type { CronFields } from '../../src/server/cron-utils';
+import { parseCron, nextCronTime, describeCron, slugifyName } from '../../src/server/schedule/cron-utils';
+import type { CronFields } from '../../src/server/schedule/cron-utils';
 
 // ============================================================================
 // parseCron

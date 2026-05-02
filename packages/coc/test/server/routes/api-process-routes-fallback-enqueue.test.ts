@@ -13,7 +13,7 @@ import { registerApiProcessRoutes } from '../../../src/server/routes/api-process
 import type { Route } from '../../../src/server/types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { MockProcessStore } from '../helpers/mock-process-store';
-import type { QueueExecutorBridge } from '../../../src/server/api-handler';
+import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -26,7 +26,7 @@ vi.mock('../../../src/server/memory/conversation-recorder', () => ({
 }));
 
 // Stub attachment processing
-vi.mock('../../../src/server/attachment-utils', () => ({
+vi.mock('../../../src/server/core/attachment-utils', () => ({
     processMessageAttachments: vi.fn().mockReturnValue({
         sdkAttachments: [],
         validatedImages: undefined,
@@ -37,14 +37,14 @@ vi.mock('../../../src/server/attachment-utils', () => ({
 }));
 
 // Stub image utils
-vi.mock('../../../src/server/image-utils', () => ({
+vi.mock('../../../src/server/core/image-utils', () => ({
     saveImagesToTempFiles: vi.fn(),
     cleanupTempDir: vi.fn(),
     isImageDataUrl: vi.fn().mockReturnValue(false),
 }));
 
 // Stub SSE handler
-vi.mock('../../../src/server/sse-handler', () => ({
+vi.mock('../../../src/server/streaming/sse-handler', () => ({
     handleProcessStream: vi.fn(),
     emitMessageQueued: vi.fn(),
 }));

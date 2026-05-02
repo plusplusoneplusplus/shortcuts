@@ -13,17 +13,17 @@ import * as crypto from 'crypto';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody } from '../api-handler';
+import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
 import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
 import { buildPlanFromContext } from '../work-items/plan-template';
-import type { ProcessWebSocketServer } from '../websocket';
-import { TaskCommentsManager } from '../task-comments-manager';
-import { DiffCommentsManager } from '../diff-comments-manager';
-import { buildBatchResolvePrompt } from '../task-comments-ai';
-import { buildMultiFileBatchResolvePrompt } from '../diff-comments-ai';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
+import { TaskCommentsManager } from '../tasks/comments/task-comments-manager';
+import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
+import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
+import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];

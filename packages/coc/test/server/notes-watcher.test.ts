@@ -20,7 +20,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import * as fs from 'fs';
-import { NotesWatcher } from '../../src/server/notes-watcher';
+import { NotesWatcher } from '../../src/server/notes/notes-watcher';
 
 // ============================================================================
 // Helpers

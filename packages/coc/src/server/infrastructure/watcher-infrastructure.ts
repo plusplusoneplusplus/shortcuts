@@ -12,17 +12,17 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { TaskWatcher } from '../task-watcher';
-import { WorkflowWatcher } from '../workflow-watcher';
-import { TemplateWatcher } from '../template-watcher';
-import { NotesWatcher } from '../notes-watcher';
-import { resolveTaskRoot } from '../task-root-resolver';
-import { isMigrationNeeded, migrateTasksToRepoScoped } from '../task-migration';
-import { taskCache } from '../task-cache';
+import { TaskWatcher } from '../tasks/task-watcher';
+import { WorkflowWatcher } from '../workflows/workflow-watcher';
+import { TemplateWatcher } from '../templates/template-watcher';
+import { NotesWatcher } from '../notes/notes-watcher';
+import { resolveTaskRoot } from '../tasks/task-root-resolver';
+import { isMigrationNeeded, migrateTasksToRepoScoped } from '../tasks/task-migration';
+import { taskCache } from '../tasks/task-cache';
 import { getRepoDataPath } from '../paths';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import type { ProcessWebSocketServer } from '../websocket';
-import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
+import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
 
 // ============================================================================
 // Types

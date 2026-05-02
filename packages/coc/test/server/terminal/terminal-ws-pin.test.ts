@@ -13,7 +13,7 @@ import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { WebSocket } from 'ws';
 import { TerminalWebSocketServer } from '../../../src/server/terminal/terminal-ws-server';
-import { attachWebSocketUpgradeHandler } from '../../../src/server/websocket';
+import { attachWebSocketUpgradeHandler } from '../../../src/server/streaming/websocket';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { IPty } from '../../../src/server/terminal/types';
 

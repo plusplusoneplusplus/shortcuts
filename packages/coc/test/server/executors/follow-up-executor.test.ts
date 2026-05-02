@@ -68,12 +68,12 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
 }));
 
 const mockEmitMessageSteering = vi.fn();
-vi.mock('../../../src/server/sse-handler', () => ({
+vi.mock('../../../src/server/streaming/sse-handler', () => ({
     emitMessageSteering: (...args: any[]) => mockEmitMessageSteering(...args),
 }));
 
 const mockResolveTaskRoot = vi.fn().mockReturnValue({ absolutePath: '/tasks-root' });
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => mockResolveTaskRoot(...args),
 }));
 

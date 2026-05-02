@@ -17,12 +17,12 @@ import * as crypto from 'crypto';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody } from '../api-handler';
+import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType, WorkItem } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
-import type { ProcessWebSocketServer } from '../websocket';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);

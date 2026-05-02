@@ -13,7 +13,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ResolvedCLIConfig } from '../../config';
-import { getServerLogger } from '../server-logger';
+import { getServerLogger } from '../logging/server-logger';
 import type { TerminalSessionManager } from '../terminal/index';
 import type { TerminalWebSocketServer } from '../terminal/index';
 

@@ -119,11 +119,11 @@ function makeFollowUpTask(processId: string, content = 'follow up'): QueuedTask 
 
 describe('executeFollowUp — skill configuration', () => {
     let store: ReturnType<typeof createMockProcessStore>;
-    let CLITaskExecutor: typeof import('../../src/server/queue-executor-bridge').CLITaskExecutor;
+    let CLITaskExecutor: typeof import('../../src/server/queue/queue-executor-bridge').CLITaskExecutor;
 
     beforeEach(async () => {
         vi.resetModules();
-        ({ CLITaskExecutor } = await import('../../src/server/queue-executor-bridge'));
+        ({ CLITaskExecutor } = await import('../../src/server/queue/queue-executor-bridge'));
         store = createMockProcessStore();
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });

@@ -20,7 +20,7 @@ vi.mock('../../src/server/work-items/work-item-store', () => ({
     })),
 }));
 
-import { createUpdateWorkItemTool } from '../../src/server/update-work-item-tool';
+import { createUpdateWorkItemTool } from '../../src/server/llm-tools/update-work-item-tool';
 
 const EXISTING_ITEM = {
     id: 'item-uuid-1',

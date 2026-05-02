@@ -34,7 +34,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { resolveTaskRoot } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot } from '../../src/server/tasks/task-root-resolver';
 
 // ============================================================================
 // Helpers

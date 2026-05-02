@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { resolveTaskRoot, ensureTaskRoot, buildRootLabel, resolveAllTaskRoots } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot, ensureTaskRoot, buildRootLabel, resolveAllTaskRoots } from '../../src/server/tasks/task-root-resolver';
 
 describe('task-root-resolver', () => {
     let tmpDir: string;

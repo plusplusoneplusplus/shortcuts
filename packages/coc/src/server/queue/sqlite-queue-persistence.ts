@@ -18,7 +18,7 @@
 
 import type Database from 'better-sqlite3';
 import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 
 /**
  * What to do with tasks that were running when the server last stopped.

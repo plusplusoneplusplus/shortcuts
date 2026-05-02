@@ -13,10 +13,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { TaskCommentsManager } from '../../src/server/task-comments-handler';
-import type { TaskComment, CommentsStorage, CommentAnchor } from '../../src/server/task-comments-handler';
+import { TaskCommentsManager } from '../../src/server/tasks/comments/task-comments-handler';
+import type { TaskComment, CommentsStorage, CommentAnchor } from '../../src/server/tasks/comments/task-comments-handler';
 import { createAnchorData, needsRelocationCheck } from '@plusplusoneplusplus/forge';
-import { resolveTaskRoot } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot } from '../../src/server/tasks/task-root-resolver';
 
 // ============================================================================
 // HTTP Helpers

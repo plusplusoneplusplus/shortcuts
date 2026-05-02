@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { loadRepoSchedules, idFromScheduleFilename, getRepoScheduleDir } from '../src/server/repo-schedule-loader';
+import { loadRepoSchedules, idFromScheduleFilename, getRepoScheduleDir } from '../src/server/schedule/repo-schedule-loader';
 
 function makeTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'repo-schedule-loader-test-'));

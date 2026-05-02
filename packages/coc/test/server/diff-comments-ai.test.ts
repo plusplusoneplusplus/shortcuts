@@ -5,7 +5,7 @@ import {
     buildDiffEnrichedPrompt,
     buildDiffAIPrompt,
     DEFAULT_AI_COMMANDS,
-} from '../../src/server/diff-comments-ai';
+} from '../../src/server/tasks/comments/diff-comments-ai';
 import type { DiffComment } from '@plusplusoneplusplus/forge';
 
 function makeDiffComment(overrides: Partial<DiffComment> = {}): DiffComment {

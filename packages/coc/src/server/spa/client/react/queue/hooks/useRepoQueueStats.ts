@@ -7,7 +7,7 @@
 
 import { useMemo } from 'react';
 import { useQueue } from '../../contexts/QueueContext';
-import { TaskDefs } from '../../../../../task-types';
+import { TaskDefs } from '../../../../../tasks/task-types';
 
 export interface RepoQueueStats {
     running: number;

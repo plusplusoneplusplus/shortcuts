@@ -56,7 +56,7 @@ vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
     };
 });
 
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 
 // Helper: simulate what the POST /message handler does — pre-persist user turn
 function addUserTurn(proc: AIProcess, content: string, images?: string[]): AIProcess {

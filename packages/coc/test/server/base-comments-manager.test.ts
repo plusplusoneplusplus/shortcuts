@@ -21,7 +21,7 @@ import {
     isValidWorkspaceId,
     type BaseComment,
     type BaseReply,
-} from '../../src/server/base-comments-manager';
+} from '../../src/server/tasks/comments/base-comments-manager';
 
 // ============================================================================
 // Minimal concrete implementation for testing

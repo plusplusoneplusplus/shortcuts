@@ -13,7 +13,7 @@ import { WorkflowDAGPreview } from './WorkflowDAGPreview';
 import { WorkflowAIRefinePanel } from './WorkflowAIRefinePanel';
 import { WorkflowDetailView } from '../../processes/dag/WorkflowDetailView';
 import type { WorkflowInfo } from '../../repos/repoGrouping';
-import { TaskDefs } from '../../../../../task-types';
+import { TaskDefs } from '../../../../../tasks/task-types';
 
 export interface WorkflowDetailProps {
     workspaceId: string;

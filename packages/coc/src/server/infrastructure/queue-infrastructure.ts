@@ -16,10 +16,10 @@ import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forg
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
-import { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+import { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
 import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
-import { defaultIsExclusive } from '../queue-executor-bridge';
-import type { ProcessWebSocketServer } from '../websocket';
+import { defaultIsExclusive } from '../queue/queue-executor-bridge';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
 
 // ============================================================================

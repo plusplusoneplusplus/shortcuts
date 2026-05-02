@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createRouter } from '../../src/server/shared/router';
-import { registerInstructionRoutes } from '../../src/server/instruction-handler';
+import { registerInstructionRoutes } from '../../src/server/skills/instruction-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';

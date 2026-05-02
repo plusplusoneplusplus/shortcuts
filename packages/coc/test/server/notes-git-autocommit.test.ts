@@ -12,7 +12,7 @@ import {
     NotesAutoCommitTimer,
     findAutoCommitSchedule,
     NOTES_AUTOCOMMIT_SCHEDULE_NAME,
-} from '../../src/server/notes-git-autocommit';
+} from '../../src/server/notes/git/notes-git-autocommit';
 
 // ============================================================================
 // Tests

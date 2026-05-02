@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { validateAndParseTask } from '../../src/server/routes/queue-shared';
-import { isRunScriptPayload, isRunWorkflowPayload, isChatPayload } from '../../src/server/task-types';
+import { isRunScriptPayload, isRunWorkflowPayload, isChatPayload } from '../../src/server/tasks/task-types';
 
 // ============================================================================
 // run-script

@@ -58,11 +58,11 @@ describe('WorkItemExecution type', () => {
 // ── Source-level checks for handler implementations ───────────────────────────
 
 const DIFF_COMMENTS_HANDLER_PATH = path.join(
-    __dirname, '..', '..', 'src', 'server', 'diff-comments-handler.ts',
+    __dirname, '..', '..', 'src', 'server', 'tasks', 'comments', 'diff-comments-handler.ts',
 );
 
 const TASK_COMMENTS_HANDLER_PATH = path.join(
-    __dirname, '..', '..', 'src', 'server', 'task-comments-handler.ts',
+    __dirname, '..', '..', 'src', 'server', 'tasks', 'comments', 'task-comments-handler.ts',
 );
 
 describe('diff-comments-handler sessionCategory', () => {

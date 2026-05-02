@@ -9,7 +9,7 @@
  */
 
 import { getActiveModels, modelMetadataStore, ensureQueueProcessId } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError, parseBody } from '../api-handler';
+import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import {
     serializeTask,

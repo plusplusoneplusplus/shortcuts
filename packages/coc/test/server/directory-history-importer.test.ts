@@ -27,8 +27,8 @@ import type {
     SerializedConversationTurn,
     WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
-import { DirectoryHistoryImporter } from '../../src/server/directory-history-importer';
-import type { ImportProgress } from '../../src/server/directory-history-importer';
+import { DirectoryHistoryImporter } from '../../src/server/storage/directory-history-importer';
+import type { ImportProgress } from '../../src/server/storage/directory-history-importer';
 
 // ============================================================================
 // Helpers

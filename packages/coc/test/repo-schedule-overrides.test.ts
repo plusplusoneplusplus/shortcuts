@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { RepoScheduleOverrideStore } from '../src/server/repo-schedule-overrides';
+import { RepoScheduleOverrideStore } from '../src/server/schedule/repo-schedule-overrides';
 
 describe('RepoScheduleOverrideStore', () => {
     let dataDir: string;

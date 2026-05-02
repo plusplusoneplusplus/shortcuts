@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessOutputEvent } from '@plusplusoneplusplus/forge';
-import { handleProcessStream } from '../../src/server/sse-handler';
+import { handleProcessStream } from '../../src/server/streaming/sse-handler';
 import { createMockProcessStore, createProcessFixture } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 

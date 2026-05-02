@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as http from 'http';
-import { registerStatsRoutes } from '../../src/server/stats-handler';
+import { registerStatsRoutes } from '../../src/server/admin/stats-handler';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, TokenUsageStatsResponse } from '@plusplusoneplusplus/forge';
 

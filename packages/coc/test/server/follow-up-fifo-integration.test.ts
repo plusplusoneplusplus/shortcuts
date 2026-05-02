@@ -32,7 +32,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import type { QueuedTask, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 import type { PendingMessage } from '@plusplusoneplusplus/forge';
@@ -55,8 +55,8 @@ vi.mock('../../src/ai-invoker', () => ({
     createCLIAIInvoker: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-vi.mock('../../src/server/image-utils', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../src/server/image-utils')>();
+vi.mock('../../src/server/core/image-utils', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/server/core/image-utils')>();
     return { ...actual, cleanupTempDir: vi.fn() };
 });
 vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {

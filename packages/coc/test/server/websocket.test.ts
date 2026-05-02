@@ -22,7 +22,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { ProcessSummary, ServerMessage } from '@plusplusoneplusplus/coc-server';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
-import { resolveTaskRoot } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot } from '../../src/server/tasks/task-root-resolver';
 
 // ============================================================================
 // Helpers

@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { createRequestHandler } from './router';
 import { registerAllRoutes } from './routes/index';
-import { ProcessWebSocketServer, toProcessSummary } from './websocket';
+import { ProcessWebSocketServer, toProcessSummary } from './streaming/websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
 import { generateIconSvg } from './spa/icon-template';
@@ -23,27 +23,27 @@ import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
-import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import { MultiRepoQueueExecutorBridge } from './queue/multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
-import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
-import { ensureMyWorkWorkspace } from './my-work-workspace';
-import { ensureMyLifeWorkspace } from './my-life-workspace';
+import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
+import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
+import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
-import { HeapMonitor } from './heap-monitor';
+import { HeapMonitor } from './admin/heap-monitor';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills } from '@plusplusoneplusplus/forge';
-import { createStubStore } from './in-memory-process-store';
+import { createStubStore } from './processes/in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
-import { shortenHostname } from './hostname-utils';
-import { gitInfoCache } from './git-info-cache';
-import { NotesGitTimerManager } from './notes-git-timer-manager';
-import { migrateWorkspaceRegistryIfNeeded } from './startup-workspace-migration';
-import { migrateProcessHistoryIfNeeded } from './startup-process-migration';
+import { shortenHostname } from './core/hostname-utils';
+import { gitInfoCache } from './git/git-info-cache';
+import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
+import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
+import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
 
 // ============================================================================
 // Close Handler Builder
@@ -281,12 +281,12 @@ export { createRequestHandler } from './router';
 export type { RouterOptions } from './router';
 
 // Deprecated compat wrapper — use sendJson(res, data, statusCode) instead
-export { sendJSON, parseBody, parseQueryParams, stripExcludedFields } from './api-handler';
-export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
+export { sendJSON, parseBody, parseQueryParams, stripExcludedFields } from './core/api-handler';
+export { detectRemoteUrl, normalizeRemoteUrl } from './core/api-handler';
 
 // WebSocket
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler } from './websocket';
-export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './websocket';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler } from './streaming/websocket';
+export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './streaming/websocket';
 
 // Terminal
 export { TerminalWebSocketServer } from './terminal/index';
@@ -297,62 +297,62 @@ export { createTerminalInfrastructure } from './infrastructure/terminal-infrastr
 export type { TerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 
 // SSE
-export { handleProcessStream } from './sse-handler';
+export { handleProcessStream } from './streaming/sse-handler';
 
 // SPA
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 
 // Global workspace
-export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
+export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './workspaces/global-workspace';
 
 // Queue
-export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT_FOLLOW_UP_SUGGESTIONS } from './queue-executor-bridge';
-export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
+export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT_FOLLOW_UP_SUGGESTIONS } from './queue/queue-executor-bridge';
+export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/queue-executor-bridge';
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export type { ITaskExecutor } from './executors/executor-types';
-export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+export { MultiRepoQueueExecutorBridge } from './queue/multi-repo-executor-bridge';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';
 export type { RestartPolicy } from './queue/sqlite-queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';
 
 // Data management
-export { DataWiper } from './data-wiper';
-export type { WipeOptions, WipeResult } from './data-wiper';
-export { exportAllData } from './data-exporter';
-export { importData } from './data-importer';
-export type { CoCExportPayload, ImportOptions } from './export-import-types';
-export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './export-import-types';
+export { DataWiper } from './storage/data-wiper';
+export type { WipeOptions, WipeResult } from './storage/data-wiper';
+export { exportAllData } from './storage/data-exporter';
+export { importData } from './storage/data-importer';
+export type { CoCExportPayload, ImportOptions } from './storage/export-import-types';
+export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './storage/export-import-types';
 
 // Admin & tokens
-export { registerAdminRoutes, resetWipeToken, resetMigrateToken, resetDirectoryImportToken, getBuiltInPrompts } from './admin-handler';
-export type { AdminRouteOptions, BuiltInPrompt } from './admin-handler';
-export { generateImportToken, generateWipeToken, generateMigrateToken, importTokenManager, resetImportToken, wipeTokenManager, migrateTokenManager, directoryImportTokenManager, validateImportToken, validateMigrateToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
+export { registerAdminRoutes, resetWipeToken, resetMigrateToken, resetDirectoryImportToken, getBuiltInPrompts } from './admin/admin-handler';
+export type { AdminRouteOptions, BuiltInPrompt } from './admin/admin-handler';
+export { generateImportToken, generateWipeToken, generateMigrateToken, importTokenManager, resetImportToken, wipeTokenManager, migrateTokenManager, directoryImportTokenManager, validateImportToken, validateMigrateToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin/admin-handler';
 
 // Scheduling
-export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
-export { SqliteScheduleRunPersistence } from './sqlite-schedule-run-persistence';
-export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
-export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
+export { ScheduleYamlPersistence } from './schedule/schedule-yaml-persistence';
+export { SqliteScheduleRunPersistence } from './schedule/sqlite-schedule-run-persistence';
+export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule/schedule-manager';
+export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule/schedule-manager';
 
 // Tasks
-export type { ChatPayload } from './task-types';
-export { isChatPayload, hasTaskGenerationContext } from './task-types';
-export { resolveTaskRoot, ensureTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
-export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
-export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
-export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
-export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
-export type { DiffCommentsStorage } from './diff-comments-handler';
+export type { ChatPayload } from './tasks/task-types';
+export { isChatPayload, hasTaskGenerationContext } from './tasks/task-types';
+export { resolveTaskRoot, ensureTaskRoot, resolveAllTaskRoots } from './tasks/task-root-resolver';
+export type { TaskRootInfo, TaskRootOptions } from './tasks/task-root-resolver';
+export { registerTaskCommentsRoutes, TaskCommentsManager } from './tasks/comments/task-comments-handler';
+export type { TaskComment, CommentAnchor, CommentsStorage } from './tasks/comments/task-comments-handler';
+export { registerDiffCommentsRoutes, DiffCommentsManager } from './tasks/comments/diff-comments-handler';
+export type { DiffCommentsStorage } from './tasks/comments/diff-comments-handler';
 
 // Preferences
 export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
 export type { UserPreferences } from './preferences-handler';
 
 // Prompts
-export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
-export type { PromptFileInfo } from './prompt-utils';
+export { discoverPromptFiles, readPromptFileContent } from './prompts/prompt-utils';
+export type { PromptFileInfo } from './prompts/prompt-utils';
 
 // Wiki
 export { registerWikiRoutes } from './wiki';
@@ -362,40 +362,40 @@ export { WikiData } from './wiki/wiki-data';
 export type { ComponentAnalysis, ComponentGraph } from './wiki/types';
 
 // Logging
-export { captureEntry, clearLogBuffer } from './server-log-capture';
+export { captureEntry, clearLogBuffer } from './logging/server-log-capture';
 
 // Paths
 export { getRepoDataPath } from './paths';
 
 // Heap monitoring
-export { HeapMonitor, getHeapSnapshot, registerHeapRoutes } from './heap-monitor';
-export type { HeapSnapshot, HeapMonitorConfig } from './heap-monitor';
+export { HeapMonitor, getHeapSnapshot, registerHeapRoutes } from './admin/heap-monitor';
+export type { HeapSnapshot, HeapMonitorConfig } from './admin/heap-monitor';
 
 // ============================================================================
 // @internal — Infrastructure used by createExecutionServer; avoid in new code
 // ============================================================================
 
-/** @internal */ export { OutputPruner } from './output-pruner';
-/** @internal */ export { StaleTaskDetector } from './stale-task-detector';
-/** @internal */ export type { StaleTaskDetectorOptions } from './stale-task-detector';
-/** @internal */ export { TaskWatcher } from './task-watcher';
-/** @internal */ export type { TasksChangedCallback } from './task-watcher';
-/** @internal */ export { WorkflowWatcher } from './workflow-watcher';
-/** @internal */ export type { WorkflowsChangedCallback } from './workflow-watcher';
-/** @internal */ export { TemplateWatcher } from './template-watcher';
-/** @internal */ export type { TemplatesChangedCallback } from './template-watcher';
+/** @internal */ export { OutputPruner } from './processes/output-pruner';
+/** @internal */ export { StaleTaskDetector } from './processes/stale-task-detector';
+/** @internal */ export type { StaleTaskDetectorOptions } from './processes/stale-task-detector';
+/** @internal */ export { TaskWatcher } from './tasks/task-watcher';
+/** @internal */ export type { TasksChangedCallback } from './tasks/task-watcher';
+/** @internal */ export { WorkflowWatcher } from './workflows/workflow-watcher';
+/** @internal */ export type { WorkflowsChangedCallback } from './workflows/workflow-watcher';
+/** @internal */ export { TemplateWatcher } from './templates/template-watcher';
+/** @internal */ export type { TemplatesChangedCallback } from './templates/template-watcher';
 
 // ============================================================================
 // @internal — Route registration (called by registerAllRoutes only)
 // ============================================================================
 
-/** @internal */ export { registerApiRoutes } from './api-handler';
-/** @internal */ export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
-/** @internal */ export { registerQueueRoutes } from './queue-handler';
-/** @internal */ export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
-/** @internal */ export { registerTaskGenerationRoutes } from './task-generation-handler';
-/** @internal */ export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
-/** @internal */ export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
-/** @internal */ export { registerScheduleRoutes } from './schedule-handler';
-/** @internal */ export { registerNotesGitAutoCommitRoutes } from './notes-git-autocommit-handler';
-/** @internal */ export { registerNotesEditsRoutes } from './notes-edits-handler';
+/** @internal */ export { registerApiRoutes } from './core/api-handler';
+/** @internal */ export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './processes/process-resume-handler';
+/** @internal */ export { registerQueueRoutes } from './queue/queue-handler';
+/** @internal */ export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks/tasks-handler';
+/** @internal */ export { registerTaskGenerationRoutes } from './tasks/task-generation-handler';
+/** @internal */ export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates/templates-handler';
+/** @internal */ export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows/workflows-handler';
+/** @internal */ export { registerScheduleRoutes } from './schedule/schedule-handler';
+/** @internal */ export { registerNotesGitAutoCommitRoutes } from './notes/git/notes-git-autocommit-handler';
+/** @internal */ export { registerNotesEditsRoutes } from './notes/notes-edits-handler';

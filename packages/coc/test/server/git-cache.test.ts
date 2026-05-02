@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { GitCacheService } from '../../src/server/git-cache';
+import { GitCacheService } from '../../src/server/git/git-cache';
 
 describe('GitCacheService', () => {
     let cache: GitCacheService;

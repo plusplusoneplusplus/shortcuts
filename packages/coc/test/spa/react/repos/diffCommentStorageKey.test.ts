@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { DiffCommentsManager } from '../../../../src/server/diff-comments-handler';
+import { DiffCommentsManager } from '../../../../src/server/tasks/comments/diff-comments-handler';
 import type { DiffCommentContext } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================

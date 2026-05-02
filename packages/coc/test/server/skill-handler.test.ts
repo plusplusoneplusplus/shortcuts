@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS } from '../../src/server/skill-handler';
+import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS } from '../../src/server/skills/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';

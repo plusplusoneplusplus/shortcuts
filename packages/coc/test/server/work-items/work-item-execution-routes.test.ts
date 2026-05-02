@@ -475,7 +475,7 @@ describe('Work Item Execution Routes', () => {
             const id = list.body.items[0].id;
 
             // Add a plan comment using TaskCommentsManager
-            const { TaskCommentsManager: TCM } = await import('../../../src/server/task-comments-manager');
+            const { TaskCommentsManager: TCM } = await import('../../../src/server/tasks/comments/task-comments-manager');
             const tcm = new TCM(tmpDir);
             await tcm.addComment(REPO_ID, `__wi-plan__/${id}`, {
                 filePath: `__wi-plan__/${id}`,

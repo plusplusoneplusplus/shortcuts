@@ -8,9 +8,9 @@
 import * as url from 'url';
 import * as path from 'path';
 import { BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON, execGitArgsSync, readGitFileAtCommit } from '../api-handler';
+import { sendJSON, execGitArgsSync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
-import { gitCache } from '../git-cache';
+import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';

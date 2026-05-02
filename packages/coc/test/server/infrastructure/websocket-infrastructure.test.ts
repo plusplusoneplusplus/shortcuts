@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as http from 'http';
 import { createWebSocketInfrastructure } from '../../../src/server/infrastructure/websocket-infrastructure';
-import { ProcessWebSocketServer } from '../../../src/server/websocket';
+import { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 
 // ============================================================================
 // Helpers / minimal fakes

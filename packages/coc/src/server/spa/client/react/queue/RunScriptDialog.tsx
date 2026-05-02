@@ -14,7 +14,7 @@ import { useScriptTemplates, type ScriptTemplate } from '../features/templates/h
 import { getApiBase } from '../utils/config';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
-import { TaskDefs } from '../../../../task-types';
+import { TaskDefs } from '../../../../tasks/task-types';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 
 export function RunScriptDialog() {

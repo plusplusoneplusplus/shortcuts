@@ -14,7 +14,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
-import { getServerLogger } from '../server-logger';
+import { getServerLogger } from '../logging/server-logger';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { TerminalSessionManager, toSessionInfo } from './terminal-session-manager';
 import type { TerminalSessionManagerOptions } from './terminal-session-manager';

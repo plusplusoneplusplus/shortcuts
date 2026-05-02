@@ -17,7 +17,7 @@ import { DEFAULT_CHAR_LIMIT, scanMemoryContent, RawMemoryRecordStore } from '@pl
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { getRepoDataPath } from '../paths';
-import { TaskDefs } from '../task-types';
+import { TaskDefs } from '../tasks/task-types';
 
 // ============================================================================
 // Types

@@ -12,8 +12,8 @@ import * as os from 'os';
 
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, AIProcessStatus, ProcessStore } from '@plusplusoneplusplus/forge';
-import { OutputPruner } from '../../src/server/output-pruner';
-import { OutputFileManager } from '../../src/server/output-file-manager';
+import { OutputPruner } from '../../src/server/processes/output-pruner';
+import { OutputFileManager } from '../../src/server/processes/output-file-manager';
 
 const TEST_WORKSPACE = 'ws-test';
 

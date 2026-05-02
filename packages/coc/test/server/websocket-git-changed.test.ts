@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ProcessWebSocketServer } from '../../src/server/websocket';
-import type { WSClient } from '../../src/server/websocket';
+import { ProcessWebSocketServer } from '../../src/server/streaming/websocket';
+import type { WSClient } from '../../src/server/streaming/websocket';
 
 // ============================================================================
 // Helpers

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { hasResolveCommentsContext, hasResolveDiffCommentsMultiContext } from '../../src/server/task-types';
+import { hasResolveCommentsContext, hasResolveDiffCommentsMultiContext } from '../../src/server/tasks/task-types';
 
 // ============================================================================
 // Tests — Multi-file Dispatch Guard

@@ -7,7 +7,7 @@
 
 import { spawn } from 'child_process';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import type { RunScriptPayload } from '../task-types';
+import type { RunScriptPayload } from '../tasks/task-types';
 import type { ExecutionContext, TaskResult, TaskStrategy } from './index';
 
 export class RunScriptStrategy implements TaskStrategy {

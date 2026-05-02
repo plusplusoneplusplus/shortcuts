@@ -19,8 +19,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { createScheduleInfrastructure } from '../../../src/server/infrastructure/schedule-infrastructure';
-import { ScheduleManager } from '../../../src/server/schedule-manager';
-import { SqliteScheduleRunPersistence } from '../../../src/server/sqlite-schedule-run-persistence';
+import { ScheduleManager } from '../../../src/server/schedule/schedule-manager';
+import { SqliteScheduleRunPersistence } from '../../../src/server/schedule/sqlite-schedule-run-persistence';
 
 function makeTempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-infra-test-'));

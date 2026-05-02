@@ -177,13 +177,35 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code. For Copilot SDK and interactive terminal launches on Windows, translate WSL repo roots to host UNC paths and run the Windows-hosted CLI instead of assuming `copilot` exists inside WSL.
 
+**Server module layout (`packages/coc/src/server/`):** Files are grouped by feature domain. Cross-cutting plumbing (`index.ts`, `router.ts`, `types.ts`, `paths.ts`, `errors.ts`, `preferences-handler.ts`) stays at the root. Major domain folders:
+
+- `core/` — `api-handler`, `attachment-utils`, `image-utils`, `hostname-utils`, `build-info` (auto-generated, gitignored)
+- `streaming/` — `websocket`, `sse-handler`
+- `logging/` — `server-logger`, `server-log-capture`, `logs-routes`
+- `admin/` — `admin-handler`, `db-browser-handler`, `heap-monitor`, `stats-handler`
+- `workspaces/` — `global-workspace`, `my-work-{workspace,handler}`, `my-life-{workspace,handler}`, `workspace-summary-handler`
+- `processes/` — `in-memory-process-store`, `output-{file-manager,pruner}`, `stale-task-detector`, `pin-archive-handler`, `seen-state-handler`, `turn-actions-handler`, `process-{history,resume}-handler`, `commit-chat-binding-store`
+- `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-executor-bridge`, `image-blob-store`, `queue-partitioner`, `shared/`
+- `schedule/` — `schedule-{handler,manager,run-persistence,yaml-persistence}`, `sqlite-schedule-run-persistence`, `repo-schedule-{loader,overrides}`, `cron-utils`
+- `tasks/` — `task-{cache,migration,root-resolver,types,watcher,generation-handler}`, `tasks-{handler,read-handler,write-handler,handler-utils}`, plus `tasks/comments/` for `task-comments-*`, `diff-comments-*`, `base-comments-manager`, `comments-ai-helpers`
+- `notes/` — every `notes-*.ts` file (read/write/comments/AI/files), plus `notes/git/` for `notes-git-*.ts`
+- `workflows/` — `workflow-{constants,utils,watcher}`, `workflows-{handler,read-handler,write-handler}`
+- `templates/` — `template-watcher`, `templates-handler`, `replicate-apply-handler`
+- `skills/` — `skill-handler`, `skill-route-handlers`, `global-skill-handler`, `instruction-handler`
+- `prompts/` — `prompt-handler`, `prompt-utils`
+- `git/` — `git-cache`, `git-info-cache`, `repo-utils`
+- `storage/` — `storage-migration`, `startup-{process,workspace}-migration`, `directory-history-importer`, `data-{exporter,importer,wiper}`, `export-import-types`
+- `llm-tools/` — AI tool factories including `create-bug-tool`, `create-work-item-tool`, `update-work-item-tool`, plus the existing `llm-tool-registry`, `add-diff-comment-tool`, `diff-line-mapper`, etc.
+- `executors/`, `infrastructure/`, `routes/`, `providers/`, `repos/`, `shared/`, `task-strategies/`, `work-items/`, `wiki/`, `terminal/`, `memory/`, `models/`, `spa/` — pre-existing folders kept intact
+
 **Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
-- `schedule-manager.ts` → cron utilities in `cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)
-- `api-git-routes.ts` → aggregator delegating to `api-git-commit-routes`, `api-git-branch-range-routes`, `api-git-branch-routes`, `api-git-working-tree-routes`
-- `task-comments-handler.ts` → manager in `task-comments-manager.ts`, AI helpers in `task-comments-ai.ts`, relocation in `task-comments-relocation.ts`, shared AI in `comments-ai-helpers.ts`
-- `diff-comments-handler.ts` → manager in `diff-comments-manager.ts`, AI helpers in `diff-comments-ai.ts`
-- `tasks-handler.ts` → `tasks-read-handler.ts`, `tasks-write-handler.ts`, `tasks-handler-utils.ts`
-- `workflows-handler.ts` → `workflows-read-handler.ts`, `workflows-write-handler.ts`, `workflow-constants.ts`, `workflow-utils.ts`
+- `schedule/schedule-manager.ts` → cron utilities in `schedule/cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)
+- `routes/api-git-routes.ts` → aggregator delegating to `api-git-commit-routes`, `api-git-branch-range-routes`, `api-git-branch-routes`, `api-git-working-tree-routes`
+- `tasks/comments/task-comments-handler.ts` → manager in `task-comments-manager.ts`, AI helpers in `task-comments-ai.ts`, relocation in `task-comments-relocation.ts`, shared AI in `comments-ai-helpers.ts`
+- `tasks/comments/diff-comments-handler.ts` → manager in `diff-comments-manager.ts`, AI helpers in `diff-comments-ai.ts`
+- `tasks/tasks-handler.ts` → `tasks-read-handler.ts`, `tasks-write-handler.ts`, `tasks-handler-utils.ts`
+- `workflows/workflows-handler.ts` → `workflows-read-handler.ts`, `workflows-write-handler.ts`, `workflow-constants.ts`, `workflow-utils.ts`
+- `notes/notes-handler.ts` → re-exports `notes-{read,write,comments,image,file-preview,ai}-handler` plus `notes/git/notes-git-{handler,autocommit-handler}`
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration

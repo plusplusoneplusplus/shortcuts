@@ -22,7 +22,7 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
 import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
-import { TaskDefs } from '../../../../../task-types';
+import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 
 export interface RepoChatTabProps {

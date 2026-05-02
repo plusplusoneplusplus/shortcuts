@@ -11,11 +11,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError } from './api-handler';
+import { sendJSON, sendError } from './core/api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
-import type { NotesGitConfig } from './notes-git-types';
+import type { NotesGitConfig } from './notes/git/notes-git-types';
 import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
 
 // ============================================================================

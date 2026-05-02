@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createStubStore } from '../../src/server/in-memory-process-store';
+import { createStubStore } from '../../src/server/processes/in-memory-process-store';
 import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {

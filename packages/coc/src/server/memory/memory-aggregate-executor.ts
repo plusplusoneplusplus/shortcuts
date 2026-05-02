@@ -26,7 +26,7 @@ import {
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/forge';
-import type { MemoryAggregatePayload } from '../task-types';
+import type { MemoryAggregatePayload } from '../tasks/task-types';
 import {
     buildAggregateSystemMessage,
     AGGREGATE_USER_PROMPT,

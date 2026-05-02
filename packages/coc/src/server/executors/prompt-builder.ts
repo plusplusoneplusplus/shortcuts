@@ -32,9 +32,9 @@ import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
-import { createBugTool } from '../create-bug-tool';
-import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
+import { createWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
+import { createBugTool } from '../llm-tools/create-bug-tool';
+import type { ChatMode, ChatPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasResolveCommentsContext,
@@ -42,7 +42,7 @@ import {
     isChatPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
-} from '../task-types';
+} from '../tasks/task-types';
 import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';

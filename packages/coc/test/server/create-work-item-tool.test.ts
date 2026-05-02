@@ -19,7 +19,7 @@ vi.mock('../../src/server/work-items/work-item-store', () => ({
     })),
 }));
 
-import { createWorkItemTool, type CreateWorkItemArgs } from '../../src/server/create-work-item-tool';
+import { createWorkItemTool, type CreateWorkItemArgs } from '../../src/server/llm-tools/create-work-item-tool';
 
 describe('createWorkItemTool', () => {
     const dataDir = path.join(os.tmpdir(), 'coc-test-work-item-tool');

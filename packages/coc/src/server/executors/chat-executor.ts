@@ -17,8 +17,8 @@ import type {
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
-import type { ProcessWebSocketServer } from '../websocket';
-import type { ChatPayload } from '../task-types';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
+import type { ChatPayload } from '../tasks/task-types';
 import {
     buildModeSystemMessage,
     buildBoundedMemoryAddon,

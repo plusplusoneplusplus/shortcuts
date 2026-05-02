@@ -12,10 +12,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 import { createMockProcessStore } from '../../helpers/mock-process-store';
-import { TaskWatcher } from '../../../src/server/task-watcher';
-import { WorkflowWatcher } from '../../../src/server/workflow-watcher';
-import { TemplateWatcher } from '../../../src/server/template-watcher';
-import { NotesWatcher } from '../../../src/server/notes-watcher';
+import { TaskWatcher } from '../../../src/server/tasks/task-watcher';
+import { WorkflowWatcher } from '../../../src/server/workflows/workflow-watcher';
+import { TemplateWatcher } from '../../../src/server/templates/template-watcher';
+import { NotesWatcher } from '../../../src/server/notes/notes-watcher';
 
 // ---------------------------------------------------------------------------
 // Helpers

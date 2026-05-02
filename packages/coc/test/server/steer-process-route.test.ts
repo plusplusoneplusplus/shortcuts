@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as http from 'http';
 import { createRouter } from '../../src/server/shared/router';
-import { registerApiRoutes } from '../../src/server/api-handler';
-import type { QueueExecutorBridge } from '../../src/server/api-handler';
+import { registerApiRoutes } from '../../src/server/core/api-handler';
+import type { QueueExecutorBridge } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore, createCompletedProcessWithSession, createProcessFixture } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';

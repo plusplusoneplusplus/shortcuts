@@ -5,7 +5,7 @@ import * as path from 'path';
 import type { QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import { RawMemoryRecordStore, BoundedMemoryStore, ENTRY_DELIMITER } from '@plusplusoneplusplus/forge';
 import { MemoryAggregateExecutor } from '../../../src/server/memory/memory-aggregate-executor';
-import type { MemoryAggregatePayload } from '../../../src/server/task-types';
+import type { MemoryAggregatePayload } from '../../../src/server/tasks/task-types';
 
 function makeTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'mem-agg-test-'));

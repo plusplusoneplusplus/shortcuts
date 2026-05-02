@@ -30,7 +30,7 @@ vi.mock('@plusplusoneplusplus/forge', async () => {
 });
 
 // Stub SSE handler
-vi.mock('../../../src/server/sse-handler', () => ({
+vi.mock('../../../src/server/streaming/sse-handler', () => ({
     handleProcessStream: vi.fn(),
     emitMessageQueued: vi.fn(),
     emitPendingMessageAdded: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('../../../src/server/sse-handler', () => ({
 }));
 
 // Stub attachment processing
-vi.mock('../../../src/server/attachment-utils', () => ({
+vi.mock('../../../src/server/core/attachment-utils', () => ({
     processMessageAttachments: vi.fn().mockReturnValue({
         sdkAttachments: [],
         validatedImages: undefined,
@@ -49,7 +49,7 @@ vi.mock('../../../src/server/attachment-utils', () => ({
 }));
 
 // Stub image utils
-vi.mock('../../../src/server/image-utils', () => ({
+vi.mock('../../../src/server/core/image-utils', () => ({
     saveImagesToTempFiles: vi.fn(),
     cleanupTempDir: vi.fn(),
     isImageDataUrl: vi.fn().mockReturnValue(false),

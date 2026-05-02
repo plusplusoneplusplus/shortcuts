@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../../src/server/image-utils';
+import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../../src/server/core/image-utils';
 
 // ============================================================================
 // Helpers

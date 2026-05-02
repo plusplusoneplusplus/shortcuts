@@ -12,9 +12,9 @@ import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { getDefaultWslDistro, getWslExecutablePath } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
-import { isWithinTrustedReadOnlyDir } from '../tasks-handler-utils';
+import { isWithinTrustedReadOnlyDir } from '../tasks/tasks-handler-utils';
 
 export interface BrowseRoot {
     label: string;

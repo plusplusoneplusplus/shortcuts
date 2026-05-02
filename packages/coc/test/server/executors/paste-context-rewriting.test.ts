@@ -48,11 +48,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 const mockResolveTaskRoot = vi.fn().mockReturnValue({ absolutePath: '/tasks-root' });
-vi.mock('../../../src/server/task-root-resolver', () => ({
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
     resolveTaskRoot: (...args: any[]) => mockResolveTaskRoot(...args),
 }));
 
-vi.mock('../../../src/server/output-file-manager', () => ({
+vi.mock('../../../src/server/processes/output-file-manager', () => ({
     OutputFileManager: {
         saveOutput: vi.fn().mockResolvedValue(undefined),
     },

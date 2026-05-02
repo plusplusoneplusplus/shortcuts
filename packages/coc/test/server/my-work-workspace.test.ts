@@ -16,7 +16,7 @@ import {
     ensureMyWorkWorkspace,
     MY_WORK_WORKSPACE_ID,
     MY_WORK_WORKSPACE_NAME,
-} from '../../src/server/my-work-workspace';
+} from '../../src/server/workspaces/my-work-workspace';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 
 describe('ensureMyWorkWorkspace', () => {

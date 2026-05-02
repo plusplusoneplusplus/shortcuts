@@ -24,8 +24,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import Database from 'better-sqlite3';
-import { StorageMigrationEngine } from '../../src/server/storage-migration';
-import type { MigrationProgress, MigrationSummary } from '../../src/server/storage-migration';
+import { StorageMigrationEngine } from '../../src/server/storage/storage-migration';
+import type { MigrationProgress, MigrationSummary } from '../../src/server/storage/storage-migration';
 import {
     SqliteProcessStore,
 } from '@plusplusoneplusplus/forge';

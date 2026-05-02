@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { DiffCommentsManager } from '../../../src/server/diff-comments-manager';
+import { DiffCommentsManager } from '../../../src/server/tasks/comments/diff-comments-manager';
 import type { DiffCommentContext, DiffComment } from '@plusplusoneplusplus/forge';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {

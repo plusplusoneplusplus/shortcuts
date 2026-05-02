@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildBatchResolvePrompt } from '../../src/server/task-comments-ai';
-import type { TaskComment } from '../../src/server/task-comments-manager';
+import { buildBatchResolvePrompt } from '../../src/server/tasks/comments/task-comments-ai';
+import type { TaskComment } from '../../src/server/tasks/comments/task-comments-manager';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
     return {

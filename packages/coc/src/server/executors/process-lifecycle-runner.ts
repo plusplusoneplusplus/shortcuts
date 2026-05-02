@@ -36,7 +36,7 @@ import {
     modelMetadataStore,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import {
     extractPrompt,
     applySkillContent,
@@ -49,7 +49,7 @@ import {
     isRunWorkflowPayload,
     isRunScriptPayload,
     hasNoteChatContext,
-} from '../task-types';
+} from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
 

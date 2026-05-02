@@ -13,8 +13,8 @@ import type http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
-import { sendJSON, sendError, parseBody } from '../api-handler';
-import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+import { sendJSON, sendError, parseBody } from '../core/api-handler';
+import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
 
 type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
 

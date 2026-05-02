@@ -22,11 +22,11 @@ import {
     getTaskDef,
     VISIBLE_TASK_TYPE_LABELS,
     VALID_ENQUEUE_TYPES,
-} from '../../src/server/task-types';
+} from '../../src/server/tasks/task-types';
 import type {
     RunWorkflowPayload,
     CocTaskKind,
-} from '../../src/server/task-types';
+} from '../../src/server/tasks/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
 
 // ============================================================================

@@ -16,7 +16,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { DiffCommentsManager } from '../../src/server/diff-comments-handler';
+import { DiffCommentsManager } from '../../src/server/tasks/comments/diff-comments-handler';
 import type { DiffCommentContext } from '@plusplusoneplusplus/forge';
 import type { DiffComment } from '@plusplusoneplusplus/forge';
 
@@ -1080,7 +1080,7 @@ describe('Diff Comments WebSocket Broadcasts', () => {
             broadcastProcessEvent: broadcastSpy,
         } as any;
 
-        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        const { registerDiffCommentsRoutes } = await import('../../src/server/tasks/comments/diff-comments-handler');
         registerDiffCommentsRoutes(routes, tmpDir, {} as any, undefined, () => mockWsServer);
 
         httpServer = http.createServer(async (req, res) => {
@@ -1210,7 +1210,7 @@ describe('Diff Comments WebSocket Broadcasts', () => {
     it('does not throw when getWsServer returns undefined', async () => {
         // Re-register routes with getWsServer returning undefined
         const localRoutes: import('@plusplusoneplusplus/coc-server').Route[] = [];
-        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        const { registerDiffCommentsRoutes } = await import('../../src/server/tasks/comments/diff-comments-handler');
         registerDiffCommentsRoutes(localRoutes, tmpDir, {} as any, undefined, () => undefined);
 
         const localServer = http.createServer(async (req, res) => {
@@ -1242,7 +1242,7 @@ describe('Diff Comments WebSocket Broadcasts', () => {
 
     it('does not broadcast when getWsServer is not provided', async () => {
         const localRoutes: import('@plusplusoneplusplus/coc-server').Route[] = [];
-        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        const { registerDiffCommentsRoutes } = await import('../../src/server/tasks/comments/diff-comments-handler');
         registerDiffCommentsRoutes(localRoutes, tmpDir, {} as any);
 
         const localServer = http.createServer(async (req, res) => {
@@ -1302,7 +1302,7 @@ describe('Diff Comments Resolve AI Routes', () => {
             },
         } as any;
 
-        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        const { registerDiffCommentsRoutes } = await import('../../src/server/tasks/comments/diff-comments-handler');
         registerDiffCommentsRoutes(routes, tmpDir, mockBridge, undefined, () => undefined);
 
         httpServer = http.createServer(async (req, res) => {

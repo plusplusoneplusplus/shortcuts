@@ -13,8 +13,8 @@ import * as os from 'os';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createCleanupInfrastructure } from '../../../src/server/infrastructure/cleanup-infrastructure';
-import { OutputPruner } from '../../../src/server/output-pruner';
-import { StaleTaskDetector } from '../../../src/server/stale-task-detector';
+import { OutputPruner } from '../../../src/server/processes/output-pruner';
+import { StaleTaskDetector } from '../../../src/server/processes/stale-task-detector';
 
 // Minimal TaskQueueManager stub
 function makeQueueFacade(): TaskQueueManager {

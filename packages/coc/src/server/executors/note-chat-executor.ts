@@ -18,7 +18,7 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../task-types';
+import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResult } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {

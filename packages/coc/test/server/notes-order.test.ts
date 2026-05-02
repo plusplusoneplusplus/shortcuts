@@ -13,7 +13,7 @@ import {
     updateOrderOnRename,
     applyOrder,
     ORDER_FILE_NAME,
-} from '../../src/server/notes-order';
+} from '../../src/server/notes/notes-order';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

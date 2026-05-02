@@ -6,7 +6,7 @@ import { fetchWorkflows } from '../workflow/workflow-api';
 import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
-import { TaskDefs } from '../../../../../task-types';
+import { TaskDefs } from '../../../../../tasks/task-types';
 import type { PipelineInfo } from '../../repos/repoGrouping';
 
 type ActionKind = 'workflow' | 'prompt' | 'script' | 'notes-auto-commit';

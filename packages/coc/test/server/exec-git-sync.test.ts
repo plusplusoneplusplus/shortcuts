@@ -25,7 +25,7 @@ vi.mock('child_process', () => ({
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
 }));
 
-import { execGitSync, execGitArgsSync } from '../../src/server/api-handler';
+import { execGitSync, execGitArgsSync } from '../../src/server/core/api-handler';
 
 describe('execGitSync', () => {
     beforeEach(() => {

@@ -17,9 +17,9 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { TaskFolder } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { resolveTaskRoot } from '../../src/server/task-root-resolver';
-import { resolveAllTaskRoots } from '../../src/server/task-root-resolver';
-import { mergeTaskFoldersAsVirtualRoot, readTasksSettings, writeTasksSettings } from '../../src/server/tasks-handler-utils';
+import { resolveTaskRoot } from '../../src/server/tasks/task-root-resolver';
+import { resolveAllTaskRoots } from '../../src/server/tasks/task-root-resolver';
+import { mergeTaskFoldersAsVirtualRoot, readTasksSettings, writeTasksSettings } from '../../src/server/tasks/tasks-handler-utils';
 
 // ============================================================================
 // Helpers

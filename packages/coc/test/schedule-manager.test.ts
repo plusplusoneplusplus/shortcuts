@@ -9,8 +9,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ScheduleManager, parseCron, nextCronTime, describeCron } from '../src/server/schedule-manager';
-import { ScheduleYamlPersistence } from '../src/server/schedule-yaml-persistence';
+import { ScheduleManager, parseCron, nextCronTime, describeCron } from '../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Helpers
@@ -1138,7 +1138,7 @@ describe('ScheduleManager', () => {
         it('restores run history from persistence on startup', async () => {
             const Database = (await import('better-sqlite3')).default;
             const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
-            const { SqliteScheduleRunPersistence } = await import('../src/server/sqlite-schedule-run-persistence');
+            const { SqliteScheduleRunPersistence } = await import('../src/server/schedule/sqlite-schedule-run-persistence');
             const db = new Database(':memory:');
             initializeDatabase(db);
             const runPersistence = new SqliteScheduleRunPersistence(db);
@@ -1173,7 +1173,7 @@ describe('ScheduleManager', () => {
         it('does not persist run history when no runPersistence is wired', async () => {
             const Database = (await import('better-sqlite3')).default;
             const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
-            const { SqliteScheduleRunPersistence } = await import('../src/server/sqlite-schedule-run-persistence');
+            const { SqliteScheduleRunPersistence } = await import('../src/server/schedule/sqlite-schedule-run-persistence');
             const db = new Database(':memory:');
             initializeDatabase(db);
             const runPersistence = new SqliteScheduleRunPersistence(db);

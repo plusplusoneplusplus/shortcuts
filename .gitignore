@@ -132,7 +132,7 @@ dist/
 **/spa/client/dist/
 
 # Build-time generated version info
-packages/coc/src/server/build-info.ts
+packages/coc/src/server/core/build-info.ts
 # Playwright
 playwright-report/
 test-results/

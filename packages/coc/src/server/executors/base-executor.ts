@@ -16,7 +16,7 @@
 
 import type { ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
-import { OutputFileManager } from '../output-file-manager';
+import { OutputFileManager } from '../processes/output-file-manager';
 
 // ============================================================================
 // Types

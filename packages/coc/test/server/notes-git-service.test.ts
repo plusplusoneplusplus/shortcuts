@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { NotesGitService } from '../../src/server/notes-git-service';
+import { NotesGitService } from '../../src/server/notes/git/notes-git-service';
 import { safeRmSync } from '../helpers/safe-rm';
 
 describe('NotesGitService', { timeout: 60_000 }, () => {

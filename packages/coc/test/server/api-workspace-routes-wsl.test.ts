@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import * as http from 'http';
 import * as fs from 'fs';
 import { createRouter } from '../../src/server/shared/router';
-import { registerApiRoutes } from '../../src/server/api-handler';
+import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 

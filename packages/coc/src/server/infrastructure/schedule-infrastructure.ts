@@ -14,10 +14,10 @@ import type Database from 'better-sqlite3';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { ScheduleYamlPersistence } from '../schedule-yaml-persistence';
-import { SqliteScheduleRunPersistence } from '../sqlite-schedule-run-persistence';
-import { ScheduleManager } from '../schedule-manager';
-import { RepoScheduleOverrideStore } from '../repo-schedule-overrides';
+import { ScheduleYamlPersistence } from '../schedule/schedule-yaml-persistence';
+import { SqliteScheduleRunPersistence } from '../schedule/sqlite-schedule-run-persistence';
+import { ScheduleManager } from '../schedule/schedule-manager';
+import { RepoScheduleOverrideStore } from '../schedule/repo-schedule-overrides';
 
 // ============================================================================
 // Types

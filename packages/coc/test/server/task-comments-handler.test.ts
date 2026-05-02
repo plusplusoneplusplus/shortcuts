@@ -16,8 +16,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { TaskCommentsManager } from '../../src/server/task-comments-handler';
-import type { TaskComment } from '../../src/server/task-comments-handler';
+import { TaskCommentsManager } from '../../src/server/tasks/comments/task-comments-handler';
+import type { TaskComment } from '../../src/server/tasks/comments/task-comments-handler';
 
 // ============================================================================
 // HTTP Helpers
@@ -1060,7 +1060,7 @@ describe('Task Comments Resolve AI Routes', () => {
             },
         } as any;
 
-        const { registerTaskCommentsRoutes } = await import('../../src/server/task-comments-handler');
+        const { registerTaskCommentsRoutes } = await import('../../src/server/tasks/comments/task-comments-handler');
         registerTaskCommentsRoutes(routes, tmpDir, mockBridge, undefined, () => undefined);
 
         httpServer = http.createServer(async (req, res) => {

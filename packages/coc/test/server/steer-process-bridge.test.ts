@@ -43,7 +43,7 @@ vi.mock('child_process', () => ({
 }));
 
 // Import after mocks
-const { CLITaskExecutor } = await import('../../src/server/queue-executor-bridge');
+const { CLITaskExecutor } = await import('../../src/server/queue/queue-executor-bridge');
 
 describe('CLITaskExecutor.steerProcess()', () => {
     let store: ReturnType<typeof createMockProcessStore>;

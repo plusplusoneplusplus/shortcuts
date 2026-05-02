@@ -6,11 +6,11 @@
  * Workspace-scoped, following the `/api/workspaces/:id/...` pattern.
  */
 
-import { sendJSON } from '../api-handler';
+import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { CommitChatBindingStore } from '../commit-chat-binding-store';
+import { CommitChatBindingStore } from '../processes/commit-chat-binding-store';
 
 const COMMIT_HASH_RE = /^[a-f0-9]{4,40}$/;
 

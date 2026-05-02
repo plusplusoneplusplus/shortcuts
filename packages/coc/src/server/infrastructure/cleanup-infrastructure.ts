@@ -8,10 +8,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { OutputPruner } from '../output-pruner';
-import { StaleTaskDetector } from '../stale-task-detector';
+import { OutputPruner } from '../processes/output-pruner';
+import { StaleTaskDetector } from '../processes/stale-task-detector';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
-import { getServerLogger } from '../server-logger';
+import { getServerLogger } from '../logging/server-logger';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 
 // ============================================================================

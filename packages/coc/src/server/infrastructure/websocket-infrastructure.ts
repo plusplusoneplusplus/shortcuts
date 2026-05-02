@@ -11,12 +11,12 @@
  */
 
 import * as http from 'http';
-import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler } from '../websocket';
-import { gitInfoCache } from '../git-info-cache';
+import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler } from '../streaming/websocket';
+import { gitInfoCache } from '../git/git-info-cache';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
-import type { ScheduleManager } from '../schedule-manager';
+import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { ScheduleManager } from '../schedule/schedule-manager';
 import type { TerminalWebSocketServer } from '../terminal/index';
 
 // ============================================================================

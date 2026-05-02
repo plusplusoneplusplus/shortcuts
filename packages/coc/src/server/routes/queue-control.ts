@@ -23,7 +23,7 @@
  * POST   /api/queue/:id/unadmit              — Unadmit task
  */
 
-import { sendJSON, sendError, parseBody } from '../api-handler';
+import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';

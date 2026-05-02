@@ -10,7 +10,7 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { useQueue } from '../../contexts/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/format';
 import { toQueueProcessId } from '../../utils/queue-process-id';
-import { TaskDefs } from '../../../../../task-types';
+import { TaskDefs } from '../../../../../tasks/task-types';
 import type { QueueTaskSummary } from '@plusplusoneplusplus/coc-client';
 
 export interface WorkflowRunHistoryProps {
