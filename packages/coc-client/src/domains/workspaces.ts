@@ -1,12 +1,27 @@
 import type {
+  DeleteWorkspaceHistoryFilters,
+  DeleteWorkspaceOptions,
   DiscoverWorkspacesResponse,
   GitInfoResponse,
   RegisterWorkspaceRequest,
   WorkspaceInfo,
   WorkspacesResponse,
 } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
+
+function serializeDeleteOptions(options?: DeleteWorkspaceOptions): CocRequestOptions['query'] {
+  if (!options) return undefined;
+  return { archive: options.archive };
+}
+
+function serializeHistoryFilters(filters?: DeleteWorkspaceHistoryFilters): CocRequestOptions['query'] {
+  if (!filters) return undefined;
+  return {
+    since: filters.since,
+    until: filters.until,
+  };
+}
 
 export class WorkspacesClient {
   constructor(private readonly transport: RequestAdapter) {}
@@ -30,16 +45,27 @@ export class WorkspacesClient {
     });
   }
 
-  delete(workspaceId: string): Promise<void> {
-    return this.transport.request<void>(`/workspaces/${encodePathSegment(workspaceId)}`, { method: 'DELETE' });
+  delete(workspaceId: string, options?: DeleteWorkspaceOptions): Promise<void> {
+    return this.transport.request<void>(`/workspaces/${encodePathSegment(workspaceId)}`, {
+      method: 'DELETE',
+      query: serializeDeleteOptions(options),
+    });
   }
 
   gitInfo(workspaceId: string): Promise<GitInfoResponse> {
     return this.transport.request<GitInfoResponse>(`/workspaces/${encodePathSegment(workspaceId)}/git-info`);
   }
 
-  deleteHistory(workspaceId: string, processId: string): Promise<void> {
-    return this.transport.request<void>(`/workspaces/${encodePathSegment(workspaceId)}/history/${encodePathSegment(processId)}`, { method: 'DELETE' });
+  deleteHistory(workspaceId: string, processId: string): Promise<void>;
+  deleteHistory(workspaceId: string, filters?: DeleteWorkspaceHistoryFilters): Promise<void>;
+  deleteHistory(workspaceId: string, processIdOrFilters?: string | DeleteWorkspaceHistoryFilters): Promise<void> {
+    if (typeof processIdOrFilters === 'string') {
+      return this.transport.request<void>(`/workspaces/${encodePathSegment(workspaceId)}/history/${encodePathSegment(processIdOrFilters)}`, { method: 'DELETE' });
+    }
+    return this.transport.request<void>(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
+      method: 'DELETE',
+      query: serializeHistoryFilters(processIdOrFilters),
+    });
   }
 
   deleteHistoryBulk(workspaceId: string, processIds: string[]): Promise<{ results: Array<{ processId: string; status: string }> }> {

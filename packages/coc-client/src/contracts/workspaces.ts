@@ -2,6 +2,9 @@ export interface WorkspaceInfo {
   id: string;
   name: string;
   rootPath: string;
+  path?: string;
+  alias?: string;
+  tags?: string[];
   color?: string;
   remoteUrl?: string;
   description?: string;
@@ -15,12 +18,24 @@ export interface WorkspacesResponse {
 }
 
 export interface RegisterWorkspaceRequest {
-  id: string;
-  name: string;
-  rootPath: string;
+  id?: string;
+  name?: string;
+  rootPath?: string;
+  path?: string;
+  alias?: string;
+  tags?: string[];
   color?: string;
   remoteUrl?: string;
   description?: string;
+}
+
+export interface DeleteWorkspaceOptions {
+  archive?: boolean;
+}
+
+export interface DeleteWorkspaceHistoryFilters {
+  since?: string;
+  until?: string;
 }
 
 export interface DiscoverWorkspacesResponse {

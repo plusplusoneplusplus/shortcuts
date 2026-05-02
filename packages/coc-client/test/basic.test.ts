@@ -10,5 +10,6 @@ describe('CocClient', () => {
     expect(client.options.apiBasePath).toBe('/api');
     expect(client.health).toBeDefined();
     expect(client.processes).toBeDefined();
+    expect(client.repos).toBe(client.workspaces);
   });
 });
