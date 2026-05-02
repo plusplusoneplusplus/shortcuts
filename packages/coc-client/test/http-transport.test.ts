@@ -268,7 +268,7 @@ describe('HTTP transport response parsing and errors', () => {
     await expect(transport.request('/text-error')).rejects.toMatchObject({
       name: 'CocApiError',
       status: 502,
-      message: 'CoC API request failed: 502 Bad Gateway: upstream failed',
+      message: 'upstream failed',
       body: 'upstream failed',
     } satisfies Partial<CocApiError>);
   });

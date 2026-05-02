@@ -26,6 +26,27 @@ export class CocApiError extends Error {
     this.details = options.details;
     this.body = options.body;
   }
+
+  toString(): string {
+    const metadata = [
+      this.code ? `code=${this.code}` : undefined,
+      `status=${this.status}`,
+    ].filter(Boolean).join(', ');
+    return `${this.name}: ${this.message} (${metadata})`;
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      status: this.status,
+      statusText: this.statusText,
+      url: this.url,
+      code: this.code,
+      details: this.details,
+      body: this.body,
+    };
+  }
 }
 
 export class CocNetworkError extends Error {
@@ -45,35 +66,66 @@ export class CocNetworkError extends Error {
 export async function createApiError(response: Response, url: string): Promise<CocApiError> {
   const statusText = response.statusText || '';
   const contentType = response.headers?.get?.('content-type') ?? '';
+  const text = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+  const preview = text.slice(0, 500);
   if (contentType.includes('application/json')) {
-    const body = await response.json().catch(() => undefined);
+    const body = parseJson(text);
     if (body && typeof body === 'object') {
       const record = body as Record<string, unknown>;
-      const message = typeof record.message === 'string'
-        ? record.message
-        : typeof record.error === 'string'
-          ? record.error
-          : `CoC API request failed: ${response.status} ${statusText}`.trim();
+      const errorRecord = isRecord(record.error) ? record.error : undefined;
+      const message = firstString(errorRecord?.message, record.message, record.error)
+        || statusText
+        || defaultApiErrorMessage(response.status, statusText);
       return new CocApiError({
         status: response.status,
         statusText,
         url,
         message,
-        code: typeof record.code === 'string' ? record.code : undefined,
-        details: record.details,
+        code: firstString(errorRecord?.code, record.code),
+        details: errorRecord && 'details' in errorRecord ? errorRecord.details : record.details,
         body,
+      });
+    }
+    if (preview) {
+      return new CocApiError({
+        status: response.status,
+        statusText,
+        url,
+        message: preview,
+        body: preview,
       });
     }
   }
 
-  const text = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
-  const preview = text.slice(0, 500);
-  const suffix = preview ? `: ${preview}` : '';
   return new CocApiError({
     status: response.status,
     statusText,
     url,
-    message: `CoC API request failed: ${response.status} ${statusText}${suffix}`.trim(),
+    message: preview || defaultApiErrorMessage(response.status, statusText),
     body: preview,
   });
+}
+
+function parseJson(text: string): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string') return value;
+  }
+  return undefined;
+}
+
+function defaultApiErrorMessage(status: number, statusText: string): string {
+  return `CoC API request failed: ${status} ${statusText}`.trim();
 }
