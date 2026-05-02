@@ -22,9 +22,8 @@ export function buildQueryString(query?: Record<string, QueryPrimitive | QueryPr
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      for (const item of value) {
-        if (item !== undefined && item !== null) params.append(key, String(item));
-      }
+      const items = value.filter(item => item !== undefined && item !== null);
+      if (items.length > 0) params.append(key, items.map(String).join(','));
     } else {
       params.append(key, String(value));
     }

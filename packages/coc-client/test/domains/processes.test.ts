@@ -17,6 +17,20 @@ describe('ProcessesClient', () => {
     expect(adapter.calls[1].path).toBe('/processes/proc%2F1');
   });
 
+  it('encodes process IDs once in detail paths and stream URLs', async () => {
+    const adapter = createMockAdapter({});
+    const client = new ProcessesClient(adapter, new CocClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch,
+    }).options);
+
+    await client.get('proc/1 snow/雪%done');
+
+    expect(adapter.calls[0].path).toBe('/processes/proc%2F1%20snow%2F%E9%9B%AA%25done');
+    expect(client.streamUrl('proc/1', { workspace: 'repo/a' }))
+      .toBe('http://localhost:4000/api/processes/proc%2F1/stream?workspace=repo%2Fa');
+  });
+
   it('sends follow-up messages to the server-authoritative message endpoint', async () => {
     const adapter = createMockAdapter({ queued: true });
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
