@@ -18,7 +18,7 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
-import { isEmbeddableHtmlPath, parseHtmlEmbedTitle } from '@plusplusoneplusplus/forge/editor/rendering';
+import { DEFAULT_HTML_EMBED_HEIGHT, isEmbeddableHtmlPath } from '@plusplusoneplusplus/forge/editor/rendering';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
@@ -49,16 +49,15 @@ function createChatMarked(htmlEmbedEnabled: boolean): Marked {
                 const safeHref = escapeAttr(href ?? '');
                 const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
                 const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-                const linkHtml = isExternal
+                return isExternal
                     ? `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
                     : `<a href="${safeHref}"${titleAttr}>${text}</a>`;
-                const embed = htmlEmbedEnabled ? parseHtmlEmbedTitle(title) : null;
-                if (!embed || !isEmbeddableHtmlPath(href)) {
-                    return linkHtml;
-                }
-                return `${linkHtml}<div class="md-html-embed" data-html-path="${safeHref}" data-embed-height="${embed.height}"></div>`;
             },
             image(href: string, title: string | null | undefined, text: string): string {
+                // .html/.htm references via image syntax embed inline, skipping the <img> entirely.
+                if (htmlEmbedEnabled && isEmbeddableHtmlPath(href)) {
+                    return `<div class="md-html-embed" data-html-path="${escapeAttr(href ?? '')}" data-embed-height="${DEFAULT_HTML_EMBED_HEIGHT}"></div>`;
+                }
                 const alt = text || title || 'Image';
                 const escapedAlt = escapeAttr(alt);
                 const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';

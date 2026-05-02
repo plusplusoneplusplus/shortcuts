@@ -152,33 +152,36 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('target="_blank"');
     });
 
-    it('emits an HTML embed placeholder for opted-in local HTML links when enabled', () => {
-        const html = chatMarkdownToHtml('[Chart](outputs/chart.html "embed")', 'ws1', { htmlEmbedEnabled: true });
-        expect(html).toContain('href="outputs/chart.html"');
+    it('embeds local HTML files referenced via image syntax (drops the <img>)', () => {
+        const html = chatMarkdownToHtml('![Chart](outputs/chart.html)', 'ws1', { htmlEmbedEnabled: true });
         expect(html).toContain('class="md-html-embed"');
         expect(html).toContain('data-html-path="outputs/chart.html"');
-        expect(html).toContain('data-embed-height="480"');
+        expect(html).toContain('data-embed-height="600"');
+        // Image syntax should NOT produce an <img> for embeddable HTML files.
+        expect(html).not.toContain('<img');
+        expect(html).not.toContain('chat-inline-image');
     });
 
-    it('does not emit an HTML embed placeholder when disabled', () => {
-        const html = chatMarkdownToHtml('[Chart](outputs/chart.html "embed")', 'ws1');
+    it('does not embed local HTML files referenced via link syntax', () => {
+        const html = chatMarkdownToHtml('[Chart](outputs/chart.html)', 'ws1', { htmlEmbedEnabled: true });
         expect(html).toContain('href="outputs/chart.html"');
         expect(html).not.toContain('md-html-embed');
     });
 
-    it('uses clamped explicit HTML embed heights', () => {
-        const tall = chatMarkdownToHtml('[Chart](outputs/chart.html "embed:5000")', 'ws1', { htmlEmbedEnabled: true });
-        const short = chatMarkdownToHtml('[Chart](outputs/chart.html "embed:20")', 'ws1', { htmlEmbedEnabled: true });
-        expect(tall).toContain('data-embed-height="2000"');
-        expect(short).toContain('data-embed-height="120"');
+    it('falls back to <img> when image syntax targets HTML but embed is disabled', () => {
+        const html = chatMarkdownToHtml('![Chart](outputs/chart.html)', 'ws1');
+        expect(html).not.toContain('md-html-embed');
+        expect(html).toContain('<img');
     });
 
-    it('does not embed non-HTML or remote HTML links', () => {
-        const nonHtml = chatMarkdownToHtml('[Data](outputs/data.json "embed")', 'ws1', { htmlEmbedEnabled: true });
-        const remote = chatMarkdownToHtml('[Remote](https://example.com/chart.html "embed")', 'ws1', { htmlEmbedEnabled: true });
+    it('does not embed non-HTML local images or remote HTML via image syntax', () => {
+        const nonHtml = chatMarkdownToHtml('![Data](outputs/data.png)', 'ws1', { htmlEmbedEnabled: true });
+        const remote = chatMarkdownToHtml('![Remote](https://example.com/chart.html)', 'ws1', { htmlEmbedEnabled: true });
         expect(nonHtml).not.toContain('md-html-embed');
+        expect(nonHtml).toContain('<img');
         expect(remote).not.toContain('md-html-embed');
-        expect(remote).toContain('target="_blank"');
+        expect(remote).toContain('<img');
+        expect(remote).toContain('src="https://example.com/chart.html"');
     });
 
     // --- Tables ---

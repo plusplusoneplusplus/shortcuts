@@ -1,4 +1,4 @@
-export const DEFAULT_HTML_EMBED_HEIGHT = 480;
+export const DEFAULT_HTML_EMBED_HEIGHT = 600;
 export const MIN_HTML_EMBED_HEIGHT = 120;
 export const MAX_HTML_EMBED_HEIGHT = 2000;
 

@@ -1,12 +1,13 @@
+import {
+    DEFAULT_HTML_EMBED_HEIGHT,
+    MAX_HTML_EMBED_HEIGHT,
+    MIN_HTML_EMBED_HEIGHT,
+} from '@plusplusoneplusplus/forge/editor/rendering';
 import { getSpaApiUrl, getSpaCocClient } from '../api/cocClient';
 
-const MIN_HEIGHT = 120;
-const MAX_HEIGHT = 2000;
-const DEFAULT_HEIGHT = 480;
-
 function clampHeight(value: number): number {
-    if (!Number.isFinite(value)) return DEFAULT_HEIGHT;
-    return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(value)));
+    if (!Number.isFinite(value)) return DEFAULT_HTML_EMBED_HEIGHT;
+    return Math.min(MAX_HTML_EMBED_HEIGHT, Math.max(MIN_HTML_EMBED_HEIGHT, Math.round(value)));
 }
 
 function basename(filePath: string): string {
