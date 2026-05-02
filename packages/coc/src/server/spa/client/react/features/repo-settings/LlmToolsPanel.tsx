@@ -4,20 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import type { LlmToolMeta, LlmToolsConfig } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
-
-interface LlmToolMeta {
-    name: string;
-    label: string;
-    description: string;
-    enabledByDefault: boolean;
-}
-
-interface LlmToolsConfigResponse {
-    tools: LlmToolMeta[];
-    disabledLlmTools: string[];
-}
 
 interface LlmToolsPanelProps {
     workspaceId: string;
@@ -32,8 +21,8 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
 
     const loadConfig = useCallback(() => {
         setLoading(true);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/llm-tools-config`)
-            .then((data: LlmToolsConfigResponse) => {
+        getSpaCocClient().preferences.getLlmToolsConfig(workspaceId)
+            .then((data: LlmToolsConfig) => {
                 setTools(data.tools ?? []);
                 setDisabledTools(data.disabledLlmTools ?? []);
             })
@@ -51,11 +40,10 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
         setDisabledTools(nextDisabled);
         setSaving(true);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/llm-tools-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ disabledLlmTools: nextDisabled }),
-            });
+            await getSpaCocClient().preferences.updateLlmToolsConfig(
+                workspaceId,
+                { disabledLlmTools: nextDisabled },
+            );
         } catch (e: any) {
             setDisabledTools(prevDisabled);
             addToast(e?.message ?? 'Failed to save LLM tools config', 'error');

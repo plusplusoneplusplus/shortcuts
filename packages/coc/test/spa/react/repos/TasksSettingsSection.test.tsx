@@ -8,9 +8,22 @@ import React from 'react';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
+const mocks = vi.hoisted(() => ({
+    preferences: {
+        getRepo: vi.fn(),
+        patchRepo: vi.fn(),
+        getTaskSettings: vi.fn(),
+        updateTaskSettings: vi.fn(),
+    },
+}));
+
 const mockFetchApi = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ preferences: mocks.preferences }),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -31,12 +44,7 @@ function mockPatchError(status: number, error: string) {
 }
 
 async function renderSection(opts: { taskRootPath?: string; folderPaths?: string[] } = {}) {
-    mockFetchApi.mockImplementation((url: string) => {
-        if (url.includes('/tasks/settings')) {
-            return Promise.resolve(mockSettingsGet(opts));
-        }
-        return Promise.resolve({});
-    });
+    mocks.preferences.getTaskSettings.mockResolvedValue(mockSettingsGet(opts));
 
     const { TasksSettingsSection } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
@@ -56,11 +64,17 @@ async function renderSection(opts: { taskRootPath?: string; folderPaths?: string
 
 beforeEach(() => {
     vi.resetAllMocks();
+    mocks.preferences.getRepo.mockResolvedValue({});
+    mocks.preferences.patchRepo.mockResolvedValue({});
+    mocks.preferences.getTaskSettings.mockResolvedValue(mockSettingsGet());
+    mocks.preferences.updateTaskSettings.mockImplementation((_workspaceId: string, data: { folderPaths: string[] }) =>
+        Promise.resolve(mockPatchOk(data.folderPaths))
+    );
 });
 
 describe('TasksSettingsSection', () => {
-    it('calls fetchApi with correct path (no double /api/ prefix)', async () => {
-        mockFetchApi.mockResolvedValue(mockSettingsGet());
+    it('loads task settings through the typed preference client', async () => {
+        mocks.preferences.getTaskSettings.mockResolvedValue(mockSettingsGet());
 
         const { TasksSettingsSection } = await import(
             '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
@@ -68,17 +82,15 @@ describe('TasksSettingsSection', () => {
         render(<TasksSettingsSection workspaceId="ws-abc" />);
 
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalled();
+            expect(mocks.preferences.getTaskSettings).toHaveBeenCalled();
         });
 
-        const [url] = mockFetchApi.mock.calls[0];
-        expect(url).toBe('/workspaces/ws-abc/tasks/settings');
-        expect(url).not.toContain('/api/');
+        expect(mocks.preferences.getTaskSettings).toHaveBeenCalledWith('ws-abc');
     });
 
     it('shows loading state initially', async () => {
         // Never resolves so we stay in loading
-        mockFetchApi.mockReturnValue(new Promise(() => {}));
+        mocks.preferences.getTaskSettings.mockReturnValue(new Promise(() => {}));
 
         const { TasksSettingsSection } = await import(
             '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
@@ -117,12 +129,7 @@ describe('TasksSettingsSection', () => {
     it('adds a new folder and calls PATCH', async () => {
         await renderSection({ folderPaths: [] });
 
-        mockFetchApi.mockImplementation((url: string, init?: any) => {
-            if (init?.method === 'PATCH') {
-                return Promise.resolve(mockPatchOk(['/new/path']));
-            }
-            return Promise.resolve(mockSettingsGet({ folderPaths: [] }));
-        });
+        mocks.preferences.updateTaskSettings.mockResolvedValue(mockPatchOk(['/new/path']));
 
         const input = screen.getByTestId('new-folder-input');
         const addBtn = screen.getByTestId('add-folder-btn');
@@ -137,12 +144,9 @@ describe('TasksSettingsSection', () => {
 
         // Verify PATCH was called
         await waitFor(() => {
-            const patchCall = mockFetchApi.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'PATCH'
-            );
-            expect(patchCall).toBeTruthy();
-            const body = JSON.parse(patchCall![1].body);
-            expect(body.folderPaths).toEqual(['/new/path']);
+            expect(mocks.preferences.updateTaskSettings).toHaveBeenCalledWith('ws-1', {
+                folderPaths: ['/new/path'],
+            });
         });
 
         // Folder should appear in the list
@@ -154,12 +158,7 @@ describe('TasksSettingsSection', () => {
     it('adds a folder on Enter key', async () => {
         await renderSection({ folderPaths: [] });
 
-        mockFetchApi.mockImplementation((url: string, init?: any) => {
-            if (init?.method === 'PATCH') {
-                return Promise.resolve(mockPatchOk(['/entered']));
-            }
-            return Promise.resolve(mockSettingsGet({ folderPaths: [] }));
-        });
+        mocks.preferences.updateTaskSettings.mockResolvedValue(mockPatchOk(['/entered']));
 
         const input = screen.getByTestId('new-folder-input');
 
@@ -171,10 +170,9 @@ describe('TasksSettingsSection', () => {
         });
 
         await waitFor(() => {
-            const patchCall = mockFetchApi.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'PATCH'
-            );
-            expect(patchCall).toBeTruthy();
+            expect(mocks.preferences.updateTaskSettings).toHaveBeenCalledWith('ws-1', {
+                folderPaths: ['/entered'],
+            });
         });
     });
 
@@ -201,12 +199,7 @@ describe('TasksSettingsSection', () => {
     it('removes a folder and calls PATCH', async () => {
         await renderSection({ folderPaths: ['/remove/me', '/keep'] });
 
-        mockFetchApi.mockImplementation((url: string, init?: any) => {
-            if (init?.method === 'PATCH') {
-                return Promise.resolve(mockPatchOk(['/keep']));
-            }
-            return Promise.resolve(mockSettingsGet({ folderPaths: ['/remove/me', '/keep'] }));
-        });
+        mocks.preferences.updateTaskSettings.mockResolvedValue(mockPatchOk(['/keep']));
 
         const removeBtns = screen.getAllByTestId('remove-folder-btn');
         expect(removeBtns.length).toBe(2);
@@ -216,24 +209,16 @@ describe('TasksSettingsSection', () => {
         });
 
         await waitFor(() => {
-            const patchCall = mockFetchApi.mock.calls.find(
-                (c: any[]) => c[1]?.method === 'PATCH'
-            );
-            expect(patchCall).toBeTruthy();
-            const body = JSON.parse(patchCall![1].body);
-            expect(body.folderPaths).toEqual(['/keep']);
+            expect(mocks.preferences.updateTaskSettings).toHaveBeenCalledWith('ws-1', {
+                folderPaths: ['/keep'],
+            });
         });
     });
 
     it('shows error when PATCH fails', async () => {
         await renderSection({ folderPaths: [] });
 
-        mockFetchApi.mockImplementation((url: string, init?: any) => {
-            if (init?.method === 'PATCH') {
-                return Promise.reject(mockPatchError(403, 'Path outside trusted directories'));
-            }
-            return Promise.resolve(mockSettingsGet({ folderPaths: [] }));
-        });
+        mocks.preferences.updateTaskSettings.mockRejectedValue(mockPatchError(403, 'Path outside trusted directories'));
 
         const input = screen.getByTestId('new-folder-input');
         const addBtn = screen.getByTestId('add-folder-btn');
@@ -253,9 +238,7 @@ describe('TasksSettingsSection', () => {
     });
 
     it('shows error when GET fails', async () => {
-        mockFetchApi.mockImplementation(() =>
-            Promise.reject(new Error('API error: 500 Internal Server Error'))
-        );
+        mocks.preferences.getTaskSettings.mockRejectedValue(new Error('API error: 500 Internal Server Error'));
 
         const { TasksSettingsSection } = await import(
             '../../../../src/server/spa/client/react/features/repo-settings/TasksSettingsSection'
@@ -271,12 +254,7 @@ describe('TasksSettingsSection', () => {
     it('clears input after successful add', async () => {
         await renderSection({ folderPaths: [] });
 
-        mockFetchApi.mockImplementation((url: string, init?: any) => {
-            if (init?.method === 'PATCH') {
-                return Promise.resolve(mockPatchOk(['/added']));
-            }
-            return Promise.resolve(mockSettingsGet({ folderPaths: [] }));
-        });
+        mocks.preferences.updateTaskSettings.mockResolvedValue(mockPatchOk(['/added']));
 
         const input = screen.getByTestId('new-folder-input') as HTMLInputElement;
 
@@ -304,6 +282,8 @@ describe('RepoSettingsTab tasks nav item', () => {
             if (url.includes('/instructions')) return Promise.resolve({ base: null, ask: null, plan: null, autopilot: null });
             return Promise.resolve({});
         });
+        mocks.preferences.getRepo.mockResolvedValue({});
+        mocks.preferences.getTaskSettings.mockResolvedValue(mockSettingsGet());
 
         vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
             if (url.includes('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });

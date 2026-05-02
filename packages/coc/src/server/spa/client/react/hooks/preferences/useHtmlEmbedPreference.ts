@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 
 let cachedEnabled: boolean | null = null;
 let fetchPromise: Promise<boolean> | null = null;
 
 async function fetchHtmlEmbedEnabled(): Promise<boolean> {
     try {
-        const res = await fetch(getApiBase() + '/preferences');
-        if (!res.ok) return false;
-        const data = await res.json();
+        const data = await getSpaCocClient().preferences.getGlobal();
         return data?.htmlEmbed?.enabled === true;
     } catch {
         return false;

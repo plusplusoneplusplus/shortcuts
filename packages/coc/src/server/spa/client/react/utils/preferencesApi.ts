@@ -1,5 +1,6 @@
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { OnboardingProgress } from '../contexts/AppContext';
-import { getApiBase } from './config';
+import { getSpaCocClient, translateSpaCocClientError } from '../api/cocClient';
 
 export interface GlobalPreferencePatch {
     hasSeenWelcome?: boolean;
@@ -16,15 +17,12 @@ export interface GlobalPreferencePatch {
 }
 
 export async function patchGlobalPreferences(patch: GlobalPreferencePatch): Promise<any> {
-    const res = await fetch(getApiBase() + '/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-    });
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as any).error || `API error: ${res.status} ${res.statusText}`);
+    try {
+        return await getSpaCocClient().preferences.patchGlobal(patch);
+    } catch (error) {
+        if (error instanceof CocApiError) {
+            throw new Error(error.message);
+        }
+        translateSpaCocClientError(error);
     }
-    if (res.status === 204) return undefined;
-    return res.json();
 }

@@ -82,9 +82,12 @@ export async function createApiError(response: Response, url: string): Promise<C
   const statusText = response.statusText || '';
   const contentType = response.headers?.get?.('content-type') ?? '';
   const text = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+  const jsonBody = !text && typeof response.json === 'function'
+    ? await response.json().catch(() => undefined)
+    : undefined;
   const preview = text.slice(0, 500);
-  if (contentType.includes('application/json')) {
-    const body = parseJson(text);
+  if (contentType.includes('application/json') || jsonBody !== undefined) {
+    const body = jsonBody ?? parseJson(text);
     if (body && typeof body === 'object') {
       const record = body as Record<string, unknown>;
       const errorRecord = isRecord(record.error) ? record.error : undefined;

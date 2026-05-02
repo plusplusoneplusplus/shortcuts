@@ -161,6 +161,68 @@ describe('PreferencesClient mock coverage', () => {
     });
   });
 
+  it('reads and updates task settings through typed preference methods', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/workspaces/repo%2Fa/tasks/settings', {
+      body: {
+        taskRootPath: 'C:\\repo\\.coc\\tasks',
+        folderPaths: ['tasks'],
+        hasDefaultFolderPaths: true,
+      },
+    });
+    mock.on('PATCH', '/api/workspaces/repo%2Fa/tasks/settings', {
+      body: { folderPaths: ['tasks', 'plans'] },
+    });
+    const client = createClient(mock);
+
+    await expect(client.preferences.getTaskSettings('repo/a')).resolves.toEqual({
+      taskRootPath: 'C:\\repo\\.coc\\tasks',
+      folderPaths: ['tasks'],
+      hasDefaultFolderPaths: true,
+    });
+    await expect(client.preferences.updateTaskSettings('repo/a', {
+      folderPaths: ['tasks', 'plans'],
+    })).resolves.toEqual({ folderPaths: ['tasks', 'plans'] });
+
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fa/tasks/settings');
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/workspaces/repo%2Fa/tasks/settings', {
+      folderPaths: ['tasks', 'plans'],
+    });
+  });
+
+  it('preserves explicit empty LLM tool override arrays', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/workspaces/repo%2Fa/llm-tools-config', {
+      body: {
+        tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+        disabledLlmTools: ['create_bug'],
+      },
+    });
+    mock.on('PUT', '/api/workspaces/repo%2Fa/llm-tools-config', {
+      body: {
+        tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+        disabledLlmTools: [],
+      },
+    });
+    const client = createClient(mock);
+
+    await expect(client.preferences.getLlmToolsConfig('repo/a')).resolves.toEqual({
+      tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+      disabledLlmTools: ['create_bug'],
+    });
+    await expect(client.preferences.updateLlmToolsConfig('repo/a', {
+      disabledLlmTools: [],
+    })).resolves.toEqual({
+      tools: [{ name: 'create_bug', label: 'Create Bug', description: 'Files bugs.', enabledByDefault: true }],
+      disabledLlmTools: [],
+    });
+
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fa/llm-tools-config');
+    expectJsonRequest(mock.requests[1], 'PUT', '/api/workspaces/repo%2Fa/llm-tools-config', {
+      disabledLlmTools: [],
+    });
+  });
+
   it('propagates preference and skill usage errors as CocApiError instances', async () => {
     mock = await startMockServer();
     mock.on('GET', '/api/workspaces/missing%2Frepo/preferences', {

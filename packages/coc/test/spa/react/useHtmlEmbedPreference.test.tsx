@@ -21,7 +21,7 @@ describe('useHtmlEmbedPreference', () => {
         const { result } = renderHook(() => useHtmlEmbedPreference('ws1'));
 
         await waitFor(() => expect(result.current).toBe(true));
-        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/preferences'));
+        expect(mockFetch.mock.calls[0][0]).toContain('/preferences');
     });
 
     it('defaults to disabled when preference is absent', async () => {

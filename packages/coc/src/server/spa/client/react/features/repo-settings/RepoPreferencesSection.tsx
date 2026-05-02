@@ -12,7 +12,7 @@ import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { getApiBase } from '../../utils/config';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
@@ -53,7 +53,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     // Fetch linked repo IDs from preferences
     useEffect(() => {
         setLinkedRepoLoading(true);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/preferences`)
+        getSpaCocClient().preferences.getRepo(workspaceId)
             .then(data => setLinkedRepoIds(data?.linkedRepoIds ?? []))
             .catch(() => setLinkedRepoIds([]))
             .finally(() => setLinkedRepoLoading(false));
@@ -91,11 +91,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         const prevIds = linkedRepoIds;
         setLinkedRepoIds(nextIds);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/preferences`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ linkedRepoIds: nextIds }),
-            });
+            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
@@ -108,11 +104,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         setLinkedRepoIds(nextIds);
         setShowAddRepo(false);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/preferences`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ linkedRepoIds: nextIds }),
-            });
+            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');

@@ -4,16 +4,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import type { TaskSettings } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 
 interface TasksSettingsSectionProps {
     workspaceId: string;
-}
-
-interface TasksSettingsData {
-    taskRootPath: string;
-    folderPaths: string[];
-    hasDefaultFolderPaths?: boolean;
 }
 
 export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps) {
@@ -27,7 +22,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     const loadSettings = useCallback(async () => {
         try {
-            const data: TasksSettingsData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`);
+            const data: TaskSettings = await getSpaCocClient().preferences.getTaskSettings(workspaceId);
             setPrimaryPath(data.taskRootPath || '');
             setFolderPaths(data.folderPaths || []);
             setDefaultPaths(data.hasDefaultFolderPaths ? (data.folderPaths || []) : []);
@@ -46,11 +41,10 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         setError(null);
         setDefaultPaths([]);
         try {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folderPaths: paths }),
-            });
+            const data = await getSpaCocClient().preferences.updateTaskSettings(
+                workspaceId,
+                { folderPaths: paths },
+            );
             setFolderPaths(data.folderPaths ?? paths);
         } catch (err: any) {
             setError(err.message || 'Failed to save settings');

@@ -12,6 +12,10 @@ describe('PreferencesClient', () => {
     await client.getRepo('repo/a');
     await client.patchRepo('repo/a', { lastDepth: 'deep' });
     await client.recordSkillUsage('repo/a', 'impl');
+    await client.getTaskSettings('repo/a');
+    await client.updateTaskSettings('repo/a', { folderPaths: ['tasks', 'plans'] });
+    await client.getLlmToolsConfig('repo/a');
+    await client.updateLlmToolsConfig('repo/a', { disabledLlmTools: [] });
 
     expect(adapter.calls).toMatchObject([
       { path: '/preferences' },
@@ -19,6 +23,39 @@ describe('PreferencesClient', () => {
       { path: '/workspaces/repo%2Fa/preferences' },
       { path: '/workspaces/repo%2Fa/preferences', options: { method: 'PATCH', body: { lastDepth: 'deep' } } },
       { path: '/workspaces/repo%2Fa/preferences/skill-usage', options: { method: 'PATCH', body: { skillName: 'impl' } } },
+      { path: '/workspaces/repo%2Fa/tasks/settings' },
+      {
+        path: '/workspaces/repo%2Fa/tasks/settings',
+        options: { method: 'PATCH', body: { folderPaths: ['tasks', 'plans'] } },
+      },
+      { path: '/workspaces/repo%2Fa/llm-tools-config' },
+      {
+        path: '/workspaces/repo%2Fa/llm-tools-config',
+        options: { method: 'PUT', body: { disabledLlmTools: [] } },
+      },
+    ]);
+  });
+
+  it('copies array payloads for task settings and LLM tools updates', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PreferencesClient(adapter);
+    const folderPaths = ['tasks'];
+    const disabledLlmTools = ['create_bug'];
+
+    await client.updateTaskSettings('repo-a', { folderPaths });
+    await client.updateLlmToolsConfig('repo-a', { disabledLlmTools });
+    folderPaths.push('mutated');
+    disabledLlmTools.push('mutated');
+
+    expect(adapter.calls).toMatchObject([
+      {
+        path: '/workspaces/repo-a/tasks/settings',
+        options: { method: 'PATCH', body: { folderPaths: ['tasks'] } },
+      },
+      {
+        path: '/workspaces/repo-a/llm-tools-config',
+        options: { method: 'PUT', body: { disabledLlmTools: ['create_bug'] } },
+      },
     ]);
   });
 });

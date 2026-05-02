@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getWorkspacePreferences, patchWorkspacePreferences } from
     '../../../../src/server/spa/client/react/hooks/preferences/preferencesApi';
 
-// Mock getApiBase
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
 }));
@@ -17,7 +16,7 @@ describe('getWorkspacePreferences', () => {
         mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => prefs });
         const result = await getWorkspacePreferences('ws-abc');
         expect(result).toEqual(prefs);
-        expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws-abc/preferences');
+        expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws-abc/preferences', {});
     });
 
     it('throws on non-ok response', async () => {
@@ -29,7 +28,7 @@ describe('getWorkspacePreferences', () => {
         const prefs = {};
         mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => prefs });
         await getWorkspacePreferences('ws/with spaces');
-        expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws%2Fwith%20spaces/preferences');
+        expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws%2Fwith%20spaces/preferences', {});
     });
 });
 

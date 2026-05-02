@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export type SkillMode = 'task' | 'ask' | 'plan';
 export type ModelMode = SkillMode | 'note';
@@ -59,12 +59,9 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }
         setLoaded(false);
         let cancelled = false;
-        const url = getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences';
         (async () => {
             try {
-                const res = await fetch(url);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const prefs = await getSpaCocClient().preferences.getRepo(repoId);
                 if (!cancelled) {
                     // Read per-mode models, falling back to legacy lastModel
                     if (typeof prefs.lastModels === 'object' && prefs.lastModels !== null) {
@@ -114,41 +111,25 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const setModel = useCallback((mode: ModelMode, m: string) => {
         setModelsState(prev => ({ ...prev, [mode]: m }));
         if (!repoId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastModels: { [mode]: m } }),
-        }).catch(() => {});
+        getSpaCocClient().preferences.patchRepo(repoId, { lastModels: { [mode]: m } }).catch(() => {});
     }, [repoId]);
 
     const setDepth = useCallback((d: string) => {
         setDepthState(d);
         if (!repoId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastDepth: d }),
-        }).catch(() => {});
+        getSpaCocClient().preferences.patchRepo(repoId, { lastDepth: d }).catch(() => {});
     }, [repoId]);
 
     const setEffort = useCallback((e: string) => {
         setEffortState(e);
         if (!repoId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastEffort: e }),
-        }).catch(() => {});
+        getSpaCocClient().preferences.patchRepo(repoId, { lastEffort: e }).catch(() => {});
     }, [repoId]);
 
     const setSkill = useCallback((mode: SkillMode, s: string[]) => {
         setSkillsState(prev => ({ ...prev, [mode]: s }));
         if (!repoId) return;
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastSkills: { [mode]: s } }),
-        }).catch(() => {});
+        getSpaCocClient().preferences.patchRepo(repoId, { lastSkills: { [mode]: s } }).catch(() => {});
     }, [repoId]);
 
     // Backward compat: expose task model as the single 'model' property

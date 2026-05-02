@@ -38,7 +38,8 @@ describe('usePreferences', () => {
         renderHook(() => usePreferences('repo-1'));
         await waitFor(() => {
             expect(mockFetch).toHaveBeenCalledWith(
-                expect.stringContaining('/workspaces/repo-1/preferences')
+                expect.stringContaining('/workspaces/repo-1/preferences'),
+                expect.any(Object),
             );
         });
     });

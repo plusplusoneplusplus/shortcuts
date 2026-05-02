@@ -464,7 +464,7 @@ describe('RepoPreferencesSection', () => {
 
             await waitFor(() => {
                 expect(mockAddToast).toHaveBeenCalledWith(
-                    expect.stringContaining('API error'),
+                    expect.stringContaining('CoC API request failed'),
                     'error'
                 );
             });

@@ -1,15 +1,23 @@
 import type {
   GlobalPreferences,
+  LlmToolsConfig,
+  LlmToolsConfigUpdate,
   PerRepoPreferences,
   SkillUsageListResponse,
   SkillUsageQuery,
   SkillUsageResponse,
+  TaskSettings,
+  TaskSettingsUpdate,
 } from '../contracts';
 import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
 
 function repoPreferencesPath(workspaceId: string, suffix = ''): string {
   return `/workspaces/${encodePathSegment(workspaceId)}/preferences${suffix}`;
+}
+
+function workspacePath(workspaceId: string, suffix: string): string {
+  return `/workspaces/${encodePathSegment(workspaceId)}${suffix}`;
 }
 
 function serializeSkillUsageQuery(query?: SkillUsageQuery): CocRequestOptions['query'] {
@@ -71,6 +79,28 @@ export class PreferencesClient {
   getSkillUsage(workspaceId: string, query?: SkillUsageQuery): Promise<SkillUsageListResponse> {
     return this.transport.request<SkillUsageListResponse>(repoPreferencesPath(workspaceId, '/skill-usage'), {
       query: serializeSkillUsageQuery(query),
+    });
+  }
+
+  getTaskSettings(workspaceId: string): Promise<TaskSettings> {
+    return this.transport.request<TaskSettings>(workspacePath(workspaceId, '/tasks/settings'));
+  }
+
+  updateTaskSettings(workspaceId: string, settings: TaskSettingsUpdate): Promise<TaskSettings> {
+    return this.transport.request<TaskSettings>(workspacePath(workspaceId, '/tasks/settings'), {
+      method: 'PATCH',
+      body: { folderPaths: [...settings.folderPaths] },
+    });
+  }
+
+  getLlmToolsConfig(workspaceId: string): Promise<LlmToolsConfig> {
+    return this.transport.request<LlmToolsConfig>(workspacePath(workspaceId, '/llm-tools-config'));
+  }
+
+  updateLlmToolsConfig(workspaceId: string, config: LlmToolsConfigUpdate): Promise<LlmToolsConfig> {
+    return this.transport.request<LlmToolsConfig>(workspacePath(workspaceId, '/llm-tools-config'), {
+      method: 'PUT',
+      body: { disabledLlmTools: [...config.disabledLlmTools] },
     });
   }
 }

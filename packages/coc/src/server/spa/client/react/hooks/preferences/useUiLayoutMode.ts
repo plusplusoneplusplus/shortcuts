@@ -11,7 +11,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { UiLayoutMode } from '../../types/dashboard';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 
 const DEFAULT_MODE: UiLayoutMode = 'classic';
 
@@ -61,11 +61,7 @@ function setSharedMode(next: UiLayoutMode): void {
     currentMode = next;
     notifyAll();
     // Persist to server (fire-and-forget)
-    fetch(getApiBase() + '/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uiLayoutMode: next }),
-    }).catch(() => {});
+    getSpaCocClient().preferences.patchGlobal({ uiLayoutMode: next }).catch(() => {});
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -78,9 +74,7 @@ export function useUiLayoutMode(): [UiLayoutMode, (mode: UiLayoutMode) => void] 
         serverFetched = true;
         (async () => {
             try {
-                const res = await fetch(getApiBase() + '/preferences');
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const prefs = await getSpaCocClient().preferences.getGlobal();
                 const serverMode = prefs.uiLayoutMode;
                 if ((serverMode === 'classic' || serverMode === 'dev-workflow') && serverMode !== currentMode) {
                     currentMode = serverMode;

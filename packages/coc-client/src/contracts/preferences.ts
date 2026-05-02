@@ -5,19 +5,51 @@ export interface GlobalPreferences {
   hasSeenWelcome?: boolean;
   dismissedTips?: string[];
   uiLayoutMode?: 'classic' | 'dev-workflow';
+  htmlEmbed?: {
+    enabled?: boolean;
+  };
   [key: string]: unknown;
 }
 
 export interface PerRepoPreferences {
   lastModel?: string;
   lastModels?: Record<string, string | undefined>;
-  lastDepth?: 'deep' | 'normal';
-  lastEffort?: 'low' | 'medium' | 'high';
+  lastDepth?: string;
+  lastEffort?: string;
   lastSkills?: Record<string, string[] | undefined>;
   skillUsageMap?: Record<string, string>;
   linkedRepoIds?: string[];
   disabledLlmTools?: string[];
+  filesViewMode?: 'flat' | 'tree';
   [key: string]: unknown;
+}
+
+export interface TaskSettings {
+  folderPath?: string;
+  taskRootPath: string;
+  folderPaths: string[];
+  hasDefaultFolderPaths?: boolean;
+  [key: string]: unknown;
+}
+
+export interface TaskSettingsUpdate {
+  folderPaths: string[];
+}
+
+export interface LlmToolMeta {
+  name: string;
+  label: string;
+  description: string;
+  enabledByDefault: boolean;
+}
+
+export interface LlmToolsConfig {
+  tools: LlmToolMeta[];
+  disabledLlmTools: string[];
+}
+
+export interface LlmToolsConfigUpdate {
+  disabledLlmTools: string[];
 }
 
 export interface SkillUsageEntry {

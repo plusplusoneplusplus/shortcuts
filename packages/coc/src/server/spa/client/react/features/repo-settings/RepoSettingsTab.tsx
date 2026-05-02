@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
 import { getApiBase } from '../../utils/config';
@@ -151,7 +152,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             })
             .catch(() => {});
         // Fetch linkedRepoIds from per-repo preferences
-        fetchApi(`/workspaces/${workspaceId}/preferences`)
+        getSpaCocClient().preferences.getRepo(workspaceId)
             .then((data) => {
                 setLinkedRepoIds(data.linkedRepoIds ?? []);
             })
@@ -240,11 +241,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         const prevIds = linkedRepoIds;
         setLinkedRepoIds(nextIds);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/preferences`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ linkedRepoIds: nextIds }),
-            });
+            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
@@ -348,7 +345,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     }, [ws.id]);
 
     useEffect(() => {
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks/settings`)
+        getSpaCocClient().preferences.getTaskSettings(ws.id)
             .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
             .catch(() => setTasksFolder(null));
     }, [ws.id]);
