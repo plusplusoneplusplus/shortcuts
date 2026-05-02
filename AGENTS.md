@@ -112,7 +112,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 ## CoC Client (`packages/coc-client/`)
 
-Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for health, models, preferences, processes, pull requests, queue, work items, workspaces, and workflows, plus WebSocket events and per-process SSE streaming helpers.
+Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for health, memory, models, preferences, processes, pull requests, queue, work items, workspaces, and workflows, plus WebSocket events and per-process SSE streaming helpers.
 
 **Testing:** Vitest tests cover HTTP transport, URL encoding, domain clients, realtime adapters, and real-server contract routes. `test/mock-server/` provides a lightweight Node `http` + `ws` harness for HTTP, WebSocket, and SSE tests that need status/header/body programming, request recording, scripted socket behavior, SSE chunks, network drops, delays, and idempotent cleanup on `127.0.0.1:0`.
 
@@ -220,7 +220,7 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 
 **Onboarding layer:** `WelcomeModal` (first-launch modal), `FirstStepsCard` (guided checklist replacing empty repos state), `FeatureTip` (contextual dismissible tips). State in `GlobalPreferences` (`hasSeenWelcome`, `onboardingProgress`, `dismissedTips`), gated by `SHOW_WELCOME_TUTORIAL` compile-time flag.
 
-**Memory layer:** `MemoryConfig` (`storageDir`, `backend`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, explore-cache browsing routes (`GET /api/memory/explore-cache/levels`, `GET /api/memory/explore-cache/raw`, `GET /api/memory/explore-cache/raw/:filename`, `GET /api/memory/explore-cache/consolidated`, `GET /api/memory/explore-cache/consolidated/:id`). Bounded memory routes (`GET/PATCH/DELETE /api/memory/bounded/*`) serve per-repo and system `MEMORY.md` content. Per-repo memory CRUD at `/api/repos/:repoId/memory/*` via `repo-memory-handler.ts`. Dashboard UI: `MemoryView` → `MemoryConfigPanel` + bounded memory viewer.
+**Memory layer:** `MemoryConfig` (`storageDir`, `backend`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, explore-cache browsing routes (`GET /api/memory/explore-cache/levels`, `GET /api/memory/explore-cache/raw`, `GET /api/memory/explore-cache/raw/:filename`, `GET /api/memory/explore-cache/consolidated`, `GET /api/memory/explore-cache/consolidated/:id`). Bounded memory routes (`GET/PUT/DELETE /api/memory/bounded/*`) serve per-repo and system `MEMORY.md` content. Per-repo memory CRUD at `/api/repos/:repoId/memory/*` via `repo-memory-handler.ts`. Dashboard UI: `MemoryView` → `MemoryConfigPanel` + bounded memory viewer.
 
 **Seen-state layer:** `seen-state-handler.ts` (`registerSeenStateRoutes`) exposes per-process read/unread tracking via `GET/PATCH /api/workspaces/:id/seen-state`, `DELETE /api/workspaces/:id/seen-state/:processId`, `GET /api/workspaces/:id/seen-state/count`. Backed by `seen_at TEXT` column on `processes` table. Client hook `useUnseenActivity` loads from server on mount, uses optimistic local state + debounced fire-and-forget API calls. One-time localStorage migration from `coc-unseen-*` keys on first load.
 

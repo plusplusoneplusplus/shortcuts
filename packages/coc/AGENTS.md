@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Depends on the published `@plusplusoneplusplus/forge` package (`^1.0.0`) as a runtime dependency. Published to npm as `@plusplusoneplusplus/coc` (public access). Requires Node.js ≥ 24. The dashboard SPA consumes `@plusplusoneplusplus/coc-client` for shared REST transport, typed workflow and pull-request calls, and process WebSocket lifecycle while preserving local React hook APIs (`fetchApi`, `useWebSocket`).
+Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Depends on the published `@plusplusoneplusplus/forge` package (`^1.0.0`) as a runtime dependency. Published to npm as `@plusplusoneplusplus/coc` (public access). Requires Node.js ≥ 24. The dashboard SPA consumes `@plusplusoneplusplus/coc-client` for shared REST transport, typed workflow, memory, pull-request calls, and process WebSocket lifecycle while preserving local React hook APIs (`fetchApi`, `useWebSocket`).
 
 ## Build & Test
 
@@ -180,7 +180,7 @@ src/
 │   ├── memory/                  # Memory configuration and bounded-memory REST API
 │   │   ├── memory-config-handler.ts     # Memory config persistence (readMemoryConfig, writeMemoryConfig)
 │   │   ├── memory-routes.ts             # Global memory REST endpoints (config + bounded memory routes)
-│   │   ├── bounded-memory-routes.ts     # Global bounded memory REST endpoints (GET/PATCH/DELETE /api/memory/bounded/*)
+│   │   ├── bounded-memory-routes.ts     # Global bounded memory REST endpoints (GET/PUT/DELETE /api/memory/bounded/*)
 │   │   ├── repo-memory-handler.ts       # Per-repo bounded MEMORY.md REST endpoints (GET/PUT /api/repos/:repoId/memory/*)
 │   │   ├── background-review.ts         # Background memory review (periodic AI pass to add/replace/remove entries)
 │   │   ├── background-review-executor.ts # Executor for background review tasks

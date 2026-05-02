@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ExploreCachePanel } from '../../../../../src/server/spa/client/react/features/memory/ExploreCachePanel';
 
-const mockFetch = vi.fn();
+const mockMemoryApi = vi.hoisted(() => ({
+    getToolCallCacheStats: vi.fn(),
+    aggregateToolCalls: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/memory/memoryApi', () => ({
+    memoryApi: mockMemoryApi,
+}));
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetch.mockReset();
-    global.fetch = mockFetch;
+    mockMemoryApi.getToolCallCacheStats.mockReset();
+    mockMemoryApi.aggregateToolCalls.mockReset();
 });
 
 const defaultStats = {
@@ -18,16 +25,13 @@ const defaultStats = {
 };
 
 function mockStatsOk(stats = defaultStats) {
-    mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(stats),
-    });
+    mockMemoryApi.getToolCallCacheStats.mockResolvedValue(stats);
 }
 
 describe('ExploreCachePanel', () => {
     it('renders loading spinner on mount', async () => {
         // Never resolves — keeps spinner visible
-        mockFetch.mockReturnValue(new Promise(() => {}));
+        mockMemoryApi.getToolCallCacheStats.mockReturnValue(new Promise(() => {}));
         render(<ExploreCachePanel />);
         expect(screen.getByLabelText('Loading')).toBeDefined();
     });
@@ -47,10 +51,7 @@ describe('ExploreCachePanel', () => {
     });
 
     it('renders "Never" when lastAggregation is null', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ ...defaultStats, lastAggregation: null }),
-        });
+        mockMemoryApi.getToolCallCacheStats.mockResolvedValue({ ...defaultStats, lastAggregation: null });
         await act(async () => {
             render(<ExploreCachePanel />);
         });
@@ -62,12 +63,8 @@ describe('ExploreCachePanel', () => {
     it('"Aggregate now" button disabled while aggregating', async () => {
         // Stats resolves immediately; POST hangs
         let resolvePost!: (v: any) => void;
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST') {
-                return new Promise((res) => { resolvePost = res; });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
-        });
+        mockMemoryApi.getToolCallCacheStats.mockResolvedValue(defaultStats);
+        mockMemoryApi.aggregateToolCalls.mockReturnValue(new Promise((res) => { resolvePost = res; }));
 
         await act(async () => {
             render(<ExploreCachePanel />);
@@ -87,16 +84,12 @@ describe('ExploreCachePanel', () => {
         });
 
         // Clean up
-        resolvePost({ ok: true, json: () => Promise.resolve({ aggregated: true, rawCount: 0, consolidatedCount: 4 }) });
+        resolvePost({ aggregated: true, rawCount: 0, consolidatedCount: 4 });
     });
 
     it('shows "Aggregating…" label while POST is in-flight', async () => {
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST') {
-                return new Promise(() => {});
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
-        });
+        mockMemoryApi.getToolCallCacheStats.mockResolvedValue(defaultStats);
+        mockMemoryApi.aggregateToolCalls.mockReturnValue(new Promise(() => {}));
 
         await act(async () => {
             render(<ExploreCachePanel />);
@@ -116,15 +109,8 @@ describe('ExploreCachePanel', () => {
     });
 
     it('shows success message after aggregation', async () => {
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ aggregated: true, rawCount: 5, consolidatedCount: 3 }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
-        });
+        mockMemoryApi.getToolCallCacheStats.mockResolvedValue(defaultStats);
+        mockMemoryApi.aggregateToolCalls.mockResolvedValue({ aggregated: true, rawCount: 5, consolidatedCount: 3 });
 
         await act(async () => {
             render(<ExploreCachePanel />);
@@ -145,18 +131,11 @@ describe('ExploreCachePanel', () => {
 
     it('refreshes stats after successful aggregation', async () => {
         let statsCallCount = 0;
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ aggregated: true, rawCount: 5, consolidatedCount: 3 }),
-                });
-            }
-            if (url.includes('/stats')) {
-                statsCallCount++;
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
+        mockMemoryApi.getToolCallCacheStats.mockImplementation(() => {
+            statsCallCount++;
+            return Promise.resolve(defaultStats);
         });
+        mockMemoryApi.aggregateToolCalls.mockResolvedValue({ aggregated: true, rawCount: 5, consolidatedCount: 3 });
 
         await act(async () => {
             render(<ExploreCachePanel />);
@@ -179,12 +158,8 @@ describe('ExploreCachePanel', () => {
     });
 
     it('shows error message on POST failure', async () => {
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST') {
-                return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
-        });
+        mockMemoryApi.getToolCallCacheStats.mockResolvedValue(defaultStats);
+        mockMemoryApi.aggregateToolCalls.mockRejectedValue(new Error('HTTP 500'));
 
         await act(async () => {
             render(<ExploreCachePanel />);
@@ -204,7 +179,7 @@ describe('ExploreCachePanel', () => {
     });
 
     it('shows stats fetch error', async () => {
-        mockFetch.mockRejectedValue(new Error('Network error'));
+        mockMemoryApi.getToolCallCacheStats.mockRejectedValue(new Error('Network error'));
         await act(async () => {
             render(<ExploreCachePanel />);
         });
@@ -217,11 +192,9 @@ describe('ExploreCachePanel', () => {
 
     it('"Refresh" button re-fetches stats', async () => {
         let statsCallCount = 0;
-        mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/stats')) {
-                statsCallCount++;
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultStats) });
+        mockMemoryApi.getToolCallCacheStats.mockImplementation(() => {
+            statsCallCount++;
+            return Promise.resolve(defaultStats);
         });
 
         await act(async () => {

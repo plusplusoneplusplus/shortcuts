@@ -1,4 +1,5 @@
 export * from './common';
+export * from './memory';
 export * from './preferences';
 export * from './processes';
 export * from './pull-requests';

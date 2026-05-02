@@ -1,4 +1,5 @@
 export { HealthClient } from './health';
+export { MemoryClient } from './memory';
 export { ModelsClient } from './models';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';

@@ -5,6 +5,7 @@ import {
   CocClient,
   EventsClient,
   HealthClient,
+  MemoryClient,
   ModelsClient,
   PreferencesClient,
   ProcessesClient,
@@ -97,6 +98,7 @@ describe('CocClient integration wiring', () => {
     });
 
     expect(client.health).toBeInstanceOf(HealthClient);
+    expect(client.memory).toBeInstanceOf(MemoryClient);
     expect(client.models).toBeInstanceOf(ModelsClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
     expect(client.processes).toBeInstanceOf(ProcessesClient);
@@ -117,6 +119,7 @@ describe('CocClient integration wiring', () => {
     const requestSpy = vi.spyOn(transport, 'request').mockResolvedValue({} as never);
     const httpDomains = [
       client.health,
+      client.memory,
       client.models,
       client.preferences,
       client.processes,
@@ -133,6 +136,7 @@ describe('CocClient integration wiring', () => {
     expect(readPrivateProperty<unknown>(client.events, 'options')).toBe(client.options);
 
     await client.health.get();
+    await client.memory.getConfig();
     await client.models.list();
     await client.preferences.getGlobal();
     await client.processes.list();
@@ -144,6 +148,7 @@ describe('CocClient integration wiring', () => {
 
     expect(requestSpy.mock.calls.map(call => call[0])).toEqual([
       '/health',
+      '/memory/config',
       '/models',
       '/preferences',
       '/processes',
@@ -358,6 +363,7 @@ function typeCheckPublicSurface(): string {
     import {
       CocClient,
       HealthClient,
+      MemoryClient,
       ModelsClient,
       PreferencesClient,
       ProcessesClient,
@@ -386,6 +392,7 @@ function typeCheckPublicSurface(): string {
       type EventSourceConstructor,
       type GlobalPreferences,
       type HealthResponse,
+      type MemoryConfig,
       type ModelInfo,
       type NormalizedCocClientOptions,
       type ProcessStreamOptions,
@@ -399,6 +406,7 @@ function typeCheckPublicSurface(): string {
     const constructors = [
       CocClient,
       HealthClient,
+      MemoryClient,
       ModelsClient,
       PreferencesClient,
       ProcessesClient,
@@ -419,6 +427,7 @@ function typeCheckPublicSurface(): string {
     };
     const client: CocClient = new CocClient(options);
     const health: HealthResponse = { status: 'ok', uptime: 1, processCount: 0 };
+    const memoryConfig: MemoryConfig = { storageDir: 'C:\\\\memory', backend: 'file' };
     const model: ModelInfo = { id: 'gpt-test', enabled: true };
     const process: AIProcess = {
       id: 'proc-1',
@@ -474,6 +483,7 @@ function typeCheckPublicSurface(): string {
       adapter,
       client,
       health,
+      memoryConfig,
       model,
       process,
       workspace,

@@ -6,12 +6,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ConsolidatedPanel } from '../../../../../src/server/spa/client/react/features/memory/ConsolidatedPanel';
 
-const mockFetch = vi.fn();
+const mockMemoryApi = vi.hoisted(() => ({
+    getConsolidated: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/memory/memoryApi', () => ({
+    memoryApi: mockMemoryApi,
+}));
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetch.mockReset();
-    vi.stubGlobal('fetch', mockFetch);
+    mockMemoryApi.getConsolidated.mockReset();
     vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -20,10 +25,7 @@ afterEach(() => {
 });
 
 function mockConsolidatedOk(content: string | null = '# Summary\nAll is well.') {
-    mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ content }),
-    });
+    mockMemoryApi.getConsolidated.mockResolvedValue({ content });
 }
 
 const defaultProps = {
@@ -35,7 +37,7 @@ describe('ConsolidatedPanel', () => {
     // ── Loading state ────────────────────────────────────────────────────
 
     it('shows loading state on mount', async () => {
-        mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
+        mockMemoryApi.getConsolidated.mockReturnValue(new Promise(() => {})); // never resolves
         render(<ConsolidatedPanel {...defaultProps} />);
         expect(screen.getByTestId('consolidated-loading')).toBeDefined();
         expect(screen.getByText('Loading…')).toBeDefined();
@@ -76,12 +78,7 @@ describe('ConsolidatedPanel', () => {
     // ── Error state ──────────────────────────────────────────────────────
 
     it('shows error when API returns non-ok response', async () => {
-        mockFetch.mockResolvedValue({
-            ok: false,
-            status: 404,
-            statusText: 'Not Found',
-            json: () => Promise.resolve({}),
-        });
+        mockMemoryApi.getConsolidated.mockRejectedValue(new Error('API error: 404 Not Found'));
         await act(async () => { render(<ConsolidatedPanel {...defaultProps} />); });
         await waitFor(() => {
             expect(screen.getByTestId('consolidated-error')).toBeDefined();
@@ -90,7 +87,7 @@ describe('ConsolidatedPanel', () => {
     });
 
     it('shows error when fetch throws', async () => {
-        mockFetch.mockRejectedValue(new Error('Connection refused'));
+        mockMemoryApi.getConsolidated.mockRejectedValue(new Error('Connection refused'));
         await act(async () => { render(<ConsolidatedPanel {...defaultProps} />); });
         await waitFor(() => {
             expect(screen.getByTestId('consolidated-error')).toBeDefined();
@@ -166,13 +163,13 @@ describe('ConsolidatedPanel', () => {
         });
         await waitFor(() => { expect(screen.getByText('Repo A data')).toBeDefined(); });
 
-        const callCountBefore = mockFetch.mock.calls.length;
+        const callCountBefore = mockMemoryApi.getConsolidated.mock.calls.length;
         mockConsolidatedOk('Repo B data');
         await act(async () => {
             rerender(<ConsolidatedPanel {...defaultProps} repoId="repo-b" />);
         });
         await waitFor(() => {
-            expect(mockFetch.mock.calls.length).toBeGreaterThan(callCountBefore);
+            expect(mockMemoryApi.getConsolidated.mock.calls.length).toBeGreaterThan(callCountBefore);
             expect(screen.getByText('Repo B data')).toBeDefined();
         });
     });

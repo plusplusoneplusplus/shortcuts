@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../ui';
 import { CapacityBar } from '../../ui/CapacityBar';
+import { memoryApi } from './memoryApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,9 +67,7 @@ export function BoundedMemoryPanel() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${getApiBase()}/memory/bounded/levels`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            setOverview(await res.json());
+            setOverview(await memoryApi.getBoundedLevels());
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -86,12 +84,7 @@ export function BoundedMemoryPanel() {
         setEditing(false);
         setSaveError(null);
         try {
-            const params = new URLSearchParams();
-            if (hash) params.set('hash', hash);
-            const url = `${getApiBase()}/memory/bounded/${level}${params.toString() ? '?' + params : ''}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: BoundedContent = await res.json();
+            const data = await memoryApi.getBoundedLevel(level, hash);
             setContent(data);
         } catch (err) {
             setContentError(err instanceof Error ? err.message : String(err));
@@ -126,25 +119,7 @@ export function BoundedMemoryPanel() {
         setSaving(true);
         setSaveError(null);
         try {
-            const params = new URLSearchParams();
-            if (selectedHash) params.set('hash', selectedHash);
-            const url = `${getApiBase()}/memory/bounded/${selectedLevel}${params.toString() ? '?' + params : ''}`;
-            const res = await fetch(url, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: editContent }),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                if (res.status === 422) {
-                    setSaveError(`Security violation: ${data.violations?.join(', ') ?? 'Content blocked'}`);
-                } else if (res.status === 413) {
-                    setSaveError(`Content exceeds limit: ${data.charCount}/${data.charLimit} chars`);
-                } else {
-                    setSaveError(data.error ?? `HTTP ${res.status}`);
-                }
-                return;
-            }
+            const data = await memoryApi.saveBoundedLevel(selectedLevel, editContent, selectedHash);
             setContent({ content: editContent, ...data });
             setEditing(false);
             fetchOverview();

@@ -2,8 +2,28 @@
  * memoryApi — typed wrappers over the repo-scoped memory REST endpoints.
  */
 
-import { fetchApi } from '../../hooks/useApi';
-import { getApiBase } from '../../utils/config';
+import {
+    CocApiError,
+    type AggregateToolCallsResponse,
+    type BoundedMemoryDeleteResponse,
+    type BoundedMemoryLevelsOverview,
+    type BoundedMemoryResponse,
+    type BoundedMemorySaveResponse,
+    type ConsolidatedEntryWithAnswer,
+    type ExploreCacheConsolidatedListResponse,
+    type ExploreCacheLevelsOverview,
+    type ExploreCacheRawListResponse,
+    type MemoryConfig,
+    type MemoryLevel,
+    type MemoryOverviewResponse,
+    type MemoryStats,
+    type RawDbColumnInfo,
+    type RawDbTableData,
+    type RawDbTableInfo,
+    type ToolCallCacheStats,
+    type ToolCallQAEntry,
+} from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -16,121 +36,139 @@ export interface FeedItem {
     createdAt: string;
 }
 
-export interface MemoryStats {
-    charCount: number;
-    charLimit: number;
-    lastModified: string | null;
-    pendingRawCount: number;
-    claimedRawCount: number;
-    consolidatedAt: string | null;
-    consolidationStatus?: 'idle' | 'queued' | 'running';
-    consolidationTaskId?: string;
-    consolidationProcessId?: string;
-    lastAggregatedAt?: string | null;
-    lastAggregateError?: string | null;
-}
-
-export interface MemoryOverviewResponse extends MemoryStats {}
-
 export interface DiffLine {
     type: 'add' | 'remove' | 'unchanged';
     text: string;
 }
 
-export interface BoundedMemoryResponse {
-    content: string;
-    charCount: number;
-    charLimit: number;
-    lastModified: string | null;
-}
+export type {
+    AggregateToolCallsResponse,
+    BoundedMemoryDeleteResponse,
+    BoundedMemoryLevelsOverview,
+    BoundedMemoryResponse,
+    BoundedMemorySaveResponse,
+    ConsolidatedEntryWithAnswer,
+    ExploreCacheConsolidatedListResponse,
+    ExploreCacheLevelsOverview,
+    ExploreCacheRawListResponse,
+    MemoryConfig,
+    MemoryLevel,
+    MemoryOverviewResponse,
+    MemoryStats,
+    RawDbColumnInfo,
+    RawDbTableData,
+    RawDbTableInfo,
+    ToolCallCacheStats,
+    ToolCallQAEntry,
+} from '@plusplusoneplusplus/coc-client';
 
-export interface BoundedMemorySaveResponse {
-    charCount: number;
-    charLimit: number;
-    lastModified: string;
-}
-
-// ── Raw DB browser types ────────────────────────────────────────────────────
-
-export interface RawDbTableInfo {
-    name: string;
-    rowCount: number;
-}
-
-export interface RawDbColumnInfo {
-    name: string;
-    type: string;
-    notnull: boolean;
-    pk: boolean;
-}
-
-export interface RawDbTableData {
-    table: string;
-    columns: RawDbColumnInfo[];
-    rows: Record<string, unknown>[];
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
+function remapBoundedSaveError(error: unknown): never {
+    if (error instanceof CocApiError) {
+        const body = error.body && typeof error.body === 'object' ? error.body as Record<string, unknown> : {};
+        if (error.status === 422) {
+            const violations = Array.isArray(body.violations) ? body.violations.join(', ') : undefined;
+            throw new Error(`Security violation: ${violations ?? 'Content blocked'}`);
+        }
+        if (error.status === 413) {
+            throw new Error(`Content exceeds limit: ${body.charCount}/${body.charLimit} chars`);
+        }
+        throw new Error(typeof body.error === 'string' ? body.error : error.message);
+    }
+    throw error;
 }
 
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const memoryApi = {
+    getConfig(): Promise<MemoryConfig> {
+        return getSpaCocClient().memory.getConfig();
+    },
+
+    saveConfig(config: MemoryConfig): Promise<MemoryConfig> {
+        return getSpaCocClient().memory.replaceConfig(config);
+    },
+
+    getBoundedLevels(): Promise<BoundedMemoryLevelsOverview> {
+        return getSpaCocClient().memory.getBoundedLevels();
+    },
+
+    getBoundedLevel(level: MemoryLevel, hash?: string): Promise<BoundedMemoryResponse> {
+        return getSpaCocClient().memory.getBoundedLevel(level, { hash });
+    },
+
+    async saveBoundedLevel(level: MemoryLevel, content: string, hash?: string): Promise<BoundedMemorySaveResponse> {
+        try {
+            return await getSpaCocClient().memory.saveBoundedLevel(level, content, { hash });
+        } catch (error) {
+            remapBoundedSaveError(error);
+        }
+    },
+
+    deleteBoundedLevel(level: MemoryLevel, token: string, hash?: string): Promise<BoundedMemoryDeleteResponse> {
+        return getSpaCocClient().memory.deleteBoundedLevel(level, { hash, token });
+    },
+
+    getExploreCacheLevels(): Promise<ExploreCacheLevelsOverview> {
+        return getSpaCocClient().memory.getExploreCacheLevels();
+    },
+
+    listExploreCacheRaw(level: MemoryLevel, hash?: string): Promise<ExploreCacheRawListResponse> {
+        return getSpaCocClient().memory.listExploreCacheRaw(level, { hash });
+    },
+
+    getExploreCacheRaw(filename: string, level: MemoryLevel, hash?: string): Promise<ToolCallQAEntry> {
+        return getSpaCocClient().memory.getExploreCacheRaw(filename, level, { hash });
+    },
+
+    listExploreCacheConsolidated(level: MemoryLevel, hash?: string): Promise<ExploreCacheConsolidatedListResponse> {
+        return getSpaCocClient().memory.listExploreCacheConsolidated(level, { hash });
+    },
+
+    getExploreCacheConsolidated(id: string, level: MemoryLevel, hash?: string): Promise<ConsolidatedEntryWithAnswer> {
+        return getSpaCocClient().memory.getExploreCacheConsolidated(id, level, { hash });
+    },
+
+    getToolCallCacheStats(): Promise<ToolCallCacheStats> {
+        return getSpaCocClient().memory.getToolCallCacheStats();
+    },
+
+    aggregateToolCalls(): Promise<AggregateToolCallsResponse> {
+        return getSpaCocClient().memory.aggregateToolCalls();
+    },
+
     getOverview(repoId: string): Promise<MemoryOverviewResponse> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/overview`);
+        return getSpaCocClient().memory.getRepoOverview(repoId);
     },
 
     /** Enqueue a memory-aggregate task. Returns { taskId, status } or 409 with already-queued/already-running. */
-    async aggregate(repoId: string, model?: string, target?: string): Promise<{ taskId: string; processId: string | null; status: string }> {
-        const res = await fetch(`${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: model || undefined, target: target || undefined }),
-        });
-        const data = await res.json();
-        if (res.status === 409) {
-            return { taskId: data.taskId, processId: data.processId, status: data.status };
-        }
-        if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
-        return data;
+    aggregate(repoId: string, model?: string, target?: string): Promise<{ taskId: string; processId: string | null; status: string }> {
+        return getSpaCocClient().memory.aggregateRepo(repoId, { model, target });
     },
 
     /** Read the consolidated (bounded) MEMORY.md content for a workspace. */
     getConsolidated(repoId: string): Promise<{ content: string | null }> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/bounded`);
+        return getSpaCocClient().memory.getRepoBounded(repoId);
     },
 
     /** Read bounded MEMORY.md for a workspace. */
     getBounded(repoId: string): Promise<BoundedMemoryResponse> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/bounded`);
+        return getSpaCocClient().memory.getRepoBounded(repoId);
     },
 
     /** Write bounded MEMORY.md for a workspace. Runs security scan server-side. */
     async saveBounded(repoId: string, content: string): Promise<BoundedMemorySaveResponse> {
-        const res = await fetch(`${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/bounded`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            if (res.status === 422) {
-                throw new Error(`Security violation: ${data.violations?.join(', ') ?? 'Content blocked'}`);
-            }
-            if (res.status === 413) {
-                throw new Error(`Content exceeds limit: ${data.charCount}/${data.charLimit} chars`);
-            }
-            throw new Error(data.error ?? `HTTP ${res.status}`);
+        try {
+            return await getSpaCocClient().memory.saveRepoBounded(repoId, content);
+        } catch (error) {
+            remapBoundedSaveError(error);
         }
-        return data;
     },
 
     // ── Raw DB browser ───────────────────────────────────────────────────────
 
     /** List tables in the repo's raw-memory.db with row counts. */
     getRawDbTables(repoId: string): Promise<{ tables: RawDbTableInfo[] }> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/raw-db/tables`);
+        return getSpaCocClient().memory.rawDbTables(repoId);
     },
 
     /** Read paginated rows from a specific table in the repo's raw-memory.db. */
@@ -142,11 +180,6 @@ export const memoryApi = {
         sort?: string,
         order?: 'asc' | 'desc',
     ): Promise<RawDbTableData> {
-        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-        if (sort && order) {
-            params.set('sort', sort);
-            params.set('order', order);
-        }
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/raw-db/tables/${encodeURIComponent(tableName)}?${params}`);
+        return getSpaCocClient().memory.rawDbTable(repoId, tableName, { page, pageSize, sort, order });
     },
 };

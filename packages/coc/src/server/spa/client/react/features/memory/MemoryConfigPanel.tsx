@@ -6,18 +6,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../ui';
 import { ExploreCachePanel } from './ExploreCachePanel';
-
-interface MemoryConfig {
-    storageDir: string;
-    backend: 'file' | 'sqlite' | 'vector';
-    maxEntries: number;
-    ttlDays: number;
-    autoInject: boolean;
-    recording: { enabled: boolean };
-}
+import { memoryApi, type MemoryConfig } from './memoryApi';
 
 export function MemoryConfigPanel() {
     const [config, setConfig] = useState<MemoryConfig | null>(null);
@@ -35,8 +26,7 @@ export function MemoryConfigPanel() {
     const fetchConfig = useCallback(() => {
         setLoading(true);
         setError(null);
-        fetch(`${getApiBase()}/memory/config`)
-            .then(r => r.json())
+        memoryApi.getConfig()
             .then((data: MemoryConfig) => {
                 setConfig(data);
                 setStorageDir(data.storageDir);
@@ -66,15 +56,10 @@ export function MemoryConfigPanel() {
                 autoInject: config?.autoInject ?? false,
                 recording: { enabled: recordingEnabled },
             };
-            const res = await fetch(`${getApiBase()}/memory/config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const updated: MemoryConfig = await res.json();
+            const updated = await memoryApi.saveConfig(body);
             setConfig(updated);
             setStorageDir(updated.storageDir);
+            setBackend(updated.backend);
             setSaved(true);
             setTimeout(() => setSaved(false), 2500);
         } catch (err) {

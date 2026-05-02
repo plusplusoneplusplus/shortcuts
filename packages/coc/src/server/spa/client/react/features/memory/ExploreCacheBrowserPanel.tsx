@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../ui';
+import { memoryApi } from './memoryApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,9 +101,7 @@ export function ExploreCacheBrowserPanel() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${getApiBase()}/memory/explore-cache/levels`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: CacheLevelsOverview = await res.json();
+            const data = await memoryApi.getExploreCacheLevels();
             setOverview(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -118,11 +116,7 @@ export function ExploreCacheBrowserPanel() {
         setRawLoading(true);
         setSelectedRaw(null);
         try {
-            const params = new URLSearchParams({ level });
-            if (hash) params.set('hash', hash);
-            const res = await fetch(`${getApiBase()}/memory/explore-cache/raw?${params}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await memoryApi.listExploreCacheRaw(level, hash);
             setRawFiles(data.files ?? []);
         } catch {
             setRawFiles([]);
@@ -135,11 +129,7 @@ export function ExploreCacheBrowserPanel() {
         setConsolidatedLoading(true);
         setSelectedConsolidated(null);
         try {
-            const params = new URLSearchParams({ level });
-            if (hash) params.set('hash', hash);
-            const res = await fetch(`${getApiBase()}/memory/explore-cache/consolidated?${params}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await memoryApi.listExploreCacheConsolidated(level, hash);
             setConsolidatedEntries(data.entries ?? []);
         } catch {
             setConsolidatedEntries([]);
@@ -156,13 +146,7 @@ export function ExploreCacheBrowserPanel() {
     const handleViewRaw = async (filename: string) => {
         setRawEntryLoading(true);
         try {
-            const params = new URLSearchParams({ level: selectedLevel });
-            if (selectedHash) params.set('hash', selectedHash);
-            const res = await fetch(
-                `${getApiBase()}/memory/explore-cache/raw/${encodeURIComponent(filename)}?${params}`,
-            );
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: ToolCallQAEntry = await res.json();
+            const data = await memoryApi.getExploreCacheRaw(filename, selectedLevel, selectedHash);
             setSelectedRaw(data);
         } catch {
             setSelectedRaw(null);
@@ -174,13 +158,7 @@ export function ExploreCacheBrowserPanel() {
     const handleViewConsolidated = async (id: string) => {
         setConsolidatedEntryLoading(true);
         try {
-            const params = new URLSearchParams({ level: selectedLevel });
-            if (selectedHash) params.set('hash', selectedHash);
-            const res = await fetch(
-                `${getApiBase()}/memory/explore-cache/consolidated/${encodeURIComponent(id)}?${params}`,
-            );
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: ConsolidatedEntryWithAnswer = await res.json();
+            const data = await memoryApi.getExploreCacheConsolidated(id, selectedLevel, selectedHash);
             setSelectedConsolidated(data);
         } catch {
             setSelectedConsolidated(null);

@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../ui';
 import type { ToolCallCacheStats } from '@plusplusoneplusplus/forge';
+import { memoryApi } from './memoryApi';
 
 export function ExploreCachePanel() {
     const [stats, setStats] = useState<ToolCallCacheStats | null>(null);
@@ -21,9 +21,7 @@ export function ExploreCachePanel() {
         setStatsLoading(true);
         setStatsError(null);
         try {
-            const res = await fetch(`${getApiBase()}/memory/aggregate-tool-calls/stats`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data: ToolCallCacheStats = await res.json();
+            const data = await memoryApi.getToolCallCacheStats() as ToolCallCacheStats;
             setStats(data);
         } catch (err) {
             setStatsError(err instanceof Error ? err.message : String(err));
@@ -39,11 +37,7 @@ export function ExploreCachePanel() {
         setAggregateResult(null);
         setAggregateError(null);
         try {
-            const res = await fetch(`${getApiBase()}/memory/aggregate-tool-calls`, {
-                method: 'POST',
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const body = await res.json();
+            const body = await memoryApi.aggregateToolCalls();
             setAggregateResult(`Aggregated ${body.rawCount} entries → ${body.consolidatedCount} consolidated`);
             setTimeout(() => setAggregateResult(null), 4000);
             await fetchStats();
