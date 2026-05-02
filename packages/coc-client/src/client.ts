@@ -1,4 +1,4 @@
-import { GitClient, HealthClient, MemoryClient, ModelsClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, TemplatesClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { GitClient, HealthClient, MemoryClient, ModelsClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -17,6 +17,7 @@ export class CocClient {
   readonly seenState: SeenStateClient;
   readonly skills: SkillsClient;
   readonly templates: TemplatesClient;
+  readonly wiki: WikiClient;
   readonly workflow: WorkflowClient;
   readonly workItems: WorkItemsClient;
   readonly workspaces: WorkspacesClient;
@@ -40,6 +41,7 @@ export class CocClient {
     this.seenState = new SeenStateClient(this.transport);
     this.skills = new SkillsClient(this.transport);
     this.templates = new TemplatesClient(this.transport);
+    this.wiki = new WikiClient(this.transport, this.options);
     this.workflow = new WorkflowClient(this.transport);
     this.workItems = new WorkItemsClient(this.transport);
     this.workspaces = new WorkspacesClient(this.transport);

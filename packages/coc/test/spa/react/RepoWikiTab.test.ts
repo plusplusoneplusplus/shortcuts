@@ -71,8 +71,8 @@ describe('RepoWikiTab', () => {
     });
 
     describe('generate wiki action', () => {
-        it('should POST to /wikis endpoint via fetchApi', () => {
-            expect(content).toContain('/wikis');
+        it('should create wikis through the typed client', () => {
+            expect(content).toContain('getSpaCocClient().wiki.create');
         });
 
         it('should send repoPath in the request body', () => {
@@ -80,11 +80,11 @@ describe('RepoWikiTab', () => {
         });
 
         it('should include id in the POST body derived from slugified repo name', () => {
-            expect(content).toMatch(/JSON\.stringify\(\s*\{[^}]*\bid\b[^}]*\}/);
+            expect(content).toMatch(/wiki\.create\(\s*\{[^}]*\bid\b[^}]*\}/);
         });
 
         it('should include name in the POST body', () => {
-            expect(content).toMatch(/JSON\.stringify\(\s*\{[^}]*\bname\b[^}]*\}/);
+            expect(content).toMatch(/wiki\.create\(\s*\{[^}]*\bname\b[^}]*\}/);
         });
 
         it('should slugify the repo name for id generation', () => {
@@ -95,8 +95,8 @@ describe('RepoWikiTab', () => {
             expect(content).toContain('addToast');
         });
 
-        it('should handle non-ok response with error toast', () => {
-            expect(content).toMatch(/res\.ok[\s\S]*?else/);
+        it('should handle client errors with an error toast', () => {
+            expect(content).toContain('getSpaCocClientErrorMessage');
         });
 
         it('should dispatch SET_WIKI_AUTO_GENERATE before navigating', () => {

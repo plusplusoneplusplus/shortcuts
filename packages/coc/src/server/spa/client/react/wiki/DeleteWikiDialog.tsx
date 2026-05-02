@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 interface DeleteWikiDialogProps {
     open: boolean;
@@ -18,18 +18,10 @@ export function DeleteWikiDialog({ open, wiki, onClose, onDeleted }: DeleteWikiD
         setSubmitting(true);
         setError('');
         try {
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wiki.id), {
-                method: 'DELETE',
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({ error: 'Failed to delete wiki' }));
-                setError(body.error || 'Failed to delete wiki');
-                setSubmitting(false);
-                return;
-            }
+            await getSpaCocClient().wiki.delete(wiki.id);
             onDeleted();
-        } catch {
-            setError('Network error');
+        } catch (error) {
+            setError(getSpaCocClientErrorMessage(error, 'Network error'));
         }
         setSubmitting(false);
     }, [wiki.id, onDeleted]);

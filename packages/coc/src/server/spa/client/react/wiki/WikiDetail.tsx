@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Badge, Button, Spinner, ResponsiveSidebar } from '../ui';
 import { cn } from '../ui/cn';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { WikiComponentTree } from './WikiComponentTree';
 import { WikiComponent } from './WikiComponent';
@@ -121,7 +121,7 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
     // Fetch graph
     useEffect(() => {
         setLoadingGraph(true);
-        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/graph')
+        getSpaCocClient().wiki.graph(wikiId)
             .then(data => setGraph(data))
             .catch(() => setGraph(null))
             .finally(() => setLoadingGraph(false));

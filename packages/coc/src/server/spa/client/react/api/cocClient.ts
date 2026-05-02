@@ -72,6 +72,29 @@ export function translateSpaCocClientError(error: unknown): never {
     throw error;
 }
 
+export function getSpaCocClientErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof CocApiError) {
+        const body = error.body;
+        if (body && typeof body === 'object') {
+            const record = body as Record<string, unknown>;
+            if (typeof record.error === 'string') return record.error;
+            if (record.error && typeof record.error === 'object') {
+                const nested = record.error as Record<string, unknown>;
+                if (typeof nested.message === 'string') return nested.message;
+            }
+            if (typeof record.message === 'string') return record.message;
+        }
+        return error.message || fallback;
+    }
+    if (error instanceof CocNetworkError && error.cause instanceof Error) {
+        return error.cause.message || fallback;
+    }
+    if (error instanceof Error) {
+        return error.message || fallback;
+    }
+    return fallback;
+}
+
 export async function requestSpaApi<T = unknown>(path: string, options?: RequestInit): Promise<T> {
     try {
         return await getSpaCocClient().request<T>(path, toSpaCocRequestOptions(options));

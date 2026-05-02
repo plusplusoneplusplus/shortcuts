@@ -9,7 +9,7 @@ import { EditWikiDialog } from '../../../../src/server/spa/client/react/wiki/Edi
 const wiki = { id: 'my-wiki', name: 'My Wiki', repoPath: '/repo', color: '#3b82f6' };
 
 beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 });
 
 afterEach(() => {
@@ -46,7 +46,7 @@ describe('EditWikiDialog', () => {
     });
 
     it('calls fetch PATCH with updated name and color', async () => {
-        const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+        const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.stubGlobal('fetch', mockFetch);
         const onUpdated = vi.fn();
         const onClose = vi.fn();
@@ -92,7 +92,7 @@ describe('EditWikiDialog', () => {
     it('submit button is disabled while loading', async () => {
         let resolveFetch!: () => void;
         vi.stubGlobal('fetch', vi.fn().mockReturnValue(
-            new Promise(resolve => { resolveFetch = () => resolve({ ok: true }); })
+            new Promise(resolve => { resolveFetch = () => resolve({ ok: true, json: () => Promise.resolve({}) }); })
         ));
         render(<EditWikiDialog open={true} wiki={wiki} onClose={vi.fn()} onUpdated={vi.fn()} />);
         fireEvent.click(document.getElementById('edit-wiki-submit')!);

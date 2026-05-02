@@ -4,16 +4,14 @@
 
 import { useEffect, useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export function useWiki() {
     const { state, dispatch } = useApp();
 
     const reload = useCallback(async () => {
         try {
-            const data = await fetchApi('/wikis');
-            const wikis = Array.isArray(data) ? data : data?.wikis ?? [];
-            dispatch({ type: 'SET_WIKIS', wikis });
+            dispatch({ type: 'SET_WIKIS', wikis: await getSpaCocClient().wiki.list() });
         } catch {
             dispatch({ type: 'SET_WIKIS', wikis: [] });
         }

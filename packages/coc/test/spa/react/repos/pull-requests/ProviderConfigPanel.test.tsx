@@ -172,7 +172,7 @@ describe('failed save', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
         await waitFor(() => expect(screen.getByTestId('save-error')).toBeInTheDocument());
-        expect(screen.getByText(/Error: API error: 400 Bad Request/)).toBeInTheDocument();
+        expect(screen.getByText(/Error:.*ado\.orgUrl must be a non-empty string/)).toBeInTheDocument();
     });
 
     it('does not call onConfigured on failed save', async () => {

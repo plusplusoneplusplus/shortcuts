@@ -18,8 +18,16 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getDashboardConfig: () => ({ apiBase: 'http://localhost:4000/api' }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const { mockWikiComponent } = vi.hoisted(() => ({
+    mockWikiComponent: vi.fn(),
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        wiki: {
+            component: mockWikiComponent,
+        },
+    }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useMermaid', () => ({
@@ -31,9 +39,8 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
 }));
 
 import { WikiComponent } from '../../../src/server/spa/client/react/wiki/WikiComponent';
-import { fetchApi } from '../../../src/server/spa/client/react/hooks/useApi';
 
-const mockFetchApi = vi.mocked(fetchApi);
+const mockFetchApi = mockWikiComponent;
 
 const MARKDOWN_WITH_TOC = [
     '# Ai Service',

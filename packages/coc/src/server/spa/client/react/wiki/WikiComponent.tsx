@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Spinner, BottomSheet } from '../ui';
 import { cn } from '../ui/cn';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
@@ -79,7 +79,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
             return;
         }
         setLoading(true);
-        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/components/' + encodeURIComponent(componentId))
+        getSpaCocClient().wiki.component(wikiId, componentId)
             .then(data => {
                 if (data?.markdown && typeof marked !== 'undefined') {
                     const rendered = marked.parse(preserveMermaidBlocks(data.markdown));

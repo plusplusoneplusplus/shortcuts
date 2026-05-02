@@ -9,7 +9,7 @@ import { DeleteWikiDialog } from '../../../../src/server/spa/client/react/wiki/D
 const wiki = { id: 'my-wiki', name: 'My Wiki' };
 
 beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 });
 
 afterEach(() => {
@@ -64,7 +64,7 @@ describe('DeleteWikiDialog', () => {
     });
 
     it('calls onDeleted when delete is confirmed successfully', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
         const onDeleted = vi.fn();
         render(
             <DeleteWikiDialog open={true} wiki={wiki} onClose={vi.fn()} onDeleted={onDeleted} />
@@ -76,7 +76,7 @@ describe('DeleteWikiDialog', () => {
     });
 
     it('calls fetch DELETE with correct URL', async () => {
-        const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+        const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.stubGlobal('fetch', mockFetch);
         render(
             <DeleteWikiDialog open={true} wiki={wiki} onClose={vi.fn()} onDeleted={vi.fn()} />

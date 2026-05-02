@@ -9,7 +9,7 @@ import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddW
 // Dialog uses useBreakpoint — default jsdom state is desktop (no mock needed)
 
 beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
 });
 
 afterEach(() => {
@@ -50,7 +50,7 @@ describe('AddWikiDialog', () => {
     });
 
     it('calls fetch with POST and correct payload on valid submit', async () => {
-        const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+        const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.stubGlobal('fetch', mockFetch);
         const onAdded = vi.fn();
         const onClose = vi.fn();
@@ -100,7 +100,7 @@ describe('AddWikiDialog', () => {
     it('submit button is disabled while loading', async () => {
         let resolveFetch!: () => void;
         vi.stubGlobal('fetch', vi.fn().mockReturnValue(
-            new Promise(resolve => { resolveFetch = () => resolve({ ok: true }); })
+            new Promise(resolve => { resolveFetch = () => resolve({ ok: true, json: () => Promise.resolve({}) }); })
         ));
         render(<AddWikiDialog open={true} onClose={vi.fn()} onAdded={vi.fn()} />);
         fireEvent.change(document.getElementById('wiki-name')!, { target: { value: 'Wiki' } });

@@ -11,6 +11,9 @@ import type { BreakpointState } from '../../../../src/server/spa/client/react/ho
 let mockBreakpoint: BreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
 const mockAppDispatch = vi.fn();
 let mockAppState: Record<string, any> = {};
+const { mockWikiGraph } = vi.hoisted(() => ({
+    mockWikiGraph: vi.fn(),
+}));
 
 // ── Module mocks ───────────────────────────────────────────────────────
 
@@ -32,8 +35,12 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue(null),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        wiki: {
+            graph: mockWikiGraph,
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/wiki/hooks/useWiki', () => ({
@@ -118,11 +125,15 @@ describe('WikiDetail browse tab', () => {
         mockAppState = {
             wikis: [{ id: 'w1', name: 'Test Wiki', loaded: true, status: 'loaded' }],
         };
+        mockWikiGraph.mockResolvedValue({
+            components: [{ id: 'c1', name: 'Comp 1', path: '/a', purpose: 'test', category: 'core' }],
+            categories: [{ id: 'core', name: 'Core' }],
+            project: { name: 'Test', description: 'desc' },
+        });
     });
 
     it('renders sidebar inside ResponsiveSidebar when graph is available', async () => {
-        const { fetchApi } = await import('../../../../src/server/spa/client/react/hooks/useApi');
-        (fetchApi as any).mockResolvedValueOnce({
+        mockWikiGraph.mockResolvedValueOnce({
             components: [{ id: 'c1', name: 'Comp 1', path: '/a', purpose: 'test', category: 'core' }],
             categories: [{ id: 'core', name: 'Core' }],
             project: { name: 'Test', description: 'desc' },
@@ -137,8 +148,7 @@ describe('WikiDetail browse tab', () => {
     });
 
     it('shows sidebar toggle button on mobile', async () => {
-        const { fetchApi } = await import('../../../../src/server/spa/client/react/hooks/useApi');
-        (fetchApi as any).mockResolvedValueOnce({
+        mockWikiGraph.mockResolvedValueOnce({
             components: [{ id: 'c1', name: 'Comp 1', path: '/a', purpose: 'test', category: 'core' }],
             categories: [{ id: 'core', name: 'Core' }],
             project: { name: 'Test', description: 'desc' },
@@ -152,8 +162,7 @@ describe('WikiDetail browse tab', () => {
     });
 
     it('tab bar buttons have flex-shrink-0 and whitespace-nowrap for mobile scroll', async () => {
-        const { fetchApi } = await import('../../../../src/server/spa/client/react/hooks/useApi');
-        (fetchApi as any).mockResolvedValueOnce({
+        mockWikiGraph.mockResolvedValueOnce({
             components: [],
             categories: [],
             project: { name: 'Test', description: 'desc' },

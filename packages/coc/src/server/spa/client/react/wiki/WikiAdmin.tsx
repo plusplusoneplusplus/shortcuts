@@ -8,8 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as yaml from 'js-yaml';
 import { Button, Card, Spinner, Badge } from '../ui';
 import { cn } from '../ui/cn';
-import { getApiBase } from '../utils/config';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import type { WikiAdminTab } from '../types/dashboard';
 
 const ADMIN_TABS: WikiAdminTab[] = ['generate', 'seeds', 'config', 'delete'];
@@ -156,7 +155,7 @@ function GenerateTab({ wikiId, autoGenerate, onAutoGenerateConsumed }: { wikiId:
     const abortRef = useRef<AbortController | null>(null);
 
     const loadCacheStatus = useCallback(() => {
-        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/generate/status')
+        getSpaCocClient().wiki.generateStatus(wikiId)
             .then(data => {
                 if (data?.phases && typeof data.phases === 'object') {
                     const m: Record<number, string> = {};
@@ -188,13 +187,7 @@ function GenerateTab({ wikiId, autoGenerate, onAutoGenerateConsumed }: { wikiId:
         const controller = new AbortController();
         abortRef.current = controller;
 
-        const url = getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/generate';
-        fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ startPhase, endPhase, ...(force ? { force: true } : {}) }),
-            signal: controller.signal,
-        }).then(async res => {
+        getSpaCocClient().wiki.startGenerateStream(wikiId, { startPhase, endPhase, ...(force ? { force: true } : {}) }, { signal: controller.signal }).then(async res => {
             if (!res.ok) {
                 const text = await res.text();
                 let errMsg = text;
@@ -280,7 +273,7 @@ function GenerateTab({ wikiId, autoGenerate, onAutoGenerateConsumed }: { wikiId:
 
     const handleAbort = useCallback(() => {
         if (abortRef.current) abortRef.current.abort();
-        fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/generate/cancel', { method: 'POST' })
+        getSpaCocClient().wiki.cancelGenerate(wikiId)
             .catch(() => {});
     }, [wikiId]);
 
@@ -478,7 +471,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
     const [genLogs, setGenLogs] = useState<string[]>([]);
 
     useEffect(() => {
-        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind)
+        getSpaCocClient().wiki.getAdminResource(wikiId, kind)
             .then(data => {
                 let text = '';
                 let resolvedPath: string | null = null;
@@ -521,20 +514,12 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                     return;
                 }
             }
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
-            });
-            if (res.ok) {
-                setOriginal(content);
-                setIsNewFile(false);
-                setStatus('Saved');
-            } else {
-                setStatus('Failed to save');
-            }
+            await getSpaCocClient().wiki.updateAdminResource(wikiId, kind, content);
+            setOriginal(content);
+            setIsNewFile(false);
+            setStatus('Saved');
         } catch {
-            setStatus('Network error');
+            setStatus('Failed to save');
         }
         setSaving(false);
     }, [wikiId, kind, content]);
@@ -550,11 +535,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
         setGenerating(true);
         setGenLogs([]);
         try {
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/seeds/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            });
+            const res = await getSpaCocClient().wiki.generateSeedsStream(wikiId);
             if (!res.ok) {
                 setGenLogs(['❌ ' + await res.text()]);
                 setGenerating(false);
@@ -656,10 +637,8 @@ function DangerZone({ wikiId }: { wikiId: string }) {
         if (!confirm('Are you sure you want to delete this wiki? This cannot be undone.')) return;
         setDeleting(true);
         try {
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId), { method: 'DELETE' });
-            if (res.ok) {
-                location.hash = '#wiki';
-            }
+            await getSpaCocClient().wiki.delete(wikiId);
+            location.hash = '#wiki';
         } catch { /* ignore */ }
         setDeleting(false);
     }, [wikiId]);

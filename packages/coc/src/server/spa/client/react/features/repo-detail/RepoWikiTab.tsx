@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { Button } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { WikiDetail } from '../../wiki/WikiDetail';
 import type { WikiProjectTab, WikiAdminTab } from '../../types/dashboard';
 
@@ -69,17 +69,12 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
         if (!workspacePath) return;
         const repoName = workspacePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? 'wiki';
         const id = slugify(repoName);
-        const res = await fetchApi('/wikis', {
-            method: 'POST',
-            body: JSON.stringify({ id, name: repoName, repoPath: workspacePath }),
-        });
-        if (res.ok) {
-            const wiki = await res.json();
+        try {
+            const wiki = await getSpaCocClient().wiki.create({ id, name: repoName, repoPath: workspacePath });
             dispatch({ type: 'SET_WIKI_AUTO_GENERATE', value: true });
             location.hash = '#wiki/' + encodeURIComponent(wiki.id) + '/admin';
-        } else {
-            const body = await res.json().catch(() => ({ error: 'Failed to create wiki' }));
-            addToast(body.error || 'Failed to create wiki', 'error');
+        } catch (error) {
+            addToast(getSpaCocClientErrorMessage(error, 'Failed to create wiki'), 'error');
         }
     }, [workspacePath, addToast, dispatch]);
 

@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
 import { cn } from '../ui/cn';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 declare const marked: { parse(md: string): string } | undefined;
@@ -76,14 +76,7 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
         }
 
         try {
-            const response = await fetch(
-                getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/ask',
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody),
-                }
-            );
+            const response = await getSpaCocClient().wiki.askStream(wikiId, requestBody);
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -193,7 +186,7 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
 
     const handleClear = useCallback(() => {
         if (sessionId) {
-            fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/ask/session/' + encodeURIComponent(sessionId), { method: 'DELETE' }).catch(() => {});
+            getSpaCocClient().wiki.deleteAskSession(wikiId, sessionId).catch(() => {});
         }
         setMessages([]);
         setSessionId(null);

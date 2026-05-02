@@ -20,7 +20,13 @@ beforeEach(() => {
     vi.restoreAllMocks();
     mockFetchApi.mockReset();
     mockFetch.mockReset();
-    global.fetch = mockFetch;
+    global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/admin/generate/status')) {
+            return Promise.resolve(mockJsonResponse(mockFetchApi()));
+        }
+        return mockFetch(input, init);
+    }) as typeof fetch;
 });
 
 afterEach(() => {
@@ -48,6 +54,16 @@ function makeCacheStatus(cached: Record<number, boolean>, metadata?: MetadataOve
         metadata: metadata ?? {
             components: 0, categories: 0, themes: 0, domains: 0, analyses: 0, articles: 0,
         },
+    };
+}
+
+async function mockJsonResponse(value: unknown) {
+    const body = await value;
+    return {
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
     };
 }
 

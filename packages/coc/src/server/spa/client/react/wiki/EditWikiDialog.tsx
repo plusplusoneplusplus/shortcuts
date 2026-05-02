@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 const COLOR_PRESETS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#848484'];
 
@@ -26,21 +26,11 @@ export function EditWikiDialog({ open, wiki, onClose, onUpdated }: EditWikiDialo
         setSubmitting(true);
         setError('');
         try {
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wiki.id), {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), color }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({ error: 'Failed to update wiki' }));
-                setError(body.error || 'Failed to update wiki');
-                setSubmitting(false);
-                return;
-            }
+            await getSpaCocClient().wiki.update(wiki.id, { name: name.trim(), color });
             onUpdated();
             onClose();
-        } catch {
-            setError('Network error');
+        } catch (error) {
+            setError(getSpaCocClientErrorMessage(error, 'Network error'));
         }
         setSubmitting(false);
     }, [name, color, wiki.id, onUpdated, onClose]);

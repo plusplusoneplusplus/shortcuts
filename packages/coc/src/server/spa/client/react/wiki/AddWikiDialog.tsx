@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 const COLOR_PRESETS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#848484', '#16825d'];
 
@@ -33,24 +33,14 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
         setError('');
         try {
             const id = slugify(name.trim());
-            const res = await fetch(getApiBase() + '/wikis', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, name: name.trim(), repoPath: repoPath.trim(), color }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({ error: 'Failed to create wiki' }));
-                setError(body.error || 'Failed to create wiki');
-                setSubmitting(false);
-                return;
-            }
+            await getSpaCocClient().wiki.create({ id, name: name.trim(), repoPath: repoPath.trim(), color });
             setName('');
             setRepoPath('');
             setColor(COLOR_PRESETS[0]);
             onAdded();
             onClose();
-        } catch {
-            setError('Network error');
+        } catch (error) {
+            setError(getSpaCocClientErrorMessage(error, 'Network error'));
         }
         setSubmitting(false);
     }, [name, repoPath, color, onAdded, onClose]);

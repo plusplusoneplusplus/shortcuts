@@ -12,3 +12,4 @@ export * from './templates';
 export * from './work-items';
 export * from './workspaces';
 export * from './workflows';
+export * from './wiki';

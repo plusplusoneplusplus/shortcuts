@@ -16,8 +16,12 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 }));
 
 const fetchApiMock = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => fetchApiMock(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        wiki: {
+            list: () => fetchApiMock(),
+        },
+    }),
 }));
 
 describe('useWiki', () => {
@@ -31,10 +35,10 @@ describe('useWiki', () => {
         vi.clearAllMocks();
     });
 
-    it('calls GET /wikis on mount', async () => {
+    it('loads wikis on mount through the typed client', async () => {
         fetchApiMock.mockResolvedValue([]);
         renderHook(() => useWiki());
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledWith('/wikis'));
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
     });
 
     it('dispatches SET_WIKIS with returned array on success', async () => {
@@ -72,17 +76,6 @@ describe('useWiki', () => {
             type: 'SET_WIKIS',
             wikis: [{ id: 'w2', name: 'New Wiki' }],
         });
-    });
-
-    it('handles { wikis: [...] } response shape', async () => {
-        const wikis = [{ id: 'w3', name: 'Wrapped Wiki' }];
-        fetchApiMock.mockResolvedValue({ wikis });
-
-        renderHook(() => useWiki());
-
-        await waitFor(() =>
-            expect(dispatchMock).toHaveBeenCalledWith({ type: 'SET_WIKIS', wikis }),
-        );
     });
 
     it('returns wikis from context state', () => {
