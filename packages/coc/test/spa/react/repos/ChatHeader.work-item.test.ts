@@ -24,8 +24,8 @@ describe('CreateWorkItemDialog — fromChat support', () => {
         expect(dialogSrc).toContain('fromChatId?: string');
     });
 
-    it('calls from-chat endpoint when fromChatId is provided', () => {
-        expect(dialogSrc).toContain('/from-chat');
+    it('calls typed from-chat work item client when fromChatId is provided', () => {
+        expect(dialogSrc).toContain('workItems.createFromChat(workspaceId');
         expect(dialogSrc).toContain('processId: fromChatId');
     });
 

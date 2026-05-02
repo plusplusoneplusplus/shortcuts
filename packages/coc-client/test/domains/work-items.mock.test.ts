@@ -19,13 +19,6 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-function textResponse(body: string, init?: ResponseInit): Response {
-  return new Response(body, {
-    ...init,
-    headers: { 'content-type': 'text/markdown', ...(init?.headers ?? {}) },
-  });
-}
-
 class RecordingWebSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -145,6 +138,55 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
+  it('sends secondary mutation requests with exact method, path, and body shapes', async () => {
+    const adapter = createMockAdapter(workItem);
+    const client = new WorkItemsClient(adapter);
+
+    await client.createFromChat('repo/a', { processId: 'proc/1', extractPlan: true });
+    await client.updateStatus('repo/a', 'wi/1', 'done', { completedAt: '2026-01-02T00:00:00.000Z' });
+    await client.pin('repo/a', 'wi/1', true);
+    await client.archive('repo/a', 'wi/1', false);
+    await client.requestChanges('repo/a', 'wi/1', { comments: ['Fix this'], source: 'diff-comments' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/from-chat',
+        options: {
+          method: 'POST',
+          body: { processId: 'proc/1', extractPlan: true },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { status: 'done', completedAt: '2026-01-02T00:00:00.000Z' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/pin',
+        options: {
+          method: 'PATCH',
+          body: { pinned: true },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/archive',
+        options: {
+          method: 'PATCH',
+          body: { archived: false },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/request-changes',
+        options: {
+          method: 'POST',
+          body: { comments: ['Fix this'], source: 'diff-comments' },
+        },
+      },
+    ]);
+  });
+
   it('sets JSON content type for create without opening a WebSocket', async () => {
     RecordingWebSocket.constructedUrls = [];
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(workItem));
@@ -208,17 +250,23 @@ describe('WorkItemsClient mock coverage', () => {
     );
   });
 
-  it('handles plan text reads and JSON-wrapped plan updates', async () => {
+  it('handles plan reads and JSON-wrapped plan updates', async () => {
     const markdown = '# Plan\n\n- [ ] Implement it';
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(textResponse(markdown))
+      .mockResolvedValueOnce(jsonResponse({
+        plan: { version: 1, content: markdown, resolvedBy: 'user' },
+        versions: 1,
+      }))
       .mockResolvedValueOnce(jsonResponse({
         plan: { version: 2, content: markdown, resolvedBy: 'user' },
         version: 2,
       }));
     const client = new CocClient({ baseUrl: 'http://localhost:4000', fetch: fetchMock as typeof fetch });
 
-    await expect(client.workItems.getPlan('repo/a', 'wi/1')).resolves.toBe(markdown);
+    await expect(client.workItems.getPlan('repo/a', 'wi/1')).resolves.toEqual({
+      plan: { version: 1, content: markdown, resolvedBy: 'user' },
+      versions: 1,
+    });
     await expect(client.workItems.updatePlan('repo/a', 'wi/1', markdown, {
       resolvedBy: 'user',
       summary: 'Initial plan',
@@ -239,6 +287,41 @@ describe('WorkItemsClient mock coverage', () => {
       summary: 'Initial plan',
     }));
     expect((updateInit.headers as Headers).get('content-type')).toBe('application/json');
+  });
+
+  it('sends plan version lookup, refinement, and resolve-comments payloads', async () => {
+    const adapter = createMockAdapter({ taskId: 'task-1' });
+    const client = new WorkItemsClient(adapter);
+
+    await client.planVersions('repo/a', 'wi/1');
+    await client.getPlanVersion('repo/a', 'wi/1', 3);
+    await client.refinePlan('repo/a', 'wi/1', { instructions: 'Tighten scope', summary: 'Refine' });
+    await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions',
+        options: undefined,
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/versions/3',
+        options: undefined,
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/plan/refine',
+        options: {
+          method: 'POST',
+          body: { instructions: 'Tighten scope', summary: 'Refine' },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
+        options: {
+          method: 'POST',
+          body: { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' },
+        },
+      },
+    ]);
   });
 
   it('propagates CocApiError for locked plan conflicts', async () => {

@@ -1,11 +1,20 @@
 import type {
+  CreateWorkItemFromChatRequest,
   CreateWorkItemRequest,
   ExecuteWorkItemRequest,
+  ExecuteWorkItemResponse,
+  RequestWorkItemChangesRequest,
+  RequestWorkItemChangesResponse,
+  ResolveWorkItemCommentsRequest,
   UpdateWorkItemRequest,
   WorkItem,
   WorkItemFilter,
   WorkItemGroupedResponse,
   WorkItemListResponse,
+  WorkItemPlanRefineRequest,
+  WorkItemPlanRefineResponse,
+  WorkItemPlanResponse,
+  WorkItemPlanUpdateResponse,
   WorkItemPlanVersion,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
@@ -39,6 +48,10 @@ export class WorkItemsClient {
     return this.transport.request<WorkItem>(path(workspaceId), { method: 'POST', body: { ...request } });
   }
 
+  createFromChat(workspaceId: string, request: CreateWorkItemFromChatRequest): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(path(workspaceId, '/from-chat'), { method: 'POST', body: { ...request } });
+  }
+
   get(workspaceId: string, workItemId: string): Promise<WorkItem> {
     return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}`));
   }
@@ -50,16 +63,41 @@ export class WorkItemsClient {
     });
   }
 
+  updateStatus(workspaceId: string, workItemId: string, status: string, options?: Pick<UpdateWorkItemRequest, 'completedAt'>): Promise<WorkItem> {
+    return this.update(workspaceId, workItemId, { status, ...options });
+  }
+
   delete(workspaceId: string, workItemId: string): Promise<void> {
     return this.transport.request<void>(path(workspaceId, `/${encodePathSegment(workItemId)}`), { method: 'DELETE' });
   }
 
-  getPlan(workspaceId: string, workItemId: string): Promise<{ plan: unknown; versions: number }> {
-    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`));
+  pin(workspaceId: string, workItemId: string, pinned: boolean): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}/pin`), {
+      method: 'PATCH',
+      body: { pinned },
+    });
   }
 
-  updatePlan(workspaceId: string, workItemId: string, content: string, options?: { resolvedBy?: string; summary?: string }): Promise<{ plan: WorkItemPlanVersion; version: number }> {
-    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`), {
+  archive(workspaceId: string, workItemId: string, archived: boolean): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(path(workspaceId, `/${encodePathSegment(workItemId)}/archive`), {
+      method: 'PATCH',
+      body: { archived },
+    });
+  }
+
+  requestChanges(workspaceId: string, workItemId: string, request: RequestWorkItemChangesRequest): Promise<RequestWorkItemChangesResponse> {
+    return this.transport.request<RequestWorkItemChangesResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/request-changes`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  getPlan(workspaceId: string, workItemId: string): Promise<WorkItemPlanResponse> {
+    return this.transport.request<WorkItemPlanResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`));
+  }
+
+  updatePlan(workspaceId: string, workItemId: string, content: string, options?: { resolvedBy?: string; summary?: string }): Promise<WorkItemPlanUpdateResponse> {
+    return this.transport.request<WorkItemPlanUpdateResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/plan`), {
       method: 'PUT',
       body: { content, ...options },
     });
@@ -69,8 +107,26 @@ export class WorkItemsClient {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions`));
   }
 
-  execute(workspaceId: string, workItemId: string, request: ExecuteWorkItemRequest = {}): Promise<unknown> {
+  getPlanVersion(workspaceId: string, workItemId: string, version: number): Promise<WorkItemPlanVersion> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/versions/${version}`));
+  }
+
+  refinePlan(workspaceId: string, workItemId: string, request: WorkItemPlanRefineRequest = {}): Promise<WorkItemPlanRefineResponse> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/plan/refine`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  execute(workspaceId: string, workItemId: string, request: ExecuteWorkItemRequest = {}): Promise<ExecuteWorkItemResponse> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/execute`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  resolveComments(workspaceId: string, workItemId: string, request: ResolveWorkItemCommentsRequest): Promise<ExecuteWorkItemResponse> {
+    return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/resolve-comments`), {
       method: 'POST',
       body: { ...request },
     });

@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { useTaskComments } from '../../tasks/hooks/useTaskComments';
@@ -47,7 +48,7 @@ interface WorkItemPlanSectionProps {
     workspaceId: string;
     workItemId: string;
     /** Current plan attached to the work item (already loaded). */
-    plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
+    plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
     /** Whether the user can edit / refine the plan (based on work item status). */
     canEdit: boolean;
     /** Called after any plan mutation so the parent can refresh. */
@@ -83,8 +84,6 @@ function buildPlanAnchor(
 export function WorkItemPlanSection({
     workspaceId, workItemId, plan, canEdit, onUpdated, onError, onNavigateToTasksTab,
 }: WorkItemPlanSectionProps) {
-    const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/plan`;
-
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -144,10 +143,10 @@ export function WorkItemPlanSection({
     const loadVersions = useCallback(async () => {
         if (!plan) return;
         try {
-            const data: PlanVersionMeta[] = await fetchApi(basePath + '/versions');
+            const data: PlanVersionMeta[] = await getSpaCocClient().workItems.planVersions(workspaceId, workItemId);
             setVersions(data || []);
         } catch { /* ignore */ }
-    }, [basePath, plan]);
+    }, [workspaceId, workItemId, plan]);
 
     useEffect(() => { loadVersions(); }, [loadVersions]);
 
@@ -167,7 +166,7 @@ export function WorkItemPlanSection({
         setSelectedVersion(v);
         setLoadingVersion(true);
         try {
-            const data: PlanVersionFull = await fetchApi(`${basePath}/versions/${v}`);
+            const data: PlanVersionFull = await getSpaCocClient().workItems.getPlanVersion(workspaceId, workItemId, v);
             setSelectedContent(data.content ?? '');
         } catch {
             onError('Failed to load plan version');
@@ -183,11 +182,7 @@ export function WorkItemPlanSection({
     const handleSave = async () => {
         setSaving(true);
         try {
-            await fetchApi(basePath, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: planDraft }),
-            });
+            await getSpaCocClient().workItems.updatePlan(workspaceId, workItemId, planDraft);
             setEditMode(false);
             onUpdated();
             loadVersions();
@@ -204,14 +199,7 @@ export function WorkItemPlanSection({
         if (open.length === 0) return;
         setResolving(true);
         try {
-            const result = await fetchApi(
-                `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/resolve-comments`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'plan' }),
-                },
-            );
+            await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, { type: 'plan' });
             onUpdated();
         } catch (err: any) {
             onError(err.message || 'Failed to resolve plan comments');

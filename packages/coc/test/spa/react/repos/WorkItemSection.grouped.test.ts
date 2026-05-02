@@ -1,7 +1,7 @@
 /**
  * Tests for WorkItemSection — grouped endpoint and per-status infinite scroll.
  *
- * Verifies the component uses the grouped API endpoint, IntersectionObserver
+ * Verifies the component uses the typed grouped client method, IntersectionObserver
  * for per-status auto-loading, and no "Load more" button.
  */
 
@@ -21,8 +21,8 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
         src = fs.readFileSync(SRC_PATH, 'utf-8');
     });
 
-    it('fetches from grouped endpoint for initial load', () => {
-        expect(src).toContain('/work-items/grouped');
+    it('uses the typed grouped work item client for initial load', () => {
+        expect(src).toContain('getSpaCocClient().workItems.grouped(workspaceId');
     });
 
     it('dispatches SET_GROUPED_WORK_ITEMS on initial fetch', () => {
@@ -63,9 +63,9 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
         expect(src).toContain('statusTotal');
     });
 
-    it('loads more for a specific status using flat endpoint with status filter', () => {
-        // The load-more function should use the flat endpoint with status query param
-        expect(src).toContain("params.set('status', status)");
+    it('loads more for a specific status using the typed list client with status filter', () => {
+        expect(src).toContain('getSpaCocClient().workItems.list(workspaceId');
+        expect(src).toContain('status,');
     });
 
     it('guards against concurrent loads per status', () => {
@@ -78,8 +78,8 @@ describe('WorkItemSection — grouped endpoint and infinite scroll', () => {
 
     it('passes search query to both grouped and flat endpoints', () => {
         // Both fetchGroupedWorkItems and loadMoreForStatus should support search
-        const groupedFetchMatch = src.includes("params.set('q', query)");
-        const loadMoreMatch = src.includes("params.set('q', searchQuery)");
+        const groupedFetchMatch = src.includes('q: query');
+        const loadMoreMatch = src.includes('q: searchQuery || undefined');
         expect(groupedFetchMatch).toBe(true);
         expect(loadMoreMatch).toBe(true);
     });

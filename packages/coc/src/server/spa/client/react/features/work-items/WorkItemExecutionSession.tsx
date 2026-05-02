@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Badge, Spinner } from '../../ui';
 import { ConversationArea } from '../chat/ConversationArea';
 import { ConversationMiniMap } from '../chat/conversation/ConversationMiniMap';
@@ -55,7 +55,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
 
     const refreshConversation = useCallback(async (pid: string) => {
         try {
-            const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+            const data = await getSpaCocClient().processes.get(pid);
             setProcessDetails(data?.process ?? null);
             const refreshedTurns = getConversationTurns(data);
             // Preserve client-only costTimeMs across server refresh
@@ -88,7 +88,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
 
         (async () => {
             try {
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+                const queueData = await getSpaCocClient().queue.getTask(taskId);
                 if (cancelled) return;
                 const loadedTask = queueData?.task ?? null;
                 setTask(loadedTask);
@@ -104,7 +104,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 }
 
                 const pid = loadedTask.processId ?? `queue_${taskId}`;
-                const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                const procData = await getSpaCocClient().processes.get(pid);
                 if (cancelled) return;
 
                 setProcessDetails(procData?.process ?? null);
@@ -134,7 +134,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
     // Fetch resolved prompt while task is queued
     useEffect(() => {
         if (!isPending || !taskId) return;
-        fetchApi(`/queue/${encodeURIComponent(taskId)}/resolved-prompt`)
+        getSpaCocClient().queue.resolvedPrompt(taskId)
             .then((data: any) => { if (data) setResolvedPrompt(data); })
             .catch(() => { /* non-fatal */ });
     }, [taskId, isPending]);
@@ -142,7 +142,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
     // Derive queue position while task is queued
     useEffect(() => {
         if (!isPending) { setQueuePosition(null); return; }
-        fetchApi('/queue')
+        getSpaCocClient().queue.list()
             .then((data: any) => {
                 const queued: any[] = data?.queued ?? [];
                 const idx = queued.findIndex((t: any) => t.id === taskId);
@@ -199,7 +199,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
     const handleDeleteTurn = useCallback((turnIndex: number) => {
         if (!processId) return;
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
+        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
             setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         });
         if (undoDelete) clearTimeout(undoDelete.timer);
@@ -213,10 +213,9 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         const { turnIndex } = undoDelete;
         setUndoDelete(null);
         setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
+        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
+            body: {},
         }).catch(() => {});
     }, [undoDelete, processId]);
 
@@ -227,10 +226,9 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                 ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
                 : t
         ));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
+        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pinned }),
+            body: { pinned },
         }).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex
@@ -245,10 +243,9 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         setTurns(prev => prev.map(t =>
             t.turnIndex === turnIndex ? { ...t, archived } : t
         ));
-        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
+        getSpaCocClient().request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ archived }),
+            body: { archived },
         }).catch(() => {
             setTurns(prev => prev.map(t =>
                 t.turnIndex === turnIndex ? { ...t, archived: !archived } : t

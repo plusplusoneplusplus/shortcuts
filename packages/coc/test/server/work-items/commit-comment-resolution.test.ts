@@ -271,8 +271,8 @@ describe('autoExecute triggers re-execution after comment resolution', () => {
     it('WorkItemDetail.tsx resolves commits via resolve-comments endpoint', async () => {
         const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemDetail.tsx');
         const src = await fs.readFile(srcPath, 'utf-8');
-        // handleAutoResolveChange should call the work-item resolve-comments endpoint
-        expect(src).toContain('/resolve-comments');
+        // handleAutoResolveChange should call the typed work-item resolve-comments client method
+        expect(src).toContain('workItems.resolveComments(workspaceId, workItemId');
         expect(src).toContain("type: 'commit'");
     });
 });
@@ -304,8 +304,8 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(src).toContain('handlePerCommitResolve');
     });
 
-    it('per-commit resolve button calls resolve-comments endpoint', () => {
-        expect(src).toContain('/resolve-comments');
+    it('per-commit resolve button calls typed resolve-comments client method', () => {
+        expect(src).toContain('workItems.resolveComments(workspaceId, workItemId');
         expect(src).toContain("type: 'commit'");
     });
 

@@ -13,12 +13,12 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Card, cn } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
 import { useWorkItems, type WorkItemSummary } from '../../contexts/WorkItemContext';
 import { useWorkItemSearch } from './hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../../utils/format';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { getSpaCocClient } from '../../api/cocClient';
 
 const PAGE_SIZE = 20;
 
@@ -123,10 +123,10 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const fetchGroupedWorkItems = useCallback(async (query?: string) => {
         dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
         try {
-            const params = new URLSearchParams();
-            params.set('limit', String(PAGE_SIZE));
-            if (query) params.set('q', query);
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items/grouped?${params.toString()}`);
+            const data = await getSpaCocClient().workItems.grouped(workspaceId, {
+                limit: PAGE_SIZE,
+                q: query,
+            });
             dispatch({ type: 'SET_GROUPED_WORK_ITEMS', repoId: workspaceId, groups: data?.groups || {} });
         } catch {
             // silently fail
@@ -143,13 +143,12 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
         loadingStatusesRef.current.add(status);
         try {
-            const params = new URLSearchParams();
-            params.set('status', status);
-            params.set('limit', String(PAGE_SIZE));
-            params.set('offset', String(statusPagination.offset));
-            if (searchQuery) params.set('q', searchQuery);
-
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items?${params.toString()}`);
+            const data = await getSpaCocClient().workItems.list(workspaceId, {
+                status,
+                limit: PAGE_SIZE,
+                offset: statusPagination.offset,
+                q: searchQuery || undefined,
+            });
             dispatch({
                 type: 'APPEND_STATUS_ITEMS',
                 repoId: workspaceId,
@@ -179,49 +178,38 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
     // ── Context menu actions ──
 
-    const basePath = useCallback((itemId: string) =>
-        `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(itemId)}`, [workspaceId]);
-
     const handlePin = useCallback(async (item: WorkItemSummary) => {
         const pinned = !item.pinnedAt;
         // Optimistic update
         dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, pinnedAt: pinned ? new Date().toISOString() : undefined } });
         try {
-            await fetchApi(`${basePath(item.id)}/pin`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pinned }),
-            });
+            await getSpaCocClient().workItems.pin(workspaceId, item.id, pinned);
         } catch {
             // Revert on failure
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch, basePath]);
+    }, [workspaceId, dispatch]);
 
     const handleArchive = useCallback(async (item: WorkItemSummary) => {
         const archived = !item.archivedAt;
         dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, archivedAt: archived ? new Date().toISOString() : undefined } });
         try {
-            await fetchApi(`${basePath(item.id)}/archive`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ archived }),
-            });
+            await getSpaCocClient().workItems.archive(workspaceId, item.id, archived);
         } catch {
             dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch, basePath]);
+    }, [workspaceId, dispatch]);
 
     const handleDelete = useCallback(async (item: WorkItemSummary) => {
         if (!confirm('Delete this work item?')) return;
         dispatch({ type: 'WORK_ITEM_REMOVED', repoId: workspaceId, id: item.id });
         try {
-            await fetchApi(basePath(item.id), { method: 'DELETE' });
+            await getSpaCocClient().workItems.delete(workspaceId, item.id);
         } catch {
             // Re-add on failure
             dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         }
-    }, [workspaceId, dispatch, basePath]);
+    }, [workspaceId, dispatch]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, item: WorkItemSummary) => {
         e.preventDefault();

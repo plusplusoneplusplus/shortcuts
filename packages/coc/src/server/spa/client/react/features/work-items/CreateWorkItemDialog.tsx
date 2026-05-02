@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export interface CreateWorkItemDialogProps {
     open: boolean;
@@ -41,27 +41,18 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         setLoading(true);
         setError(null);
         try {
-            const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items`;
             let data: any;
             if (fromChatId) {
-                data = await fetchApi(basePath + '/from-chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ processId: fromChatId }),
-                });
+                data = await getSpaCocClient().workItems.createFromChat(workspaceId, { processId: fromChatId });
             } else {
                 const parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-                data = await fetchApi(basePath, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: title.trim(),
-                        description: description.trim() || undefined,
-                        priority,
-                        tags: parsedTags.length > 0 ? parsedTags : undefined,
-                        source: 'manual',
-                        type: itemType,
-                    }),
+                data = await getSpaCocClient().workItems.create(workspaceId, {
+                    title: title.trim(),
+                    description: description.trim() || undefined,
+                    priority,
+                    tags: parsedTags.length > 0 ? parsedTags : undefined,
+                    source: 'manual',
+                    type: itemType,
                 });
             }
             onCreated?.(data);
@@ -71,7 +62,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, fromChatId, title, description, priority, tags, onCreated, onClose]);
+    }, [workspaceId, fromChatId, title, description, priority, tags, itemType, onCreated, onClose]);
 
     const isBug = itemType === 'bug';
     const dialogTitle = isBug ? 'Create Bug' : 'Create Work Item';

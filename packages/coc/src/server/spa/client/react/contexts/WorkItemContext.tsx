@@ -10,7 +10,7 @@ export interface WorkItemSummary {
     status: string;
     type?: string;
     priority?: string;
-    source: string;
+    source?: string;
     createdAt: string;
     updatedAt: string;
     lastRunAt?: string;

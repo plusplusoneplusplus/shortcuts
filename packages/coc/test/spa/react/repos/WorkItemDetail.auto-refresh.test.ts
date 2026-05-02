@@ -96,8 +96,8 @@ describe('WorkItemDetail — auto-refresh via context', () => {
             expect(src).toMatch(/const fetchItem\s*=\s*useCallback/);
         });
 
-        it('fetchItem dependency includes basePath', () => {
-            expect(src).toContain('[basePath]');
+        it('fetchItem dependency includes workspace and work item IDs', () => {
+            expect(src).toContain('[workspaceId, workItemId]');
         });
 
         it('auto-refresh effect depends on fetchItem for stability', () => {

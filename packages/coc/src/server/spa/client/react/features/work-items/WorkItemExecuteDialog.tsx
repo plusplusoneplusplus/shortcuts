@@ -8,6 +8,7 @@ import { Dialog, Button } from '../../ui';
 import { useModels } from '../../hooks/useModels';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { getApiBase } from '../../utils/config';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
@@ -75,17 +76,10 @@ export function WorkItemExecuteDialog({
         setSubmitting(true);
         setError(null);
         try {
-            await fetchApi(
-                `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/execute`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        skillNames,
-                        ...(model ? { model } : {}),
-                    }),
-                },
-            );
+            await getSpaCocClient().workItems.execute(workspaceId, workItemId, {
+                skillNames,
+                ...(model ? { model } : {}),
+            });
 
             // Track skill usage (fire-and-forget)
             for (const name of skillNames) {

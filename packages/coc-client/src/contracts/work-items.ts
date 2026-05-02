@@ -6,8 +6,9 @@ export type WorkItemStatus =
   | 'readyToExecute'
   | 'executing'
   | 'aiDone'
+  | 'aiFailed'
   | 'done'
-  | 'cancelled'
+  | 'failed'
   | string;
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
@@ -25,6 +26,25 @@ export interface WorkItemPlanVersion extends WorkItemPlan {
   summary?: string;
 }
 
+export interface WorkItemPlanResponse {
+  plan: WorkItemPlan | null;
+  versions: number;
+}
+
+export interface WorkItemPlanUpdateResponse {
+  plan: WorkItemPlanVersion;
+  version: number;
+}
+
+export interface WorkItemPlanRefineRequest extends JsonObject {
+  instructions?: string;
+  summary?: string;
+}
+
+export interface WorkItemPlanRefineResponse extends WorkItemPlanUpdateResponse {
+  previousVersion: number;
+}
+
 export interface WorkItem {
   id: string;
   repoId: string;
@@ -34,12 +54,23 @@ export interface WorkItem {
   type?: WorkItemType;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
+  pinnedAt?: string;
+  archivedAt?: string;
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
   tags?: string[];
   autoExecute?: boolean;
+  autoResolveAndReExecute?: boolean;
+  autoReExecuteCycles?: number;
   plan?: WorkItemPlan;
+  planVersion?: number;
+  taskId?: string;
+  processId?: string;
+  executionHistory?: WorkItemExecution[];
+  reviewComments?: ReviewComment[];
+  changes?: WorkItemChange[];
   [key: string]: unknown;
 }
 
@@ -77,6 +108,16 @@ export interface CreateWorkItemRequest {
   plan?: { content: string; resolvedBy?: string };
 }
 
+export interface CreateWorkItemFromChatRequest extends JsonObject {
+  processId: string;
+  id?: string;
+  title?: string;
+  description?: string;
+  priority?: WorkItemPriority;
+  tags?: string[];
+  extractPlan?: boolean;
+}
+
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
   completedAt?: string;
   reviewComments?: unknown[];
@@ -86,4 +127,69 @@ export interface ExecuteWorkItemRequest extends JsonObject {
   model?: string;
   mode?: string;
   skillNames?: string[];
+}
+
+export interface ExecuteWorkItemResponse {
+  taskId: string;
+}
+
+export interface RequestWorkItemChangesRequest extends JsonObject {
+  comments: string[];
+  source?: 'diff-comments' | string;
+}
+
+export interface RequestWorkItemChangesResponse {
+  plan: WorkItemPlanVersion;
+  newVersion: number;
+}
+
+export interface ResolveWorkItemCommentsRequest extends JsonObject {
+  type: 'plan' | 'commit';
+  model?: string;
+  commitSha?: string;
+  sourceRunIndex?: number;
+}
+
+export interface WorkItemExecution {
+  taskId: string;
+  processId?: string;
+  startedAt: string;
+  completedAt?: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled' | string;
+  error?: string;
+  autoReExecuted?: boolean;
+  sessionCategory?: string;
+  title?: string;
+  kind?: string;
+  prIteration?: number;
+  prUrl?: string;
+}
+
+export interface ReviewComment {
+  id: string;
+  text: string;
+  createdAt: string;
+  resolved?: boolean;
+}
+
+export interface WorkItemChangeCommit {
+  sha: string;
+  message: string;
+  author?: string;
+  date?: string;
+}
+
+export interface WorkItemChange {
+  id: string;
+  planVersion: number;
+  commits: WorkItemChangeCommit[];
+  startedAt: string;
+  completedAt?: string;
+  taskId?: string;
+  headBefore?: string;
+  status: 'open' | 'closed' | string;
+  branchName?: string;
+  prNumber?: number;
+  prUrl?: string;
+  prStatus?: 'open' | 'merged' | 'closed' | string;
 }

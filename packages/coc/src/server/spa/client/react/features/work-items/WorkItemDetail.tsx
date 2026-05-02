@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
 import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
@@ -52,10 +53,10 @@ interface WorkItemDetailProps {
 
 interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
-    priority?: string; source: string; sourceId?: string;
+    priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     pinnedAt?: string; archivedAt?: string;
-    plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
+    plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
@@ -86,20 +87,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
 
-    const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
-
     const fetchItem = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchApi(basePath);
+            const data = await getSpaCocClient().workItems.get(workspaceId, workItemId);
             setItem(data);
         } catch (err: any) {
             setError(err.message || 'Failed to load work item');
         } finally {
             setLoading(false);
         }
-    }, [basePath]);
+    }, [workspaceId, workItemId]);
 
     useEffect(() => { fetchItem(); }, [fetchItem]);
 
@@ -152,11 +151,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     const handleStatusChange = async (newStatus: string) => {
         try {
-            await fetchApi(basePath, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus }),
-            });
+            await getSpaCocClient().workItems.updateStatus(workspaceId, workItemId, newStatus);
             await fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to update status');
@@ -166,11 +161,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const handleAcceptDone = async () => {
         setAcceptingDone(true);
         try {
-            await fetchApi(basePath, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'done', completedAt: new Date().toISOString() }),
-            });
+            await getSpaCocClient().workItems.updateStatus(workspaceId, workItemId, 'done', { completedAt: new Date().toISOString() });
             await fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to accept');
@@ -187,11 +178,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
         setRequestingChanges(true);
         try {
-            await fetchApi(basePath + '/request-changes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ comments }),
-            });
+            await getSpaCocClient().workItems.requestChanges(workspaceId, workItemId, { comments });
             setReviewComment('');
             await fetchItem();
         } catch (err: any) {
@@ -236,11 +223,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             );
 
             // Call request-changes with diff-comments source
-            await fetchApi(basePath + '/request-changes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ comments: formatted, source: 'diff-comments' }),
-            });
+            await getSpaCocClient().workItems.requestChanges(workspaceId, workItemId, { comments: formatted, source: 'diff-comments' });
 
             // Batch-resolve the open diff comments
             await Promise.all(
@@ -263,18 +246,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         if (!item) return;
         setResolvingCommitSha(sha);
         try {
-            const result = await fetchApi(
-                `${basePath}/resolve-comments`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'commit',
-                        commitSha: sha,
-                        ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
-                    }),
-                },
-            );
+            const result = await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, {
+                type: 'commit',
+                commitSha: sha,
+                ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
+            });
             if (result?.taskId && onViewTask) {
                 onViewTask(result.taskId);
             }
@@ -295,18 +271,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             for (const commit of commits) {
                 const ct = commentTotals.get(commit.sha);
                 if (!ct || ct.open === 0) continue;
-                await fetchApi(
-                    `${basePath}/resolve-comments`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'commit',
-                            commitSha: commit.sha,
-                            sourceRunIndex,
-                        }),
-                    },
-                );
+                await getSpaCocClient().workItems.resolveComments(workspaceId, workItemId, {
+                    type: 'commit',
+                    commitSha: commit.sha,
+                    sourceRunIndex,
+                });
             }
             fetchItem();
         } catch (err: any) {
@@ -398,11 +367,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             checked={item.autoExecute ?? false}
                             onChange={async (e) => {
                                 try {
-                                    await fetchApi(basePath, {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ autoExecute: e.target.checked }),
-                                    });
+                                    await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
                                     await fetchItem();
                                 } catch (err: any) {
                                     setError(err.message || 'Failed to update');
@@ -424,11 +389,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
                         onClick={async () => {
                             try {
-                                await fetchApi(basePath + '/pin', {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ pinned: !item.pinnedAt }),
-                                });
+                                await getSpaCocClient().workItems.pin(workspaceId, workItemId, !item.pinnedAt);
                                 await fetchItem();
                             } catch (err: any) {
                                 setError(err.message || 'Failed to update pin');
@@ -440,11 +401,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         title={item.archivedAt ? 'Unarchive' : 'Archive'}
                         onClick={async () => {
                             try {
-                                await fetchApi(basePath + '/archive', {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ archived: !item.archivedAt }),
-                                });
+                                await getSpaCocClient().workItems.archive(workspaceId, workItemId, !item.archivedAt);
                                 await fetchItem();
                             } catch (err: any) {
                                 setError(err.message || 'Failed to update archive');
@@ -455,7 +412,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
                         onClick={async () => {
                             if (confirm('Delete this work item?')) {
-                                await fetchApi(basePath, { method: 'DELETE' });
+                                await getSpaCocClient().workItems.delete(workspaceId, workItemId);
                                 onBack?.();
                             }
                         }}>

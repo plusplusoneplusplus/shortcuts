@@ -11,6 +11,7 @@ describe('WorkItemsClient', () => {
     await client.create('repo/a', { title: 'Task', description: 'Do it', priority: 'normal' });
     await client.updatePlan('repo/a', 'wi/1', 'plan');
     await client.execute('repo/a', 'wi/1', { model: 'm' });
+    await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items',
@@ -20,6 +21,10 @@ describe('WorkItemsClient', () => {
     expect(adapter.calls[3]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/execute',
       options: { method: 'POST', body: { model: 'm' } },
+    });
+    expect(adapter.calls[4]).toMatchObject({
+      path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
+      options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123' } },
     });
   });
 });
