@@ -12,6 +12,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
+const mockEnqueueTask = vi.fn();
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
@@ -32,6 +33,15 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        queue: { enqueueTask: mockEnqueueTask },
+        preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
+    }),
+    getSpaCocClientErrorMessage: (err: any, fallback: string) =>
+        (err instanceof Error ? err.message : undefined) || fallback,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useFileAttachments', () => ({
@@ -164,13 +174,11 @@ async function clickSend() {
 describe('NewChatArea – queue_ prefix in handleSend', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
     });
 
     it('dispatches SELECT_QUEUE_TASK with queue_-prefixed ID when server returns bare task ID', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({ task: { id: '1776470192018-abc' } }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: '1776470192018-abc' } });
 
         renderNewChatArea();
         typeInInput('Hello world');
@@ -186,10 +194,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
     });
 
     it('does not double-prefix if server returns an already-prefixed processId', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({ id: 'queue_1776470192018-xyz' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_1776470192018-xyz' } });
 
         renderNewChatArea();
         typeInInput('Hello world');
@@ -205,11 +210,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
     });
 
     it('dispatches with queue_-prefixed ID when task ID comes from top-level id field', async () => {
-        // Some API responses use newTask.id directly (no nested task)
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({ id: '9999-no-task-wrapper' }),
-        });
+        // Some API responses use result.id directly (no nested task)
+        mockEnqueueTask.mockResolvedValueOnce({ id: '9999-no-task-wrapper' });
 
         renderNewChatArea();
         typeInInput('Test message');
@@ -224,12 +226,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         });
     });
 
-    it('shows error message when fetch fails', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: false,
-            status: 500,
-            text: async () => 'Internal Server Error',
-        });
+    it('shows error message when enqueue fails', async () => {
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Internal Server Error'));
 
         renderNewChatArea();
         typeInInput('Failing message');

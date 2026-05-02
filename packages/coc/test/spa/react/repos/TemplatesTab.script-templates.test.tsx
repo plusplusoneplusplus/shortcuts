@@ -18,8 +18,26 @@ const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.reso
 vi.stubGlobal('fetch', mockFetch);
 
 const mockAddToast = vi.fn();
+const mockEnqueueTask = vi.fn().mockResolvedValue({ task: { id: 'enqueued-1' } });
+const mockQueueList = vi.fn().mockResolvedValue({ queued: [], running: [], stats: {} });
 
 // ── Module mocks ──
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        queue: { enqueueTask: mockEnqueueTask, list: mockQueueList },
+        templates: {
+            list: vi.fn().mockResolvedValue([]),
+            detail: vi.fn().mockResolvedValue({}),
+            create: vi.fn().mockResolvedValue({}),
+            update: vi.fn().mockResolvedValue({}),
+            delete: vi.fn().mockResolvedValue({}),
+            replicate: vi.fn().mockResolvedValue({}),
+        },
+    }),
+    getSpaCocClientErrorMessage: (err: any, fallback: string) =>
+        (err instanceof Error ? err.message : undefined) || fallback,
+}));
 
 const mockFetchApi = vi.fn().mockResolvedValue({ templates: [] });
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -246,14 +264,9 @@ describe('Run Script Templates — selection and detail view', () => {
         fireEvent.click(screen.getByTestId('script-template-enqueue-btn'));
 
         await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST'
-            );
-            expect(postCalls.length).toBeGreaterThanOrEqual(1);
+            expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
 
-            const [url, opts] = postCalls[0];
-            expect(url).toBe('http://localhost:4000/api/queue/tasks');
-            const body = JSON.parse(opts.body);
+            const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.type).toBe('run-script');
             expect(body.displayName).toBe('build.sh');
             expect(body.payload.script).toBe('./build.sh --release');
@@ -272,13 +285,9 @@ describe('Run Script Templates — selection and detail view', () => {
         fireEvent.click(screen.getByTestId('script-template-enqueue-btn'));
 
         await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST'
-            );
-            expect(postCalls.length).toBeGreaterThanOrEqual(1);
+            expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
 
-            const [, opts] = postCalls[0];
-            const body = JSON.parse(opts.body);
+            const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.type).toBe('run-script');
             expect(body.payload.script).toBe('./test.sh');
             expect(body.payload.workingDirectory).toBeUndefined();

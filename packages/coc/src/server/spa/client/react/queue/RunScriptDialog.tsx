@@ -11,7 +11,7 @@ import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
 import { useModels } from '../hooks/useModels';
 import { useScriptTemplates, type ScriptTemplate } from '../features/templates/hooks/useScriptTemplates';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { TaskDefs } from '../../../../tasks/task-types';
@@ -107,19 +107,15 @@ export function RunScriptDialog() {
             if (model) config.model = model;
             if (pauseOnFailure) config.pauseOnFailure = true;
 
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: TaskDefs.runScript.kind,
-                    displayName,
-                    payload,
-                    config,
-                    repoId: workspaceId || undefined,
-                }),
+            await getSpaCocClient().queue.enqueueTask({
+                type: TaskDefs.runScript.kind,
+                displayName,
+                payload,
+                config,
+                repoId: workspaceId || undefined,
             });
 
-            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            const data = await getSpaCocClient().queue.list();
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             reset();
             if (!appState.onboardingProgress?.hasRunWorkflow) {

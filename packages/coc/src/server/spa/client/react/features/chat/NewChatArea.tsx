@@ -12,7 +12,7 @@ import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, MODE_TOOLTIPS, cycleMode }
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
@@ -63,32 +63,21 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
             const attachmentPayload = toPayload();
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                signal: abortControllerRef.current.signal,
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: selectedMode,
-                        prompt: trimmed,
-                        workingDirectory: ws?.rootPath,
-                        workspaceId,
-                        ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
-                        ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
-                    },
-                }),
+            const result = await getSpaCocClient().queue.enqueueTask({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: selectedMode,
+                    prompt: trimmed,
+                    workingDirectory: ws?.rootPath,
+                    workspaceId,
+                    ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
+                    ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
+                },
             });
 
-            if (!res.ok) {
-                const errBody = await res.text();
-                throw new Error(errBody || `HTTP ${res.status}`);
-            }
-
-            const newTask = await res.json();
-            const rawId = newTask.task?.id ?? newTask.id;
+            const rawId = result.task?.id ?? (result as any).id;
             const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
             if (!appState.onboardingProgress?.hasUsedChat) {
@@ -99,7 +88,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             clearAttachments();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
-                setError(err.message || 'Failed to create task');
+                setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
             }
         } finally {
             setSending(false);

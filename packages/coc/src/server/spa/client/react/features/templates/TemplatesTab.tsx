@@ -6,13 +6,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import type { Template, TemplateChangedFile, TemplateDetail } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { Button, cn, Dialog, Spinner } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { fetchApi } from '../../hooks/useApi';
-import { getApiBase } from '../../utils/config';
 import { formatRelativeTime } from '../../utils/format';
 import type { RepoData, WorkflowInfo } from '../../repos/repoGrouping';
 import { WorkflowDetail } from '../workflow/WorkflowDetail';
@@ -25,7 +24,6 @@ import type { ScriptTemplate } from './hooks/useScriptTemplates';
 // ── Template helpers ──
 
 const enc = encodeURIComponent;
-const CT_JSON = { 'Content-Type': 'application/json' };
 
 function statusColor(status: TemplateChangedFile['status']): string {
     switch (status) {
@@ -522,23 +520,19 @@ function ScriptTemplateDetailView({ template, workspaceId, editing, onEdit, onCa
             if (template.model) config.model = template.model;
             if (template.pauseOnFailure) config.pauseOnFailure = true;
 
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: CT_JSON,
-                body: JSON.stringify({
-                    type: 'run-script',
-                    displayName,
-                    payload,
-                    config,
-                    repoId: workspaceId || undefined,
-                }),
+            await getSpaCocClient().queue.enqueueTask({
+                type: 'run-script',
+                displayName,
+                payload,
+                config,
+                repoId: workspaceId || undefined,
             });
 
-            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            const data = await getSpaCocClient().queue.list();
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             addToast(`Enqueued "${template.name}"`, 'success');
-        } catch {
-            addToast('Failed to enqueue script', 'error');
+        } catch (err) {
+            addToast(getSpaCocClientErrorMessage(err, 'Failed to enqueue script'), 'error');
         } finally {
             setEnqueueing(false);
         }

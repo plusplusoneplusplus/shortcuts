@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -16,6 +16,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     } as Record<string, any>,
     mockFetch: vi.fn(),
     mockAppDispatch: vi.fn(),
+    mockEnqueueTask: vi.fn(),
     mockModelCommand: {
         modelMenuVisible: false,
         modelFilter: '',
@@ -53,6 +54,15 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        queue: { enqueueTask: mockEnqueueTask },
+        preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
+    }),
+    getSpaCocClientErrorMessage: (err: any, fallback: string) =>
+        (err instanceof Error ? err.message : undefined) || fallback,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
@@ -109,6 +119,8 @@ beforeEach(() => {
     mockAppState.onboardingProgress = { hasUsedChat: false };
     mockModelCommand.modelOverride = null;
     mockModelCommand.modelMenuVisible = false;
+    mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
+    // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
 });
@@ -159,10 +171,7 @@ describe('NewChatArea', () => {
     });
 
     it('sends with default ask mode', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'task-ask' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'task-ask' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -172,15 +181,12 @@ describe('NewChatArea', () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
-        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        const body = mockEnqueueTask.mock.calls[0][0];
         expect(body.payload.mode).toBe('ask');
     });
 
-    it('sends POST to /api/queue/tasks on submit and selects the new task', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'new-task-42' }),
-        });
+    it('enqueues chat task via cocClient on submit and selects the new task', async () => {
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'new-task-42' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -190,13 +196,8 @@ describe('NewChatArea', () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
-        const queueCalls = mockFetch.mock.calls.filter(([url]) => url === '/api/queue/tasks');
-        expect(queueCalls).toHaveLength(1);
-        const [url, opts] = queueCalls[0];
-        expect(url).toBe('/api/queue/tasks');
-        expect(opts.method).toBe('POST');
-
-        const body = JSON.parse(opts.body);
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        const body = mockEnqueueTask.mock.calls[0][0];
         expect(body.type).toBe('chat');
         expect(body.payload.kind).toBe('chat');
         expect(body.payload.mode).toBe('ask');
@@ -211,12 +212,8 @@ describe('NewChatArea', () => {
         });
     });
 
-    it('shows error when POST fails', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: false,
-            status: 500,
-            text: async () => 'Internal Server Error',
-        });
+    it('shows error when enqueue fails', async () => {
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Internal Server Error'));
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -230,8 +227,8 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('new-chat-error').textContent).toBe('Internal Server Error');
     });
 
-    it('shows error when fetch throws', async () => {
-        mockFetch.mockRejectedValueOnce(new Error('Network failure'));
+    it('shows error when enqueue throws', async () => {
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Network failure'));
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -256,7 +253,7 @@ describe('NewChatArea', () => {
 
     it('shows Stop button while sending', async () => {
         let resolvePost: (v: any) => void;
-        mockFetch.mockReturnValueOnce(new Promise(r => { resolvePost = r; }));
+        mockEnqueueTask.mockReturnValueOnce(new Promise(r => { resolvePost = r; }));
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -272,9 +269,9 @@ describe('NewChatArea', () => {
             expect(screen.queryByTestId('new-chat-send-btn')).toBeNull();
         });
 
-        // Resolve the fetch
+        // Resolve the enqueue
         await act(async () => {
-            resolvePost!({ ok: true, json: async () => ({ id: 'done' }) });
+            resolvePost!({ task: { id: 'done' } });
         });
 
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
@@ -282,10 +279,7 @@ describe('NewChatArea', () => {
     });
 
     it('Enter key triggers send', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'enter-task' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'enter-task' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -295,8 +289,7 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Enter' });
         });
 
-        const queueCalls = mockFetch.mock.calls.filter(([url]) => url === '/api/queue/tasks');
-        expect(queueCalls).toHaveLength(1);
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
     });
 
     it('Shift+Enter does not trigger send', async () => {
@@ -306,14 +299,11 @@ describe('NewChatArea', () => {
 
         fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
 
-        expect(mockFetch).not.toHaveBeenCalled();
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
     });
 
     it('handles missing workspace gracefully (no workingDirectory)', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'no-ws-task' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'no-ws-task' } });
         mockAppState.workspaces = [];
 
         render(<NewChatArea workspaceId="ws-unknown" />);
@@ -324,15 +314,12 @@ describe('NewChatArea', () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
-        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        const body = mockEnqueueTask.mock.calls[0][0];
         expect(body.payload.workingDirectory).toBeUndefined();
     });
 
     it('dispatches UPDATE_ONBOARDING with hasUsedChat after successful send', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'task-1' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'task-1' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -350,10 +337,7 @@ describe('NewChatArea', () => {
 
     it('does not dispatch UPDATE_ONBOARDING if hasUsedChat is already true', async () => {
         mockAppState.onboardingProgress = { hasUsedChat: true };
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'task-2' }),
-        });
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'task-2' } });
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -368,12 +352,8 @@ describe('NewChatArea', () => {
         );
     });
 
-    it('does not dispatch UPDATE_ONBOARDING when POST fails', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: false,
-            status: 500,
-            text: async () => 'Server error',
-        });
+    it('does not dispatch UPDATE_ONBOARDING when enqueue fails', async () => {
+        mockEnqueueTask.mockRejectedValueOnce(new Error('Server error'));
 
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -403,10 +383,7 @@ describe('NewChatArea', () => {
 
         it('includes model in payload when modelOverride is set', async () => {
             mockModelCommand.modelOverride = 'claude-sonnet-4.6';
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'model-task' }),
-            });
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'model-task' } });
 
             render(<NewChatArea workspaceId="ws-1" />);
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -416,16 +393,13 @@ describe('NewChatArea', () => {
                 fireEvent.click(screen.getByTestId('new-chat-send-btn'));
             });
 
-            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.payload.model).toBe('claude-sonnet-4.6');
         });
 
         it('does not include model in payload when modelOverride is null', async () => {
             mockModelCommand.modelOverride = null;
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'no-model-task' }),
-            });
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'no-model-task' } });
 
             render(<NewChatArea workspaceId="ws-1" />);
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -435,7 +409,7 @@ describe('NewChatArea', () => {
                 fireEvent.click(screen.getByTestId('new-chat-send-btn'));
             });
 
-            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.payload.model).toBeUndefined();
         });
 
@@ -480,10 +454,7 @@ describe('NewChatArea', () => {
         });
 
         it('sends selected mode in payload via dropdown', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'mode-task' }),
-            });
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'mode-task' } });
 
             render(<NewChatArea workspaceId="ws-1" />);
             const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
@@ -496,7 +467,7 @@ describe('NewChatArea', () => {
                 fireEvent.click(screen.getByTestId('new-chat-send-btn'));
             });
 
-            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.payload.mode).toBe('autopilot');
         });
 
