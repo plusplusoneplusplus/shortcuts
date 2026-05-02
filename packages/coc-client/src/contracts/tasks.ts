@@ -124,14 +124,19 @@ export interface WriteTaskContentResponse {
 }
 
 export interface FilePreviewResponse {
-  type?: string;
+  type?: 'file' | 'directory' | 'image' | 'image-too-large' | string;
   path?: string;
+  dirName?: string;
   fileName?: string;
+  entries?: Array<{ name: string; isDirectory: boolean }>;
   lines?: string[];
   content?: string;
   totalLines?: number;
+  totalEntries?: number;
   truncated?: boolean;
   language?: string;
+  mimeType?: string;
+  size?: number;
   [key: string]: unknown;
 }
 

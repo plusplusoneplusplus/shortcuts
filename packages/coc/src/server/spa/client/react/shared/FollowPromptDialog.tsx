@@ -10,11 +10,10 @@ import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
-import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { RunSkillPanel } from './RunSkillPanel';
 import type { SkillItem } from './RunSkillPanel';
-import { getSpaCocClient } from '../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 export interface FollowPromptDialogProps {
     wsId: string;
@@ -55,9 +54,9 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         let cancelled = false;
         (async () => {
             try {
-                const skillRes = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null);
+                const skills = await getSpaCocClient().skills.listWorkspace(selectedWsId);
                 if (cancelled) return;
-                setSkills(skillRes?.skills ?? []);
+                setSkills(skills);
             } catch {
                 // ignore
             } finally {
@@ -89,11 +88,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             for (const name of skillNames) {
                 trackUsage(name);
                 if (selectedWsId) {
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ skillName: name }),
-                    }).catch(() => { /* ignore */ });
+                    getSpaCocClient().skills.recordUsage(selectedWsId, name).catch(() => { /* ignore */ });
                 }
             }
 
@@ -138,21 +133,13 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             };
             if (model) body.config = { model };
 
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || `HTTP ${res.status}`);
-            }
+            await getSpaCocClient().queue.enqueueTask(body);
             setSelectedSkills([]);
             setSkill('plan', skillNames);
             addToast('Queued successfully', 'success');
             onClose();
-        } catch (err: any) {
-            addToast(err.message || 'Failed to queue', 'error');
+        } catch (err) {
+            addToast(getSpaCocClientErrorMessage(err, 'Failed to queue'), 'error');
         } finally {
             setSubmitting(false);
         }

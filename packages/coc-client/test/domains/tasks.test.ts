@@ -17,6 +17,7 @@ describe('TasksClient', () => {
     await client.getContent('repo/a', 'task.md');
     await client.writeContent('repo/a', { path: 'task.md', content: '# Updated' });
     await client.previewWorkspaceFile('repo/a', 'docs/readme.md', { lines: 0 });
+    await client.previewWorkspaceHtml('repo/a', 'outputs/chart.html');
     await client.create('repo/a', { type: 'folder', name: 'feature', parent: '' });
     await client.rename('repo/a', 'feature', 'renamed');
     await client.updateStatus('repo/a', 'task.md', 'done');
@@ -35,6 +36,7 @@ describe('TasksClient', () => {
       { path: '/workspaces/repo%2Fa/tasks/content', options: { query: { path: 'task.md' } } },
       { path: '/workspaces/repo%2Fa/tasks/content', options: { method: 'PATCH', body: { path: 'task.md', content: '# Updated' } } },
       { path: '/workspaces/repo%2Fa/files/preview', options: { query: { path: 'docs/readme.md', lines: 0 } } },
+      { path: '/workspaces/repo%2Fa/files/html', options: { query: { path: 'outputs/chart.html' } } },
       { path: '/workspaces/repo%2Fa/tasks', options: { method: 'POST', body: { type: 'folder', name: 'feature', parent: '' } } },
       { path: '/workspaces/repo%2Fa/tasks', options: { method: 'PATCH', body: { path: 'feature', newName: 'renamed' } } },
       { path: '/workspaces/repo%2Fa/tasks', options: { method: 'PATCH', body: { path: 'task.md', status: 'done' } } },

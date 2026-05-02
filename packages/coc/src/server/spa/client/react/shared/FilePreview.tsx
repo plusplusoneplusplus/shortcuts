@@ -10,11 +10,11 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp } from '../contexts/AppContext';
-import { getApiBase } from '../utils/config';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
 import { Spinner } from '../ui/Spinner';
 import { cn } from '../ui/cn';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 interface FilePreviewResponse {
     type?: 'file';
@@ -129,14 +129,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
 
         setLoading(true);
         try {
-            const params = new URLSearchParams({ path: filePath });
-            const url = `${getApiBase()}/workspaces/${encodeURIComponent(resolvedWsId)}/files/preview?${params}`;
-            const res = await fetch(url);
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || `HTTP ${res.status}`);
-            }
-            const data: PreviewResponseData = await res.json();
+            const data = await getSpaCocClient().tasks.previewWorkspaceFile(resolvedWsId, filePath) as PreviewResponseData;
             // Evict oldest if at capacity
             if (cache.size >= MAX_CACHE_ENTRIES) {
                 const oldest = cache.keys().next().value;
@@ -145,8 +138,8 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
             cache.set(filePath, { data, error: null, timestamp: Date.now() });
             setPreview(data);
             setError(null);
-        } catch (err: any) {
-            const msg = err.message || 'Failed to load preview';
+        } catch (err) {
+            const msg = getSpaCocClientErrorMessage(err, 'Failed to load preview');
             cacheRef.current.set(filePath, { data: null, error: msg, timestamp: Date.now() });
             setError(msg);
             setPreview(null);

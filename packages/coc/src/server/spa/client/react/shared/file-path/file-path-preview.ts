@@ -5,10 +5,10 @@
  * hover handlers. This module restores tooltip previews via global delegation.
  */
 
-import { getApiBase } from '../../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 
 interface WorkspaceInfo {
     id: string;
@@ -155,14 +155,8 @@ async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
     }
     if (workspacesLoading) return workspacesLoading;
 
-    workspacesLoading = fetch(`${getApiBase()}/workspaces`)
-        .then(async (res) => {
-            if (!res.ok) return [];
-            const body = await res.json().catch(() => null);
-            const workspaces = Array.isArray(body) ? body : body?.workspaces;
-            if (!Array.isArray(workspaces)) return [];
-            return workspaces as WorkspaceInfo[];
-        })
+    workspacesLoading = getSpaCocClient().workspaces.list()
+        .then((body) => Array.isArray(body?.workspaces) ? body.workspaces as WorkspaceInfo[] : [])
         .catch(() => [])
         .finally(() => {
             workspacesLoading = null;
@@ -206,14 +200,11 @@ async function fetchPreview(path: string): Promise<PreviewResponse> {
     const ws = (workspacesCache || []).find(w => w.id === wsId);
     lastResolvedRootPath = ws?.rootPath ? normalizePath(ws.rootPath) : '';
 
-    const params = new URLSearchParams({ path });
-    const url = `${getApiBase()}/workspaces/${encodeURIComponent(wsId)}/files/preview?${params}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error || `HTTP ${res.status}`);
+    try {
+        return await getSpaCocClient().tasks.previewWorkspaceFile(wsId, path) as PreviewResponse;
+    } catch (err) {
+        throw new Error(getSpaCocClientErrorMessage(err, 'Failed to load preview'));
     }
-    return await res.json();
 }
 
 function findPathLink(target: EventTarget | null): HTMLElement | null {

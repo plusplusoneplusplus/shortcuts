@@ -1,3 +1,5 @@
+import { getSpaApiUrl, getSpaCocClient } from '../api/cocClient';
+
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 2000;
 const DEFAULT_HEIGHT = 480;
@@ -35,7 +37,7 @@ function setStoredHeight(wsId: string, href: string, height: number): void {
 }
 
 function proxyUrl(wsId: string, href: string): string {
-    return `/api/workspaces/${encodeURIComponent(wsId)}/files/html?path=${encodeURIComponent(href)}`;
+    return getSpaApiUrl(`/workspaces/${encodeURIComponent(wsId)}/files/html`, { path: href });
 }
 
 function showError(container: HTMLElement, url: string): void {
@@ -131,11 +133,7 @@ function mountOne(placeholder: HTMLElement, wsId: string): void {
         loading.textContent = 'Loading preview...';
         if (!loading.isConnected) frameWrap.prepend(loading);
         try {
-            const response = await fetch(url, { method: 'GET' });
-            if (!response.ok) {
-                showError(frameWrap, url);
-                return;
-            }
+            await getSpaCocClient().tasks.previewWorkspaceHtml(wsId, href);
             iframe.src = url;
             if (!iframe.isConnected) frameWrap.appendChild(iframe);
             if (!resize.isConnected) frameWrap.appendChild(resize);

@@ -1,4 +1,4 @@
-import { CocApiError, CocClient, CocNetworkError, type CocRequestOptions } from '@plusplusoneplusplus/coc-client';
+import { buildApiUrl, CocApiError, CocClient, CocNetworkError, type CocRequestOptions, type QueryPrimitive } from '@plusplusoneplusplus/coc-client';
 import { getApiBase } from '../utils/config';
 
 let cachedClient: CocClient | undefined;
@@ -59,6 +59,10 @@ export function toSpaCocRequestOptions(options?: RequestInit): CocRequestOptions
         rawBody: options?.body ?? undefined,
         signal: options?.signal ?? undefined,
     };
+}
+
+export function getSpaApiUrl(path: string, query?: Record<string, QueryPrimitive | QueryPrimitive[]>): string {
+    return buildApiUrl('', getApiBase(), path, query);
 }
 
 export function translateSpaCocClientError(error: unknown): never {

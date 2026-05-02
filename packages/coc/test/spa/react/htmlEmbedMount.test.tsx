@@ -6,7 +6,10 @@ describe('mountHtmlEmbeds', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         window.localStorage.clear();
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            text: () => Promise.resolve('<html></html>'),
+        }));
         vi.stubGlobal('open', vi.fn());
     });
 

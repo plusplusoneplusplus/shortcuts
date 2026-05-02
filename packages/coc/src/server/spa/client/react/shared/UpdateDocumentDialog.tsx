@@ -8,9 +8,8 @@ import { FloatingDialog, Button } from '../ui';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
-import { getApiBase } from '../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
-import { getSpaCocClient } from '../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;
@@ -117,19 +116,11 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             };
             if (model) body.config = { model };
 
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || `HTTP ${res.status}`);
-            }
+            await getSpaCocClient().queue.enqueueTask(body);
             addToast('Queued successfully', 'success');
             onClose();
-        } catch (err: any) {
-            addToast(err.message || 'Failed to queue', 'error');
+        } catch (err) {
+            addToast(getSpaCocClientErrorMessage(err, 'Failed to queue'), 'error');
         } finally {
             setSubmitting(false);
         }

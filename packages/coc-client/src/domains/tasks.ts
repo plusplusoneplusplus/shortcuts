@@ -153,6 +153,12 @@ export class TasksClient {
     });
   }
 
+  previewWorkspaceHtml(workspaceId: string, path: string): Promise<string> {
+    return this.transport.request<string>(workspacePath(workspaceId, '/files/html'), {
+      query: { path },
+    });
+  }
+
   openFile(workspaceId: string, request: OpenTaskFileRequest): Promise<void> {
     return this.transport.request<void>(workspacePath(workspaceId, '/open-file'), {
       method: 'POST',

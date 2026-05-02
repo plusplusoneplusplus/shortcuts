@@ -10,7 +10,6 @@ import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useRecentSkills } from '../features/skills/hooks/useRecentSkills';
 import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
-import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { TaskFolder } from '../tasks/hooks/useTaskTree';
 import { isContextFile } from '../tasks/hooks/useTaskTree';
@@ -97,12 +96,12 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         (async () => {
             try {
                 const [modelsRes, skillRes] = await Promise.all([
-                    fetch(getApiBase() + '/models').then(r => r.ok ? r.json() : []),
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
+                    getSpaCocClient().models.list(),
+                    getSpaCocClient().skills.listWorkspace(selectedWsId),
                 ]);
                 if (cancelled) return;
-                setModels(Array.isArray(modelsRes) ? modelsRes.map((m: any) => m.id) : []);
-                setSkills(skillRes?.skills ?? []);
+                setModels(Array.isArray(modelsRes) ? modelsRes.map((m) => m.id) : []);
+                setSkills(Array.isArray(skillRes) ? skillRes : []);
             } catch {
                 // ignore
             } finally {
@@ -158,13 +157,8 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                 if (model) body.config = { model };
 
                 try {
-                    const res = await fetch(getApiBase() + '/queue/tasks', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                    if (res.ok) succeeded++;
-                    else failed++;
+                    await getSpaCocClient().queue.enqueueTask(body);
+                    succeeded++;
                 } catch {
                     failed++;
                 }
