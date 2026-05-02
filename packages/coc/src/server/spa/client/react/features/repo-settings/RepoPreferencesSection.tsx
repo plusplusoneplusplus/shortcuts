@@ -10,7 +10,6 @@ import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
-import { getApiBase } from '../../utils/config';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
 import { getSpaCocClient } from '../../api/cocClient';
 
@@ -43,8 +42,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     // Fetch available skills
     useEffect(() => {
         setSkillsLoading(true);
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
-            .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load skills')))
+        getSpaCocClient().skills.listAllWorkspace(workspaceId)
             .then(data => setAvailableSkills(data.merged ?? []))
             .catch(() => setAvailableSkills([]))
             .finally(() => setSkillsLoading(false));

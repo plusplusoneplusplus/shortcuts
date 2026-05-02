@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
 import { getApiBase } from '../../utils/config';
@@ -130,11 +130,8 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills');
-            if (res.ok) {
-                const data = await res.json();
-                setSkills(data.skills || []);
-            }
+            const skills = await getSpaCocClient().skills.listWorkspace(workspaceId);
+            setSkills(skills);
         } catch {
             // ignore
         } finally {
@@ -145,7 +142,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     useEffect(() => { fetchSkills(); }, [fetchSkills]);
 
     useEffect(() => {
-        fetchApi(`/workspaces/${workspaceId}/skills-config`)
+        getSpaCocClient().skills.getWorkspaceConfig(workspaceId)
             .then((data) => {
                 setDisabledSkills(data.disabledSkills ?? []);
                 setExtraSkillFolders(data.extraSkillFolders ?? []);
@@ -168,11 +165,8 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setExpandedSkill(name);
         setDetailLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/' + encodeURIComponent(name));
-            if (res.ok) {
-                const data = await res.json();
-                setSkillDetail(data.skill || null);
-            }
+            const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);
+            setSkillDetail(data.skill || null);
         } catch {
             // ignore
         } finally {
@@ -182,19 +176,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
     const handleDeleteSkill = async (name: string) => {
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/' + encodeURIComponent(name),
-                { method: 'DELETE' }
-            );
-            if (res.ok) {
-                addToast(`Deleted skill: ${name}`, 'success');
-                fetchSkills();
-            } else {
-                const body = await res.json().catch(() => null);
-                addToast(body?.error ?? `Failed to delete ${name}`, 'error');
-            }
+            await getSpaCocClient().skills.deleteWorkspace(workspaceId, name);
+            addToast(`Deleted skill: ${name}`, 'success');
+            fetchSkills();
         } catch (err: any) {
-            addToast(err?.message ?? 'Failed to delete skill', 'error');
+            addToast(getSpaCocClientErrorMessage(err, `Failed to delete ${name}`), 'error');
         }
         setDeleteConfirm(null);
     };
@@ -207,11 +193,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setDisabledSkills(nextDisabled);
         setSkillToggleSaving(true);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ disabledSkills: nextDisabled }),
-            });
+            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
         } catch (e: any) {
             setDisabledSkills(prevDisabled);
             addToast(e?.message ?? 'Failed to save skill config', 'error');
@@ -224,11 +206,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         const prevFolders = extraSkillFolders;
         setExtraSkillFolders(nextFolders);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ disabledSkills, extraSkillFolders: nextFolders }),
-            });
+            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
             // Re-fetch skills so linked-repo skills appear/disappear immediately
             fetchSkills();
         } catch (e: any) {

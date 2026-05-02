@@ -8,7 +8,7 @@ import { Button } from '../../ui';
 import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
 import { useGlobalToast } from '../../contexts/ToastContext';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { RepoData } from '../../repos/repoGrouping';
 
 export type Skill = SkillInfo;
@@ -288,11 +288,7 @@ export function AgentSkillsPanel({
     const handleLinkRepo = async (linkedWs: any) => {
         // Fetch skills-path for the other repo
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(linkedWs.id) + '/skills-path'
-            );
-            if (!res.ok) return;
-            const data = await res.json();
+            const data = await getSpaCocClient().skills.getWorkspacePath(linkedWs.id);
             const skillsPath: string = data.path;
 
             // Add to extraSkillFolders if not already there
@@ -564,8 +560,7 @@ function LinkFromRepoPopover({ repos, linkedRepoIds, onLink, onUnlink, onClose }
     useEffect(() => {
         for (const r of repos) {
             const id = r.workspace.id;
-            fetch(getApiBase() + '/workspaces/' + encodeURIComponent(id) + '/skills-path')
-                .then(res => res.ok ? res.json() : null)
+            getSpaCocClient().skills.getWorkspacePath(id)
                 .then(data => {
                     setSkillsInfo(prev => ({
                         ...prev,
@@ -693,11 +688,9 @@ function InstallSkillsDialog({ workspaceId, onClose, onInstalled }: InstallSkill
     useEffect(() => {
         if (source !== 'bundled') return;
         setLoadingBundled(true);
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/bundled')
-            .then(r => r.json())
-            .then(data => {
-                const skills: BundledSkill[] = data.skills || [];
-                setBundledSkills(skills);
+        getSpaCocClient().skills.listBundledWorkspace(workspaceId)
+            .then(skills => {
+                setBundledSkills(skills as BundledSkill[]);
                 setSelectedBundled(new Set(skills.filter(s => !s.alreadyExists).map(s => s.name)));
             })
             .catch(() => {})
@@ -710,15 +703,7 @@ function InstallSkillsDialog({ workspaceId, onClose, onInstalled }: InstallSkill
         setSelectedGithub(new Set());
         setScanning(true);
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/scan',
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: githubUrl }),
-                }
-            );
-            const data = await res.json();
+            const data = await getSpaCocClient().skills.scanWorkspace(workspaceId, { url: githubUrl });
             if (!data.success) {
                 setScanError(data.error || 'Scan failed');
             } else {
@@ -726,7 +711,7 @@ function InstallSkillsDialog({ workspaceId, onClose, onInstalled }: InstallSkill
                 setSelectedGithub(new Set(data.skills.map((s: any) => s.name)));
             }
         } catch (err: any) {
-            setScanError(err?.message ?? 'Scan failed');
+            setScanError(getSpaCocClientErrorMessage(err, 'Scan failed'));
         } finally {
             setScanning(false);
         }
@@ -743,15 +728,7 @@ function InstallSkillsDialog({ workspaceId, onClose, onInstalled }: InstallSkill
                 body = { url: githubUrl, skillsToInstall };
             }
 
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/install',
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                }
-            );
-            const result = await res.json();
+            const result = await getSpaCocClient().skills.installWorkspace(workspaceId, body);
             const installed = result.installed ?? 0;
             const failed = result.failed ?? 0;
             if (failed > 0) {
@@ -761,7 +738,7 @@ function InstallSkillsDialog({ workspaceId, onClose, onInstalled }: InstallSkill
             }
             onInstalled();
         } catch (err: any) {
-            addToast(err?.message ?? 'Installation failed', 'error');
+            addToast(getSpaCocClientErrorMessage(err, 'Installation failed'), 'error');
         } finally {
             setInstalling(false);
         }
