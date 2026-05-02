@@ -427,6 +427,41 @@ paths:
         schema:
           type: string
 
+    get:
+      operationId: getSkillUsage
+      summary: Read skill usage timestamps
+      description: >-
+        Returns repo skill usage entries from `skillUsageMap`, optionally
+        filtered by exact skill name and entries recorded at or after `since`.
+      tags: [Preferences]
+      parameters:
+        - name: skillName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact skill name to include.
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Only include usage timestamps at or after this ISO timestamp.
+      responses:
+        '200':
+          description: Matching skill usage entries sorted by newest timestamp first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillUsageListResponse'
+        '400':
+          description: Invalid `since` value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     patch:
       operationId: recordSkillUsage
       summary: Record a skill usage timestamp
@@ -1204,6 +1239,27 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    SkillUsageEntry:
+      type: object
+      description: A recorded skill usage timestamp.
+      required: [skillName, timestamp]
+      properties:
+        skillName:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    SkillUsageListResponse:
+      type: object
+      description: Filtered skill usage entries.
+      required: [usage]
+      properties:
+        usage:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillUsageEntry'
 
     SeenStateMap:
       type: object

@@ -154,6 +154,11 @@ export interface PerRepoPreferences {
     disabledLlmTools?: string[];
 }
 
+export interface SkillUsageEntry {
+    skillName: string;
+    timestamp: string;
+}
+
 /** backward-compat alias */
 export type UserPreferences = PerRepoPreferences;
 
@@ -692,6 +697,33 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
 
             writeRepoPreferences(dataDir, repoId, merged);
             sendJSON(res, 200, merged);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/preferences/skill-usage — Read skill usage
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences\/skill-usage$/,
+        handler: async (req, res, match) => {
+            const parsed = new URL(req.url ?? '/', 'http://localhost');
+            const skillName = parsed.searchParams.get('skillName') ?? undefined;
+            const since = parsed.searchParams.get('since') ?? undefined;
+
+            if (since && Number.isNaN(Date.parse(since))) {
+                return sendError(res, 400, '`since` must be an ISO date-time string');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const usageMap = readRepoPreferences(dataDir, repoId).skillUsageMap ?? {};
+            const usage: SkillUsageEntry[] = Object.entries(usageMap)
+                .filter(([name]) => !skillName || name === skillName)
+                .filter(([, timestamp]) => !since || timestamp >= since)
+                .sort((a, b) => b[1].localeCompare(a[1]))
+                .map(([name, timestamp]) => ({ skillName: name, timestamp }));
+
+            sendJSON(res, 200, { usage });
         },
     });
 

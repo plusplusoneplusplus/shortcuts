@@ -1530,6 +1530,64 @@ describe('Per-Repo Preferences REST API', () => {
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4' });
     });
 
+    // -- skill usage --
+
+    it('PATCH skill usage records the latest timestamp for the skill', async () => {
+        const res = await patchJSON(`${repoUrl(repoId)}/skill-usage`, { skillName: 'impl' });
+        expect(res.status).toBe(200);
+
+        const body = JSON.parse(res.body);
+        expect(body.skillName).toBe('impl');
+        expect(typeof body.timestamp).toBe('string');
+
+        const prefs = readRepoPreferences(tmpDir, decodeURIComponent(repoId));
+        expect(prefs.skillUsageMap?.impl).toBe(body.timestamp);
+    });
+
+    it('GET skill usage filters by skill name and since timestamp', async () => {
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            skillUsageMap: {
+                impl: '2026-05-02T09:05:00.000Z',
+                draft: '2026-05-02T08:30:00.000Z',
+                'code-review': '2026-05-02T09:10:00.000Z',
+            },
+        });
+
+        const res = await getJSON(`${repoUrl(repoId)}/skill-usage?skillName=impl&since=${encodeURIComponent('2026-05-02T09:00:00.000Z')}`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            usage: [
+                { skillName: 'impl', timestamp: '2026-05-02T09:05:00.000Z' },
+            ],
+        });
+    });
+
+    it('GET skill usage returns entries sorted by newest timestamp first', async () => {
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            skillUsageMap: {
+                draft: '2026-05-02T08:30:00.000Z',
+                impl: '2026-05-02T09:05:00.000Z',
+                'code-review': '2026-05-02T09:10:00.000Z',
+            },
+        });
+
+        const res = await getJSON(`${repoUrl(repoId)}/skill-usage`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            usage: [
+                { skillName: 'code-review', timestamp: '2026-05-02T09:10:00.000Z' },
+                { skillName: 'impl', timestamp: '2026-05-02T09:05:00.000Z' },
+                { skillName: 'draft', timestamp: '2026-05-02T08:30:00.000Z' },
+            ],
+        });
+    });
+
+    it('GET skill usage returns 400 for invalid since timestamps', async () => {
+        const res = await getJSON(`${repoUrl(repoId)}/skill-usage?since=not-a-date`);
+        expect(res.status).toBe(400);
+        expect(JSON.parse(res.body).error).toBe('`since` must be an ISO date-time string');
+    });
+
     // -- filesViewMode --
 
     it('filesViewMode round-trips through PUT and GET', async () => {

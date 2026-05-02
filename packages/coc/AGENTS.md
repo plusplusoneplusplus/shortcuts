@@ -117,7 +117,7 @@ src/
 │   ├── prompt-handler.ts         # Prompt management API
 │   ├── prompt-utils.ts           # Prompt utilities
 │   ├── stats-handler.ts          # Usage stats API — aggregates token usage and estimated token-price USD by day/model
-│   ├── preferences-handler.ts    # User preference storage API (UI prefs only; pin/archive moved to processes table)
+│   ├── preferences-handler.ts    # User preference storage API (global/per-repo prefs plus per-repo skill usage GET/PATCH; pin/archive moved to processes table)
 │   ├── pin-archive-handler.ts    # Pin/archive REST API (PATCH /api/processes/:id/pin, /archive; POST /api/processes/archive, /unarchive; GET /api/workspaces/:id/pinned)
 │   ├── admin-handler.ts          # Admin/diagnostic endpoints
 │   ├── heap-monitor.ts          # Heap memory pressure monitoring (periodic V8 heap checks, GET /api/admin/heap)
