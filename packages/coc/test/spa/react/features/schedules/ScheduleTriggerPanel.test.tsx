@@ -1,6 +1,6 @@
 /**
  * Tests for ScheduleTriggerPanel — mode toggle, interval inputs, cron panel,
- * cron examples, cron description, and on-failure selector.
+ * cron examples, and cron description.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -17,8 +17,6 @@ function makeProps(overrides: Partial<Parameters<typeof import('../../../../../s
         onIntervalUnitChange: vi.fn(),
         cron: '0 9 * * *',
         onCronChange: vi.fn(),
-        onFailure: 'notify',
-        onFailureChange: vi.fn(),
         ...overrides,
     };
 }
@@ -101,21 +99,5 @@ describe('ScheduleTriggerPanel — cron mode', () => {
         const cronInput = screen.getByPlaceholderText('0 9 * * *');
         await user.type(cronInput, '* * * * *');
         expect(props.onCronChange).toHaveBeenCalled();
-    });
-});
-
-describe('ScheduleTriggerPanel — on failure', () => {
-    it('shows the on failure label', async () => {
-        await renderPanel();
-        expect(screen.getByText('On failure:')).toBeTruthy();
-    });
-
-    it('calls onFailureChange when selection changes', async () => {
-        const user = userEvent.setup();
-        const { props } = await renderPanel();
-        const selects = screen.getAllByRole('combobox');
-        const failureSelect = selects[selects.length - 1];
-        await user.selectOptions(failureSelect, 'stop');
-        expect(props.onFailureChange).toHaveBeenCalledWith('stop');
     });
 });

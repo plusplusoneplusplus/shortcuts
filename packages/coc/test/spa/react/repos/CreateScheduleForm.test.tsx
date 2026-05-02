@@ -1,23 +1,20 @@
 /**
- * Tests for CreateScheduleForm — cron/interval toggle, template application,
- * validation, edit mode pre-population, cron description update.
+ * Tests for CreateScheduleForm — progressive action cards, schedule presets,
+ * advanced options, validation, payload compatibility, and edit pre-population.
  */
 
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
-// Mock fetchWorkflows — no pipelines by default.
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
 }));
 
-// Mock global fetch for /api/models.
 const mockFetch = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => [],
@@ -36,7 +33,7 @@ async function renderForm(overrides: Partial<Parameters<typeof import('../../../
             onCreated={onCreated}
             onCancel={onCancel}
             {...overrides}
-        />
+        />,
     );
     return { ...result, onCreated, onCancel };
 }
@@ -46,89 +43,179 @@ beforeEach(() => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
 });
 
-describe('CreateScheduleForm — default mode', () => {
-    it('defaults to interval mode with interval fields visible', async () => {
+describe('CreateScheduleForm — default progressive UI', () => {
+    it('shows action cards, schedule presets, summary, and collapsed advanced options', async () => {
         await renderForm();
-        expect(screen.getByText('Run every')).toBeTruthy();
-        expect(screen.queryByTestId('cron-hint-panel')).toBeNull();
+
+        expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-prompt')).toBeTruthy();
+        expect(screen.getByTestId('schedule-preset-picker')).toBeTruthy();
+        expect(screen.getByTestId('schedule-summary')).toBeTruthy();
+        expect(screen.getByTestId('advanced-options-toggle').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('advanced-options-panel')).toBeNull();
     });
 
-    it('shows cron input when Cron button is clicked', async () => {
+    it('reveals custom cron controls from the Custom preset', async () => {
         const user = userEvent.setup();
         await renderForm();
-        await user.click(screen.getByRole('button', { name: /Cron/i }));
+
+        await user.click(screen.getByTestId('schedule-preset-custom-interval'));
+        await user.click(screen.getByTestId('schedule-trigger-mode-cron'));
+
         expect(screen.getByTestId('cron-hint-panel')).toBeTruthy();
     });
-});
 
-describe('CreateScheduleForm — cron description', () => {
-    it('shows cron description preview when expression is valid', async () => {
+    it('shows the workflow selector fallback when Workflow is selected', async () => {
         const user = userEvent.setup();
         await renderForm();
-        await user.click(screen.getByRole('button', { name: /Cron/i }));
-        const cronInput = screen.getByPlaceholderText('0 9 * * *');
-        await user.clear(cronInput);
-        await user.type(cronInput, '0 8 * * 1');
+
+        await user.click(screen.getByTestId('schedule-action-workflow'));
+
         await waitFor(() => {
-            expect(screen.getByTestId('cron-description')).toBeTruthy();
+            expect(screen.getByTestId('target-workflow-input')).toBeTruthy();
         });
+    });
+
+    it('shows prompt fields and hides script controls for Prompt', async () => {
+        await renderForm();
+
+        expect(screen.getByTestId('target-input').tagName).toBe('TEXTAREA');
+        expect(screen.queryByTestId('working-directory-input')).toBeNull();
+    });
+
+    it('shows command and working directory fields for Script', async () => {
+        const user = userEvent.setup();
+        await renderForm();
+
+        await user.click(screen.getByTestId('schedule-action-script'));
+
+        expect(screen.getByTestId('target-input').tagName).toBe('INPUT');
+        expect(screen.getByTestId('working-directory-input')).toBeTruthy();
+    });
+
+    it('shows notes auto-commit explanatory text', async () => {
+        const user = userEvent.setup();
+        await renderForm();
+
+        await user.click(screen.getByTestId('schedule-action-notes-auto-commit'));
+
+        expect(screen.getByTestId('notes-auto-commit-info').textContent).toContain('Automatically commit notes');
     });
 });
 
 describe('CreateScheduleForm — validation', () => {
-    it('shows error and does not POST when name is empty', async () => {
+    it('shows a specific prompt error and does not POST when prompt text is empty', async () => {
         const user = userEvent.setup();
         const { onCreated } = await renderForm();
-        // Submit without filling name/target
+
         await user.click(screen.getByRole('button', { name: /create/i }));
-        expect(screen.getByText(/Name and target are required/i)).toBeTruthy();
+
+        expect(screen.getByText(/Enter the prompt to run/i)).toBeTruthy();
         expect(onCreated).not.toHaveBeenCalled();
     });
-});
 
-describe('CreateScheduleForm — template application', () => {
-    it('applies a template and populates name field', async () => {
+    it('shows a specific script error when command is empty', async () => {
         const user = userEvent.setup();
         await renderForm();
-        const templateBtn = screen.getByTestId('template-run-script');
-        await user.click(templateBtn);
-        // After applying template, name field should be populated
-        const nameInput = screen.getByPlaceholderText(/Name/i) as HTMLInputElement;
-        expect(nameInput.value).not.toBe('');
+
+        await user.click(screen.getByTestId('schedule-action-script'));
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        expect(screen.getByText(/Enter the command to run/i)).toBeTruthy();
+    });
+
+    it('shows a specific cron error for invalid raw cron', async () => {
+        const user = userEvent.setup();
+        await renderForm({
+            initialValues: {
+                name: 'Bad cron',
+                target: 'Do work',
+                cron: '0 9 * * *',
+            },
+        });
+
+        await user.click(screen.getByTestId('advanced-options-toggle'));
+        const cronInput = screen.getByTestId('advanced-cron-input');
+        await user.clear(cronInput);
+        await user.type(cronInput, 'bad cron');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        expect(screen.getByText(/Enter a valid 5-field cron expression/i)).toBeTruthy();
     });
 });
 
-describe('CreateScheduleForm — edit mode', () => {
-    it('shows "Edit Schedule" heading in edit mode', async () => {
+describe('CreateScheduleForm — payload compatibility', () => {
+    it('submits a prompt schedule with the selected preset cron', async () => {
+        const user = userEvent.setup();
+        const { onCreated } = await renderForm();
+
+        await user.clear(screen.getByPlaceholderText('Name (e.g., Daily Report)'));
+        await user.type(screen.getByPlaceholderText('Name (e.g., Daily Report)'), 'Weekly Health');
+        await user.type(screen.getByTestId('target-input'), 'Run the weekly repo health check');
+        await user.click(screen.getByTestId('schedule-preset-weekdays-9'));
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        const postCall = mockFetch.mock.calls.find((call: any[]) => call[1]?.method === 'POST');
+        const body = JSON.parse(postCall![1].body);
+        expect(body).toMatchObject({
+            name: 'Weekly Health',
+            target: 'Run the weekly repo health check',
+            targetType: 'prompt',
+            cron: '0 9 * * 1-5',
+            mode: 'autopilot',
+        });
+    });
+
+    it('submits a script schedule with working directory params', async () => {
+        const user = userEvent.setup();
+        await renderForm();
+
+        await user.click(screen.getByTestId('schedule-action-script'));
+        await user.type(screen.getByTestId('target-input'), 'npm run report');
+        const workingDirectory = screen.getByTestId('working-directory-input');
+        await user.clear(workingDirectory);
+        await user.type(workingDirectory, './reports');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => {
+            expect(mockFetch.mock.calls.some((call: any[]) => call[1]?.method === 'POST')).toBe(true);
+        });
+        const postCall = mockFetch.mock.calls.find((call: any[]) => call[1]?.method === 'POST');
+        const body = JSON.parse(postCall![1].body);
+        expect(body.targetType).toBe('script');
+        expect(body.params).toEqual({ workingDirectory: './reports' });
+        expect(body.mode).toBeUndefined();
+    });
+});
+
+describe('CreateScheduleForm — advanced and edit mode', () => {
+    it('keeps advanced collapsed for a new default schedule', async () => {
+        await renderForm();
+        expect(screen.getByTestId('advanced-options-toggle').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('opens advanced by default for edit schedules with non-default values', async () => {
         await renderForm({
             mode: 'edit',
             scheduleId: 'sched-1',
             initialValues: {
-                name: 'My Schedule',
-                target: 'echo hello',
-                targetType: 'script',
-                cron: '0 9 * * *',
+                name: 'Existing Schedule',
+                target: 'pipelines/test/pipeline.yaml',
+                targetType: 'prompt',
+                cron: '13 7 * * 2',
+                params: { pipeline: 'pipelines/test/pipeline.yaml', custom: 'value' },
+                onFailure: 'stop',
+                outputFolder: '~/custom',
+                model: 'gpt-test',
+                chatMode: 'plan',
             },
         });
+
         expect(screen.getByText('Edit Schedule')).toBeTruthy();
-    });
-
-    it('pre-populates name from initialValues in edit mode', async () => {
-        await renderForm({
-            mode: 'edit',
-            scheduleId: 'sched-1',
-            initialValues: { name: 'Existing Schedule', target: 'echo hi', targetType: 'script' },
-        });
-        const nameInput = screen.getByPlaceholderText(/Name/i) as HTMLInputElement;
-        expect(nameInput.value).toBe('Existing Schedule');
-    });
-
-    it('does not render template picker in edit mode', async () => {
-        await renderForm({
-            mode: 'edit',
-            scheduleId: 'sched-1',
-            initialValues: { name: 'X', target: 'Y' },
-        });
-        expect(screen.queryByTestId('template-picker')).toBeNull();
+        expect(screen.getByTestId('advanced-options-toggle').getAttribute('aria-expanded')).toBe('true');
+        expect((screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement).value).toBe('Existing Schedule');
+        expect((screen.getByTestId('advanced-cron-input') as HTMLInputElement).value).toBe('13 7 * * 2');
+        expect((screen.getByTestId('param-custom') as HTMLInputElement).value).toBe('value');
     });
 });

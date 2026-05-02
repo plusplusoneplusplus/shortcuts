@@ -120,10 +120,10 @@ describe('SCHEDULE_TEMPLATES', () => {
 });
 
 // ============================================================================
-// CreateScheduleForm template UI tests
+// CreateScheduleForm action-card UI tests
 // ============================================================================
 
-describe('CreateScheduleForm template UI', () => {
+describe('CreateScheduleForm action-card UI', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetchApi.mockResolvedValue({ schedules: [] });
@@ -133,28 +133,25 @@ describe('CreateScheduleForm template UI', () => {
         });
     });
 
-    it('renders template picker chips when form is open', async () => {
+    it('renders action cards when form is open', async () => {
         await renderSchedulesTab();
 
         // Click "+ New" to open the form
         const newBtn = screen.getByText('+ New');
         fireEvent.click(newBtn);
 
-        const picker = screen.getByTestId('template-picker');
-        expect(picker).toBeTruthy();
-
-        // Each template should be rendered as a chip
-        for (const tpl of SCHEDULE_TEMPLATES) {
-            expect(screen.getByTestId(`template-${tpl.id}`)).toBeTruthy();
-        }
+        expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-workflow')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-prompt')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-script')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-notes-auto-commit')).toBeTruthy();
     });
 
-    it('clicking a template chip pre-fills name and target fields', async () => {
+    it('clicking a Script action card pre-fills the schedule name', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        const chip = screen.getByTestId('template-run-script');
-        fireEvent.click(chip);
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
 
         const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-script')!;
 
@@ -167,7 +164,7 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         expect(nameInput.value).toBe('Run Workflow');
@@ -179,7 +176,8 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
+        fireEvent.click(screen.getByTestId('advanced-options-toggle'));
 
         const paramsSection = screen.getByTestId('template-params');
         expect(paramsSection).toBeTruthy();
@@ -193,30 +191,26 @@ describe('CreateScheduleForm template UI', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-script')!;
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
+        fireEvent.click(screen.getByTestId('advanced-options-toggle'));
 
         const hint = screen.getByTestId('template-hint');
         expect(hint.textContent).toBe(tpl.hint);
     });
 
-    it('clicking the same template chip again deselects and clears form', async () => {
+    it('switching back to Prompt resets script-only fields', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Select
-        fireEvent.click(screen.getByTestId('template-run-script'));
-        expect(screen.getByTestId('template-hint')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
+        expect(screen.getByTestId('working-directory-input')).toBeTruthy();
 
-        // Deselect
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-prompt'));
 
-        // Hint and params should be gone
-        expect(screen.queryByTestId('template-hint')).toBeNull();
-        expect(screen.queryByTestId('template-params')).toBeNull();
+        expect(screen.queryByTestId('working-directory-input')).toBeNull();
 
-        // Name should be cleared
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        expect(nameInput.value).toBe('');
+        expect(nameInput.value).toBe('Recurring Prompt');
     });
 
     it('switching between templates updates form fields', async () => {
@@ -224,25 +218,23 @@ describe('CreateScheduleForm template UI', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         // Select run-script
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        expect(nameInput.value).toBe('Prompt & Script Runner');
+        expect(nameInput.value).toBe('Run Script');
 
         // Switch to notes-auto-commit
-        fireEvent.click(screen.getByTestId('template-notes-auto-commit'));
+        fireEvent.click(screen.getByTestId('schedule-action-notes-auto-commit'));
         expect(nameInput.value).toBe('Notes Auto-Commit');
 
-        // Hint should update
-        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'notes-auto-commit')!;
-        expect(screen.getByTestId('template-hint').textContent).toBe(tpl.hint);
+        expect(screen.getByTestId('notes-auto-commit-info').textContent).toContain('Automatically commit notes');
     });
 
-    it('param inputs are editable', async () => {
+    it('script working directory is editable', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
 
-        const wdInput = screen.getByTestId('param-workingDirectory') as HTMLInputElement;
+        const wdInput = screen.getByTestId('working-directory-input') as HTMLInputElement;
         fireEvent.change(wdInput, { target: { value: './lib' } });
         expect(wdInput.value).toBe('./lib');
     });
@@ -263,7 +255,7 @@ describe('CreateScheduleForm template UI', () => {
 
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByTestId('template-run-script'));
+        fireEvent.click(screen.getByTestId('schedule-action-script'));
 
         // run-script has empty target — fill the script command input
         const targetInput = screen.getByTestId('target-input') as HTMLInputElement;
@@ -289,31 +281,28 @@ describe('CreateScheduleForm template UI', () => {
         expect(body.params).toEqual({
             workingDirectory: '.',
         });
-        expect(body.name).toBe('Prompt & Script Runner');
+        expect(body.name).toBe('Run Script');
         expect(body.target).toBe('echo hello');
     });
 
-    it('cron mode template sets mode to cron', async () => {
+    it('workflow action selects the daily preset', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // run-workflow is a cron mode template
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
-        // The Cron button should be highlighted (active)
-        const cronBtn = screen.getByText('Cron');
-        expect(cronBtn.className).toContain('bg-[#0078d4]');
+        const dailyPreset = screen.getByTestId('schedule-preset-daily-9');
+        expect(dailyPreset.className).toContain('border-[#0078d4]');
     });
 
-    it('interval mode template sets mode to interval', async () => {
+    it('notes auto-commit action selects the 30-minute preset', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // notes-auto-commit is an interval mode template
-        fireEvent.click(screen.getByTestId('template-notes-auto-commit'));
+        fireEvent.click(screen.getByTestId('schedule-action-notes-auto-commit'));
 
-        const intervalBtn = screen.getByText('Interval');
-        expect(intervalBtn.className).toContain('bg-[#0078d4]');
+        const preset = screen.getByTestId('schedule-preset-every-30-minutes');
+        expect(preset.className).toContain('border-[#0078d4]');
     });
 });
 
@@ -349,7 +338,7 @@ describe('Workflow dropdown selector (target field)', () => {
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
     }
 
     it('renders a <select> dropdown in the target position when workflows are available', async () => {
@@ -442,7 +431,7 @@ describe('Workflow dropdown selector (target field)', () => {
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
             const inputEl = screen.getByTestId('target-workflow-input');
@@ -461,7 +450,7 @@ describe('Workflow dropdown selector (target field)', () => {
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
             const inputEl = screen.getByTestId('target-workflow-input');
@@ -481,7 +470,7 @@ describe('Workflow dropdown selector (target field)', () => {
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
             expect(screen.getByTestId('workflow-loading')).toBeTruthy();
@@ -504,7 +493,7 @@ describe('Workflow dropdown selector (target field)', () => {
         });
 
         // Deselect template
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-prompt'));
 
         // Re-select: should be back to dropdown (not stuck in manual)
         mockFetch.mockImplementation(async (url: string) => {
@@ -520,7 +509,7 @@ describe('Workflow dropdown selector (target field)', () => {
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
             expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
@@ -562,7 +551,7 @@ describe('Workflow dropdown selector (target field)', () => {
             return { ok: true, json: () => Promise.resolve({}) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-workflow'));
+        fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
             expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
@@ -837,8 +826,8 @@ describe('Cron hint panel UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Switch to cron mode
-        fireEvent.click(screen.getByText('Cron'));
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+        fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
         expect(screen.getByTestId('cron-hint-panel')).toBeTruthy();
         expect(screen.getByTestId('cron-field-legend')).toBeTruthy();
@@ -849,14 +838,17 @@ describe('Cron hint panel UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Default is interval mode
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+
+        // Custom schedule starts in interval mode
         expect(screen.queryByTestId('cron-hint-panel')).toBeNull();
     });
 
     it('field legend displays all 5 cron field badges', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByText('Cron'));
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+        fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
         const legend = screen.getByTestId('cron-field-legend');
         expect(legend.textContent).toContain('min');
@@ -869,17 +861,19 @@ describe('Cron hint panel UI', () => {
     it('shows human-readable description for default cron value', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByText('Cron'));
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+        fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
-        // Default cron is "0 9 * * *" which should produce "Every day at 09:00"
+        // Default cron is "0 * * * *" which should produce "Every hour"
         const desc = screen.getByTestId('cron-description');
-        expect(desc.textContent).toBe('Every day at 09:00');
+        expect(desc.textContent).toBe('Every hour');
     });
 
     it('clicking an example populates the cron input', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByText('Cron'));
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+        fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
         // Click "Every 5 minutes" example
         const exBtn = screen.getByTestId('cron-example-*/5-*-*-*-*');
@@ -892,10 +886,11 @@ describe('Cron hint panel UI', () => {
     it('renders example buttons for all CRON_EXAMPLES', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        fireEvent.click(screen.getByText('Cron'));
+        fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
+        fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
         for (const ex of CRON_EXAMPLES) {
-            expect(screen.getByText(ex.label)).toBeTruthy();
+            expect(screen.getByRole('button', { name: ex.label })).toBeTruthy();
         }
     });
 });

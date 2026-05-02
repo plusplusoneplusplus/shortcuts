@@ -10,22 +10,19 @@ export interface ScheduleTriggerPanelProps {
     onIntervalUnitChange: (u: string) => void;
     cron: string;
     onCronChange: (c: string) => void;
-    onFailure: string;
-    onFailureChange: (v: string) => void;
 }
 
 const SCHEDULE_MODE_OPTIONS = [
-    { value: 'interval' as const, label: 'Interval' },
-    { value: 'cron' as const, label: 'Cron' },
+    { value: 'interval' as const, label: 'Interval', testId: 'schedule-trigger-mode-interval' },
+    { value: 'cron' as const, label: 'Cron', testId: 'schedule-trigger-mode-cron' },
 ] as const;
 
 /**
  * Self-contained panel covering the "when" section of a schedule:
  *  - Interval vs Cron toggle
  *  - Interval inputs (value + unit) OR Cron expression + helper chips
- *  - On failure behaviour
  *
- * Extracted from CreateScheduleForm so it can be reused in any schedule editor.
+ * Extracted from CreateScheduleForm so custom timing controls can be reused in any schedule editor.
  */
 export function ScheduleTriggerPanel({
     mode,
@@ -36,8 +33,6 @@ export function ScheduleTriggerPanel({
     onIntervalUnitChange,
     cron,
     onCronChange,
-    onFailure,
-    onFailureChange,
 }: ScheduleTriggerPanelProps) {
     const cronDescription = cron.trim() ? describeCron(cron) : '';
 
@@ -103,18 +98,6 @@ export function ScheduleTriggerPanel({
                     </div>
                 </div>
             )}
-
-            <div className="flex items-center gap-2 text-xs">
-                <span className="text-[#616161] dark:text-[#999]">On failure:</span>
-                <select
-                    className="px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                    value={onFailure}
-                    onChange={e => onFailureChange(e.target.value)}
-                >
-                    <option value="notify">Notify</option>
-                    <option value="stop">Stop</option>
-                </select>
-            </div>
         </div>
     );
 }

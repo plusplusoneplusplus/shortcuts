@@ -39,9 +39,9 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
     },
     {
         id: TaskDefs.runScript.kind,
-        label: 'Prompt & Script',
+        label: 'Script',
         emoji: '🖥️',
-        name: 'Prompt & Script Runner',
+        name: 'Run Script',
         target: '',
         targetType: 'script',
         cronExpr: '0 * * * *',

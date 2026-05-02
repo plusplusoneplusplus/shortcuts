@@ -78,10 +78,10 @@ test.describe('Schedule Script', () => {
 
         // Open the create form (exact match avoids "+ New Chat")
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
-        await expect(page.locator('[data-testid="template-picker"]')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid="schedule-action-cards"]')).toBeVisible({ timeout: 10_000 });
 
-        // Explicitly select Script type (more reliable than relying on template state)
-        await page.click('[data-testid="target-type-script"]');
+        // Explicitly select Script action.
+        await page.click('[data-testid="schedule-action-script"]');
 
         // Fill name and command
         await page.fill('[placeholder="Name (e.g., Daily Report)"]', 'Echo Test');
@@ -250,7 +250,7 @@ test.describe('Schedule Script', () => {
 
         // Open create form
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
-        await expect(page.locator('[data-testid="template-picker"]')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid="schedule-action-cards"]')).toBeVisible({ timeout: 10_000 });
 
         // Fill name and prompt (default type is prompt, no need to switch)
         await page.fill('[placeholder="Name (e.g., Daily Report)"]', 'My Prompt Schedule');

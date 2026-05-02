@@ -168,12 +168,13 @@ describe('Schedule edit mode', () => {
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         expect(nameInput.value).toBe('Test Schedule');
 
-        // Interval mode should be detected from cron (0 */2 * * *)
+        // Custom interval mode should be detected from cron (0 */2 * * *)
+        expect(screen.getByTestId('custom-schedule-panel')).toBeTruthy();
         const intervalBtn = screen.getByText('Interval');
         expect(intervalBtn.className).toContain('bg-[#0078d4]');
     });
 
-    it('edit form does not show template picker', async () => {
+    it('edit form shows action cards instead of the old template picker', async () => {
         await renderWithSchedules();
 
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
@@ -183,6 +184,7 @@ describe('Schedule edit mode', () => {
             expect(screen.getByText('Edit Schedule')).toBeTruthy();
         });
         expect(screen.queryByTestId('template-picker')).toBeNull();
+        expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
     });
 
     it('Cancel returns to read-only detail view', async () => {
@@ -235,14 +237,14 @@ describe('Schedule edit mode', () => {
         expect(body.target).toBe('pipelines/test/pipeline.yaml');
     });
 
-    it('edit form shows params in generic editor', async () => {
+    it('edit form shows params in advanced options', async () => {
         await renderWithSchedules();
 
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('edit-params')).toBeTruthy();
+            expect(screen.getByTestId('template-params')).toBeTruthy();
             expect(screen.getByTestId('param-pipeline')).toBeTruthy();
         });
     });
@@ -256,8 +258,8 @@ describe('Schedule edit mode', () => {
 
         await waitFor(() => expect(screen.getByText('Edit Schedule')).toBeTruthy());
 
-        const cronBtn = screen.getByText('Cron');
-        expect(cronBtn.className).toContain('bg-[#0078d4]');
+        const weekdayPreset = screen.getByTestId('schedule-preset-weekdays-9');
+        expect(weekdayPreset.className).toContain('border-[#0078d4]');
     });
 });
 
@@ -293,19 +295,19 @@ describe('Schedule duplicate', () => {
 
         await waitFor(() => expect(screen.getByText('New Schedule')).toBeTruthy());
 
-        // Target should be pre-populated (no template selected → prompt textarea)
-        const targetInput = screen.getByPlaceholderText(/Prompt/) as HTMLTextAreaElement;
+        // Target should be pre-populated as an inferred workflow path.
+        const targetInput = screen.getByTestId('target-workflow-input') as HTMLInputElement;
         expect(targetInput.value).toBe('pipelines/test/pipeline.yaml');
     });
 
-    it('Duplicate shows template picker (create mode)', async () => {
+    it('Duplicate shows action cards (create mode)', async () => {
         await renderWithSchedules();
 
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('template-picker')).toBeTruthy();
+            expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
         });
     });
 
@@ -316,7 +318,7 @@ describe('Schedule duplicate', () => {
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('edit-params')).toBeTruthy();
+            expect(screen.getByTestId('template-params')).toBeTruthy();
             const paramInput = screen.getByTestId('param-pipeline') as HTMLInputElement;
             expect(paramInput.value).toBe('pipelines/test/pipeline.yaml');
         });
