@@ -6,10 +6,10 @@
 import { useEffect, useRef, useState, type Ref } from 'react';
 import { cn } from '../../../ui/cn';
 import { Spinner } from '../../../ui';
-import { fetchApi } from '../../../hooks/useApi';
 import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import { filterEntries } from './FileTree';
 import type { TreeEntry } from './types';
+import { explorerApi } from './explorerApi';
 
 export interface TreeNodeProps {
     entry: TreeEntry;
@@ -60,7 +60,7 @@ export function TreeNode({
         if (!isDir || !isExpanded || children !== undefined) return;
         let cancelled = false;
         setLoading(true);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(entry.path)}`)
+        explorerApi.tree(workspaceId, { path: entry.path })
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) onChildrenLoaded(entry.path, data.entries);
             })

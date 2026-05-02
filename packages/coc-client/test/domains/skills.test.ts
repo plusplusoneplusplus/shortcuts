@@ -57,6 +57,8 @@ describe('SkillsClient', () => {
     await client.listAllWorkspace(workspaceId);
     await client.scanWorkspace(workspaceId, { url: 'C:\\repo\\skills' });
     await client.getWorkspacePath(workspaceId);
+    await client.getWorkspaceConfig(workspaceId);
+    await client.updateWorkspaceConfig(workspaceId, { disabledSkills: ['legacy'], extraSkillFolders: ['C:\\extra skills'] });
     await client.installWorkspace(workspaceId, { url: 'C:\\repo\\skills', replace: true });
     await client.detailWorkspace(workspaceId, 'impl/skill');
     await client.deleteWorkspace(workspaceId, 'impl/skill');
@@ -69,6 +71,11 @@ describe('SkillsClient', () => {
       { path: '/workspaces/repo%2Fa%20space/skills/all' },
       { path: '/workspaces/repo%2Fa%20space/skills/scan', options: { method: 'POST', body: { url: 'C:\\repo\\skills' } } },
       { path: '/workspaces/repo%2Fa%20space/skills-path' },
+      { path: '/workspaces/repo%2Fa%20space/skills-config' },
+      {
+        path: '/workspaces/repo%2Fa%20space/skills-config',
+        options: { method: 'PUT', body: { disabledSkills: ['legacy'], extraSkillFolders: ['C:\\extra skills'] } },
+      },
       { path: '/workspaces/repo%2Fa%20space/skills/install', options: { method: 'POST', body: { url: 'C:\\repo\\skills', replace: true } } },
       { path: '/workspaces/repo%2Fa%20space/skills/impl%2Fskill' },
       { path: '/workspaces/repo%2Fa%20space/skills/impl%2Fskill', options: { method: 'DELETE' } },

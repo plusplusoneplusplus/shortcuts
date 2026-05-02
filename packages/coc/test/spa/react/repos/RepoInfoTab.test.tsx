@@ -5,11 +5,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 
-// fetchApi mock
-const mockFetchApi = vi.fn();
+const mockClient = vi.hoisted(() => ({
+    processes: {
+        list: vi.fn(),
+    },
+    preferences: {
+        getTaskSettings: vi.fn(),
+        getRepo: vi.fn(),
+    },
+    workspaces: {
+        update: vi.fn(),
+    },
+}));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => mockClient,
+    getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
+        error instanceof Error ? error.message : fallback,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -35,10 +47,10 @@ async function renderTab(repo = baseRepo) {
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
-    mockFetchApi.mockImplementation((url: string) => {
-        if (url.includes('/preferences')) return Promise.resolve({});
-        return Promise.resolve({ processes: [] });
-    });
+    mockClient.processes.list.mockResolvedValue({ processes: [] });
+    mockClient.preferences.getTaskSettings.mockResolvedValue({});
+    mockClient.preferences.getRepo.mockResolvedValue({});
+    mockClient.workspaces.update.mockResolvedValue({});
 });
 
 // ── 1. Preferences section heading always renders ───────────────────────────
@@ -56,10 +68,7 @@ describe('preferences heading', () => {
 describe('loading state', () => {
     it('shows Loading... while preferences are pending', async () => {
         let resolve: (v: any) => void;
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return new Promise((r) => { resolve = r; });
-            return Promise.resolve({ processes: [] });
-        });
+        mockClient.preferences.getRepo.mockReturnValue(new Promise((r) => { resolve = r; }));
 
         await act(async () => { await renderTab(); });
 
@@ -75,20 +84,14 @@ describe('loading state', () => {
 
 describe('empty preferences', () => {
     it('shows "No preferences set" when API returns {}', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({});
-            return Promise.resolve({ processes: [] });
-        });
+        mockClient.preferences.getRepo.mockResolvedValue({});
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('No preferences set')).toBeTruthy());
     });
 
     it('shows "No preferences set" when all preference fields are empty strings', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({ lastModel: '', lastSkills: {} });
-            return Promise.resolve({ processes: [] });
-        });
+        mockClient.preferences.getRepo.mockResolvedValue({ lastModel: '', lastSkills: {} });
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('No preferences set')).toBeTruthy());
@@ -99,14 +102,11 @@ describe('empty preferences', () => {
 
 describe('populated preferences', () => {
     it('renders model, depth, effort, skill values', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({
-                lastModels: { task: 'gpt-4o', ask: 'claude-3' },
-                lastDepth: 'deep',
-                lastEffort: 'high',
-                lastSkills: { task: 'my-skill', ask: 'go-deep' },
-            });
-            return Promise.resolve({ processes: [] });
+        mockClient.preferences.getRepo.mockResolvedValue({
+            lastModels: { task: 'gpt-4o', ask: 'claude-3' },
+            lastDepth: 'deep',
+            lastEffort: 'high',
+            lastSkills: { task: 'my-skill', ask: 'go-deep' },
         });
 
         await act(async () => { await renderTab(); });
@@ -123,11 +123,7 @@ describe('populated preferences', () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('No preferences set')).toBeTruthy());
 
-        const prefCalls = mockFetchApi.mock.calls.filter((c: any[]) =>
-            (c[0] as string).includes('/preferences')
-        );
-        expect(prefCalls.length).toBeGreaterThan(0);
-        expect(prefCalls[0][0]).toContain('ws-1');
+        expect(mockClient.preferences.getRepo).toHaveBeenCalledWith('ws-1');
     });
 });
 
@@ -135,10 +131,7 @@ describe('populated preferences', () => {
 
 describe('error state', () => {
     it('shows error message when preferences fetch fails', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.reject(new Error('Network error'));
-            return Promise.resolve({ processes: [] });
-        });
+        mockClient.preferences.getRepo.mockRejectedValue(new Error('Network error'));
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('Network error')).toBeTruthy());

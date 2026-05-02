@@ -7,8 +7,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchApi } from '../../../hooks/useApi';
 import { cn } from '../../../ui/cn';
+import { explorerApi } from './explorerApi';
 
 /** Prefix used to mark trusted absolute-path file selections. */
 export const TRUSTED_PATH_PREFIX = '__trusted__:';
@@ -97,7 +97,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                 const abort = new AbortController();
                 abortRef.current = abort;
                 setLoading(true);
-                fetchApi(`/fs/blob?path=${encodeURIComponent(query.trim())}`, { signal: abort.signal, method: 'GET' })
+                explorerApi.readTrustedBlob(query.trim(), { signal: abort.signal })
                     .then(() => {
                         if (abort.signal.aborted) return;
                         setResults([query.trim()]);
@@ -123,7 +123,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
             const abort = new AbortController();
             abortRef.current = abort;
             setLoading(true);
-            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(query)}&limit=50`)
+            explorerApi.searchFiles(workspaceId, query, { limit: 50, signal: abort.signal })
                 .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
                     if (abort.signal.aborted) return;
                     setResults(data.results.map(r => r.path));

@@ -6,10 +6,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 
-const mockFetchApi = vi.fn();
+const mockExplorerApi = vi.hoisted(() => ({
+    readBlob: vi.fn(),
+    writeBlob: vi.fn(),
+    readTrustedBlob: vi.fn(),
+}));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: unknown[]) => mockFetchApi(...args),
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
+    explorerApi: mockExplorerApi,
 }));
 
 // Mock MonacoFileEditor since Monaco requires a real DOM/worker environment
@@ -37,7 +41,7 @@ describe('PreviewPane', () => {
     });
 
     it('root container has w-full so it fills the preview area', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'hello',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -51,14 +55,14 @@ describe('PreviewPane', () => {
     });
 
     it('renders loading spinner while fetch is pending', () => {
-        mockFetchApi.mockReturnValue(new Promise(() => {})); // never resolves
+        mockExplorerApi.readBlob.mockReturnValue(new Promise(() => {})); // never resolves
         render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
         expect(screen.getByTestId('preview-loading')).toBeInTheDocument();
         expect(screen.getByText(/Loading app\.ts/)).toBeInTheDocument();
     });
 
     it('renders Monaco editor for text files', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'const a = 1;\nconst b = 2;',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -71,7 +75,7 @@ describe('PreviewPane', () => {
     });
 
     it('renders markdown files in Monaco editor (not as rendered HTML)', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: '# Heading\nSome text',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -86,7 +90,7 @@ describe('PreviewPane', () => {
     });
 
     it('renders image for image/* MIME with base64 encoding', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'iVBORw0KGgo=',
             encoding: 'base64',
             mimeType: 'image/png',
@@ -101,7 +105,7 @@ describe('PreviewPane', () => {
     });
 
     it('shows binary placeholder for non-image base64 content', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'AAAA',
             encoding: 'base64',
             mimeType: 'application/octet-stream',
@@ -114,7 +118,7 @@ describe('PreviewPane', () => {
     });
 
     it('renders Monaco editor for empty text files', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: '',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -128,7 +132,7 @@ describe('PreviewPane', () => {
 
     it('truncates content exceeding 512 KB and still renders Monaco', async () => {
         const largeContent = 'x'.repeat(600 * 1024); // 600 KB
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: largeContent,
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -143,7 +147,7 @@ describe('PreviewPane', () => {
     });
 
     it('shows error state with Retry button on fetch failure', async () => {
-        mockFetchApi.mockRejectedValue(new Error('Network error'));
+        mockExplorerApi.readBlob.mockRejectedValue(new Error('Network error'));
 
         render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
 
@@ -153,14 +157,14 @@ describe('PreviewPane', () => {
     });
 
     it('Retry button re-triggers fetch', async () => {
-        mockFetchApi.mockRejectedValueOnce(new Error('Network error'));
+        mockExplorerApi.readBlob.mockRejectedValueOnce(new Error('Network error'));
 
         render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
 
         await waitFor(() => expect(screen.getByTestId('preview-retry-btn')).toBeInTheDocument());
-        expect(mockFetchApi).toHaveBeenCalledTimes(1);
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
 
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'ok',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -170,12 +174,12 @@ describe('PreviewPane', () => {
             screen.getByTestId('preview-retry-btn').click();
         });
 
-        expect(mockFetchApi).toHaveBeenCalledTimes(2);
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(2);
     });
 
     it('cancels in-flight request when filePath changes', async () => {
         let resolveFirst: (v: unknown) => void;
-        mockFetchApi.mockImplementationOnce((_url: string, opts?: RequestInit) => {
+        mockExplorerApi.readBlob.mockImplementationOnce((_repoId: string, _path: string, opts?: RequestInit) => {
             return new Promise((resolve, reject) => {
                 resolveFirst = resolve;
                 opts?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
@@ -185,7 +189,7 @@ describe('PreviewPane', () => {
         const { rerender } = render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
         expect(screen.getByTestId('preview-loading')).toBeInTheDocument();
 
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'second file',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -195,11 +199,11 @@ describe('PreviewPane', () => {
 
         await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
         // The first fetch was cancelled (signal aborted), second one resolved
-        expect(mockFetchApi).toHaveBeenCalledTimes(2);
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(2);
     });
 
     it('fetches from the correct API URL', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -207,15 +211,16 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="src/main.ts" fileName="main.ts" />);
 
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalled());
-        expect(mockFetchApi).toHaveBeenCalledWith(
-            '/repos/r1/blob?path=src%2Fmain.ts',
+        await waitFor(() => expect(mockExplorerApi.readBlob).toHaveBeenCalled());
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'r1',
+            'src/main.ts',
             expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
     });
 
     it('does not render a path header — Monaco is the only content', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -228,7 +233,7 @@ describe('PreviewPane', () => {
     });
 
     it('close button calls onClose via floating toolbar', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -247,7 +252,7 @@ describe('PreviewPane', () => {
     });
 
     it('does not render close button when onClose is not provided', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -260,7 +265,7 @@ describe('PreviewPane', () => {
     });
 
     it('shows dirty indicator and save button when content changes', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'original',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -288,7 +293,7 @@ describe('PreviewPane', () => {
     });
 
     it('saves content via PUT API call', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'original',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -307,23 +312,18 @@ describe('PreviewPane', () => {
         });
 
         // Mock save response
-        mockFetchApi.mockResolvedValueOnce({ success: true });
+        mockExplorerApi.writeBlob.mockResolvedValueOnce({ success: true });
 
         // Click save
         await act(async () => {
             screen.getByTestId('save-btn').click();
         });
 
-        // Verify PUT was called
-        const saveCalls = mockFetchApi.mock.calls.filter(
-            (call: any[]) => typeof call[1] === 'object' && call[1]?.method === 'PUT'
-        );
-        expect(saveCalls.length).toBe(1);
-        expect(saveCalls[0][0]).toBe('/repos/r1/blob?path=a.ts');
+        expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith('r1', 'a.ts', 'modified');
     });
 
     it('floating toolbar is present when content is loaded', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'hello',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -336,7 +336,7 @@ describe('PreviewPane', () => {
     });
 
     it('no floating toolbar during loading state', () => {
-        mockFetchApi.mockReturnValue(new Promise(() => {}));
+        mockExplorerApi.readBlob.mockReturnValue(new Promise(() => {}));
         render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" onClose={() => {}} />);
         expect(screen.queryByTestId('preview-toolbar')).not.toBeInTheDocument();
     });

@@ -13,7 +13,13 @@ import type {
   MyWorkSyncRequest,
   MyWorkSyncResponse,
   RegisterWorkspaceRequest,
+  UpdateWorkspaceInstructionRequest,
+  UpdateWorkspaceMcpConfigRequest,
   WorkspaceInfo,
+  WorkspaceInstructionMode,
+  WorkspaceInstructionResponse,
+  WorkspaceInstructionsResponse,
+  WorkspaceMcpConfigResponse,
   WorkspaceSummaryOptions,
   WorkspaceSummaryResponse,
   WorkspacesResponse,
@@ -94,6 +100,35 @@ export class WorkspacesClient {
       body: { workspaceIds: [...workspaceIds] },
       signal: options?.signal,
     });
+  }
+
+  getMcpConfig(workspaceId: string): Promise<WorkspaceMcpConfigResponse> {
+    return this.transport.request<WorkspaceMcpConfigResponse>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`);
+  }
+
+  updateMcpConfig(workspaceId: string, request: UpdateWorkspaceMcpConfigRequest): Promise<{ workspace: WorkspaceInfo }> {
+    return this.transport.request<{ workspace: WorkspaceInfo }>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`, {
+      method: 'PUT',
+      body: { enabledMcpServers: request.enabledMcpServers === null ? null : [...request.enabledMcpServers] },
+    });
+  }
+
+  getInstructions(workspaceId: string): Promise<WorkspaceInstructionsResponse> {
+    return this.transport.request<WorkspaceInstructionsResponse>(`/workspaces/${encodePathSegment(workspaceId)}/instructions`);
+  }
+
+  updateInstruction(workspaceId: string, mode: WorkspaceInstructionMode, request: UpdateWorkspaceInstructionRequest): Promise<WorkspaceInstructionResponse> {
+    return this.transport.request<WorkspaceInstructionResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/instructions/${encodePathSegment(mode)}`,
+      { method: 'PUT', body: { ...request } },
+    );
+  }
+
+  deleteInstruction(workspaceId: string, mode: WorkspaceInstructionMode): Promise<{ success: boolean }> {
+    return this.transport.request<{ success: boolean }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/instructions/${encodePathSegment(mode)}`,
+      { method: 'DELETE' },
+    );
   }
 
   summary(workspaceId: string, options?: WorkspaceSummaryOptions): Promise<WorkspaceSummaryResponse> {

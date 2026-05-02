@@ -27,8 +27,8 @@ import { ErrorBoundary } from '../../ui/ErrorBoundary';
 
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';
-import { getApiBase } from '../../utils/config';
 import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
@@ -320,7 +320,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
-        await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
+        await getSpaCocClient().workspaces.delete(ws.id);
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
         location.hash = '';
         onRefresh();

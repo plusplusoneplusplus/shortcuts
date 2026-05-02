@@ -1,5 +1,5 @@
 /**
- * Tests for ExplorerPanel server-search integration (sidebar filter + /search?q= endpoint).
+ * Tests for ExplorerPanel server-search integration (sidebar filter + typed search endpoint).
  * Covers getAncestorPaths, mergeServerResultsIntoChildrenMap, and source-level assertions
  * for the debounced useEffect, loading indicator, and expandedPaths expansion.
  */
@@ -45,9 +45,9 @@ describe('ExplorerPanel — server search (source)', () => {
     });
 
     describe('debounced server search effect', () => {
-        it('fires /search?q= query with limit=100', () => {
-            expect(source).toContain('/search?q=');
-            expect(source).toContain('limit=100');
+        it('fires typed search query with limit=100', () => {
+            expect(source).toContain('explorerApi.searchFiles(workspaceId, searchQuery');
+            expect(source).toContain('limit: 100');
         });
 
         it('uses 300 ms debounce', () => {
@@ -74,8 +74,8 @@ describe('ExplorerPanel — server search (source)', () => {
             expect(source).toContain('setServerSearchLoading(false)');
         });
 
-        it('encodes searchQuery in the URL', () => {
-            expect(source).toContain('encodeURIComponent(searchQuery)');
+        it('passes searchQuery to the typed client', () => {
+            expect(source).toContain('searchQuery, { limit: 100 }');
         });
 
         it('clears serverSearchLoading when query is empty', () => {
@@ -153,16 +153,16 @@ describe('getAncestorPaths', () => {
 // Unit tests for mergeServerResultsIntoChildrenMap
 // ---------------------------------------------------------------------------
 
-import { mergeServerResultsIntoChildrenMap } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
-import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
-
-// Mock fetchApi
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const mockExplorerApi = vi.hoisted(() => ({
+    tree: vi.fn(),
 }));
 
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
+    explorerApi: mockExplorerApi,
+}));
+
+import { mergeServerResultsIntoChildrenMap } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
+import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
 describe('mergeServerResultsIntoChildrenMap', () => {
     beforeEach(() => {
@@ -175,7 +175,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
 
     it('fetches tree data for ancestor dirs not in childrenMap', async () => {
         const srcEntry: TreeEntry = { name: 'index.ts', type: 'file', path: 'src/index.ts' };
-        mockFetchApi.mockResolvedValue({ entries: [srcEntry] });
+        mockExplorerApi.tree.mockResolvedValue({ entries: [srcEntry] });
 
         const childrenMap = new Map<string, TreeEntry[]>();
         const updates: [string, TreeEntry[]][][] = [];
@@ -190,12 +190,12 @@ describe('mergeServerResultsIntoChildrenMap', () => {
             'ws-1',
         );
 
-        expect(mockFetchApi).toHaveBeenCalledWith('/repos/ws-1/tree?path=src');
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' });
         expect(setChildrenMap).toHaveBeenCalledTimes(1);
     });
 
     it('returns all ancestor paths', async () => {
-        mockFetchApi.mockResolvedValue({ entries: [] });
+        mockExplorerApi.tree.mockResolvedValue({ entries: [] });
 
         const childrenMap = new Map<string, TreeEntry[]>();
         const setChildrenMap = vi.fn();
@@ -224,7 +224,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
             'ws-1',
         );
 
-        expect(mockFetchApi).not.toHaveBeenCalled();
+        expect(mockExplorerApi.tree).not.toHaveBeenCalled();
     });
 
     it('does not call setChildrenMap when all ancestors already in map', async () => {
@@ -243,7 +243,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
 
     it('only fetches dirs missing from childrenMap when some are present', async () => {
         const childrenMap = new Map<string, TreeEntry[]>([['src', []]]);
-        mockFetchApi.mockResolvedValue({ entries: [] });
+        mockExplorerApi.tree.mockResolvedValue({ entries: [] });
         const setChildrenMap = vi.fn();
 
         await mergeServerResultsIntoChildrenMap(
@@ -254,8 +254,8 @@ describe('mergeServerResultsIntoChildrenMap', () => {
         );
 
         // 'src' is already present; only 'src/components' should be fetched
-        expect(mockFetchApi).toHaveBeenCalledTimes(1);
-        expect(mockFetchApi).toHaveBeenCalledWith('/repos/ws-1/tree?path=src%2Fcomponents');
+        expect(mockExplorerApi.tree).toHaveBeenCalledTimes(1);
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src/components' });
     });
 
     it('returns empty array when given no paths', async () => {
@@ -270,12 +270,12 @@ describe('mergeServerResultsIntoChildrenMap', () => {
         );
 
         expect(ancestors).toEqual([]);
-        expect(mockFetchApi).not.toHaveBeenCalled();
+        expect(mockExplorerApi.tree).not.toHaveBeenCalled();
         expect(setChildrenMap).not.toHaveBeenCalled();
     });
 
     it('handles fetch errors gracefully without throwing', async () => {
-        mockFetchApi.mockRejectedValue(new Error('network error'));
+        mockExplorerApi.tree.mockRejectedValue(new Error('network error'));
         const childrenMap = new Map<string, TreeEntry[]>();
         const setChildrenMap = vi.fn();
 
@@ -290,7 +290,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
     });
 
     it('deduplicates ancestor paths across multiple result paths', async () => {
-        mockFetchApi.mockResolvedValue({ entries: [] });
+        mockExplorerApi.tree.mockResolvedValue({ entries: [] });
         const childrenMap = new Map<string, TreeEntry[]>();
         const setChildrenMap = vi.fn();
 
@@ -302,7 +302,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
         );
 
         // Both paths share 'src' ancestor — should only fetch once
-        expect(mockFetchApi).toHaveBeenCalledTimes(1);
-        expect(mockFetchApi).toHaveBeenCalledWith('/repos/ws-1/tree?path=src');
+        expect(mockExplorerApi.tree).toHaveBeenCalledTimes(1);
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' });
     });
 });

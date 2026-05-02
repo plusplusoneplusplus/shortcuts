@@ -10,10 +10,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
 import { Spinner, Button } from '../../../ui';
 import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
+import { explorerApi } from './explorerApi';
 
 export interface PreviewPaneProps {
     repoId: string;
@@ -54,9 +54,11 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
     const [isSaving, setIsSaving] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
 
-    const blobUrl = isTrusted
-        ? `/api/fs/blob?path=${encodeURIComponent(actualPath)}`
-        : `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(actualPath)}`;
+    const fetchBlob = useCallback((signal: AbortSignal) => (
+        isTrusted
+            ? explorerApi.readTrustedBlob(actualPath, { signal })
+            : explorerApi.readBlob(repoId, actualPath, { signal })
+    ), [actualPath, isTrusted, repoId]);
 
     // Fetch blob on mount or path change; cancel in-flight on change
     useEffect(() => {
@@ -70,7 +72,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         setIsDirty(false);
         setEditedContent('');
 
-        fetchApi(blobUrl, { signal: controller.signal })
+        fetchBlob(controller.signal)
             .then((data: BlobResponse) => {
                 if (!controller.signal.aborted) {
                     setBlob(data);
@@ -89,7 +91,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
             });
 
         return () => controller.abort();
-    }, [blobUrl]);
+    }, [fetchBlob]);
 
     const doRetry = () => {
         abortRef.current?.abort();
@@ -100,7 +102,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         setBlob(null);
         setIsDirty(false);
         setEditedContent('');
-        fetchApi(blobUrl, { signal: controller.signal })
+        fetchBlob(controller.signal)
             .then((data: BlobResponse) => {
                 if (!controller.signal.aborted) {
                     setBlob(data);
@@ -129,14 +131,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         if (isTrusted) return; // never save trusted files
         setIsSaving(true);
         try {
-            await fetchApi(
-                `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(actualPath)}`,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: editedContent }),
-                },
-            );
+            await explorerApi.writeBlob(repoId, actualPath, editedContent);
             setIsDirty(false);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Save failed');

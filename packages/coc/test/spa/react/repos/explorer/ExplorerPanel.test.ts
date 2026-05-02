@@ -71,16 +71,16 @@ describe('ExplorerPanel', () => {
 
     describe('API integration', () => {
         it('fetches root entries from the tree API', () => {
-            expect(source).toContain('/repos/');
-            expect(source).toContain('/tree?path=/');
+            expect(source).toContain('explorerApi.tree(workspaceId');
+            expect(source).toContain("path: '/'");
         });
 
-        it('uses fetchApi for API calls', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('uses explorerApi for API calls', () => {
+            expect(source).toContain("import { explorerApi } from './explorerApi'");
         });
 
-        it('encodes workspaceId in the URL', () => {
-            expect(source).toContain('encodeURIComponent(workspaceId)');
+        it('passes workspaceId to typed client methods', () => {
+            expect(source).toContain('explorerApi.tree(workspaceId');
         });
     });
 

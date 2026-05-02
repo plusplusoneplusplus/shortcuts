@@ -9,6 +9,8 @@ import { RepoTabStrip } from '../../../../src/server/spa/client/react/features/r
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
+const mockGetGlobalPreferences = vi.fn().mockResolvedValue({ gitGroupOrder: [] });
+const mockDeleteWorkspace = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: mockDispatch }),
 }));
@@ -18,12 +20,18 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => 'http://localhost:4000/api',
+    getApiBase: () => '/api',
 }));
 
-const mockFetchApi = vi.fn().mockResolvedValue({ gitGroupOrder: [] });
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        preferences: {
+            getGlobal: mockGetGlobalPreferences,
+        },
+        workspaces: {
+            delete: mockDeleteWorkspace,
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
@@ -60,7 +68,8 @@ describe('RepoTabStrip', () => {
     beforeEach(() => {
         cleanup();
         mockUiLayoutMode = 'classic';
-        mockFetchApi.mockReset().mockResolvedValue({ gitGroupOrder: [] });
+        mockGetGlobalPreferences.mockReset().mockResolvedValue({ gitGroupOrder: [] });
+        mockDeleteWorkspace.mockReset().mockResolvedValue(undefined);
     });
 
     it('renders a tab for each repo', () => {
@@ -571,7 +580,6 @@ describe('RepoTabStrip', () => {
         it('clicking Remove calls DELETE /workspaces/:id after confirmation, dispatches SET_SELECTED_REPO, and calls onRefresh', async () => {
             const onRefresh = vi.fn();
             vi.spyOn(window, 'confirm').mockReturnValue(true);
-            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
             mockDispatch.mockClear();
 
             render(
@@ -586,24 +594,19 @@ describe('RepoTabStrip', () => {
             fireEvent.contextMenu(screen.getByTestId('repo-tab'));
             fireEvent.click(screen.getByTestId('repo-tab-context-remove'));
             expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
-            // Wait for all async effects: fetch → dispatch → onRefresh
+            // Wait for all async effects: delete → dispatch → onRefresh
             await vi.waitFor(() => {
-                expect(fetchSpy).toHaveBeenCalledWith(
-                    'http://localhost:4000/api/workspaces/r1',
-                    { method: 'DELETE' }
-                );
+                expect(mockDeleteWorkspace).toHaveBeenCalledWith('r1');
                 expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: null });
                 expect(onRefresh).toHaveBeenCalled();
             });
 
-            fetchSpy.mockRestore();
             vi.restoreAllMocks();
         });
 
         it('clicking Remove does nothing when user cancels confirmation', () => {
             const onRefresh = vi.fn();
             vi.spyOn(window, 'confirm').mockReturnValue(false);
-            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
             mockDispatch.mockClear();
 
             render(
@@ -617,11 +620,10 @@ describe('RepoTabStrip', () => {
             );
             fireEvent.contextMenu(screen.getByTestId('repo-tab'));
             fireEvent.click(screen.getByTestId('repo-tab-context-remove'));
-            expect(fetchSpy).not.toHaveBeenCalled();
+            expect(mockDeleteWorkspace).not.toHaveBeenCalled();
             expect(mockDispatch).not.toHaveBeenCalled();
             expect(onRefresh).not.toHaveBeenCalled();
 
-            fetchSpy.mockRestore();
             vi.restoreAllMocks();
         });
 
@@ -719,10 +721,10 @@ describe('RepoTabStrip', () => {
         const repoA = makeRepo('a1', 'Alpha', '#ff0000', 'https://github.com/org/alpha');
         const repoB = makeRepo('b1', 'Bravo', '#00ff00', 'https://github.com/org/bravo');
 
-        // Mock fetchApi to return a specific group order (Bravo group before Alpha group)
+        // Mock preferences to return a specific group order (Bravo group before Alpha group)
         const bravoGroupKey = 'github.com/org/bravo';
         const alphaGroupKey = 'github.com/org/alpha';
-        mockFetchApi.mockResolvedValueOnce({ gitGroupOrder: [bravoGroupKey, alphaGroupKey] });
+        mockGetGlobalPreferences.mockResolvedValueOnce({ gitGroupOrder: [bravoGroupKey, alphaGroupKey] });
 
         await act(async () => {
             render(
@@ -736,7 +738,7 @@ describe('RepoTabStrip', () => {
             );
         });
 
-        expect(mockFetchApi).toHaveBeenCalledWith('/preferences');
+        expect(mockGetGlobalPreferences).toHaveBeenCalled();
 
         const tabs = screen.getAllByTestId('repo-tab');
         expect(tabs).toHaveLength(2);

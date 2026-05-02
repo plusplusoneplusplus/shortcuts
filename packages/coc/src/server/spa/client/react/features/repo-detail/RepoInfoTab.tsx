@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import type { RepoData } from '../../repos/repoGrouping';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 
 interface RepoInfoTabProps {
@@ -80,14 +80,14 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
 
     useEffect(() => {
         setLoadingProcesses(true);
-        fetchApi(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
+        getSpaCocClient().processes.list({ workspace: ws.id, limit: 10 })
             .then(res => setProcesses(res?.processes || []))
             .catch(() => setProcesses([]))
             .finally(() => setLoadingProcesses(false));
     }, [ws.id]);
 
     useEffect(() => {
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks/settings`)
+        getSpaCocClient().preferences.getTaskSettings(ws.id)
             .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
             .catch(() => setTasksFolder(null));
     }, [ws.id]);
@@ -95,9 +95,9 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     useEffect(() => {
         setLoadingPreferences(true);
         setPreferencesError(null);
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/preferences`)
+        getSpaCocClient().preferences.getRepo(ws.id)
             .then(res => setPreferences(res ?? {}))
-            .catch((err: unknown) => setPreferencesError(err instanceof Error ? err.message : 'Failed to load preferences'))
+            .catch((err: unknown) => setPreferencesError(getSpaCocClientErrorMessage(err, 'Failed to load preferences')))
             .finally(() => setLoadingPreferences(false));
     }, [ws.id]);
 
@@ -143,10 +143,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         if (desc === (ws.description ?? '')) return;
                         setSavingDesc(true);
                         try {
-                            await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}`, {
-                                method: 'PATCH',
-                                body: JSON.stringify({ description: desc }),
-                            });
+                            await getSpaCocClient().workspaces.update(ws.id, { description: desc });
                         } finally {
                             setSavingDesc(false);
                         }

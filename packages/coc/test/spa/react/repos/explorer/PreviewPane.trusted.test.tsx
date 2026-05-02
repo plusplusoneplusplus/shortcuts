@@ -7,10 +7,14 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 
-const mockFetchApi = vi.fn();
+const mockExplorerApi = vi.hoisted(() => ({
+    readBlob: vi.fn(),
+    writeBlob: vi.fn(),
+    readTrustedBlob: vi.fn(),
+}));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: unknown[]) => mockFetchApi(...args),
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
+    explorerApi: mockExplorerApi,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
@@ -37,7 +41,7 @@ describe('PreviewPane — trusted path support', () => {
     });
 
     it('fetches from /api/fs/blob for trusted-prefixed paths', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readTrustedBlob.mockResolvedValue({
             content: '# Plan',
             encoding: 'utf-8',
             mimeType: 'text/markdown',
@@ -46,17 +50,17 @@ describe('PreviewPane — trusted path support', () => {
         const trustedPath = `${TRUSTED_PATH_PREFIX}/home/user/.copilot/plan.md`;
         render(<PreviewPane repoId="r1" filePath={trustedPath} fileName="plan.md" />);
 
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalled());
+        await waitFor(() => expect(mockExplorerApi.readTrustedBlob).toHaveBeenCalled());
 
-        const callUrl = mockFetchApi.mock.calls[0][0] as string;
-        expect(callUrl).toContain('/api/fs/blob?path=');
-        expect(callUrl).toContain(encodeURIComponent('/home/user/.copilot/plan.md'));
-        // Should NOT call the repo blob endpoint
-        expect(callUrl).not.toContain('/repos/');
+        expect(mockExplorerApi.readTrustedBlob).toHaveBeenCalledWith(
+            '/home/user/.copilot/plan.md',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(mockExplorerApi.readBlob).not.toHaveBeenCalled();
     });
 
     it('forces readOnly for trusted paths', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readTrustedBlob.mockResolvedValue({
             content: 'const x = 1;',
             encoding: 'utf-8',
             mimeType: 'application/typescript',
@@ -72,7 +76,7 @@ describe('PreviewPane — trusted path support', () => {
     });
 
     it('fetches from /repos/:id/blob for non-trusted paths (no prefix)', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'hello',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -80,10 +84,13 @@ describe('PreviewPane — trusted path support', () => {
 
         render(<PreviewPane repoId="r1" filePath="src/index.ts" fileName="index.ts" />);
 
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalled());
+        await waitFor(() => expect(mockExplorerApi.readBlob).toHaveBeenCalled());
 
-        const callUrl = mockFetchApi.mock.calls[0][0] as string;
-        expect(callUrl).toContain('/repos/r1/blob?path=');
-        expect(callUrl).not.toContain('/api/fs/blob');
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'r1',
+            'src/index.ts',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(mockExplorerApi.readTrustedBlob).not.toHaveBeenCalled();
     });
 });

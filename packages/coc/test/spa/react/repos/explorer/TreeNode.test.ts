@@ -150,16 +150,16 @@ describe('TreeNode', () => {
 
     describe('lazy loading', () => {
         it('fetches from the tree API endpoint', () => {
-            expect(source).toContain('/repos/');
-            expect(source).toContain('/tree?path=');
+            expect(source).toContain('explorerApi.tree(workspaceId');
+            expect(source).toContain('path: entry.path');
         });
 
         it('calls onChildrenLoaded after fetch', () => {
             expect(source).toContain('onChildrenLoaded(entry.path, data.entries)');
         });
 
-        it('uses fetchApi for API calls', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('uses explorerApi for API calls', () => {
+            expect(source).toContain("import { explorerApi } from './explorerApi'");
         });
 
         it('handles cancellation on unmount', () => {

@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { Spinner } from '../../../ui';
-import { fetchApi } from '../../../hooks/useApi';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
@@ -17,6 +16,7 @@ import { QuickOpen } from './QuickOpen';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
+import { explorerApi } from './explorerApi';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
@@ -66,7 +66,7 @@ export async function mergeServerResultsIntoChildrenMap(
     if (missing.length > 0) {
         const results = await Promise.all(
             missing.map(dir =>
-                fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(dir)}`)
+                explorerApi.tree(workspaceId, { path: dir })
                     .then((data: { entries: TreeEntry[] }) => ({ dir, entries: data.entries }))
                     .catch(() => null),
             ),
@@ -127,7 +127,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/&depth=2`)
+        explorerApi.tree(workspaceId, { path: '/', depth: 2 })
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) {
                     setRootEntries(data.entries);
@@ -267,9 +267,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             label: 'Reveal in File Explorer',
             icon: '🗂️',
             onClick: async () => {
-                await fetch(
-                    `/api/repos/${encodeURIComponent(workspaceId)}/reveal?path=${encodeURIComponent(entry.path)}`
-                );
+                await explorerApi.reveal(workspaceId, entry.path);
             },
         });
 
@@ -281,7 +279,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         setExpandedPaths(new Set());
         setLoading(true);
         setError(null);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
+        explorerApi.tree(workspaceId, { path: '/' })
             .then((data: { entries: TreeEntry[] }) => {
                 setRootEntries(data.entries);
             })
@@ -349,7 +347,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         }
         serverSearchTimerRef.current = setTimeout(() => {
             setServerSearchLoading(true);
-            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(searchQuery)}&limit=100`)
+            explorerApi.searchFiles(workspaceId, searchQuery, { limit: 100 })
                 .then(async (data: { results: { path: string; score: number }[] }) => {
                     const paths = data.results.map(r => r.path);
                     const ancestors = await mergeServerResultsIntoChildrenMap(

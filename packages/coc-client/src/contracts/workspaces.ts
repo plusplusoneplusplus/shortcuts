@@ -13,6 +13,35 @@ export interface WorkspaceInfo {
   [key: string]: unknown;
 }
 
+export interface WorkspaceMcpServerEntry {
+  name: string;
+  type: string;
+  url?: string;
+  [key: string]: unknown;
+}
+
+export interface WorkspaceMcpConfigResponse {
+  availableServers: WorkspaceMcpServerEntry[];
+  enabledMcpServers: string[] | null;
+}
+
+export interface UpdateWorkspaceMcpConfigRequest {
+  enabledMcpServers: string[] | null;
+}
+
+export type WorkspaceInstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
+
+export type WorkspaceInstructionsResponse = Record<WorkspaceInstructionMode, string | null>;
+
+export interface WorkspaceInstructionResponse {
+  mode: WorkspaceInstructionMode;
+  content: string;
+}
+
+export interface UpdateWorkspaceInstructionRequest {
+  content: string;
+}
+
 export interface WorkspacesResponse {
   workspaces: WorkspaceInfo[];
 }

@@ -63,11 +63,11 @@ describe('ExactOpen component', () => {
 
     describe('file fetching', () => {
         it('does not fetch /files endpoint on open', () => {
-            expect(source).not.toMatch(/fetchApi\([^)]*\/files[^)]*\)/);
+            expect(source).not.toContain('listFiles(');
         });
 
-        it('uses fetchApi for data loading', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('uses explorerApi for data loading', () => {
+            expect(source).toContain("import { explorerApi } from './explorerApi'");
         });
 
         it('manages loading state', () => {
@@ -76,12 +76,12 @@ describe('ExactOpen component', () => {
         });
 
         it('calls server-side search endpoint with query and limit', () => {
-            expect(source).toContain('/search?q=');
-            expect(source).toContain('limit=50');
+            expect(source).toContain('explorerApi.searchFiles(workspaceId, query');
+            expect(source).toContain('limit: 50');
         });
 
-        it('calls /fs/blob endpoint for absolute paths', () => {
-            expect(source).toContain('/fs/blob?path=');
+        it('calls trusted blob endpoint for absolute paths', () => {
+            expect(source).toContain('explorerApi.readTrustedBlob');
         });
     });
 

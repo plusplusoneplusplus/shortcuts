@@ -11,8 +11,7 @@ import { groupReposByRemote, applyGroupOrder } from '../../repos/repoGrouping';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
-import { getApiBase } from '../../utils/config';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -127,9 +126,13 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     useEffect(() => {
         let cancelled = false;
-        fetchApi('/preferences').then((prefs: any) => {
+        getSpaCocClient().preferences.getGlobal().then((prefs) => {
             if (!cancelled && Array.isArray(prefs?.gitGroupOrder)) {
                 setGroupOrder(prefs.gitGroupOrder);
+            }
+        }).catch((error) => {
+            if (!cancelled) {
+                console.warn('Failed to load repo tab preferences', error);
             }
         });
         return () => { cancelled = true; };
@@ -160,7 +163,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     const handleRemove = async (repoId: string) => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
-        await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId), { method: 'DELETE' });
+        await getSpaCocClient().workspaces.delete(repoId);
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
         location.hash = '';
         onRefresh();

@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchApi } from '../../../hooks/useApi';
 import { cn } from '../../../ui/cn';
+import { explorerApi } from './explorerApi';
 
 export interface QuickOpenProps {
     workspaceId: string;
@@ -116,7 +116,7 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
             const abort = new AbortController();
             abortRef.current = abort;
             setLoading(true);
-            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(query)}&limit=50`)
+            explorerApi.searchFiles(workspaceId, query, { limit: 50, signal: abort.signal })
                 .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
                     if (abort.signal.aborted) return;
                     setResults(data.results.map(r => r.path));

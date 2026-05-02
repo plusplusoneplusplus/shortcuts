@@ -54,8 +54,8 @@ describe('QuickOpen component', () => {
     });
 
     describe('file fetching', () => {
-        it('uses fetchApi for data loading', () => {
-            expect(source).toContain("import { fetchApi } from '../../../hooks/useApi'");
+        it('uses explorerApi for data loading', () => {
+            expect(source).toContain("import { explorerApi } from './explorerApi'");
         });
 
         it('manages loading state', () => {
@@ -64,13 +64,13 @@ describe('QuickOpen component', () => {
         });
 
         it('calls server-side search endpoint with query and limit', () => {
-            expect(source).toContain('/search?q=');
-            expect(source).toContain('limit=50');
+            expect(source).toContain('explorerApi.searchFiles(workspaceId, query');
+            expect(source).toContain('limit: 50');
         });
 
         it('does not fetch /files endpoint on open', () => {
             // The old bulk-fetch endpoint must no longer appear
-            expect(source).not.toMatch(/fetchApi\([^)]*\/files[^)]*\)/);
+            expect(source).not.toContain('listFiles(');
         });
     });
 

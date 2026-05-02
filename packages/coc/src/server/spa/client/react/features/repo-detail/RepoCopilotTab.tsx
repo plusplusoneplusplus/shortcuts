@@ -4,10 +4,10 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
-import { getApiBase } from '../../utils/config';
 import { McpServersPanel } from '../skills/McpServersPanel';
 import type { McpServerEntry } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
@@ -42,12 +42,12 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     useEffect(() => {
         setLoading(true);
         setError(null);
-        fetchApi(`/workspaces/${workspaceId}/mcp-config`)
+        getSpaCocClient().workspaces.getMcpConfig(workspaceId)
             .then((data) => {
                 setAvailableServers(data.availableServers ?? []);
                 setEnabledMcpServers(data.enabledMcpServers ?? null);
             })
-            .catch((e: any) => setError(e.message ?? 'Failed to load MCP config'))
+            .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
             .finally(() => setLoading(false));
     }, [workspaceId]);
 
@@ -65,11 +65,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         setEnabledMcpServers(nextValue); // optimistic update
         setSaving(true);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/mcp-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabledMcpServers: nextValue }),
-            });
+            await getSpaCocClient().workspaces.updateMcpConfig(workspaceId, { enabledMcpServers: nextValue });
         } catch (e: any) {
             setError(e.message ?? 'Failed to save');
             setEnabledMcpServers(prevValue); // revert on error
@@ -92,11 +88,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills');
-            if (res.ok) {
-                const data = await res.json();
-                setSkills(data.skills || []);
-            }
+            const skills = await getSpaCocClient().skills.listWorkspace(workspaceId);
+            setSkills(skills);
         } catch {
             // ignore
         } finally {
@@ -108,7 +101,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
 
     // Fetch disabled skills config
     useEffect(() => {
-        fetchApi(`/workspaces/${workspaceId}/skills-config`)
+        getSpaCocClient().skills.getWorkspaceConfig(workspaceId)
             .then((data) => {
                 setDisabledSkills(data.disabledSkills ?? []);
                 setExtraSkillFolders(data.extraSkillFolders ?? []);
@@ -125,11 +118,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         setExpandedSkill(name);
         setDetailLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/' + encodeURIComponent(name));
-            if (res.ok) {
-                const data = await res.json();
-                setSkillDetail(data.skill || null);
-            }
+            const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);
+            setSkillDetail(data.skill || null);
         } catch {
             // ignore
         } finally {
@@ -139,19 +129,11 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
 
     const handleDeleteSkill = async (name: string) => {
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/' + encodeURIComponent(name),
-                { method: 'DELETE' }
-            );
-            if (res.ok) {
-                addToast(`Deleted skill: ${name}`, 'success');
-                fetchSkills();
-            } else {
-                const body = await res.json().catch(() => null);
-                addToast(body?.error ?? `Failed to delete ${name}`, 'error');
-            }
-        } catch (err: any) {
-            addToast(err?.message ?? 'Failed to delete skill', 'error');
+            await getSpaCocClient().skills.deleteWorkspace(workspaceId, name);
+            addToast(`Deleted skill: ${name}`, 'success');
+            fetchSkills();
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Failed to delete skill'), 'error');
         }
         setDeleteConfirm(null);
     };
@@ -164,11 +146,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         setDisabledSkills(nextDisabled); // optimistic update
         setSkillToggleSaving(true);
         try {
-            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ disabledSkills: nextDisabled }),
-            });
+            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
         } catch (e: any) {
             setDisabledSkills(prevDisabled); // revert on error
             addToast(e?.message ?? 'Failed to save skill config', 'error');
@@ -181,11 +159,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         const prevFolders = extraSkillFolders;
         setExtraSkillFolders(nextFolders); // optimistic update
         try {
-            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ disabledSkills, extraSkillFolders: nextFolders }),
-            });
+            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
         } catch (e: any) {
             setExtraSkillFolders(prevFolders); // revert on error
             addToast(e?.message ?? 'Failed to save skill config', 'error');
@@ -205,17 +179,14 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const fetchInstructions = useCallback(async () => {
         setInstrLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions');
-            if (res.ok) {
-                const data: Record<InstructionMode, string | null> = await res.json();
-                setInstrContents(data);
-                setInstrDraft({
-                    base: data.base ?? '',
-                    ask: data.ask ?? '',
-                    plan: data.plan ?? '',
-                    autopilot: data.autopilot ?? '',
-                });
-            }
+            const data = await getSpaCocClient().workspaces.getInstructions(workspaceId);
+            setInstrContents(data);
+            setInstrDraft({
+                base: data.base ?? '',
+                ask: data.ask ?? '',
+                plan: data.plan ?? '',
+                autopilot: data.autopilot ?? '',
+            });
         } catch {
             // ignore
         } finally {
@@ -229,15 +200,11 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         setInstrSaving(true);
         try {
             const content = instrDraft[mode];
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
-                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) }
-            );
-            if (!res.ok) throw new Error((await res.json()).message ?? 'Save failed');
+            await getSpaCocClient().workspaces.updateInstruction(workspaceId, mode, { content });
             setInstrContents(prev => ({ ...prev, [mode]: content || null }));
             addToast('Instructions saved', 'success');
-        } catch (e: any) {
-            addToast(e?.message ?? 'Failed to save instructions', 'error');
+        } catch (e: unknown) {
+            addToast(getSpaCocClientErrorMessage(e, 'Failed to save instructions'), 'error');
         } finally {
             setInstrSaving(false);
         }
@@ -246,16 +213,18 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const handleInstrDelete = async (mode: InstructionMode) => {
         setInstrSaving(true);
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
-                { method: 'DELETE' }
-            );
-            if (!res.ok && res.status !== 404) throw new Error((await res.json()).message ?? 'Delete failed');
+            await getSpaCocClient().workspaces.deleteInstruction(workspaceId, mode);
             setInstrContents(prev => ({ ...prev, [mode]: null }));
             setInstrDraft(prev => ({ ...prev, [mode]: '' }));
             addToast('Instructions deleted', 'success');
-        } catch (e: any) {
-            addToast(e?.message ?? 'Failed to delete instructions', 'error');
+        } catch (e: unknown) {
+            if (e instanceof CocApiError && e.status === 404) {
+                setInstrContents(prev => ({ ...prev, [mode]: null }));
+                setInstrDraft(prev => ({ ...prev, [mode]: '' }));
+                addToast('Instructions deleted', 'success');
+                return;
+            }
+            addToast(getSpaCocClientErrorMessage(e, 'Failed to delete instructions'), 'error');
         } finally {
             setInstrSaving(false);
         }

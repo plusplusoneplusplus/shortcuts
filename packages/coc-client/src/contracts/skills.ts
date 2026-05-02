@@ -87,3 +87,13 @@ export interface WorkspaceSkillsPathResponse {
   skillCount: number;
   accessible: boolean;
 }
+
+export interface WorkspaceSkillsConfig {
+  disabledSkills: string[];
+  extraSkillFolders: string[];
+}
+
+export interface UpdateWorkspaceSkillsConfigRequest {
+  disabledSkills: string[];
+  extraSkillFolders?: string[];
+}

@@ -6,18 +6,34 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 
-// fetchApi mock — default resolves with two servers
-const mockFetchApi = vi.fn();
+const mockClient = vi.hoisted(() => ({
+    workspaces: {
+        getMcpConfig: vi.fn(),
+        updateMcpConfig: vi.fn(),
+        getInstructions: vi.fn(),
+        updateInstruction: vi.fn(),
+        deleteInstruction: vi.fn(),
+    },
+    skills: {
+        listWorkspace: vi.fn(),
+        getWorkspaceConfig: vi.fn(),
+        updateWorkspaceConfig: vi.fn(),
+        detailWorkspace: vi.fn(),
+        deleteWorkspace: vi.fn(),
+    },
+}));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => mockClient,
+    getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
+        error instanceof Error ? error.message : fallback,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
 
-// global fetch mock for skills API calls
+// global fetch mock for AppProvider calls
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
@@ -57,8 +73,15 @@ const emptySkillsResponse = { skills: [] };
 beforeEach(() => {
     vi.resetAllMocks();
     location.hash = '';
-    mockFetchApi.mockResolvedValue(twoServers);
-    // Default: skills API returns empty list; AppProvider preferences call returns {}
+    mockClient.workspaces.getMcpConfig.mockResolvedValue(twoServers);
+    mockClient.workspaces.updateMcpConfig.mockResolvedValue({});
+    mockClient.workspaces.getInstructions.mockResolvedValue({ base: null, ask: null, plan: null, autopilot: null });
+    mockClient.skills.listWorkspace.mockResolvedValue([]);
+    mockClient.skills.getWorkspaceConfig.mockResolvedValue({ disabledSkills: [], extraSkillFolders: [] });
+    mockClient.skills.updateWorkspaceConfig.mockResolvedValue({});
+    mockClient.skills.detailWorkspace.mockResolvedValue({ skill: null });
+    mockClient.skills.deleteWorkspace.mockResolvedValue(undefined);
+    // AppProvider preferences call returns {}
     mockFetch.mockResolvedValue({
         ok: true,
         json: async () => emptySkillsResponse,
@@ -70,7 +93,7 @@ beforeEach(() => {
 describe('loading state', () => {
     it('shows loading text while GET is pending', async () => {
         let resolve: (v: any) => void;
-        mockFetchApi.mockReturnValue(new Promise((r) => { resolve = r; }));
+        mockClient.workspaces.getMcpConfig.mockReturnValue(new Promise((r) => { resolve = r; }));
         await act(async () => { await renderTab(); });
         expect(screen.getByText('Loading…')).toBeTruthy();
         // resolve to avoid unhandled rejection
@@ -108,7 +131,7 @@ describe('null enabledMcpServers', () => {
 
 describe('partial enabledMcpServers', () => {
     it('only checks the enabled server', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockClient.workspaces.getMcpConfig.mockResolvedValue({
             availableServers: twoServers.availableServers,
             enabledMcpServers: ['github'],
         });
@@ -125,9 +148,8 @@ describe('partial enabledMcpServers', () => {
 
 describe('toggle off', () => {
     it('calls PUT with remaining server when one is toggled off', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce(twoServers) // GET
-            .mockResolvedValueOnce({}); // PUT
+        mockClient.workspaces.getMcpConfig.mockResolvedValueOnce(twoServers);
+        mockClient.workspaces.updateMcpConfig.mockResolvedValueOnce({});
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 
@@ -135,13 +157,7 @@ describe('toggle off', () => {
             fireEvent.click(screen.getByTestId('mcp-toggle-github'));
         });
 
-        expect(mockFetchApi).toHaveBeenCalledWith(
-            '/workspaces/ws-1/mcp-config',
-            expect.objectContaining({
-                method: 'PUT',
-                body: JSON.stringify({ enabledMcpServers: ['search'] }),
-            }),
-        );
+        expect(mockClient.workspaces.updateMcpConfig).toHaveBeenCalledWith('ws-1', { enabledMcpServers: ['search'] });
     });
 });
 
@@ -149,12 +165,12 @@ describe('toggle off', () => {
 
 describe('enable last disabled server', () => {
     it('sends null when all servers are enabled', async () => {
-        mockFetchApi
+        mockClient.workspaces.getMcpConfig
             .mockResolvedValueOnce({
                 availableServers: twoServers.availableServers,
                 enabledMcpServers: ['github'],
-            }) // GET
-            .mockResolvedValueOnce({}); // PUT
+            });
+        mockClient.workspaces.updateMcpConfig.mockResolvedValueOnce({});
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 
@@ -162,13 +178,7 @@ describe('enable last disabled server', () => {
             fireEvent.click(screen.getByTestId('mcp-toggle-search'));
         });
 
-        expect(mockFetchApi).toHaveBeenCalledWith(
-            '/workspaces/ws-1/mcp-config',
-            expect.objectContaining({
-                method: 'PUT',
-                body: JSON.stringify({ enabledMcpServers: null }),
-            }),
-        );
+        expect(mockClient.workspaces.updateMcpConfig).toHaveBeenCalledWith('ws-1', { enabledMcpServers: null });
     });
 });
 
@@ -176,10 +186,9 @@ describe('enable last disabled server', () => {
 
 describe('PUT failure', () => {
     it('reverts toggle and shows error on PUT failure', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce(twoServers) // GET mcp-config
-            .mockResolvedValueOnce({ disabledSkills: [] }) // GET skills-config
-            .mockRejectedValueOnce(new Error('Network error')); // PUT fails
+        mockClient.workspaces.getMcpConfig.mockResolvedValueOnce(twoServers);
+        mockClient.skills.getWorkspaceConfig.mockResolvedValueOnce({ disabledSkills: [], extraSkillFolders: [] });
+        mockClient.workspaces.updateMcpConfig.mockRejectedValueOnce(new Error('Network error'));
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
 
@@ -197,7 +206,7 @@ describe('PUT failure', () => {
 
 describe('empty server list', () => {
     it('shows empty state message when no servers are configured', async () => {
-        mockFetchApi.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+        mockClient.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
         expect(screen.getByText('No MCP servers configured.')).toBeTruthy();
@@ -208,7 +217,7 @@ describe('empty server list', () => {
 
 describe('GET failure', () => {
     it('shows error text when GET fails', async () => {
-        mockFetchApi.mockRejectedValue(new Error('Failed to fetch'));
+        mockClient.workspaces.getMcpConfig.mockRejectedValue(new Error('Failed to fetch'));
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('Failed to fetch')).toBeTruthy());
     });
@@ -219,9 +228,8 @@ describe('GET failure', () => {
 describe('saving state', () => {
     it('disables all toggles during a pending PUT', async () => {
         let resolvePut: (v: any) => void;
-        mockFetchApi
-            .mockResolvedValueOnce(twoServers) // GET
-            .mockReturnValueOnce(new Promise((r) => { resolvePut = r; })); // slow PUT
+        mockClient.workspaces.getMcpConfig.mockResolvedValueOnce(twoServers);
+        mockClient.workspaces.updateMcpConfig.mockReturnValueOnce(new Promise((r) => { resolvePut = r; }));
 
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
@@ -263,10 +271,7 @@ describe('Agent Skills section', () => {
     });
 
     it('renders skills list when skills are returned', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: async () => ({ skills: [{ name: 'my-skill', description: 'A skill' }] }),
-        } as any);
+        mockClient.skills.listWorkspace.mockResolvedValue([{ name: 'my-skill', description: 'A skill' }]);
         await act(async () => { await renderTab(); });
         await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-list'));
@@ -275,10 +280,7 @@ describe('Agent Skills section', () => {
     });
 
     it('shows delete confirmation when delete button is clicked', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: async () => ({ skills: [{ name: 'my-skill' }] }),
-        } as any);
+        mockClient.skills.listWorkspace.mockResolvedValue([{ name: 'my-skill' }]);
         await act(async () => { await renderTab(); });
         await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-list'));

@@ -14,6 +14,8 @@ import type {
   SkillUsageQuery,
   SkillUsageResponse,
   UpdateGlobalSkillsConfigRequest,
+  UpdateWorkspaceSkillsConfigRequest,
+  WorkspaceSkillsConfig,
   WorkspaceSkillsPathResponse,
 } from '../contracts';
 import type { CocRequestOptions, RequestAdapter } from '../types';
@@ -110,6 +112,20 @@ export class SkillsClient {
 
   getWorkspacePath(workspaceId: string): Promise<WorkspaceSkillsPathResponse> {
     return this.transport.request<WorkspaceSkillsPathResponse>(`/workspaces/${encodePathSegment(workspaceId)}/skills-path`);
+  }
+
+  getWorkspaceConfig(workspaceId: string): Promise<WorkspaceSkillsConfig> {
+    return this.transport.request<WorkspaceSkillsConfig>(`/workspaces/${encodePathSegment(workspaceId)}/skills-config`);
+  }
+
+  updateWorkspaceConfig(workspaceId: string, request: UpdateWorkspaceSkillsConfigRequest): Promise<{ workspace: unknown }> {
+    return this.transport.request<{ workspace: unknown }>(`/workspaces/${encodePathSegment(workspaceId)}/skills-config`, {
+      method: 'PUT',
+      body: {
+        disabledSkills: [...request.disabledSkills],
+        ...(request.extraSkillFolders ? { extraSkillFolders: [...request.extraSkillFolders] } : {}),
+      },
+    });
   }
 
   installWorkspace(workspaceId: string, request: InstallSkillsRequest): Promise<InstallSkillsResponse> {

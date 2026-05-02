@@ -6,10 +6,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 
-const mockFetchApi = vi.fn();
+const mockExplorerApi = vi.hoisted(() => ({
+    readBlob: vi.fn(),
+    writeBlob: vi.fn(),
+    readTrustedBlob: vi.fn(),
+}));
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: unknown[]) => mockFetchApi(...args),
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
+    explorerApi: mockExplorerApi,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
@@ -36,7 +40,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('passes readOnly to MonacoFileEditor when readOnly is true', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'const x = 1;',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -49,7 +53,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('does not pass onSave to MonacoFileEditor when readOnly is true', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'const x = 1;',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -63,7 +67,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('suppresses dirty indicator and save button in readOnly mode even after edit attempt', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'original',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -87,7 +91,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('readOnly=false (default) keeps editor editable and shows save button', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'original',
             encoding: 'utf-8',
             mimeType: 'text/plain',
@@ -102,7 +106,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('renders image content normally in readOnly mode', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'iVBORw0KGgo=',
             encoding: 'base64',
             mimeType: 'image/png',
@@ -114,7 +118,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('renders binary fallback normally in readOnly mode', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'AAAA',
             encoding: 'base64',
             mimeType: 'application/octet-stream',
@@ -126,7 +130,7 @@ describe('PreviewPane — readOnly mode', () => {
     });
 
     it('still shows close button in readOnly mode when onClose is provided', async () => {
-        mockFetchApi.mockResolvedValue({
+        mockExplorerApi.readBlob.mockResolvedValue({
             content: 'hello',
             encoding: 'utf-8',
             mimeType: 'text/plain',
