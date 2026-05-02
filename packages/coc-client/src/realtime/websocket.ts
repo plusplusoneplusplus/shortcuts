@@ -1,4 +1,4 @@
-import type { ConnectEventsOptions, NormalizedCocClientOptions, WebSocketConstructor, CocWebSocket } from '../types';
+import type { ConnectionStatus, ConnectEventsOptions, NormalizedCocClientOptions, WebSocketConstructor, CocWebSocket } from '../types';
 import { buildWebSocketUrl } from '../url';
 import { isProcessEvent } from './events';
 
@@ -8,6 +8,7 @@ export class ProcessWebSocketConnection {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private manuallyClosed = false;
+  private lastStatus: ConnectionStatus | undefined;
 
   constructor(
     private readonly clientOptions: NormalizedCocClientOptions,
@@ -18,23 +19,28 @@ export class ProcessWebSocketConnection {
   }
 
   close(): void {
+    if (this.manuallyClosed) return;
     this.manuallyClosed = true;
     this.clearTimers();
-    this.socket?.close();
-    this.socket = undefined;
-    this.options.onStatusChange?.('closed');
-  }
-
-  private connect(): void {
-    const WebSocketImpl = this.clientOptions.WebSocket as WebSocketConstructor | undefined;
-    if (!WebSocketImpl) {
-      this.options.onError?.(new Error('No WebSocket implementation is available'));
-      this.options.onStatusChange?.('closed');
+    const socket = this.socket;
+    if (!socket) {
+      this.emitStatus('closed');
       return;
     }
 
+    this.emitStatus('closing');
+    if (socket.readyState === this.webSocketImpl.CLOSED) {
+      this.socket = undefined;
+      this.emitStatus('closed');
+      return;
+    }
+    socket.close();
+  }
+
+  private connect(): void {
+    const WebSocketImpl = this.webSocketImpl;
     this.clearTimers();
-    this.options.onStatusChange?.('connecting');
+    this.emitStatus('connecting');
     const socket = new WebSocketImpl(buildWebSocketUrl(
       this.clientOptions.baseUrl,
       this.options.wsPath ?? this.clientOptions.wsPath,
@@ -43,8 +49,8 @@ export class ProcessWebSocketConnection {
     this.socket = socket;
 
     socket.onopen = () => {
-      this.reconnectDelayMs = this.options.reconnectBaseDelayMs ?? 1000;
-      this.options.onStatusChange?.('open');
+      if (this.socket !== socket || this.manuallyClosed) return;
+      this.emitStatus('open');
       this.options.onOpen?.();
       this.pingTimer = setInterval(() => {
         if (socket.readyState === WebSocketImpl.OPEN) {
@@ -54,6 +60,7 @@ export class ProcessWebSocketConnection {
     };
 
     socket.onmessage = (event) => {
+      if (this.socket !== socket || this.manuallyClosed) return;
       try {
         const parsed = JSON.parse(String(event.data));
         if (isProcessEvent(parsed)) {
@@ -67,15 +74,20 @@ export class ProcessWebSocketConnection {
     };
 
     socket.onerror = (event) => {
+      if (this.socket !== socket || this.manuallyClosed) return;
       this.options.onError?.(event);
     };
 
     socket.onclose = () => {
+      if (this.socket !== socket) return;
+      this.socket = undefined;
       this.clearTimers();
-      this.options.onStatusChange?.('closed');
+      this.emitStatus('closed');
       if (!this.manuallyClosed && this.options.reconnect !== false) {
         const delay = this.reconnectDelayMs;
+        this.emitStatus('reconnecting');
         this.reconnectTimer = setTimeout(() => {
+          if (this.manuallyClosed) return;
           this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.options.reconnectMaxDelayMs ?? 30_000);
           this.connect();
         }, delay);
@@ -88,6 +100,20 @@ export class ProcessWebSocketConnection {
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.reconnectTimer = undefined;
     this.pingTimer = undefined;
+  }
+
+  private emitStatus(status: ConnectionStatus): void {
+    if (this.lastStatus === status) return;
+    this.lastStatus = status;
+    this.options.onStatusChange?.(status);
+  }
+
+  private get webSocketImpl(): WebSocketConstructor {
+    const WebSocketImpl = this.clientOptions.WebSocket as WebSocketConstructor | undefined;
+    if (!WebSocketImpl) {
+      throw new Error('No WebSocket implementation is available. Pass a WebSocket constructor in CocClient options when running outside a browser.');
+    }
+    return WebSocketImpl;
   }
 }
 

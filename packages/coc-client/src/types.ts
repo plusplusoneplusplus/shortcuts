@@ -56,6 +56,8 @@ export interface WebSocketConstructor {
   new (url: string): CocWebSocket;
 }
 
+export type ConnectionStatus = 'connecting' | 'open' | 'closing' | 'closed' | 'reconnecting';
+
 export interface CocEventSource {
   onmessage: ((event: MessageEvent) => void) | null;
   onerror: ((event: Event) => void) | null;
@@ -76,7 +78,7 @@ export interface ConnectEventsOptions {
   reconnectMaxDelayMs?: number;
   pingIntervalMs?: number;
   onMessage: (event: ProcessEvent) => void;
-  onStatusChange?: (status: 'connecting' | 'open' | 'closed') => void;
+  onStatusChange?: (status: ConnectionStatus) => void;
   onOpen?: () => void;
   onError?: (error: unknown) => void;
 }

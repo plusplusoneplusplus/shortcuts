@@ -39,7 +39,9 @@ const themeEmoji: Record<string, string> = {
 
 const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: boolean }> = {
     open: { color: 'bg-[#16825d] dark:bg-[#89d185]', label: 'Connected', pulse: false },
-    connecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Reconnecting…', pulse: true },
+    connecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Connecting…', pulse: true },
+    reconnecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Reconnecting…', pulse: true },
+    closing: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Disconnecting…', pulse: true },
     closed: { color: 'bg-[#f14c4c] dark:bg-[#f48771]', label: 'Disconnected', pulse: false },
 };
 

@@ -4,10 +4,10 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import type { ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
+import type { ConnectionStatus, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 
-export type WsStatus = 'connecting' | 'open' | 'closed';
+export type WsStatus = ConnectionStatus;
 
 interface UseWebSocketOptions {
     onMessage: (msg: any) => void;

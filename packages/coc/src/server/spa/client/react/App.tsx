@@ -242,7 +242,7 @@ function AppInner() {
     useEffect(() => {
         const prev = prevWsStatusRef.current;
         prevWsStatusRef.current = wsStatus;
-        if (prev === 'open' && wsStatus === 'closed') {
+        if (prev === 'open' && (wsStatus === 'closed' || wsStatus === 'reconnecting')) {
             addToast('Connection lost — reconnecting…', 'error');
         } else if (wsStatus === 'open' && hasConnectedRef.current && prev !== 'open') {
             addToast('Reconnected', 'success');

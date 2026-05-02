@@ -107,7 +107,7 @@ describe('useWebSocket', () => {
             MockWebSocket.last.readyState = 3;
             MockWebSocket.last.onclose?.();
         });
-        expect(result.current.status).toBe('closed');
+        expect(result.current.status).toBe('reconnecting');
 
         // After reconnect delay, a new WebSocket should be created
         act(() => { vi.advanceTimersByTime(1000); });
