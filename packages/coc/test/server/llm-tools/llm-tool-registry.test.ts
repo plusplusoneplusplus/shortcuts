@@ -23,7 +23,6 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('ask_user');
         expect(names).toContain('create_work_item');
         expect(names).toContain('create_bug');
-        expect(names).toContain('update_task_status');
         expect(names).toContain('memory');
         expect(names).toContain('tavily_web_search');
     });

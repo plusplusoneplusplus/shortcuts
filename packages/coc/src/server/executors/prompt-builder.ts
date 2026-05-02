@@ -43,7 +43,6 @@ import {
     isRunScriptPayload,
     isRunWorkflowPayload,
 } from '../tasks/task-types';
-import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 
@@ -329,32 +328,6 @@ export function buildFollowUpSuggestionsAddon(
         tools: [createSuggestFollowUpsTool()],
         suffix: `\n\nWhen suggesting follow-ups, provide exactly ${count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
     };
-}
-
-// ============================================================================
-// Update Task Status
-// ============================================================================
-
-/**
- * Builds the tools array and prompt suffix for the `update_task_status` tool.
- * The tool is only injected when the execution context includes a plan file.
- *
- * @param hasPlanFile  Whether the task context includes a plan file.
- */
-export function buildUpdateTaskStatusAddon(
-    hasPlanFile: boolean,
-): { tools: Tool<any>[]; suffix: string } {
-    if (!hasPlanFile) {
-        return { tools: [], suffix: '' };
-    }
-
-    const { tool } = createUpdateTaskStatusTool();
-    const suffix =
-        '\n\nYou have access to the `update_task_status` tool. ' +
-        'Provide the absolute file path and new status. ' +
-        'Call it when you begin work (set in-progress) and when complete (set done).';
-
-    return { tools: [tool], suffix };
 }
 
 // ============================================================================

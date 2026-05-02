@@ -82,7 +82,6 @@ const IMPORTANT_TOOL_NAMES = new Set([
     'ask_user',
     'add_diff_comment',
     'resolve_comment',
-    'update_task_status',
     'create_work_item',
     'create_bug',
 ]);

@@ -22,7 +22,6 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import {
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
-    buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildCreateWorkItemAddon,
     buildTavilyWebSearchAddon,
@@ -56,13 +55,11 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         _workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
-        const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
 
         const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
-        const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
         const createWorkItem = buildCreateWorkItemAddon(
             this.dataDir,
@@ -80,7 +77,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             : undefined;
 
         const { tools, suffix } = applyLlmToolPreferences(
-            [followUp, updateStatus, searchConversations, createWorkItem, tavilySearch, boundedMemory],
+            [followUp, searchConversations, createWorkItem, tavilySearch, boundedMemory],
             disabledLlmTools,
         );
 

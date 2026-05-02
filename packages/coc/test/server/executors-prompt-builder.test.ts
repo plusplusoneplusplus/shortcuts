@@ -55,11 +55,6 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
     createSuggestFollowUpsTool: () => mockCreateSuggestFollowUpsTool(),
 }));
 
-const mockCreateUpdateTaskStatusTool = vi.fn(() => ({ tool: { name: 'update_task_status' } }));
-vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
-    createUpdateTaskStatusTool: () => mockCreateUpdateTaskStatusTool(),
-}));
-
 const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
 vi.mock('../../src/server/llm-tools/create-work-item-tool', () => ({
     createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
@@ -80,7 +75,6 @@ import {
     prependSelectedSkillsDirective,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
-    buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildCreateWorkItemAddon,
 } from '../../src/server/executors/prompt-builder';
@@ -442,46 +436,6 @@ describe('buildFollowUpSuggestionsAddon', () => {
     it('uses the count parameter in the suffix', () => {
         const result = buildFollowUpSuggestionsAddon(true, 5);
         expect(result.suffix).toContain('5 suggestions');
-    });
-});
-
-// ============================================================================
-// buildUpdateTaskStatusAddon
-// ============================================================================
-
-describe('buildUpdateTaskStatusAddon', () => {
-    beforeEach(() => {
-        mockCreateUpdateTaskStatusTool.mockReset();
-        mockCreateUpdateTaskStatusTool.mockReturnValue({ tool: { name: 'update_task_status' } });
-    });
-
-    it('returns empty tools and suffix when no plan file', () => {
-        const result = buildUpdateTaskStatusAddon(false);
-        expect(result.tools).toEqual([]);
-        expect(result.suffix).toBe('');
-    });
-
-    it('returns tool and suffix when plan file is present', () => {
-        const result = buildUpdateTaskStatusAddon(true);
-        expect(result.tools).toHaveLength(1);
-        expect(result.tools[0]).toEqual({ name: 'update_task_status' });
-        expect(result.suffix).toContain('update_task_status');
-    });
-
-    it('suffix mentions in-progress and done statuses', () => {
-        const result = buildUpdateTaskStatusAddon(true);
-        expect(result.suffix).toContain('in-progress');
-        expect(result.suffix).toContain('done');
-    });
-
-    it('does not create tool when plan file absent', () => {
-        buildUpdateTaskStatusAddon(false);
-        expect(mockCreateUpdateTaskStatusTool).not.toHaveBeenCalled();
-    });
-
-    it('creates tool exactly once when plan file present', () => {
-        buildUpdateTaskStatusAddon(true);
-        expect(mockCreateUpdateTaskStatusTool).toHaveBeenCalledOnce();
     });
 });
 

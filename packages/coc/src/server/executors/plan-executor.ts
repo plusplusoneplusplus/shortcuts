@@ -24,7 +24,6 @@ import {
     buildModeSystemMessage,
     buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
-    buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildAskUserAddon,
     buildCreateWorkItemAddon,
@@ -79,12 +78,10 @@ export class PlanExecutor extends ChatBaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
-        const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
         const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
-        const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
         const createWorkItem = buildCreateWorkItemAddon(
             this.dataDir,
@@ -118,7 +115,7 @@ export class PlanExecutor extends ChatBaseExecutor {
             : undefined;
 
         const { tools, suffix } = applyLlmToolPreferences(
-            [followUp, updateStatus, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
+            [followUp, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
             disabledLlmTools,
         );
 

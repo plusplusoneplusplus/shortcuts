@@ -10,7 +10,6 @@ export {
     type CompactionLevel,
 } from './get-conversation-tool';
 export { createSuggestFollowUpsTool, type FollowUpSuggestion } from './suggest-follow-ups-tool';
-export { createUpdateTaskStatusTool, type UpdateTaskStatusArgs } from './update-task-status-tool';
 export { createAddDiffCommentTool, type AddDiffCommentArgs, type AddDiffCommentDeps } from './add-diff-comment-tool';
 export {
     createTavilyWebSearchTool,

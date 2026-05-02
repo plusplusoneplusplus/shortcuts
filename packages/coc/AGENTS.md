@@ -243,8 +243,7 @@ src/
 │   │   ├── resolve-comment-tool.ts           # resolve_comment tool
 │   │   ├── search-conversations-tool.ts      # FTS5 keyword search + recent listing
 │   │   ├── suggest-follow-ups-tool.ts        # suggest_follow_ups tool
-│   │   ├── tavily-web-search-tool.ts         # Tavily web search tool
-│   │   └── update-task-status-tool.ts        # update_task_status tool
+│   │   └── tavily-web-search-tool.ts         # Tavily web search tool
 │   ├── executors/                    # AI chat execution layer (process lifecycle, prompt building)
 │   │   ├── base-executor.ts          # Abstract base: streaming, throttling, tool-event capture, output persistence
 │   │   ├── chat-base-executor.ts     # Abstract chat executor: AI call lifecycle

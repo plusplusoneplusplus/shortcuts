@@ -63,12 +63,6 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'update_task_status',
-        label: 'Update Task Status',
-        description: 'Updates task file status when executing against a plan.',
-        enabledByDefault: true,
-    },
-    {
         name: 'memory',
         label: 'Memory',
         description: 'Reads and writes persistent memory entries across sessions.',
