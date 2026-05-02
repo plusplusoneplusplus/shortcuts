@@ -6,6 +6,7 @@ export * from './processes';
 export * from './pull-requests';
 export * from './queue';
 export * from './schedules';
+export * from './seen-state';
 export * from './templates';
 export * from './work-items';
 export * from './workspaces';

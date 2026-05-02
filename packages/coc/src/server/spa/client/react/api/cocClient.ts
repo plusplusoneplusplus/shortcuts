@@ -1,4 +1,4 @@
-import { CocClient } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, CocClient, CocNetworkError, type CocRequestOptions } from '@plusplusoneplusplus/coc-client';
 import { getApiBase } from '../utils/config';
 
 let cachedClient: CocClient | undefined;
@@ -48,6 +48,36 @@ export function getSpaCocClient(): CocClient {
     }
 
     return cachedClient;
+}
+
+export function toSpaCocRequestOptions(options?: RequestInit): CocRequestOptions {
+    return {
+        method: options?.method,
+        headers: options?.headers,
+        rawBody: options?.body ?? undefined,
+        signal: options?.signal ?? undefined,
+    };
+}
+
+export function translateSpaCocClientError(error: unknown): never {
+    if (error instanceof CocApiError) {
+        throw new Error(`API error: ${error.status} ${error.statusText}`);
+    }
+    if (error instanceof CocNetworkError && error.cause instanceof Error) {
+        throw new Error(error.cause.message);
+    }
+    if (error instanceof CocNetworkError && error.cause !== undefined) {
+        throw error.cause;
+    }
+    throw error;
+}
+
+export async function requestSpaApi<T = unknown>(path: string, options?: RequestInit): Promise<T> {
+    try {
+        return await getSpaCocClient().request<T>(path, toSpaCocRequestOptions(options));
+    } catch (error) {
+        translateSpaCocClientError(error);
+    }
 }
 
 export function resetSpaCocClientForTests(): void {

@@ -14,6 +14,7 @@ import {
   QueueClient,
   WorkItemsClient,
   WorkspacesClient,
+  SeenStateClient,
   type CocEventSource,
   type CocRequestOptions,
   type CocWebSocket,
@@ -106,6 +107,7 @@ describe('CocClient integration wiring', () => {
     expect(client.processes).toBeInstanceOf(ProcessesClient);
     expect(client.pullRequests).toBeInstanceOf(PullRequestsClient);
     expect(client.queue).toBeInstanceOf(QueueClient);
+    expect(client.seenState).toBeInstanceOf(SeenStateClient);
     expect(client.workItems).toBeInstanceOf(WorkItemsClient);
     expect(client.workspaces).toBeInstanceOf(WorkspacesClient);
     expect(client.repos).toBe(client.workspaces);
@@ -128,6 +130,7 @@ describe('CocClient integration wiring', () => {
       client.processes,
       client.pullRequests,
       client.queue,
+      client.seenState,
       client.workItems,
       client.workspaces,
     ];
@@ -146,6 +149,7 @@ describe('CocClient integration wiring', () => {
     await client.processes.list();
     await client.pullRequests.getProviderConfig();
     await client.queue.list();
+    await client.seenState.getMap('repo-a');
     await client.workItems.list('repo-a');
     await client.workspaces.list();
     await client.request('/direct', { query: { source: 'client' } });
@@ -159,6 +163,7 @@ describe('CocClient integration wiring', () => {
       '/processes',
       '/providers/config',
       '/queue',
+      '/workspaces/repo-a/seen-state',
       '/workspaces/repo-a/work-items',
       '/workspaces',
       '/direct',
@@ -374,6 +379,7 @@ function typeCheckPublicSurface(): string {
       PreferencesClient,
       ProcessesClient,
       QueueClient,
+      SeenStateClient,
       WorkItemsClient,
       WorkspacesClient,
       EventsClient,
@@ -406,6 +412,9 @@ function typeCheckPublicSurface(): string {
       type ProcessStreamOptions,
       type QueueListResponse,
       type RequestAdapter,
+      type SeenStateEntry,
+      type SeenStateMap,
+      type UnseenCountResponse,
       type WebSocketConstructor,
       type WorkItem,
       type WorkspaceInfo,
@@ -420,6 +429,7 @@ function typeCheckPublicSurface(): string {
       PreferencesClient,
       ProcessesClient,
       QueueClient,
+      SeenStateClient,
       WorkItemsClient,
       WorkspacesClient,
       EventsClient,
@@ -491,6 +501,12 @@ function typeCheckPublicSurface(): string {
         isAutopilotPaused: false,
       },
     };
+    const seenEntry: SeenStateEntry = {
+      processId: 'proc-1',
+      seenAt: '2026-01-01T00:00:00.000Z',
+    };
+    const seenMap: SeenStateMap = { [seenEntry.processId]: seenEntry.seenAt };
+    const unseenCount: UnseenCountResponse = { unseenCount: 1 };
     const preferences: GlobalPreferences = { theme: 'auto' };
     const socket: CocWebSocket | undefined = undefined;
     const source: CocEventSource | undefined = undefined;
@@ -517,6 +533,9 @@ function typeCheckPublicSurface(): string {
       workspace,
       workItem,
       queue,
+      seenEntry,
+      seenMap,
+      unseenCount,
       preferences,
       socket,
       source,
