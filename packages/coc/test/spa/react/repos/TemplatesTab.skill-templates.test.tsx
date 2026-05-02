@@ -260,12 +260,12 @@ describe('AI Chat Templates section', () => {
         expect(screen.getByTestId('templates-refresh-btn')).toBeTruthy();
     });
 
-    it('clicking templates refresh calls fetchApi for templates', async () => {
+    it('clicking templates refresh calls the templates API', async () => {
         await renderTemplatesTab();
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockFetch.mock.calls.length;
         fireEvent.click(screen.getByTestId('templates-refresh-btn'));
         await waitFor(() => {
-            expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+            expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore);
         });
     });
 });

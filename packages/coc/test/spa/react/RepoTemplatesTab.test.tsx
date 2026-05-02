@@ -16,7 +16,20 @@ const mockFetch = vi.fn().mockResolvedValue({
 });
 vi.stubGlobal('fetch', mockFetch);
 
+const mockTemplatesClient = vi.hoisted(() => ({
+    list: vi.fn(),
+    detail: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    replicate: vi.fn(),
+}));
+
 const mockFetchApi = vi.fn().mockResolvedValue({ templates: [] });
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ templates: mockTemplatesClient }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
@@ -68,7 +81,12 @@ const SAMPLE_DETAIL = {
 
 // Lazy-import the component after mocks are set up
 async function renderTemplatesTab(templates = SAMPLE_TEMPLATES) {
-    mockFetchApi.mockResolvedValue({ templates });
+    mockTemplatesClient.list.mockResolvedValue(templates);
+    mockTemplatesClient.detail.mockResolvedValue(SAMPLE_DETAIL);
+    mockTemplatesClient.create.mockResolvedValue({ name: 'created-template', path: '/repo/.vscode/templates/created-template.yaml' });
+    mockTemplatesClient.update.mockResolvedValue({ name: 'add-config-field', path: '/repo/.vscode/templates/add-config-field.yaml' });
+    mockTemplatesClient.delete.mockResolvedValue({ deleted: 'add-config-field' });
+    mockTemplatesClient.replicate.mockResolvedValue({ taskId: 'task-1' });
     const { RepoTemplatesTab } = await import(
         '../../../src/server/spa/client/react/features/templates/RepoTemplatesTab'
     );
@@ -143,10 +161,10 @@ describe('RepoTemplatesTab — template list', () => {
         expect(screen.getByText(/abc123de/)).toBeTruthy();
     });
 
-    it('fetches templates from the correct API endpoint', async () => {
+    it('fetches templates through the typed client domain', async () => {
         await renderTemplatesTab();
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/templates');
+            expect(mockTemplatesClient.list).toHaveBeenCalledWith('ws-1');
         });
     });
 });
@@ -161,9 +179,8 @@ describe('RepoTemplatesTab — detail view', () => {
     });
 
     it('fetches detail when a template is selected', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce({ templates: SAMPLE_TEMPLATES })
-            .mockResolvedValueOnce(SAMPLE_DETAIL);
+        mockTemplatesClient.list.mockResolvedValue(SAMPLE_TEMPLATES);
+        mockTemplatesClient.detail.mockResolvedValue(SAMPLE_DETAIL);
         const { RepoTemplatesTab } = await import(
             '../../../src/server/spa/client/react/features/templates/RepoTemplatesTab'
         );
@@ -177,7 +194,7 @@ describe('RepoTemplatesTab — detail view', () => {
         });
         fireEvent.click(screen.getByTestId('template-item-add-config-field'));
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/templates/add-config-field');
+            expect(mockTemplatesClient.detail).toHaveBeenCalledWith('ws-1', 'add-config-field');
         });
     });
 });
@@ -281,17 +298,12 @@ describe('RepoTemplatesTab — WebSocket events', () => {
 
     it('refreshes template list when templates-changed event fires', async () => {
         await renderTemplatesTab();
-        const initialCallCount = mockFetchApi.mock.calls.filter(
-            (c: any[]) => c[0] === '/workspaces/ws-1/templates'
-        ).length;
+        const initialCallCount = mockTemplatesClient.list.mock.calls.length;
 
         window.dispatchEvent(new CustomEvent('templates-changed'));
 
         await waitFor(() => {
-            const newCallCount = mockFetchApi.mock.calls.filter(
-                (c: any[]) => c[0] === '/workspaces/ws-1/templates'
-            ).length;
-            expect(newCallCount).toBeGreaterThan(initialCallCount);
+            expect(mockTemplatesClient.list.mock.calls.length).toBeGreaterThan(initialCallCount);
         });
     });
 });
@@ -306,7 +318,7 @@ describe('RepoTemplatesTab — delete', () => {
         vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
     });
 
-    it('sends DELETE request when delete is confirmed from context menu', async () => {
+    it('deletes through the typed client when confirmed from context menu', async () => {
         await renderTemplatesTab();
         await waitFor(() => {
             expect(screen.getByTestId('template-item-add-config-field')).toBeTruthy();
@@ -323,10 +335,7 @@ describe('RepoTemplatesTab — delete', () => {
         fireEvent.click(screen.getByText('Delete'));
 
         await waitFor(() => {
-            expect(mockFetch).toHaveBeenCalledWith(
-                'http://localhost:4000/api/workspaces/ws-1/templates/add-config-field',
-                { method: 'DELETE' }
-            );
+            expect(mockTemplatesClient.delete).toHaveBeenCalledWith('ws-1', 'add-config-field');
         });
     });
 });
@@ -352,12 +361,12 @@ describe('RepoTemplatesTab — source structure', () => {
         expect(SOURCE).toContain('workspaceId: string');
     });
 
-    it('uses fetchApi for template list', () => {
-        expect(SOURCE).toContain('fetchApi(');
-        expect(SOURCE).toContain('/templates');
+    it('uses the typed templates client for template list and detail reads', () => {
+        expect(SOURCE).toContain('getSpaCocClient().templates.list');
+        expect(SOURCE).toContain('getSpaCocClient().templates.detail');
     });
 
-    it('uses encodeURIComponent for workspace and template names in API calls', () => {
+    it('uses encodeURIComponent for commit validation calls', () => {
         expect(SOURCE).toContain('enc(workspaceId)');
     });
 
@@ -390,16 +399,17 @@ describe('RepoTemplatesTab — source structure', () => {
         expect(SOURCE).toContain("'templates-changed'");
     });
 
-    it('supports PATCH method for template editing', () => {
-        expect(SOURCE).toContain("method: 'PATCH'");
+    it('supports template editing through client.templates', () => {
+        expect(SOURCE).toContain('getSpaCocClient().templates.update');
     });
 
-    it('supports DELETE method for template deletion', () => {
-        expect(SOURCE).toContain("method: 'DELETE'");
+    it('supports template deletion through client.templates', () => {
+        expect(SOURCE).toContain('getSpaCocClient().templates.delete');
     });
 
-    it('supports POST method for template creation and replication', () => {
-        expect(SOURCE).toContain("method: 'POST'");
+    it('supports template creation and replication through client.templates', () => {
+        expect(SOURCE).toContain('getSpaCocClient().templates.create');
+        expect(SOURCE).toContain('getSpaCocClient().templates.replicate');
     });
 
     it('validates template name with kebab-case regex', () => {

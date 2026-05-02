@@ -5,6 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import type { Template, TemplateChangedFile, TemplateDetail } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Button, cn, Dialog, Spinner } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
@@ -20,35 +22,12 @@ import type { SkillTemplate } from './hooks/useSkillTemplates';
 import { useScriptTemplates } from './hooks/useScriptTemplates';
 import type { ScriptTemplate } from './hooks/useScriptTemplates';
 
-// ── Template types ──
-
-interface Template {
-    name: string;
-    kind: 'commit';
-    commitHash: string;
-    description?: string;
-    hints?: string[];
-    createdAt: string;
-    updatedAt?: string;
-}
-
-interface TemplateDetail extends Template {
-    changedFiles?: ChangedFile[];
-}
-
-interface ChangedFile {
-    path: string;
-    status: string;
-    additions?: number;
-    deletions?: number;
-}
-
 // ── Template helpers ──
 
 const enc = encodeURIComponent;
 const CT_JSON = { 'Content-Type': 'application/json' };
 
-function statusColor(status: string): string {
+function statusColor(status: TemplateChangedFile['status']): string {
     switch (status) {
         case 'added': return 'text-green-600 dark:text-green-400';
         case 'deleted': return 'text-red-500 dark:text-red-400';
@@ -66,6 +45,10 @@ function validateName(v: string): string | null {
 
 function parseHints(text: string): string[] {
     return text.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 // ── ContextMenu ──
@@ -771,27 +754,22 @@ function CreateTemplateForm({ workspaceId, editingTemplate, onClose, onSaved }: 
         setError(null);
         try {
             if (isEdit) {
-                const res = await fetch(
-                    getApiBase() + `/workspaces/${enc(workspaceId)}/templates/${enc(editingTemplate!.name)}`,
-                    { method: 'PATCH', headers: CT_JSON, body: JSON.stringify({ description, hints: parseHints(hintsText) }) }
-                );
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || `Failed: ${res.status}`);
-                }
+                await getSpaCocClient().templates.update(workspaceId, editingTemplate!.name, {
+                    description,
+                    hints: parseHints(hintsText),
+                });
             } else {
-                const res = await fetch(
-                    getApiBase() + `/workspaces/${enc(workspaceId)}/templates`,
-                    { method: 'POST', headers: CT_JSON, body: JSON.stringify({ name, kind, commitHash: commitHash.trim(), description, hints: parseHints(hintsText) }) }
-                );
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || `Failed: ${res.status}`);
-                }
+                await getSpaCocClient().templates.create(workspaceId, {
+                    name,
+                    kind,
+                    commitHash: commitHash.trim(),
+                    description,
+                    hints: parseHints(hintsText),
+                });
             }
             onSaved();
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error) {
+            setError(getErrorMessage(error));
         } finally {
             setSubmitting(false);
         }
@@ -938,24 +916,13 @@ function ReplicateDialog({ workspaceId, template, onClose }: ReplicateDialogProp
         setSubmitting(true);
         setError(null);
         try {
-            const res = await fetch(
-                getApiBase() + `/workspaces/${enc(workspaceId)}/templates/${enc(template.name)}/replicate`,
-                {
-                    method: 'POST',
-                    headers: CT_JSON,
-                    body: JSON.stringify({
-                        instruction: instruction.trim(),
-                        model: model || undefined
-                    })
-                }
-            );
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || `Failed: ${res.status}`);
-            }
+            await getSpaCocClient().templates.replicate(workspaceId, template.name, {
+                instruction: instruction.trim(),
+                model: model || undefined,
+            });
             onClose();
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error) {
+            setError(getErrorMessage(error));
         } finally {
             setSubmitting(false);
         }
@@ -1134,19 +1101,20 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
 
     const fetchTemplates = useCallback(async () => {
         try {
-            const data = await fetchApi(`/workspaces/${enc(workspaceId)}/templates`);
-            setTemplates(data?.templates || []);
+            const nextTemplates = await getSpaCocClient().templates.list(workspaceId);
+            setTemplates(nextTemplates);
         } catch {
             setTemplates([]);
+        } finally {
+            setTemplatesLoading(false);
         }
-        setTemplatesLoading(false);
     }, [workspaceId]);
 
     useEffect(() => {
         if (!selectedTemplateName) { setTemplateDetail(null); return; }
         let cancelled = false;
         setTemplateDetailLoading(true);
-        fetchApi(`/workspaces/${enc(workspaceId)}/templates/${enc(selectedTemplateName)}`)
+        getSpaCocClient().templates.detail(workspaceId, selectedTemplateName)
             .then(data => {
                 if (!cancelled) { setTemplateDetail(data); setTemplateDetailLoading(false); }
             })
@@ -1158,10 +1126,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
 
     const handleDeleteTemplate = async (name: string) => {
         if (!confirm(`Delete template "${name}"?`)) return;
-        await fetch(
-            getApiBase() + `/workspaces/${enc(workspaceId)}/templates/${enc(name)}`,
-            { method: 'DELETE' }
-        );
+        await getSpaCocClient().templates.delete(workspaceId, name);
         if (selectedTemplateName === name) setSelectedTemplateName(null);
         fetchTemplates();
     };
