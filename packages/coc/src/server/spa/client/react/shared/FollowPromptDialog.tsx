@@ -14,6 +14,7 @@ import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { RunSkillPanel } from './RunSkillPanel';
 import type { SkillItem } from './RunSkillPanel';
+import { getSpaCocClient } from '../api/cocClient';
 
 export interface FollowPromptDialogProps {
     wsId: string;
@@ -26,9 +27,7 @@ const DEFAULT_TASKS_FOLDER = '.vscode/tasks';
 
 async function getTasksFolderPath(wsId: string): Promise<string> {
     try {
-        const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/settings`);
-        if (!res.ok) return DEFAULT_TASKS_FOLDER;
-        const data = await res.json();
+        const data = await getSpaCocClient().tasks.getSettings(wsId);
         return typeof data.folderPath === 'string' ? data.folderPath : DEFAULT_TASKS_FOLDER;
     } catch {
         return DEFAULT_TASKS_FOLDER;

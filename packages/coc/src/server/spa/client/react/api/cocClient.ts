@@ -3,6 +3,7 @@ import { getApiBase } from '../utils/config';
 
 let cachedClient: CocClient | undefined;
 let cachedKey = '';
+let cachedFetch: typeof fetch | undefined;
 
 function toLegacyFetchInit(init?: RequestInit): RequestInit {
     if (!init) return {};
@@ -37,7 +38,7 @@ export function getSpaCocClient(): CocClient {
     const wsPath = (globalThis as any).window?.__DASHBOARD_CONFIG__?.wsPath ?? '/ws';
     const key = `${apiBasePath}\n${wsPath}`;
 
-    if (!cachedClient || cachedKey !== key) {
+    if (!cachedClient || cachedKey !== key || cachedFetch !== fetch) {
         cachedClient = new CocClient({
             baseUrl: '',
             apiBasePath,
@@ -45,6 +46,7 @@ export function getSpaCocClient(): CocClient {
             fetch: ((input, init) => fetch(input, toLegacyFetchInit(init))) as typeof fetch,
         });
         cachedKey = key;
+        cachedFetch = fetch;
     }
 
     return cachedClient;
@@ -106,4 +108,5 @@ export async function requestSpaApi<T = unknown>(path: string, options?: Request
 export function resetSpaCocClientForTests(): void {
     cachedClient = undefined;
     cachedKey = '';
+    cachedFetch = undefined;
 }

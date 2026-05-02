@@ -10,6 +10,7 @@ import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { getSpaCocClient } from '../api/cocClient';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;
@@ -22,9 +23,7 @@ const DEFAULT_TASKS_FOLDER = '.vscode/tasks';
 
 async function getTasksFolderPath(wsId: string): Promise<string> {
     try {
-        const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/settings`);
-        if (!res.ok) return DEFAULT_TASKS_FOLDER;
-        const data = await res.json();
+        const data = await getSpaCocClient().tasks.getSettings(wsId);
         return typeof data.folderPath === 'string' ? data.folderPath : DEFAULT_TASKS_FOLDER;
     } catch {
         return DEFAULT_TASKS_FOLDER;
@@ -45,10 +44,9 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
 
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/models')
-            .then(r => r.ok ? r.json() : [])
-            .then((data: any) => {
-                if (!cancelled) setModels(Array.isArray(data) ? data.map((m: any) => m.id) : []);
+        getSpaCocClient().models.list()
+            .then((data) => {
+                if (!cancelled) setModels(data.map((m) => m.id));
             })
             .catch(() => {});
         return () => { cancelled = true; };

@@ -9,6 +9,7 @@ export { QueueClient } from './queue';
 export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
 export { SkillsClient } from './skills';
+export { TasksClient } from './tasks';
 export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -335,9 +335,10 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
         }
         setError(null);
 
+        const tasksClient = getSpaCocClient().tasks;
         Promise.all([
-            fetchApi(`/workspaces/${encodeURIComponent(wsId)}/summary?showArchived=true`).then((res: any) => res?.tasks ?? null),
-            fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/comment-counts`).catch(() => null),
+            tasksClient.getTree(wsId, { showArchived: true }),
+            tasksClient.getCommentCounts(wsId).catch(() => null),
         ]).then(([tasksData, countsData]) => {
             const filteredTree = tasksData && typeof tasksData === 'object'
                 ? filterGitMetadataFolders(tasksData as TaskFolder)
@@ -349,7 +350,7 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
             hasLoadedOnce.current = true;
             setLoading(false);
         }).catch((err) => {
-            setError(err instanceof Error ? err.message : 'Failed to load tasks');
+            setError(getSpaCocClientErrorMessage(err, 'Failed to load tasks'));
             setLoading(false);
         });
     }, [wsId]);

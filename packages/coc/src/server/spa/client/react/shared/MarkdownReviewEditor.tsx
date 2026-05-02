@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/ui/useMarkdownPreview';
 import type { RenderCommentInfo } from '../../diff/markdown-renderer';
 import { useTaskComments } from '../tasks/hooks/useTaskComments';
@@ -29,7 +28,6 @@ import {
 } from '@plusplusoneplusplus/forge/editor/anchor';
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
-import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -41,6 +39,7 @@ import { isAbsolutePath } from '../utils/path-resolution';
 import { RichEditorCore } from '../features/notes/editor/RichEditorCore';
 import { markdownToHtml, htmlToMarkdown } from '../features/notes/editor/noteMarkdown';
 import type { Editor } from '@tiptap/core';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
@@ -97,14 +96,14 @@ export interface MarkdownReviewEditorProps {
 const MIN_SELECTION_LENGTH = 3;
 
 async function fetchTaskContent(wsId: string, filePath: string): Promise<string> {
-    const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
+    const data = await getSpaCocClient().tasks.getContent(wsId, filePath);
     if (typeof data === 'string') return data;
     if (typeof data?.content === 'string') return data.content;
     return '';
 }
 
 async function fetchWorkspaceFileContent(wsId: string, filePath: string): Promise<string> {
-    const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/files/preview?path=${encodeURIComponent(filePath)}&lines=0`);
+    const data = await getSpaCocClient().tasks.previewWorkspaceFile(wsId, filePath, { lines: 0 });
     if (typeof data === 'string') return data;
     if (typeof data?.content === 'string') return data.content;
     if (Array.isArray(data?.lines)) return data.lines.join('\n');
@@ -192,11 +191,7 @@ export function MarkdownReviewEditor({
         const prev = taskStatus;
         setTaskStatus(newStatus);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: filePath, status: newStatus }),
-            });
+            await getSpaCocClient().tasks.updateStatus(wsId, filePath, newStatus);
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
         } catch {
             setTaskStatus(prev);
@@ -360,20 +355,12 @@ export function MarkdownReviewEditor({
             const contentToSave = viewMode === 'rich'
                 ? htmlToMarkdown(richContentRef.current)
                 : editedContent;
-            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/content`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: filePath, content: contentToSave }),
-            });
-            if (!res.ok) {
-                const errBody = await res.text();
-                throw new Error(errBody || `Save failed (${res.status})`);
-            }
+            await getSpaCocClient().tasks.writeContent(wsId, { path: filePath, content: contentToSave });
             setRawContent(contentToSave);
             if (viewMode === 'rich') setRichDirty(false);
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save');
+            setError(getSpaCocClientErrorMessage(err, 'Failed to save'));
         } finally {
             setSaving(false);
         }

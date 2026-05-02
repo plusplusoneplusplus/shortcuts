@@ -4,7 +4,8 @@
  * against the existing REST API.
  */
 
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 export interface FolderActionsResult {
     renameFolder:    (folderPath: string, newName: string) => Promise<void>;
@@ -17,15 +18,12 @@ export interface FolderActionsResult {
     deleteFolder:    (folderPath: string, taskRootPath?: string) => Promise<void>;
 }
 
-async function apiFetch(method: string, url: string, body: object): Promise<void> {
-    const res = await fetch(getApiBase() + url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`${method} ${url} failed (${res.status}): ${text}`);
+async function runTaskAction(action: Promise<unknown>, label: string): Promise<void> {
+    try {
+        await action;
+    } catch (error) {
+        const status = error instanceof CocApiError ? ` (${error.status})` : '';
+        throw new Error(`${label} failed${status}: ${getSpaCocClientErrorMessage(error, 'request failed')}`);
     }
 }
 
@@ -35,39 +33,39 @@ export interface FolderActionsOptions {
 }
 
 export function useFolderActions(wsId: string, options?: FolderActionsOptions): FolderActionsResult {
-    const base = `/workspaces/${encodeURIComponent(wsId)}/tasks`;
+    const tasks = getSpaCocClient().tasks;
 
     return {
         renameFolder: (folderPath, newName) =>
-            apiFetch('PATCH', base, { path: folderPath, newName }),
+            runTaskAction(tasks.rename(wsId, folderPath, newName), 'Rename folder'),
 
         createSubfolder: (parentPath, name) =>
-            apiFetch('POST', base, { type: 'folder', name, parent: parentPath }),
+            runTaskAction(tasks.create(wsId, { type: 'folder', name, parent: parentPath }), 'Create folder'),
 
         createTask: (folderPath, name, docType?) => {
-            const body: Record<string, string> = { name, folder: folderPath };
+            const body: { name: string; folder: string; docType?: string } = { name, folder: folderPath };
             if (docType !== undefined) {
                 body.docType = docType;
             }
-            return apiFetch('POST', base, body);
+            return runTaskAction(tasks.create(wsId, body), 'Create task');
         },
 
         archiveFolder: async (folderPath, taskRootPath?) => {
-            await apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) });
+            await runTaskAction(tasks.archive(wsId, { path: folderPath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Archive folder');
             options?.onArchived?.();
         },
 
         unarchiveFolder: (folderPath, taskRootPath?) =>
-            apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
+            runTaskAction(tasks.archive(wsId, { path: folderPath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Unarchive folder'),
 
         moveFolder: (sourcePath, destinationFolder) =>
-            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),
+            runTaskAction(tasks.move(wsId, { sourcePath, destinationFolder }), 'Move folder'),
 
         moveFolderToWorkspace: (sourcePath, destinationWorkspaceId, destinationFolder) =>
-            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder, destinationWorkspaceId }),
+            runTaskAction(tasks.move(wsId, { sourcePath, destinationFolder, destinationWorkspaceId }), 'Move folder'),
 
         deleteFolder: (folderPath, taskRootPath?) =>
-            apiFetch('DELETE', base, { path: folderPath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
+            runTaskAction(tasks.delete(wsId, { path: folderPath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Delete folder'),
     };
 }
 

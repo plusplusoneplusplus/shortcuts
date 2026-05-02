@@ -17,7 +17,7 @@ import { AttachmentPreviews } from '../ui/AttachmentPreviews';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,10 +152,9 @@ export function GenerateTaskDialog({
     // --- fetch models on mount ---
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/models')
-            .then(r => (r.ok ? r.json() : []))
-            .then((data: any) => {
-                if (!cancelled) { if (Array.isArray(data)) setModels(data.map((m: any) => m.id)); }
+        getSpaCocClient().models.list()
+            .then((data) => {
+                if (!cancelled) { setModels(data.map((m) => m.id)); }
             })
             .catch(() => {});
         return () => { cancelled = true; };
@@ -164,10 +163,8 @@ export function GenerateTaskDialog({
     // --- fetch task folders on mount ---
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/summary`)
-            .then(r => (r.ok ? r.json() : null))
-            .then(resp => {
-                const data = resp?.tasks;
+        getSpaCocClient().tasks.getTree(wsId)
+            .then(data => {
                 if (!cancelled && data) {
                     const filtered = filterGitMetadataFolders(data as TaskFolder);
                     const paths = flattenFolders(filtered);

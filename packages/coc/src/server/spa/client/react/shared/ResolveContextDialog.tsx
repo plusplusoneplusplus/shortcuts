@@ -11,7 +11,7 @@ import { Dialog } from '../ui/Dialog';
 import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
 import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
 import { SlashCommandMenu, type SkillItem } from '../features/chat/SlashCommandMenu';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 
 const SESSION_KEY = 'coc:skipResolveDialog';
 
@@ -40,13 +40,14 @@ export function ResolveContextDialog({
     // Fetch skills
     useEffect(() => {
         if (!open || !wsId) return;
-        const controller = new AbortController();
-        fetchApi('/workspaces/' + encodeURIComponent(wsId) + '/skills/all', { signal: controller.signal })
-            .then((data: any) => {
-                setSkills(data?.merged ?? data?.skills ?? []);
+        let cancelled = false;
+        getSpaCocClient().skills.listAllWorkspace(wsId)
+            .then((data) => {
+                if (cancelled) return;
+                setSkills(data?.merged ?? []);
             })
             .catch(() => { /* ignore */ });
-        return () => controller.abort();
+        return () => { cancelled = true; };
     }, [open, wsId]);
 
     // Focus input when dialog opens

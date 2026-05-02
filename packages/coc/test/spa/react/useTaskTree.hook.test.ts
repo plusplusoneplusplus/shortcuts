@@ -6,17 +6,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
+import { useTaskTree } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 import type { TaskFolder } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
 
-// Mock fetchApi at module level — useTaskTree calls fetchApi, not fetch directly
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
-}));
+const mockFetch = vi.fn();
 
-import { fetchApi } from '../../../src/server/spa/client/react/hooks/useApi';
-import { useTaskTree } from '../../../src/server/spa/client/react/tasks/hooks/useTaskTree';
+function jsonResponse(data: unknown): Partial<Response> {
+    return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => data,
+        text: async () => JSON.stringify(data),
+    };
+}
 
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
+function mockTaskTreeApi(tree: unknown, counts: Record<string, number> | Error = {}): void {
+    mockFetch.mockImplementation((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('comment-counts')) {
+            if (counts instanceof Error) return Promise.reject(counts);
+            return Promise.resolve(jsonResponse({ counts }));
+        }
+        return Promise.resolve(jsonResponse({ workflows: [], tasks: tree }));
+    });
+}
 
 function makeTree(overrides?: Partial<TaskFolder>): TaskFolder {
     return {
@@ -33,21 +47,20 @@ const countsData: Record<string, number> = { 'task1.md': 3 };
 
 describe('useTaskTree hook', () => {
     beforeEach(() => {
-        mockFetchApi.mockReset();
+        mockFetch.mockReset();
+        vi.stubGlobal('fetch', mockFetch);
     });
 
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
     });
 
     // ─── Mount and loading ───────────────────────────────────────
 
     it('loads tree and comment counts on mount', async () => {
         const tree = makeTree();
-        mockFetchApi.mockImplementation((path: string) => {
-            if (path.includes('comment-counts')) return Promise.resolve(countsData);
-            return Promise.resolve({ workflows: [], tasks: tree });
-        });
+        mockTaskTreeApi(tree, countsData);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -61,7 +74,7 @@ describe('useTaskTree hook', () => {
     });
 
     it('sets loading=true initially then false after load', async () => {
-        mockFetchApi.mockResolvedValue({ workflows: [], tasks: makeTree() });
+        mockTaskTreeApi(makeTree());
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -75,8 +88,8 @@ describe('useTaskTree hook', () => {
 
     // ─── Error handling ──────────────────────────────────────────
 
-    it('sets error when fetchApi rejects', async () => {
-        mockFetchApi.mockRejectedValue(new Error('Network failure'));
+    it('sets error when task tree fetch rejects', async () => {
+        mockFetch.mockRejectedValue(new Error('Network failure'));
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -97,10 +110,7 @@ describe('useTaskTree hook', () => {
                 makeTree({ name: 'feature', relativePath: 'feature' }),
             ],
         });
-        mockFetchApi.mockImplementation((path: string) => {
-            if (path.includes('comment-counts')) return Promise.resolve({});
-            return Promise.resolve({ workflows: [], tasks: treeWithGit });
-        });
+        mockTaskTreeApi(treeWithGit);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -116,10 +126,7 @@ describe('useTaskTree hook', () => {
 
     it('comment-counts failure does not block tree load', async () => {
         const tree = makeTree();
-        mockFetchApi.mockImplementation((path: string) => {
-            if (path.includes('comment-counts')) return Promise.reject(new Error('counts failed'));
-            return Promise.resolve({ workflows: [], tasks: tree });
-        });
+        mockTaskTreeApi(tree, new Error('counts failed'));
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -136,7 +143,7 @@ describe('useTaskTree hook', () => {
 
     it('refresh() re-fetches data', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
+        mockTaskTreeApi(tree);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -144,20 +151,20 @@ describe('useTaskTree hook', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockFetch.mock.calls.length;
 
         act(() => {
             result.current.refresh();
         });
 
         await waitFor(() => {
-            expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+            expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore);
         });
     });
 
     it('does not set loading=true on subsequent refresh', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
+        mockTaskTreeApi(tree);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -182,7 +189,7 @@ describe('useTaskTree hook', () => {
 
     it('responds to tasks-changed CustomEvent for matching wsId', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
+        mockTaskTreeApi(tree);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -190,20 +197,20 @@ describe('useTaskTree hook', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockFetch.mock.calls.length;
 
         act(() => {
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws-1' } }));
         });
 
         await waitFor(() => {
-            expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+            expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore);
         });
     });
 
     it('ignores tasks-changed event for different wsId', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
+        mockTaskTreeApi(tree);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -211,23 +218,20 @@ describe('useTaskTree hook', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockFetch.mock.calls.length;
 
         act(() => {
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws-other' } }));
         });
 
         // No extra calls should have been made
-        expect(mockFetchApi.mock.calls.length).toBe(callsBefore);
+        expect(mockFetch.mock.calls.length).toBe(callsBefore);
     });
 
     // ─── Edge cases ──────────────────────────────────────────────
 
     it('returns null tree when API returns non-object', async () => {
-        mockFetchApi.mockImplementation((path: string) => {
-            if (path.includes('comment-counts')) return Promise.resolve({});
-            return Promise.resolve(null);
-        });
+        mockTaskTreeApi(null);
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -241,8 +245,8 @@ describe('useTaskTree hook', () => {
     it('handles empty wsId gracefully', async () => {
         const { result } = renderHook(() => useTaskTree(''));
 
-        // With empty wsId, refresh short-circuits — no fetchApi calls
-        expect(mockFetchApi).not.toHaveBeenCalled();
+        // With empty wsId, refresh short-circuits — no fetch calls
+        expect(mockFetch).not.toHaveBeenCalled();
         // loading remains true since refresh never runs
         expect(result.current.tree).toBeNull();
     });

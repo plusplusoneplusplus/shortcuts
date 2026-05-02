@@ -6,7 +6,7 @@ import { Button } from '../ui';
 import { useTaskPanel } from '../contexts/TaskContext';
 
 import { isContextFile } from './hooks/useTaskTree';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 
 interface TaskActionsProps {
     wsId: string;
@@ -42,11 +42,7 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
     const handleOpenInEditor = async () => {
         if (!openFilePath) return;
         try {
-            await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/open-file', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: openFilePath }),
-            });
+            await getSpaCocClient().tasks.openFile(wsId, { path: openFilePath });
         } catch { /* ignore */ }
     };
 

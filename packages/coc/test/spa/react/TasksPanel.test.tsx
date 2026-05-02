@@ -312,7 +312,7 @@ describe('TasksPanel', () => {
     it('renders task tree when data loads', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(mockCommentCounts) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: mockCommentCounts }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
@@ -1574,7 +1574,7 @@ describe('TaskTreeItem — hover tooltip', () => {
         };
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'spec.md': 7 }) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: { 'spec.md': 7 } }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
@@ -1598,7 +1598,7 @@ describe('TaskTreeItem — hover tooltip', () => {
         };
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'coc/task.md': 2 }) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: { 'coc/task.md': 2 } }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });

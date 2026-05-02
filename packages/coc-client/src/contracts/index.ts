@@ -8,6 +8,7 @@ export * from './queue';
 export * from './schedules';
 export * from './seen-state';
 export * from './skills';
+export * from './tasks';
 export * from './templates';
 export * from './work-items';
 export * from './workspaces';

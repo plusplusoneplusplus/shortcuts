@@ -31,7 +31,7 @@ function makeTree(name = 'root') {
 function mockApiSuccess(tree: any = makeTree(), counts: any = {}) {
     mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(counts) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ counts }) });
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────

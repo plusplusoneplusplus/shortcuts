@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase, getWsPath } from '../../utils/config';
+import { getWsPath } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type {
     TaskComment,
     TaskCommentStatus,
@@ -68,18 +69,6 @@ export interface SelectionCapture {
 }
 
 // ============================================================================
-// API Helpers
-// ============================================================================
-
-function commentsUrl(wsId: string, taskPath: string): string {
-    return getApiBase() + '/comments/' + encodeURIComponent(wsId) + '/' + encodeURIComponent(taskPath);
-}
-
-function commentUrl(wsId: string, taskPath: string, commentId: string): string {
-    return commentsUrl(wsId, taskPath) + '/' + encodeURIComponent(commentId);
-}
-
-// ============================================================================
 // Hook
 // ============================================================================
 
@@ -126,15 +115,13 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(commentsUrl(wsId, taskPath));
-            if (!res.ok) throw new Error('Failed to load comments');
-            const data = await res.json();
+            const comments = await getSpaCocClient().tasks.listComments(wsId, taskPath);
             if (mountedRef.current) {
-                setComments(data.comments || []);
+                setComments(comments || []);
             }
         } catch (err) {
             if (mountedRef.current) {
-                setError(err instanceof Error ? err.message : 'Failed to load comments');
+                setError(getSpaCocClientErrorMessage(err, 'Failed to load comments'));
                 setComments([]);
             }
         } finally {
@@ -145,10 +132,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const fetchCounts = useCallback(async () => {
         if (!wsId) return;
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/comment-counts');
-            if (!res.ok) return;
-            const data = await res.json();
-            if (mountedRef.current) setCommentCounts(data.counts || {});
+            const counts = await getSpaCocClient().tasks.getCommentCounts(wsId);
+            if (mountedRef.current) setCommentCounts(counts || {});
         } catch {
             // Silently ignore count fetch failures
         }
@@ -160,14 +145,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     }, [fetchComments, fetchCounts]);
 
     const addComment = useCallback(async (req: CreateCommentRequest): Promise<TaskComment> => {
-        const res = await fetch(commentsUrl(wsId, taskPath), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(req),
-        });
-        if (!res.ok) throw new Error('Failed to create comment');
-        const data = await res.json();
-        const comment: TaskComment = data.comment;
+        const comment = await getSpaCocClient().tasks.createComment(wsId, taskPath, req);
         if (mountedRef.current) {
             setComments(prev => [...prev, comment]);
         }
@@ -175,14 +153,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     }, [wsId, taskPath]);
 
     const updateCommentFn = useCallback(async (id: string, req: UpdateCommentRequest): Promise<TaskComment> => {
-        const res = await fetch(commentUrl(wsId, taskPath, id), {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(req),
-        });
-        if (!res.ok) throw new Error('Failed to update comment');
-        const data = await res.json();
-        const comment: TaskComment = data.comment;
+        const comment = await getSpaCocClient().tasks.updateComment(wsId, taskPath, id, req);
         if (mountedRef.current) {
             setComments(prev => prev.map(c => c.id === id ? comment : c));
         }
@@ -193,8 +164,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         if (deletingIds.has(id)) return;
         setDeletingIds(prev => new Set(prev).add(id));
         try {
-            const res = await fetch(commentUrl(wsId, taskPath, id), { method: 'DELETE' });
-            if (!res.ok) throw new Error('Failed to delete comment');
+            await getSpaCocClient().tasks.deleteComment(wsId, taskPath, id);
             if (mountedRef.current) {
                 setComments(prev => prev.filter(c => c.id !== id));
             }
@@ -234,20 +204,13 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         setAiLoadingIds(prev => new Set(prev).add(id));
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
         try {
-            const url = commentUrl(wsId, taskPath, id) + '/ask-ai';
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commandId, customQuestion, documentContext }),
-            });
-            if (!res.ok) throw new Error('AI request failed');
-            const data = await res.json();
+            const data = await getSpaCocClient().tasks.askCommentAI(wsId, taskPath, id, { commandId, customQuestion, documentContext });
             if (mountedRef.current) {
                 setComments(prev => prev.map(c => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
             }
         } catch (err) {
             if (mountedRef.current) {
-                const msg = err instanceof Error ? err.message : 'AI request failed';
+                const msg = getSpaCocClientErrorMessage(err, 'AI request failed');
                 setAiErrors(prev => new Map(prev).set(id, msg));
             }
         } finally {
@@ -287,13 +250,11 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const resolveWithAI = useCallback(
         async (documentContent: string, filePath: string, userContext?: string, skills?: string[]): Promise<ResolveWithAIResult> => {
             const totalCount = comments.filter(c => c.status === 'open').length;
-            const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
-            });
-            if (!aiRes.ok) throw new Error('Batch resolve failed');
-            await aiRes.json(); // consume response (contains taskId)
+            try {
+                await getSpaCocClient().tasks.batchResolveComments(wsId, taskPath, { documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) });
+            } catch {
+                throw new Error('Batch resolve failed');
+            }
             return { totalCount };
         },
         [wsId, taskPath, comments]
@@ -301,13 +262,11 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
 
     const fixWithAI = useCallback(
         async (id: string, documentContent: string, filePath: string, userContext?: string, skills?: string[]): Promise<FixWithAIResult> => {
-            const aiRes = await fetch(commentUrl(wsId, taskPath, id) + '/ask-ai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commandId: 'resolve', documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
-            });
-            if (!aiRes.ok) throw new Error('AI resolve failed');
-            await aiRes.json(); // consume response (contains taskId)
+            try {
+                await getSpaCocClient().tasks.askCommentAI(wsId, taskPath, id, { commandId: 'resolve', documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) });
+            } catch {
+                throw new Error('AI resolve failed');
+            }
             return {};
         },
         [wsId, taskPath]

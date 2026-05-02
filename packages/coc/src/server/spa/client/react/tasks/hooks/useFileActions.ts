@@ -4,7 +4,8 @@
  * against the existing REST API.
  */
 
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 export interface FileActionsResult {
     renameFile:    (filePath: string, newName: string) => Promise<void>;
@@ -16,15 +17,12 @@ export interface FileActionsResult {
     updateStatus:  (filePath: string, status: string) => Promise<void>;
 }
 
-async function apiFetch(method: string, url: string, body: object): Promise<void> {
-    const res = await fetch(getApiBase() + url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`${method} ${url} failed (${res.status}): ${text}`);
+async function runTaskAction(action: Promise<unknown>, label: string): Promise<void> {
+    try {
+        await action;
+    } catch (error) {
+        const status = error instanceof CocApiError ? ` (${error.status})` : '';
+        throw new Error(`${label} failed${status}: ${getSpaCocClientErrorMessage(error, 'request failed')}`);
     }
 }
 
@@ -34,31 +32,31 @@ export interface FileActionsOptions {
 }
 
 export function useFileActions(wsId: string, options?: FileActionsOptions): FileActionsResult {
-    const base = `/workspaces/${encodeURIComponent(wsId)}/tasks`;
+    const tasks = getSpaCocClient().tasks;
 
     return {
         renameFile: (filePath, newName) =>
-            apiFetch('PATCH', base, { path: filePath, newName }),
+            runTaskAction(tasks.rename(wsId, filePath, newName), 'Rename file'),
 
         archiveFile: async (filePath, taskRootPath?) => {
-            await apiFetch('POST', `${base}/archive`, { path: filePath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) });
+            await runTaskAction(tasks.archive(wsId, { path: filePath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Archive file');
             options?.onArchived?.();
         },
 
         unarchiveFile: (filePath, taskRootPath?) =>
-            apiFetch('POST', `${base}/archive`, { path: filePath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
+            runTaskAction(tasks.archive(wsId, { path: filePath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Unarchive file'),
 
         deleteFile: (filePath, taskRootPath?) =>
-            apiFetch('DELETE', base, { path: filePath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
+            runTaskAction(tasks.delete(wsId, { path: filePath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }), 'Delete file'),
 
         moveFile: (sourcePath, destinationFolder) =>
-            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),
+            runTaskAction(tasks.move(wsId, { sourcePath, destinationFolder }), 'Move file'),
 
         moveFileToWorkspace: (sourcePath, destinationWorkspaceId, destinationFolder) =>
-            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder, destinationWorkspaceId }),
+            runTaskAction(tasks.move(wsId, { sourcePath, destinationFolder, destinationWorkspaceId }), 'Move file'),
 
         updateStatus: (filePath, status) =>
-            apiFetch('PATCH', base, { path: filePath, status }),
+            runTaskAction(tasks.updateStatus(wsId, filePath, status), 'Update status'),
     };
 }
 

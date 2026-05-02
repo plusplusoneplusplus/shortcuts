@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { TaskProvider, useTaskPanel } from '../contexts/TaskContext';
 import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, type TaskFolder, STATUS_PILLS } from './hooks/useTaskTree';
-import { fetchApi } from '../hooks/useApi';
+import { getSpaCocClient } from '../api/cocClient';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useFileActions } from './hooks/useFileActions';
 import { useArchiveUndo } from './hooks/useArchiveUndo';
@@ -70,7 +70,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, o
     const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
     const [folderPaths, setFolderPaths] = useState<string[]>([]);
     useEffect(() => {
-        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/settings`)
+        getSpaCocClient().tasks.getSettings(wsId)
             .then((data: any) => {
                 if (data?.folderPath) setTasksFolder(data.folderPath);
                 setFolderPaths(data?.folderPaths ?? []);

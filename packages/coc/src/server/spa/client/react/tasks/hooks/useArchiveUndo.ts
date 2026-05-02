@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 
 export interface ArchiveUndoResult {
     undoAvailable: boolean;
@@ -17,33 +17,28 @@ export interface ArchiveUndoResult {
 }
 
 export function useArchiveUndo(wsId: string, onUndone?: () => void): ArchiveUndoResult {
-    const base = `${getApiBase()}/workspaces/${encodeURIComponent(wsId)}/tasks/undo-archive`;
-
     const [undoAvailable, setUndoAvailable] = useState(false);
     const [undoInFlight, setUndoInFlight] = useState(false);
 
     // Check undo availability on mount
     useEffect(() => {
-        fetch(base, { method: 'GET' })
-            .then(r => r.ok ? r.json() : null)
-            .then((data: any) => { if (data?.available) setUndoAvailable(true); })
+        getSpaCocClient().tasks.getUndoArchiveStatus(wsId)
+            .then((data) => { if (data?.available) setUndoAvailable(true); })
             .catch(() => {});
-    }, [base]);
+    }, [wsId]);
 
     const undoLastArchive = useCallback(async () => {
         setUndoInFlight(true);
         try {
-            const res = await fetch(base, { method: 'POST' });
-            if (!res.ok) {
-                const text = await res.text().catch(() => '');
-                throw new Error(`Undo failed (${res.status}): ${text}`);
-            }
+            await getSpaCocClient().tasks.undoArchive(wsId);
             setUndoAvailable(false);
             onUndone?.();
+        } catch (error) {
+            throw new Error(`Undo failed: ${getSpaCocClientErrorMessage(error, 'request failed')}`);
         } finally {
             setUndoInFlight(false);
         }
-    }, [base, onUndone]);
+    }, [wsId, onUndone]);
 
     return { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive };
 }
