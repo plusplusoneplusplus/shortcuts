@@ -1,10 +1,11 @@
-import { HealthClient, MemoryClient, ModelsClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, TemplatesClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { GitClient, HealthClient, MemoryClient, ModelsClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, TemplatesClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
 
 export class CocClient {
   readonly options: NormalizedCocClientOptions;
+  readonly git: GitClient;
   readonly health: HealthClient;
   readonly memory: MemoryClient;
   readonly models: ModelsClient;
@@ -25,6 +26,7 @@ export class CocClient {
   constructor(options: CocClientOptions = {}) {
     this.options = normalizeOptions(options);
     this.transport = new HttpTransport(this.options);
+    this.git = new GitClient(this.transport);
     this.health = new HealthClient(this.transport);
     this.memory = new MemoryClient(this.transport);
     this.models = new ModelsClient(this.transport);

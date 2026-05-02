@@ -1,4 +1,5 @@
 export * from './common';
+export * from './git';
 export * from './memory';
 export * from './preferences';
 export * from './processes';

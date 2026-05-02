@@ -1,3 +1,4 @@
+export { GitClient } from './git';
 export { HealthClient } from './health';
 export { MemoryClient } from './memory';
 export { ModelsClient } from './models';

@@ -1,11 +1,11 @@
 /**
  * ThemeProvider — replicates legacy theme.ts behaviour inside React.
  * Reads/writes localStorage['ai-dash-theme'], toggles dark class on <html>.
- * Also persists theme to server via PATCH /api/preferences for cross-session persistence.
+ * Also persists theme to server for cross-session persistence.
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 
 type Theme = 'auto' | 'dark' | 'light';
 
@@ -34,11 +34,7 @@ function applyTheme(isDark: boolean) {
 
 /** Persist theme to server (fire-and-forget). */
 function persistThemeToServer(theme: Theme) {
-    fetch(getApiBase() + '/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme }),
-    }).catch(() => {});
+    getSpaCocClient().preferences.patchGlobal({ theme }).catch(() => {});
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -52,9 +48,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(getApiBase() + '/preferences');
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const prefs = await getSpaCocClient().preferences.getGlobal();
                 if (cancelled) return;
                 const serverTheme = prefs.theme;
                 if (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') {

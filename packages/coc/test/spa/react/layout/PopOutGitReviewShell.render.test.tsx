@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 const mocks = vi.hoisted(() => ({
-    fetchApi: vi.fn(),
+    getCommit: vi.fn(),
+    commitDiffPath: vi.fn(),
+    getBranchRange: vi.fn(),
+    listBranchRangeFiles: vi.fn(),
     useCachedDiff: vi.fn(),
     postMessage: vi.fn(),
     commentCounts: new Map<string, number>(),
@@ -32,8 +35,15 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: unknown[]) => mocks.fetchApi(...args),
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        git: {
+            getCommit: (...args: unknown[]) => mocks.getCommit(...args),
+            commitDiffPath: (...args: unknown[]) => mocks.commitDiffPath(...args),
+            getBranchRange: (...args: unknown[]) => mocks.getBranchRange(...args),
+            listBranchRangeFiles: (...args: unknown[]) => mocks.listBranchRangeFiles(...args),
+        },
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitDiffCache', () => ({
@@ -123,24 +133,39 @@ const COMMIT_DIFF = [
 describe('PopOutGitReviewShell selected-file rendering', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.commitDiffPath.mockImplementation((workspaceId: string, hash: string) => (
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(hash)}/diff`
+        ));
+        mocks.getBranchRange.mockResolvedValue({
+            baseRef: 'main',
+            headRef: 'feature',
+            commitCount: 0,
+            additions: 0,
+            deletions: 0,
+            mergeBase: 'abc123',
+            fileCount: 1,
+            commits: [],
+        });
+        mocks.listBranchRangeFiles.mockResolvedValue({ files: [] });
         mocks.useCachedDiff.mockReturnValue({ diff: COMMIT_DIFF });
     });
 
     it('switches commit popout selected files to comment-enabled FileDiffPanel', async () => {
         window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
-        mocks.fetchApi.mockResolvedValue({
-            commit: {
-                hash: 'abc123',
-                subject: 'Fix app',
-                author: 'Test Author',
-                date: '2026-01-01T00:00:00Z',
-                parentHashes: [],
-            },
+        mocks.getCommit.mockResolvedValue({
+            hash: 'abc123',
+            shortHash: 'abc123',
+            subject: 'Fix app',
+            author: 'Test Author',
+            date: '2026-01-01T00:00:00Z',
+            parentHashes: [],
         });
 
         render(<PopOutGitReviewShell />);
 
         await screen.findByTestId('commit-detail');
+        expect(mocks.getCommit).toHaveBeenCalledWith('ws1', 'abc123');
+        expect(mocks.commitDiffPath).toHaveBeenCalledWith('ws1', 'abc123');
         fireEvent.click(screen.getByText('src/app.ts'));
 
         const panel = await screen.findByTestId('file-diff-panel');
@@ -156,21 +181,25 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
     it('switches branch-range popout selected files to comment-enabled FileDiffPanel', async () => {
         window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/branch-range');
-        mocks.fetchApi.mockImplementation((url: string) => {
-            if (url.endsWith('/git/branch-range/files')) {
-                return Promise.resolve({
-                    files: [{ path: 'src/branch.ts', status: 'modified', additions: 1, deletions: 1 }],
-                });
-            }
-            return Promise.resolve({
-                range: { baseRef: 'main', headRef: 'feature' },
-                commits: [],
-            });
+        mocks.getBranchRange.mockResolvedValue({
+            baseRef: 'main',
+            headRef: 'feature',
+            commitCount: 0,
+            additions: 1,
+            deletions: 1,
+            mergeBase: 'abc123',
+            fileCount: 1,
+            commits: [],
+        });
+        mocks.listBranchRangeFiles.mockResolvedValue({
+            files: [{ path: 'src/branch.ts', status: 'modified', additions: 1, deletions: 1 }],
         });
 
         render(<PopOutGitReviewShell />);
 
         await screen.findByTestId('branch-range-overview');
+        expect(mocks.getBranchRange).toHaveBeenCalledWith('ws1');
+        expect(mocks.listBranchRangeFiles).toHaveBeenCalledWith('ws1');
         fireEvent.click(screen.getByText('src/branch.ts'));
 
         const panel = await screen.findByTestId('file-diff-panel');

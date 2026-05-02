@@ -111,6 +111,20 @@ describe('PopOutGitReviewShell: content components', () => {
     });
 });
 
+describe('PopOutGitReviewShell: typed client loading', () => {
+    it('loads git review data through the shared SPA CoC client', () => {
+        expect(SOURCE).toContain('getSpaCocClient');
+        expect(SOURCE).toContain('.git.getCommit');
+        expect(SOURCE).toContain('.git.getBranchRange');
+        expect(SOURCE).toContain('.git.listBranchRangeFiles');
+    });
+
+    it('does not own git endpoint strings for shell data loading', () => {
+        expect(SOURCE).not.toContain('/git/branch-range/files');
+        expect(SOURCE).not.toContain('/git/commits/${encodeURIComponent(commitHash)}');
+    });
+});
+
 describe('PopOutGitReviewShell: BroadcastChannel communication', () => {
     it('uses useGitReviewPopOutChannel hook', () => {
         expect(SOURCE).toContain('useGitReviewPopOutChannel');

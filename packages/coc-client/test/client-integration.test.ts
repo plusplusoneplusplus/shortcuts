@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CocClient,
   EventsClient,
+  GitClient,
   HealthClient,
   MemoryClient,
   ModelsClient,
@@ -98,6 +99,7 @@ describe('CocClient integration wiring', () => {
     });
 
     expect(client.health).toBeInstanceOf(HealthClient);
+    expect(client.git).toBeInstanceOf(GitClient);
     expect(client.memory).toBeInstanceOf(MemoryClient);
     expect(client.models).toBeInstanceOf(ModelsClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
@@ -119,6 +121,7 @@ describe('CocClient integration wiring', () => {
     const requestSpy = vi.spyOn(transport, 'request').mockResolvedValue({} as never);
     const httpDomains = [
       client.health,
+      client.git,
       client.memory,
       client.models,
       client.preferences,
@@ -136,6 +139,7 @@ describe('CocClient integration wiring', () => {
     expect(readPrivateProperty<unknown>(client.events, 'options')).toBe(client.options);
 
     await client.health.get();
+    await client.git.getBranchRange('repo-a');
     await client.memory.getConfig();
     await client.models.list();
     await client.preferences.getGlobal();
@@ -148,6 +152,7 @@ describe('CocClient integration wiring', () => {
 
     expect(requestSpy.mock.calls.map(call => call[0])).toEqual([
       '/health',
+      '/workspaces/repo-a/git/branch-range',
       '/memory/config',
       '/models',
       '/preferences',
@@ -362,6 +367,7 @@ function typeCheckPublicSurface(): string {
   const source = `
     import {
       CocClient,
+      GitClient,
       HealthClient,
       MemoryClient,
       ModelsClient,
@@ -390,6 +396,8 @@ function typeCheckPublicSurface(): string {
       type CocWebSocket,
       type ConnectEventsOptions,
       type EventSourceConstructor,
+      type GitBranchRangeResponse,
+      type GitCommit,
       type GlobalPreferences,
       type HealthResponse,
       type MemoryConfig,
@@ -405,6 +413,7 @@ function typeCheckPublicSurface(): string {
 
     const constructors = [
       CocClient,
+      GitClient,
       HealthClient,
       MemoryClient,
       ModelsClient,
@@ -426,6 +435,23 @@ function typeCheckPublicSurface(): string {
       request: async <T = unknown>(_path: string, _options?: CocRequestOptions): Promise<T> => ({}) as T,
     };
     const client: CocClient = new CocClient(options);
+    const commit: GitCommit = {
+      hash: 'abc123',
+      shortHash: 'abc123',
+      subject: 'Fix app',
+      author: 'Test Author',
+      date: '2026-01-01T00:00:00.000Z',
+      parentHashes: [],
+    };
+    const branchRange: GitBranchRangeResponse = {
+      baseRef: 'main',
+      headRef: 'feature',
+      commitCount: 1,
+      additions: 2,
+      deletions: 1,
+      mergeBase: 'abc123',
+      fileCount: 1,
+    };
     const health: HealthResponse = { status: 'ok', uptime: 1, processCount: 0 };
     const memoryConfig: MemoryConfig = { storageDir: 'C:\\\\memory', backend: 'file' };
     const model: ModelInfo = { id: 'gpt-test', enabled: true };
@@ -482,6 +508,8 @@ function typeCheckPublicSurface(): string {
       constructors,
       adapter,
       client,
+      commit,
+      branchRange,
       health,
       memoryConfig,
       model,

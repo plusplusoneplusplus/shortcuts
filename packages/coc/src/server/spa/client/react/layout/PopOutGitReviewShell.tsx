@@ -15,13 +15,13 @@ import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../ui';
+import { getSpaCocClient } from '../api/cocClient';
 import { CommitDetail } from '../features/git/commits/CommitDetail';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
 import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource } from '../features/git/diff/diffSource';
 import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../ui';
-import { fetchApi } from '../hooks/useApi';
 import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
 import { parseDiffFileList } from '../features/git/diff/UnifiedDiffViewer';
 import { useFileCommentCounts } from '../features/git/hooks/useFileCommentCounts';
@@ -37,6 +37,7 @@ import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
 import type { FileChange } from '../features/git/diff/FileTree';
+import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -92,16 +93,16 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
 
     useEffect(() => {
         setLoading(true);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(commitHash)}`)
-            .then((data: { commit?: GitCommitItem }) => {
-                setCommit(data.commit ?? null);
+        getSpaCocClient().git.getCommit(workspaceId, commitHash)
+            .then((data: GitCommitItem) => {
+                setCommit(data);
             })
             .catch(() => setCommit(null))
             .finally(() => setLoading(false));
     }, [workspaceId, commitHash]);
 
     // Fetch the diff to extract file list (shares cache with CommitDetail)
-    const diffUrl = `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${commitHash}/diff`;
+    const diffUrl = getSpaCocClient().git.commitDiffPath(workspaceId, commitHash);
     const { diff } = useCachedDiff(diffUrl, workspaceId, commitHash);
     const fileList = diff ? parseDiffFileList(diff) : [];
 
@@ -204,14 +205,14 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
         setLoading(true);
         setError(null);
 
-        const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range`;
+        const client = getSpaCocClient();
         Promise.all([
-            fetchApi(base),
-            fetchApi(`${base}/files`).catch(() => ({ files: [] })),
+            client.git.getBranchRange(workspaceId),
+            client.git.listBranchRangeFiles(workspaceId).catch(() => ({ files: [] })),
         ])
-            .then(([rangeData, filesData]: [any, any]) => {
-                if (rangeData.range) setRange(rangeData.range);
-                if (rangeData.commits) setCommits(rangeData.commits);
+            .then(([rangeData, filesData]) => {
+                if (isBranchRangeInfo(rangeData)) setRange(rangeData);
+                if (isBranchRangeInfo(rangeData) && rangeData.commits) setCommits(rangeData.commits);
                 if (filesData.files) setFiles(filesData.files);
             })
             .catch((err: Error) => setError(err.message))
@@ -300,6 +301,10 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
             </div>
         </div>
     );
+}
+
+function isBranchRangeInfo(data: GitBranchRangeResponse): data is BranchRangeInfo {
+    return !('onDefaultBranch' in data) && typeof data.baseRef === 'string' && typeof data.headRef === 'string';
 }
 
 // ── Inner content (uses toast + channel) ───────────────────────────────────────
