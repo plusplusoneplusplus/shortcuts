@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Depends on the published `@plusplusoneplusplus/forge` package (`^1.0.0`) as a runtime dependency. Published to npm as `@plusplusoneplusplus/coc` (public access). Requires Node.js ≥ 24. The dashboard SPA consumes `@plusplusoneplusplus/coc-client` for shared REST transport, typed git, preferences, workflow, memory, pull-request, schedule, seen-state calls, and process WebSocket lifecycle while preserving local React hook APIs (`fetchApi`, `useWebSocket`, `seenStateApi`).
+Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Depends on the published `@plusplusoneplusplus/forge` package (`^1.0.0`) as a runtime dependency. Published to npm as `@plusplusoneplusplus/coc` (public access). Requires Node.js ≥ 24. The dashboard SPA consumes `@plusplusoneplusplus/coc-client` for shared REST transport, typed git, preferences, workflow, memory, pull-request, schedule, seen-state, skills calls, and process WebSocket lifecycle while preserving local React hook APIs (`fetchApi`, `useWebSocket`, `seenStateApi`).
 
 ## Build & Test
 

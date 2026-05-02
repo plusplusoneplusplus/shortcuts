@@ -7,6 +7,7 @@ export * from './pull-requests';
 export * from './queue';
 export * from './schedules';
 export * from './seen-state';
+export * from './skills';
 export * from './templates';
 export * from './work-items';
 export * from './workspaces';

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Button } from '../../ui';
 import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
@@ -21,21 +21,15 @@ export function SkillsInstalledPanel() {
 
     const loadSkills = useCallback(() => {
         setLoading(true);
-        fetchApi('/skills')
-            .then((data: any) => {
-                if (data?.skills) setSkills(data.skills);
-            })
+        getSpaCocClient().skills.listGlobal()
+            .then(setSkills)
             .catch(() => {})
             .finally(() => setLoading(false));
     }, []);
 
     const loadConfig = useCallback(() => {
-        fetchApi('/skills/config')
-            .then((data: any) => {
-                if (Array.isArray(data?.globalDisabledSkills)) {
-                    setDisabledSkills(data.globalDisabledSkills);
-                }
-            })
+        getSpaCocClient().skills.getGlobalConfig()
+            .then(data => setDisabledSkills(Array.isArray(data.globalDisabledSkills) ? data.globalDisabledSkills : []))
             .catch(() => {});
     }, []);
 
@@ -52,8 +46,8 @@ export function SkillsInstalledPanel() {
         }
         setExpandedSkill(name);
         setDetailLoading(true);
-        fetchApi(`/skills/${encodeURIComponent(name)}`)
-            .then((data: any) => setSkillDetail(data?.skill ?? null))
+        getSpaCocClient().skills.detailGlobal(name)
+            .then(data => setSkillDetail(data.skill ?? null))
             .catch(() => setSkillDetail(null))
             .finally(() => setDetailLoading(false));
     }, [expandedSkill]);
@@ -63,15 +57,11 @@ export function SkillsInstalledPanel() {
             ? disabledSkills.filter(s => s !== name)
             : [...disabledSkills, name];
         setDisabledSkills(updated);
-        fetchApi('/skills/config', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ globalDisabledSkills: updated }),
-        }).catch(() => {});
+        getSpaCocClient().skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
     }, [disabledSkills]);
 
     const handleDeleteSkill = useCallback((name: string) => {
-        fetchApi(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
+        getSpaCocClient().skills.deleteGlobal(name)
             .then(() => {
                 setSkills(prev => prev.filter(s => s.name !== name));
                 setDeleteConfirmName(null);

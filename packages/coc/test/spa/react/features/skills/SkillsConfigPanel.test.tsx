@@ -10,13 +10,19 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { SkillsConfigPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsConfigPanel';
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const mockFetchApi = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        skills: {
+            getGlobalConfig: () => mockFetchApi('/skills/config'),
+            updateGlobalConfig: (body: unknown) => mockFetchApi('/skills/config', {
+                method: 'PUT',
+                body: JSON.stringify(body),
+            }),
+        },
+    }),
 }));
-
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
-
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
 
 afterEach(() => {
     vi.clearAllMocks();

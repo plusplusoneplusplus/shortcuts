@@ -9,13 +9,33 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { SkillsBundledPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsBundledPanel';
 
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+const mockFetchApi = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        skills: {
+            listBundledGlobal: async () => {
+                const data = await mockFetchApi('/skills/bundled');
+                return data?.skills ?? [];
+            },
+            installGlobal: (body: unknown) => mockFetchApi('/skills/install', {
+                method: 'POST',
+                body: JSON.stringify(body),
+            }),
+            scanGlobal: async (body: { url: string }) => {
+                const data = await mockFetchApi('/skills/scan', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                });
+                return {
+                    success: data?.success ?? true,
+                    skills: data?.skills ?? [],
+                    error: data?.error,
+                };
+            },
+        },
+    }),
 }));
-
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
-
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
 
 afterEach(() => {
     vi.clearAllMocks();

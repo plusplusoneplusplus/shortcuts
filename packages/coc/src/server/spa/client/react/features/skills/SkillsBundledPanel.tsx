@@ -4,31 +4,24 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 import { Button } from '../../ui';
-
-interface BundledSkill {
-    name: string;
-    description?: string;
-    alreadyExists?: boolean;
-}
+import type { DiscoveredSkill, ScanSkillsResponse } from '@plusplusoneplusplus/coc-client';
 
 export function SkillsBundledPanel() {
-    const [bundledSkills, setBundledSkills] = useState<BundledSkill[]>([]);
+    const [bundledSkills, setBundledSkills] = useState<DiscoveredSkill[]>([]);
     const [loading, setLoading] = useState(true);
     const [installing, setInstalling] = useState(false);
     const [selectedBundled, setSelectedBundled] = useState<Set<string>>(new Set());
     const [installSource, setInstallSource] = useState<'bundled' | 'github' | 'clawhub' | 'local'>('bundled');
     const [sourceInput, setSourceInput] = useState('');
-    const [scanResult, setScanResult] = useState<any>(null);
+    const [scanResult, setScanResult] = useState<ScanSkillsResponse | null>(null);
     const [scanning, setScanning] = useState(false);
 
     const loadBundled = useCallback(() => {
         setLoading(true);
-        fetchApi('/skills/bundled')
-            .then((data: any) => {
-                if (data?.skills) setBundledSkills(data.skills);
-            })
+        getSpaCocClient().skills.listBundledGlobal()
+            .then(setBundledSkills)
             .catch(() => {})
             .finally(() => setLoading(false));
     }, []);
@@ -49,11 +42,7 @@ export function SkillsBundledPanel() {
         if (names.length === 0) return;
         setInstalling(true);
         try {
-            await fetchApi('/skills/install', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'bundled', skills: names, replace: true }),
-            });
+            await getSpaCocClient().skills.installGlobal({ source: 'bundled', skills: names, replace: true });
             setSelectedBundled(new Set());
             loadBundled();
         } catch {
@@ -66,11 +55,7 @@ export function SkillsBundledPanel() {
     const handleInstallAllBundled = useCallback(async () => {
         setInstalling(true);
         try {
-            await fetchApi('/skills/install', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'bundled', replace: true }),
-            });
+            await getSpaCocClient().skills.installGlobal({ source: 'bundled', replace: true });
             loadBundled();
         } catch {
             // ignore
@@ -84,14 +69,10 @@ export function SkillsBundledPanel() {
         setScanning(true);
         setScanResult(null);
         try {
-            const result = await fetchApi('/skills/scan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: sourceInput }),
-            });
+            const result = await getSpaCocClient().skills.scanGlobal({ url: sourceInput });
             setScanResult(result);
         } catch {
-            setScanResult({ success: false, error: 'Scan failed' });
+            setScanResult({ success: false, error: 'Scan failed', skills: [] });
         } finally {
             setScanning(false);
         }
@@ -101,11 +82,7 @@ export function SkillsBundledPanel() {
         if (!scanResult?.skills?.length) return;
         setInstalling(true);
         try {
-            await fetchApi('/skills/install', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: sourceInput, skillsToInstall: scanResult.skills, replace: true }),
-            });
+            await getSpaCocClient().skills.installGlobal({ url: sourceInput, skillsToInstall: scanResult.skills, replace: true });
             setScanResult(null);
             setSourceInput('');
             loadBundled();
@@ -230,7 +207,7 @@ export function SkillsBundledPanel() {
                         <div>
                             <div className="text-xs text-[#848484] mb-1">Found {scanResult.skills.length} skill(s):</div>
                             <ul className="flex flex-col gap-1">
-                                {scanResult.skills.map((s: any) => (
+                                {scanResult.skills.map(s => (
                                     <li key={s.name} className="text-sm text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 bg-[#f3f3f3] dark:bg-[#333] rounded">
                                         {s.name} {s.description && <span className="text-xs text-[#848484]">— {s.description}</span>}
                                     </li>

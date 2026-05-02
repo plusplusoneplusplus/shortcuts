@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../hooks/useApi';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export function SkillsConfigPanel() {
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
@@ -14,14 +14,10 @@ export function SkillsConfigPanel() {
 
     const loadConfig = useCallback(() => {
         setLoading(true);
-        fetchApi('/skills/config')
-            .then((data: any) => {
-                if (Array.isArray(data?.globalDisabledSkills)) {
-                    setDisabledSkills(data.globalDisabledSkills);
-                }
-                if (data?.globalSkillsDir) {
-                    setGlobalDir(data.globalSkillsDir);
-                }
+        getSpaCocClient().skills.getGlobalConfig()
+            .then(data => {
+                setDisabledSkills(Array.isArray(data.globalDisabledSkills) ? data.globalDisabledSkills : []);
+                setGlobalDir(data.globalSkillsDir ?? '');
             })
             .catch(() => {})
             .finally(() => setLoading(false));
@@ -31,11 +27,7 @@ export function SkillsConfigPanel() {
 
     const updateDisabledSkills = useCallback((updated: string[]) => {
         setDisabledSkills(updated);
-        fetchApi('/skills/config', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ globalDisabledSkills: updated }),
-        }).catch(() => {});
+        getSpaCocClient().skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
     }, []);
 
     const handleAddDisabled = useCallback(() => {

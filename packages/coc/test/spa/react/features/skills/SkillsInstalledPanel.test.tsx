@@ -6,12 +6,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { SkillsInstalledPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsInstalledPanel';
 
-// Mock fetchApi so tests don't make real HTTP calls
-vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
-}));
+const mockFetchApi = vi.hoisted(() => vi.fn());
 
-import { fetchApi } from '../../../../../src/server/spa/client/react/hooks/useApi';
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        skills: {
+            listGlobal: async () => {
+                const data = await mockFetchApi('/skills');
+                return data?.skills ?? [];
+            },
+            getGlobalConfig: () => mockFetchApi('/skills/config'),
+            updateGlobalConfig: (body: unknown) => mockFetchApi('/skills/config', {
+                method: 'PUT',
+                body: JSON.stringify(body),
+            }),
+            detailGlobal: async (name: string) => mockFetchApi(`/skills/${encodeURIComponent(name)}`),
+            deleteGlobal: (name: string) => mockFetchApi(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+        },
+    }),
+}));
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -26,13 +39,13 @@ const makeSkill = (name: string, overrides: Record<string, any> = {}) => ({
 
 describe('SkillsInstalledPanel', () => {
     it('shows loading state initially', () => {
-        (fetchApi as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+        mockFetchApi.mockReturnValue(new Promise(() => {}));
         render(<SkillsInstalledPanel />);
         expect(screen.getByText('Loading global skills…')).toBeTruthy();
     });
 
     it('shows empty state when no skills installed', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [] }) // /skills
             .mockResolvedValueOnce({ globalDisabledSkills: [] }); // /skills/config
         render(<SkillsInstalledPanel />);
@@ -42,7 +55,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('renders each installed skill name', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill'), makeSkill('other-skill')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -53,7 +66,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('shows skill description when present', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill', { description: 'Does things' })] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -63,7 +76,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('renders delete button for each skill', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('alpha')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -73,7 +86,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('shows skill count text', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('s1'), makeSkill('s2')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -83,7 +96,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('calls DELETE fetch when delete is confirmed via two-step inline delete', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] })
             .mockResolvedValueOnce(undefined); // DELETE response
@@ -99,7 +112,7 @@ describe('SkillsInstalledPanel', () => {
         // Step 2: click Yes to confirm delete
         fireEvent.click(screen.getByTestId('skills-installed-delete-confirm-my-skill'));
         await waitFor(() => {
-            expect(fetchApi).toHaveBeenCalledWith(
+            expect(mockFetchApi).toHaveBeenCalledWith(
                 expect.stringContaining('/skills/my-skill'),
                 expect.objectContaining({ method: 'DELETE' })
             );
@@ -107,7 +120,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('does not call DELETE when delete is cancelled via No button', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -122,13 +135,13 @@ describe('SkillsInstalledPanel', () => {
         // Step 2: click No to cancel
         fireEvent.click(screen.getByText('No'));
         // Should not have called DELETE — only initial loads (2 calls)
-        expect(fetchApi).toHaveBeenCalledTimes(2);
+        expect(mockFetchApi).toHaveBeenCalledTimes(2);
         // Delete confirm prompt should be gone
         expect(screen.getByTestId('skills-installed-delete-btn-my-skill')).toBeTruthy();
     });
 
     it('renders refresh button', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('s1')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
@@ -138,7 +151,7 @@ describe('SkillsInstalledPanel', () => {
     });
 
     it('calls loadSkills and loadConfig when refresh button is clicked', async () => {
-        (fetchApi as ReturnType<typeof vi.fn>)
+        mockFetchApi
             .mockResolvedValueOnce({ skills: [makeSkill('s1')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] })
             .mockResolvedValueOnce({ skills: [makeSkill('s1'), makeSkill('s2')] })
@@ -147,10 +160,10 @@ describe('SkillsInstalledPanel', () => {
         await waitFor(() => {
             expect(screen.getByTestId('skills-installed-refresh-btn')).toBeTruthy();
         });
-        const callsBefore = (fetchApi as ReturnType<typeof vi.fn>).mock.calls.length;
+        const callsBefore = mockFetchApi.mock.calls.length;
         fireEvent.click(screen.getByTestId('skills-installed-refresh-btn'));
         await waitFor(() => {
-            expect((fetchApi as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
+            expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
         });
     });
 });

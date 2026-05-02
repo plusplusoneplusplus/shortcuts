@@ -8,6 +8,7 @@ export { PullRequestsClient } from './pull-requests';
 export { QueueClient } from './queue';
 export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
+export { SkillsClient } from './skills';
 export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';
