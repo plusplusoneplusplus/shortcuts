@@ -241,7 +241,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!processId || !isTerminal) return;
         // Only fetch for note-chat processes
         if (task?.metadata?.notePath === undefined) return;
-        fetchApi(`/processes/${encodeURIComponent(processId)}/note-edits`)
+        getSpaCocClient().notes.listNoteEdits(processId)
             .then((edits: any) => {
                 if (Array.isArray(edits) && edits.length > 0) setNoteEdits(edits);
             })

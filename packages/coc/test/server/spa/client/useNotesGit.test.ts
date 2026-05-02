@@ -9,14 +9,20 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn(),
+vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
+    notesApi: {
+        getGitStatus: vi.fn(),
+        getGitLog: vi.fn(),
+        initializeGit: vi.fn(),
+        commitGit: vi.fn(),
+        getGitDiff: vi.fn(),
+    },
 }));
 
-import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
+import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 import { useNotesGit } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesGit';
 
-const mockFetchApi = fetchApi as ReturnType<typeof vi.fn>;
+const mockNotesApi = vi.mocked(notesApi);
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -48,7 +54,11 @@ function makeLogEntry(overrides: Record<string, any> = {}) {
 
 describe('useNotesGit', () => {
     beforeEach(() => {
-        mockFetchApi.mockReset();
+        mockNotesApi.getGitStatus.mockReset();
+        mockNotesApi.getGitLog.mockReset();
+        mockNotesApi.initializeGit.mockReset();
+        mockNotesApi.commitGit.mockReset();
+        mockNotesApi.getGitDiff.mockReset();
     });
 
     afterEach(() => {
@@ -58,9 +68,8 @@ describe('useNotesGit', () => {
     it('fetches status and log on mount when initialized', async () => {
         const status = makeStatus();
         const logEntries = [makeLogEntry()];
-        mockFetchApi
-            .mockResolvedValueOnce(status) // GET .../status
-            .mockResolvedValueOnce({ entries: logEntries }); // GET .../log
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(status);
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: logEntries, limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -76,7 +85,7 @@ describe('useNotesGit', () => {
 
     it('sets initialized=false when status reports not initialized', async () => {
         const status = makeStatus({ initialized: false });
-        mockFetchApi.mockResolvedValueOnce(status);
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(status);
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -90,22 +99,19 @@ describe('useNotesGit', () => {
 
     it('does not fetch log when not initialized', async () => {
         const status = makeStatus({ initialized: false });
-        mockFetchApi.mockResolvedValueOnce(status);
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(status);
 
         renderHook(() => useNotesGit('ws-1'));
 
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledTimes(1);
+            expect(mockNotesApi.getGitStatus).toHaveBeenCalledTimes(1);
         });
-        // Only status was fetched, not log
-        expect(mockFetchApi).toHaveBeenCalledWith(
-            expect.stringContaining('/notes/git/status')
-        );
+        expect(mockNotesApi.getGitLog).not.toHaveBeenCalled();
     });
 
     it('initialize() calls init endpoint and re-fetches', async () => {
         // Initial load: not initialized
-        mockFetchApi.mockResolvedValueOnce(makeStatus({ initialized: false }));
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus({ initialized: false }));
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -115,10 +121,9 @@ describe('useNotesGit', () => {
         expect(result.current.initialized).toBe(false);
 
         // Mock the init call and subsequent refresh
-        mockFetchApi
-            .mockResolvedValueOnce({ initialized: true }) // POST .../init
-            .mockResolvedValueOnce(makeStatus()) // refresh status
-            .mockResolvedValueOnce({ entries: [makeLogEntry()] }); // refresh log
+        mockNotesApi.initializeGit.mockResolvedValueOnce({ initialized: true });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [makeLogEntry()], limit: 20, offset: 0 });
 
         await act(async () => {
             await result.current.initialize();
@@ -130,9 +135,8 @@ describe('useNotesGit', () => {
 
     it('commit() calls commit endpoint with message and refreshes', async () => {
         const status = makeStatus();
-        mockFetchApi
-            .mockResolvedValueOnce(status) // mount status
-            .mockResolvedValueOnce({ entries: [] }); // mount log
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(status);
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -141,66 +145,46 @@ describe('useNotesGit', () => {
         });
 
         // Mock commit + refresh
-        mockFetchApi
-            .mockResolvedValueOnce({ committed: true }) // POST .../commit
-            .mockResolvedValueOnce(makeStatus()) // refresh status
-            .mockResolvedValueOnce({ entries: [makeLogEntry()] }); // refresh log
+        mockNotesApi.commitGit.mockResolvedValueOnce({ committed: true });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [makeLogEntry()], limit: 20, offset: 0 });
 
         await act(async () => {
             await result.current.commit('test message');
         });
 
-        // Verify commit was called with message
-        const commitCall = mockFetchApi.mock.calls.find(
-            (c: any[]) => typeof c[0] === 'string' && c[0].includes('/commit')
-        );
-        expect(commitCall).toBeDefined();
-        expect(commitCall![1]).toEqual(
-            expect.objectContaining({
-                method: 'POST',
-                body: JSON.stringify({ message: 'test message' }),
-            })
-        );
+        expect(mockNotesApi.commitGit).toHaveBeenCalledWith('ws-1', 'test message');
     });
 
     it('commit() without message sends no body', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus()) // mount
-            .mockResolvedValueOnce({ entries: [] }); // mount log
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        mockFetchApi
-            .mockResolvedValueOnce({ committed: true })
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [] });
+        mockNotesApi.commitGit.mockResolvedValueOnce({ committed: true });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         await act(async () => {
             await result.current.commit();
         });
 
-        const commitCall = mockFetchApi.mock.calls.find(
-            (c: any[]) => typeof c[0] === 'string' && c[0].includes('/commit')
-        );
-        expect(commitCall![1]).toEqual(
-            expect.objectContaining({ method: 'POST' })
-        );
-        expect(commitCall![1].body).toBeUndefined();
+        expect(mockNotesApi.commitGit).toHaveBeenCalledWith('ws-1', undefined);
     });
 
     it('getDiff() calls the diff endpoint and returns data', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         const diffData = { files: [{ path: 'note.md', status: 'M', diff: '@@...' }] };
-        mockFetchApi.mockResolvedValueOnce(diffData);
+        mockNotesApi.getGitDiff.mockResolvedValueOnce(diffData);
 
         let diff: any;
         await act(async () => {
@@ -208,37 +192,32 @@ describe('useNotesGit', () => {
         });
 
         expect(diff).toEqual(diffData);
-        const diffCall = mockFetchApi.mock.calls.find(
-            (c: any[]) => typeof c[0] === 'string' && c[0].includes('/diff/')
-        );
-        expect(diffCall![0]).toContain('/diff/abc123');
+        expect(mockNotesApi.getGitDiff).toHaveBeenCalledWith('ws-1', 'abc123');
     });
 
     it('refresh() re-fetches status and log', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length;
 
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus({ clean: false, totalChanges: 3 }))
-            .mockResolvedValueOnce({ entries: [makeLogEntry()] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus({ clean: false, totalChanges: 3 }));
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [makeLogEntry()], limit: 20, offset: 0 });
 
         await act(async () => {
             await result.current.refresh();
         });
 
-        expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+        expect(mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length).toBeGreaterThan(callsBefore);
         expect(result.current.log).toHaveLength(1);
     });
 
     it('handles API errors gracefully', async () => {
-        mockFetchApi.mockRejectedValueOnce(new Error('Network error'));
+        mockNotesApi.getGitStatus.mockRejectedValueOnce(new Error('Network error'));
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -253,9 +232,8 @@ describe('useNotesGit', () => {
     it('notes-changed CustomEvent triggers debounced refresh', async () => {
         vi.useFakeTimers();
 
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         const { result } = renderHook(() => useNotesGit('ws-1'));
 
@@ -264,12 +242,11 @@ describe('useNotesGit', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length;
 
         // Mock refresh responses
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [makeLogEntry()] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [makeLogEntry()], limit: 20, offset: 0 });
 
         // Dispatch notes-changed event
         act(() => {
@@ -279,14 +256,14 @@ describe('useNotesGit', () => {
         });
 
         // Before debounce: no new calls
-        expect(mockFetchApi.mock.calls.length).toBe(callsBefore);
+        expect(mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length).toBe(callsBefore);
 
         // Advance past debounce (500ms)
         await act(async () => {
             vi.advanceTimersByTime(600);
         });
 
-        expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+        expect(mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length).toBeGreaterThan(callsBefore);
 
         vi.useRealTimers();
     });
@@ -294,17 +271,17 @@ describe('useNotesGit', () => {
     it('ignores notes-changed events for different workspaceId', async () => {
         vi.useFakeTimers();
 
-        mockFetchApi
-            .mockResolvedValueOnce(makeStatus())
-            .mockResolvedValueOnce({ entries: [] });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
 
         renderHook(() => useNotesGit('ws-1'));
 
         await vi.waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledTimes(2);
+            expect(mockNotesApi.getGitStatus).toHaveBeenCalledTimes(1);
+            expect(mockNotesApi.getGitLog).toHaveBeenCalledTimes(1);
         });
 
-        const callsBefore = mockFetchApi.mock.calls.length;
+        const callsBefore = mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length;
 
         act(() => {
             window.dispatchEvent(new CustomEvent('notes-changed', {
@@ -316,13 +293,13 @@ describe('useNotesGit', () => {
             vi.advanceTimersByTime(600);
         });
 
-        expect(mockFetchApi.mock.calls.length).toBe(callsBefore);
+        expect(mockNotesApi.getGitStatus.mock.calls.length + mockNotesApi.getGitLog.mock.calls.length).toBe(callsBefore);
 
         vi.useRealTimers();
     });
 
     it('cancels pending fetches on unmount', async () => {
-        mockFetchApi.mockImplementation(() => new Promise(() => {})); // never resolves
+        mockNotesApi.getGitStatus.mockImplementation(() => new Promise(() => {})); // never resolves
 
         const { unmount } = renderHook(() => useNotesGit('ws-1'));
 

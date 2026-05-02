@@ -1,0 +1,342 @@
+import type {
+  BatchResolveNoteCommentsResponse,
+  Comment,
+  CommentThread,
+  CommentThreadStatus,
+  CreateNoteChatRequest,
+  CreateNoteChatResponse,
+  CreateNoteNodeResponse,
+  CreateNoteWithAIResponse,
+  NoteContentResponse,
+  NoteEditSnapshot,
+  NoteFileContentAtRevisionResponse,
+  NoteFileLogResponse,
+  NoteFilePreviewResponse,
+  NoteSearchResponse,
+  NoteSidecar,
+  NotesGitAutoCommitStatus,
+  NotesGitCommitResponse,
+  NotesGitDiff,
+  NotesGitLogResponse,
+  NotesGitStatus,
+  NoteTreeResponse,
+  NoteNodeType,
+  RenameNoteNodeResponse,
+  ReorderNotesResponse,
+  RestoreNoteVersionResponse,
+  SaveNoteCheckpointResponse,
+  SaveNoteContentResponse,
+  SendNoteCommentResolutionMessageRequest,
+  UploadNoteImageResponse,
+} from '../contracts';
+import type { CocRequestOptions, QueryPrimitive, RequestAdapter } from '../types';
+import { encodePathSegment } from '../url';
+
+const DEFAULT_AUTO_COMMIT_INTERVAL_MS = 1_800_000;
+
+function workspaceNotesPath(workspaceId: string, suffix = ''): string {
+  return `/workspaces/${encodePathSegment(workspaceId)}/notes${suffix}`;
+}
+
+function notesGitPath(workspaceId: string, suffix = ''): string {
+  return workspaceNotesPath(workspaceId, `/git${suffix}`);
+}
+
+function processNoteEditsPath(processId: string, suffix = ''): string {
+  return `/processes/${encodePathSegment(processId)}/note-edits${suffix}`;
+}
+
+function compactQuery(query: Record<string, QueryPrimitive | undefined>): CocRequestOptions['query'] {
+  return query;
+}
+
+export interface NotesGitLogQuery {
+  limit?: number;
+  offset?: number;
+}
+
+export class NotesClient {
+  constructor(private readonly transport: RequestAdapter) {}
+
+  getTree(workspaceId: string): Promise<NoteTreeResponse> {
+    return this.transport.request<NoteTreeResponse>(workspaceNotesPath(workspaceId, '/tree'));
+  }
+
+  getContent(workspaceId: string, notePath: string): Promise<NoteContentResponse> {
+    return this.transport.request<NoteContentResponse>(workspaceNotesPath(workspaceId, '/content'), {
+      query: { path: notePath },
+    });
+  }
+
+  saveContent(workspaceId: string, notePath: string, content: string, expectedMtime?: number): Promise<SaveNoteContentResponse> {
+    return this.transport.request<SaveNoteContentResponse>(workspaceNotesPath(workspaceId, '/content'), {
+      method: 'PUT',
+      body: {
+        path: notePath,
+        content,
+        ...(expectedMtime !== undefined ? { expectedMtime } : {}),
+      },
+    });
+  }
+
+  createNode(workspaceId: string, nodePath: string, type: NoteNodeType): Promise<CreateNoteNodeResponse> {
+    return this.transport.request<CreateNoteNodeResponse>(workspaceNotesPath(workspaceId, '/page'), {
+      method: 'POST',
+      body: { path: nodePath, type },
+    });
+  }
+
+  renameNode(workspaceId: string, oldPath: string, newPath: string): Promise<RenameNoteNodeResponse> {
+    return this.transport.request<RenameNoteNodeResponse>(workspaceNotesPath(workspaceId, '/path'), {
+      method: 'PATCH',
+      body: { oldPath, newPath },
+    });
+  }
+
+  deleteNode(workspaceId: string, nodePath: string): Promise<void> {
+    return this.transport.request<void>(workspaceNotesPath(workspaceId, '/path'), {
+      method: 'DELETE',
+      query: { path: nodePath },
+    });
+  }
+
+  reorder(workspaceId: string, parentPath: string, order: string[]): Promise<ReorderNotesResponse> {
+    return this.transport.request<ReorderNotesResponse>(workspaceNotesPath(workspaceId, '/order'), {
+      method: 'PUT',
+      body: { parentPath, order: [...order] },
+    });
+  }
+
+  search(workspaceId: string, query: string): Promise<NoteSearchResponse> {
+    return this.transport.request<NoteSearchResponse>(workspaceNotesPath(workspaceId, '/search'), {
+      query: { q: query },
+    });
+  }
+
+  uploadImage(workspaceId: string, fileName: string, data: string): Promise<UploadNoteImageResponse> {
+    return this.transport.request<UploadNoteImageResponse>(workspaceNotesPath(workspaceId, '/image'), {
+      method: 'POST',
+      body: { fileName, data },
+    });
+  }
+
+  previewFile(workspaceId: string, filePath: string): Promise<NoteFilePreviewResponse> {
+    return this.transport.request<NoteFilePreviewResponse>(workspaceNotesPath(workspaceId, '/file-preview'), {
+      query: { path: filePath },
+    });
+  }
+
+  getComments(workspaceId: string, notePath: string): Promise<NoteSidecar> {
+    return this.transport.request<NoteSidecar>(workspaceNotesPath(workspaceId, '/comments'), {
+      query: { path: notePath },
+    });
+  }
+
+  saveComments(workspaceId: string, notePath: string, threads: Record<string, CommentThread>): Promise<void> {
+    return this.transport.request<void>(workspaceNotesPath(workspaceId, '/comments'), {
+      method: 'PUT',
+      body: { path: notePath, threads: { ...threads } },
+    });
+  }
+
+  createThread(workspaceId: string, notePath: string, thread: CommentThread): Promise<{ thread: CommentThread }> {
+    return this.transport.request<{ thread: CommentThread }>(workspaceNotesPath(workspaceId, '/comments/thread'), {
+      method: 'POST',
+      body: { path: notePath, thread },
+    });
+  }
+
+  updateThread(workspaceId: string, notePath: string, threadId: string, status: CommentThreadStatus): Promise<{ thread: CommentThread }> {
+    return this.transport.request<{ thread: CommentThread }>(
+      workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}`),
+      {
+        method: 'PATCH',
+        body: { path: notePath, status },
+      },
+    );
+  }
+
+  deleteThread(workspaceId: string, notePath: string, threadId: string): Promise<void> {
+    return this.transport.request<void>(
+      workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}`),
+      {
+        method: 'DELETE',
+        query: { path: notePath },
+      },
+    );
+  }
+
+  addComment(workspaceId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
+    return this.transport.request<{ comment: Comment }>(
+      workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment`),
+      {
+        method: 'POST',
+        body: { path: notePath, content },
+      },
+    );
+  }
+
+  editComment(workspaceId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
+    return this.transport.request<{ comment: Comment }>(
+      workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment/${encodePathSegment(commentId)}`),
+      {
+        method: 'PATCH',
+        body: { path: notePath, content },
+      },
+    );
+  }
+
+  deleteComment(workspaceId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
+    return this.transport.request<void>(
+      workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment/${encodePathSegment(commentId)}`),
+      {
+        method: 'DELETE',
+        query: { path: notePath },
+      },
+    );
+  }
+
+  batchResolve(workspaceId: string, notePath: string, documentContent: string, userContext?: string): Promise<BatchResolveNoteCommentsResponse> {
+    return this.transport.request<BatchResolveNoteCommentsResponse>(workspaceNotesPath(workspaceId, '/batch-resolve'), {
+      method: 'POST',
+      query: { path: notePath },
+      body: { documentContent, ...(userContext ? { userContext } : {}) },
+    });
+  }
+
+  createChat(workspaceId: string, request: CreateNoteChatRequest): Promise<CreateNoteChatResponse> {
+    return this.transport.request<CreateNoteChatResponse>('/queue/tasks', {
+      method: 'POST',
+      body: {
+        type: 'chat',
+        priority: 'normal',
+        payload: {
+          kind: 'chat',
+          mode: request.mode ?? 'ask',
+          prompt: request.prompt,
+          workspaceId,
+          ...(request.model ? { model: request.model } : {}),
+          ...(request.attachments && request.attachments.length > 0 ? { attachments: [...request.attachments] } : {}),
+          context: {
+            noteChat: request.notePath ? { notePath: request.notePath, noteTitle: request.noteTitle } : undefined,
+            ...(request.skills && request.skills.length > 0 ? { skills: [...request.skills] } : {}),
+          },
+        },
+      },
+    });
+  }
+
+  sendCommentResolutionMessage(processId: string, request: SendNoteCommentResolutionMessageRequest): Promise<unknown> {
+    return this.transport.request(`/processes/${encodePathSegment(processId)}/message`, {
+      method: 'POST',
+      body: {
+        content: request.content,
+        ...(request.mode ? { mode: request.mode } : {}),
+        context: {
+          noteContent: request.noteContent,
+          resolveComments: {
+            documentUri: request.documentUri,
+            commentIds: [...request.commentIds],
+            documentContent: request.documentContent,
+            wsId: request.workspaceId,
+          },
+        },
+      },
+    });
+  }
+
+  createWithAI(workspaceId: string, prompt: string, chatTaskId?: string): Promise<CreateNoteWithAIResponse> {
+    return this.transport.request<CreateNoteWithAIResponse>(workspaceNotesPath(workspaceId, '/ai-create'), {
+      method: 'POST',
+      body: { prompt, ...(chatTaskId ? { chatTaskId } : {}) },
+    });
+  }
+
+  listNoteEdits(processId: string): Promise<NoteEditSnapshot[]> {
+    return this.transport.request<NoteEditSnapshot[]>(processNoteEditsPath(processId));
+  }
+
+  undoNoteEdit(processId: string, editId: string, options?: { force?: boolean }): Promise<{ success: boolean }> {
+    return this.transport.request<{ success: boolean }>(
+      processNoteEditsPath(processId, `/${encodePathSegment(editId)}/undo`),
+      {
+        method: 'POST',
+        query: compactQuery({ force: options?.force }),
+      },
+    );
+  }
+
+  initializeGit(workspaceId: string): Promise<{ initialized: boolean }> {
+    return this.transport.request<{ initialized: boolean }>(notesGitPath(workspaceId, '/init'), { method: 'POST' });
+  }
+
+  getGitStatus(workspaceId: string): Promise<NotesGitStatus> {
+    return this.transport.request<NotesGitStatus>(notesGitPath(workspaceId, '/status'));
+  }
+
+  getGitLog(workspaceId: string, query?: NotesGitLogQuery): Promise<NotesGitLogResponse> {
+    return this.transport.request<NotesGitLogResponse>(notesGitPath(workspaceId, '/log'), {
+      query: compactQuery({ limit: query?.limit, offset: query?.offset }),
+    });
+  }
+
+  getGitDiff(workspaceId: string, hash?: string): Promise<NotesGitDiff> {
+    const suffix = hash ? `/diff/${encodePathSegment(hash)}` : '/diff';
+    return this.transport.request<NotesGitDiff>(notesGitPath(workspaceId, suffix));
+  }
+
+  commitGit(workspaceId: string, message?: string): Promise<NotesGitCommitResponse> {
+    return this.transport.request<NotesGitCommitResponse>(notesGitPath(workspaceId, '/commit'), {
+      method: 'POST',
+      body: message ? { message } : undefined,
+    });
+  }
+
+  getAutoCommitStatus(workspaceId: string): Promise<NotesGitAutoCommitStatus> {
+    return this.transport.request<NotesGitAutoCommitStatus>(notesGitPath(workspaceId, '/auto-commit/status'));
+  }
+
+  enableAutoCommit(workspaceId: string, intervalMs = DEFAULT_AUTO_COMMIT_INTERVAL_MS): Promise<{ enabled: boolean; intervalMs: number }> {
+    return this.transport.request<{ enabled: boolean; intervalMs: number }>(notesGitPath(workspaceId, '/auto-commit'), {
+      method: 'POST',
+      body: { intervalMs },
+    });
+  }
+
+  disableAutoCommit(workspaceId: string): Promise<{ deleted: boolean }> {
+    return this.transport.request<{ deleted: boolean }>(notesGitPath(workspaceId, '/auto-commit'), {
+      method: 'DELETE',
+    });
+  }
+
+  updateAutoCommitInterval(workspaceId: string, intervalMs: number): Promise<{ enabled: boolean; intervalMs: number }> {
+    return this.enableAutoCommit(workspaceId, intervalMs);
+  }
+
+  getFileLog(workspaceId: string, notePath: string, limit = 50): Promise<NoteFileLogResponse> {
+    return this.transport.request<NoteFileLogResponse>(notesGitPath(workspaceId, '/file-log'), {
+      query: { path: notePath, limit },
+    });
+  }
+
+  getFileContentAtRevision(workspaceId: string, hash: string, notePath: string): Promise<NoteFileContentAtRevisionResponse> {
+    return this.transport.request<NoteFileContentAtRevisionResponse>(notesGitPath(workspaceId, '/file-content'), {
+      query: { hash, path: notePath },
+    });
+  }
+
+  saveCheckpoint(workspaceId: string, notePath: string, name: string): Promise<SaveNoteCheckpointResponse> {
+    return this.transport.request<SaveNoteCheckpointResponse>(notesGitPath(workspaceId, '/save-checkpoint'), {
+      method: 'POST',
+      body: { path: notePath, name },
+    });
+  }
+
+  restoreVersion(workspaceId: string, notePath: string, hash: string): Promise<RestoreNoteVersionResponse> {
+    return this.transport.request<RestoreNoteVersionResponse>(notesGitPath(workspaceId, '/restore-version'), {
+      method: 'POST',
+      body: { path: notePath, hash },
+    });
+  }
+}
+

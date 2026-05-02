@@ -12,15 +12,20 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
 }));
 
-const mockFetchApi = vi.fn().mockResolvedValue({});
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+const mockGetProcess = vi.fn().mockResolvedValue({});
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        processes: {
+            get: (...args: any[]) => mockGetProcess(...args),
+        },
+    }),
 }));
 
 const mockGetTree = vi.fn<[], Promise<{ tree: NoteTreeNode[]; notesRoot: string }>>();
 const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
+const mockCreateWithAI = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -28,6 +33,7 @@ vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         createNode: (...args: any[]) => mockCreateNode(...args),
         renameNode: (...args: any[]) => mockRenameNode(...args),
         deleteNode: (...args: any[]) => mockDeleteNode(...args),
+        createWithAI: (...args: any[]) => mockCreateWithAI(...args),
     },
 }));
 
@@ -799,22 +805,19 @@ describe('NotesSidebar', () => {
         // Regression test: process IDs use queue_ prefix, not queue-
         const onCreated = vi.fn();
         const onSelect = vi.fn();
-        const fetchedUrls: string[] = [];
+        const processIds: string[] = [];
 
-        // Set up fetchApi to record calls
-        mockFetchApi.mockImplementation(async (url: string) => {
-            fetchedUrls.push(url);
-            if (url?.includes('/notes/ai-create')) {
-                return { taskId: 'abc-123' };
-            }
-            if (url?.includes('/processes/queue_abc-123')) {
+        mockCreateWithAI.mockResolvedValue({ taskId: 'abc-123' });
+        mockGetProcess.mockImplementation(async (processId: string) => {
+            processIds.push(processId);
+            if (processId === 'queue_abc-123') {
                 return {
                     process: {
                         status: 'completed',
                         metadata: { noteCreate: { path: 'Notebook1/My Note.md', title: 'My Note', notebook: 'Notebook1' } },
                     },
                 };
-            }
+            };
             return {};
         });
 
@@ -840,10 +843,10 @@ describe('NotesSidebar', () => {
 
         // Wait for the 2s poll interval to fire and the process request to complete
         await waitFor(() => {
-            expect(fetchedUrls.some(u => u.includes('/processes/queue_abc-123'))).toBe(true);
+            expect(processIds.includes('queue_abc-123')).toBe(true);
         }, { timeout: 5000 });
 
         // Verify no call with wrong prefix (queue- hyphen)
-        expect(fetchedUrls.some(u => u.includes('/processes/queue-abc-123'))).toBe(false);
+        expect(processIds.includes('queue-abc-123')).toBe(false);
     });
 });

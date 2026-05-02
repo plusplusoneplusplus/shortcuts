@@ -127,9 +127,7 @@ describe('useNotesChat', () => {
 
     describe('createChat creates queue task', () => {
         it('POSTs to /queue/tasks with chat payload', () => {
-            expect(source).toContain("fetchApi('/queue/tasks'");
-            expect(source).toContain("method: 'POST'");
-            expect(source).toContain("kind: 'chat'");
+            expect(source).toContain('getSpaCocClient().notes.createChat');
         });
 
         it('accepts ask and autopilot as valid modes', () => {
@@ -137,7 +135,6 @@ describe('useNotesChat', () => {
         });
 
         it('includes noteChat context with current note', () => {
-            expect(source).toContain('noteChat:');
             expect(source).toContain('notePath');
             expect(source).toContain('noteTitle');
         });
@@ -147,7 +144,7 @@ describe('useNotesChat', () => {
         });
 
         it('handles missing notePath gracefully (undefined context)', () => {
-            expect(source).toContain('notePath ? { notePath, noteTitle } : undefined');
+            expect(source).toContain('notePath,');
         });
 
         it('stores chat note context at creation time', () => {
@@ -159,7 +156,7 @@ describe('useNotesChat', () => {
         });
 
         it('extracts taskId from response', () => {
-            expect(source).toContain('res.task?.id ?? res.id');
+            expect(source).toContain('res.task.id');
         });
 
         it('sets per-workspace taskId when scope is per-workspace', () => {
@@ -179,11 +176,11 @@ describe('useNotesChat', () => {
         });
 
         it('includes skills in context when provided', () => {
-            expect(source).toContain("...(skills && skills.length > 0 ? { skills } : {})");
+            expect(source).toContain('skills,');
         });
 
         it('includes model in payload when provided', () => {
-            expect(source).toContain('...(model ? { model } : {})');
+            expect(source).toContain('model,');
         });
     });
 

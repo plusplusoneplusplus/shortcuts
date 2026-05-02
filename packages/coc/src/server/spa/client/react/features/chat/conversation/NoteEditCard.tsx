@@ -6,7 +6,8 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { getApiBase } from '../../../utils/config';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface NoteEditCardProps {
     editId: string;
@@ -52,10 +53,10 @@ export function NoteEditCard({
     const handleUndo = useCallback(async () => {
         setUndoState('loading');
         try {
-            const url = `${getApiBase()}/api/processes/${encodeURIComponent(processId)}/note-edits/${encodeURIComponent(editId)}/undo`;
-            const resp = await fetch(url, { method: 'POST' });
-
-            if (resp.status === 409) {
+            try {
+                await getSpaCocClient().notes.undoNoteEdit(processId, editId);
+            } catch (error) {
+                if (!(error instanceof CocApiError && error.status === 409)) throw error;
                 const confirmed = window.confirm(
                     'The note was modified after this AI edit. Undo anyway?',
                 );
@@ -63,10 +64,7 @@ export function NoteEditCard({
                     setUndoState('idle');
                     return;
                 }
-                const forceResp = await fetch(`${url}?force=true`, { method: 'POST' });
-                if (!forceResp.ok) throw new Error('Force undo failed');
-            } else if (!resp.ok) {
-                throw new Error(`Undo failed: ${resp.status}`);
+                await getSpaCocClient().notes.undoNoteEdit(processId, editId, { force: true });
             }
 
             setUndoState('done');

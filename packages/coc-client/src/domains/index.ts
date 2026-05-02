@@ -3,6 +3,7 @@ export { GitClient } from './git';
 export { HealthClient } from './health';
 export { MemoryClient } from './memory';
 export { ModelsClient } from './models';
+export { NotesClient } from './notes';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';
 export { PullRequestsClient } from './pull-requests';

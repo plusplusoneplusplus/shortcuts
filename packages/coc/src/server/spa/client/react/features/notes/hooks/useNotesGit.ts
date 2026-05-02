@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { notesApi } from '../notesApi';
 import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff } from '../../../../../../notes-git-types';
 
 export interface UseNotesGitReturn {
@@ -22,9 +22,6 @@ export interface UseNotesGitReturn {
     getDiff: (hash?: string) => Promise<NotesGitDiff>;
     refresh: () => Promise<void>;
 }
-
-const basePath = (wsId: string) =>
-    `/workspaces/${encodeURIComponent(wsId)}/notes/git`;
 
 export function useNotesGit(workspaceId: string): UseNotesGitReturn {
     const [status, setStatus] = useState<NotesGitStatus | null>(null);
@@ -40,7 +37,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
 
     const fetchStatus = useCallback(async (): Promise<NotesGitStatus | null> => {
         try {
-            const data: NotesGitStatus = await fetchApi(`${basePath(workspaceId)}/status`);
+            const data: NotesGitStatus = await notesApi.getGitStatus(workspaceId);
             return data;
         } catch {
             return null;
@@ -49,7 +46,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
 
     const fetchLog = useCallback(async (): Promise<NotesGitLogEntry[]> => {
         try {
-            const data = await fetchApi(`${basePath(workspaceId)}/log`);
+            const data = await notesApi.getGitLog(workspaceId);
             return data?.entries ?? [];
         } catch {
             return [];
@@ -131,7 +128,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
     const initialize = useCallback(async () => {
         setLoading(true);
         try {
-            await fetchApi(`${basePath(workspaceId)}/init`, { method: 'POST' });
+            await notesApi.initializeGit(workspaceId);
             await refresh();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to initialize notes git');
@@ -142,13 +139,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
 
     const commit = useCallback(async (message?: string) => {
         try {
-            const body = message ? JSON.stringify({ message }) : undefined;
-            const headers = message ? { 'Content-Type': 'application/json' } : undefined;
-            await fetchApi(`${basePath(workspaceId)}/commit`, {
-                method: 'POST',
-                headers,
-                body,
-            });
+            await notesApi.commitGit(workspaceId, message);
             await refresh();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to commit');
@@ -156,8 +147,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
     }, [workspaceId, refresh]);
 
     const getDiff = useCallback(async (hash?: string): Promise<NotesGitDiff> => {
-        const qs = hash ? `/${encodeURIComponent(hash)}` : '';
-        const data: NotesGitDiff = await fetchApi(`${basePath(workspaceId)}/diff${qs}`);
+        const data: NotesGitDiff = await notesApi.getGitDiff(workspaceId, hash);
         return data;
     }, [workspaceId]);
 

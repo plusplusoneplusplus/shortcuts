@@ -3,10 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { CommentThread, NoteSidecar, Comment } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
-// ── Mock fetchApi ──────────────────────────────────────────────────────────
-const mockFetchApi = vi.fn<any[], Promise<any>>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+// ── Mock typed SPA client ──────────────────────────────────────────────────
+const mockSendCommentResolutionMessage = vi.fn<any[], Promise<any>>();
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        notes: {
+            sendCommentResolutionMessage: (...args: any[]) => mockSendCommentResolutionMessage(...args),
+        },
+    }),
 }));
 
 // ── Mock notesApi ──────────────────────────────────────────────────────────
@@ -85,7 +89,7 @@ function makeSidecar(threads: CommentThread[]): NoteSidecar {
 describe('useComments', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockFetchApi.mockResolvedValue({});
+        mockSendCommentResolutionMessage.mockResolvedValue({});
         mockGetComments.mockResolvedValue(SAMPLE_SIDECAR);
         mockCreateThread.mockImplementation(async (_wsId, _path, thread) => ({
             thread: { ...thread, id: 'thread-new' },
@@ -729,10 +733,9 @@ describe('useComments', () => {
                 await result.current.resolveWithAI('document body');
             });
 
-            expect(mockFetchApi).toHaveBeenCalledOnce();
-            const [url, opts] = mockFetchApi.mock.calls[0];
-            expect(url).toContain('/processes/proc-42/message');
-            const body = JSON.parse(opts.body);
+            expect(mockSendCommentResolutionMessage).toHaveBeenCalledOnce();
+            const [processId, body] = mockSendCommentResolutionMessage.mock.calls[0];
+            expect(processId).toBe('proc-42');
             expect(body).toHaveProperty('content');
             expect(body).not.toHaveProperty('message');
             expect(typeof body.content).toBe('string');
@@ -752,7 +755,7 @@ describe('useComments', () => {
                 await result.current.resolveWithAI('document body');
             });
 
-            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
             expect(body.content).toContain('highlighted text here');
             expect(body.content).toContain('This needs review');
         });
@@ -770,7 +773,7 @@ describe('useComments', () => {
                 await result.current.resolveWithAI('document body');
             });
 
-            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
             expect(body.mode).toBe('ask');
         });
 
@@ -787,7 +790,7 @@ describe('useComments', () => {
                 await result.current.resolveWithAI('document body');
             });
 
-            const body = JSON.parse(mockFetchApi.mock.calls[0][1].body);
+            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
             expect(body).not.toHaveProperty('mode');
         });
     });

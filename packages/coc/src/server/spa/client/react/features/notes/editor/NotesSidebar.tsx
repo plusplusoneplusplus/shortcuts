@@ -10,7 +10,8 @@ import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
+import { notesApi } from '../notesApi';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -174,11 +175,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
     const handleAICreateNote = useCallback(async (prompt: string) => {
         try {
-            const res = await fetchApi(`/workspaces/${workspaceId}/notes/ai-create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt }),
-            });
+            const res = await notesApi.createWithAI(workspaceId, prompt);
             const taskId = res?.taskId;
             if (!taskId) return;
 
@@ -186,7 +183,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             const processId = `queue_${taskId}`;
             const pollInterval = setInterval(async () => {
                 try {
-                    const procRes = await fetchApi(`/processes/${processId}`);
+                    const procRes = await getSpaCocClient().processes.get(processId);
                     const proc = procRes?.process ?? procRes;
                     const status = proc?.status;
                     if (status === 'completed') {

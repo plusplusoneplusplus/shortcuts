@@ -16,7 +16,7 @@ import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
 import type { ChatMode } from '../../../repos/modeConfig';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
 import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
 
@@ -69,8 +69,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     // Fetch skills when workspaceId changes
     useEffect(() => {
         setSkills([]);
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
-            .then((data: any) => {
+        getSpaCocClient().skills.listAllWorkspace(workspaceId)
+            .then((data) => {
                 if (data?.merged && Array.isArray(data.merged)) {
                     setSkills(data.merged);
                 } else if (data?.skills && Array.isArray(data.skills)) {

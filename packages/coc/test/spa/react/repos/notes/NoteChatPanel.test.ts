@@ -144,8 +144,8 @@ describe('NoteChatPanel', () => {
             expect(source).not.toContain('Binding');
         });
 
-        it('imports fetchApi for skill fetching', () => {
-            expect(source).toContain('fetchApi');
+        it('uses typed client for skill fetching', () => {
+            expect(source).toContain('getSpaCocClient');
         });
     });
 
@@ -236,17 +236,17 @@ describe('NoteChatPanel', () => {
             expect(source).toContain("from '../../chat/SlashCommandMenu'");
         });
 
-        it('imports fetchApi for skill fetching', () => {
-            expect(source).toContain("import { fetchApi }");
-            expect(source).toContain("from '../../../hooks/useApi'");
+        it('imports typed SPA client for skill fetching', () => {
+            expect(source).toContain("import { getSpaCocClient }");
+            expect(source).toContain("from '../../../api/cocClient'");
         });
 
         it('declares skills state with SkillItem array type', () => {
             expect(source).toContain('useState<SkillItem[]>([])');
         });
 
-        it('fetches skills from /skills/all API on workspaceId change', () => {
-            expect(source).toContain('/skills/all');
+        it('fetches skills from the typed skills client on workspaceId change', () => {
+            expect(source).toContain('skills.listAllWorkspace(workspaceId)');
             expect(source).toContain('setSkills(data.merged)');
         });
 

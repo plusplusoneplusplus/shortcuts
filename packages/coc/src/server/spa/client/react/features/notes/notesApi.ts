@@ -1,302 +1,204 @@
 /**
- * notesApi — typed wrappers over the repo-scoped notes REST endpoints.
+ * notesApi - compatibility wrappers over the typed CoC notes client.
  */
 
-import { fetchApi } from '../../hooks/useApi';
-import { getApiBase } from '../../utils/config';
+import {
+    CocApiError,
+    type Comment,
+    type CommentThread,
+    type CommentThreadStatus,
+    type CreateNoteNodeResponse,
+    type CreateNoteWithAIResponse,
+    type NoteContentResponse,
+    type NoteFileContentAtRevisionResponse,
+    type NoteFileLogResponse,
+    type NoteFilePreviewResponse,
+    type NoteNodeType,
+    type NoteSearchResponse,
+    type NoteSidecar,
+    type NoteTreeNode,
+    type NoteTreeResponse,
+    type NotesGitAutoCommitStatus,
+    type NotesGitCommitResponse,
+    type NotesGitDiff,
+    type NotesGitLogResponse,
+    type NotesGitStatus,
+    type RenameNoteNodeResponse,
+    type ReorderNotesResponse,
+    type RestoreNoteVersionResponse,
+    type SaveNoteCheckpointResponse,
+    type SaveNoteContentResponse,
+    type TextAnchor,
+    type UploadNoteImageResponse,
+} from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient, translateSpaCocClientError } from '../../api/cocClient';
 
-/**
- * Like fetchApi but surfaces 409 Conflict responses as enriched errors
- * instead of generic "API error" messages.
- */
-async function fetchApiWithConflict(urlPath: string, init: RequestInit): Promise<any> {
-    const url = getApiBase() + urlPath;
-    const res = await fetch(url, init);
-    if (res.status === 409) {
-        const data = await res.json();
-        throw Object.assign(new Error('conflict'), { status: 409, ...data });
+export type {
+    Comment,
+    CommentThread,
+    NoteSearchMatch,
+    NoteSearchResponse,
+    NoteSearchResult,
+    NoteSidecar,
+    NoteTreeNode,
+    NoteTreeResponse,
+    TextAnchor,
+} from '@plusplusoneplusplus/coc-client';
+
+async function withSpaErrors<T>(request: Promise<T>): Promise<T> {
+    try {
+        return await request;
+    } catch (error) {
+        translateSpaCocClientError(error);
     }
-    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
-    if (res.status === 204) return undefined;
-    return res.json();
 }
 
-// ── Types ───────────────────────────────────────────────────────────────────
-
-export interface NoteTreeNode {
-    name: string;
-    path: string;
-    type: 'notebook' | 'section' | 'page';
-    children?: NoteTreeNode[];
-    lastModifiedAt?: string;
+async function withConflictError<T>(request: Promise<T>): Promise<T> {
+    try {
+        return await request;
+    } catch (error) {
+        if (error instanceof CocApiError && error.status === 409) {
+            const body = error.body && typeof error.body === 'object'
+                ? error.body as Record<string, unknown>
+                : {};
+            throw Object.assign(new Error('conflict'), { status: 409, ...body });
+        }
+        translateSpaCocClientError(error);
+    }
 }
 
-export interface NoteSearchMatch {
-    line: number;
-    text: string;
-}
-
-export interface NoteSearchResult {
-    path: string;
-    matches: NoteSearchMatch[];
-}
-
-export interface NoteSearchResponse {
-    results: NoteSearchResult[];
-    truncated: boolean;
-}
-
-export interface NoteTreeResponse {
-    tree: NoteTreeNode[];
-    notesRoot: string;
-    /** Names of top-level notebook folders that are managed by the system and cannot be renamed or deleted. */
-    systemFolders?: string[];
-}
-
-// ── Comment types (mirrors notes-comments-types.ts) ────────────────────────
-
-// Canonical definition lives in notes/textAnchor.ts; re-export for compatibility.
-export type { TextAnchor } from './notes/textAnchor';
-
-export interface Comment {
-    id: string;
-    content: string;
-    createdAt: string;
-    updatedAt?: string;
-}
-
-export interface CommentThread {
-    id: string;
-    anchor: TextAnchor;
-    status: 'open' | 'resolved';
-    comments: Comment[];
-    createdAt: string;
-}
-
-export interface NoteSidecar {
-    noteId: string;
-    threads: Record<string, CommentThread>;
-}
-
-// ── API helpers ─────────────────────────────────────────────────────────────
+const notesClient = () => getSpaCocClient().notes;
 
 export const notesApi = {
     getTree(wsId: string): Promise<NoteTreeResponse> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/tree`);
+        return withSpaErrors(notesClient().getTree(wsId));
     },
 
-    getContent(wsId: string, notePath: string): Promise<{ content: string; path: string; mtime: number }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/content?path=${encodeURIComponent(notePath)}`);
+    getContent(wsId: string, notePath: string): Promise<NoteContentResponse> {
+        return withSpaErrors(notesClient().getContent(wsId, notePath));
     },
 
-    saveContent(wsId: string, notePath: string, content: string, expectedMtime?: number): Promise<{ path: string; updated: boolean; mtime: number }> {
-        return fetchApiWithConflict(`/workspaces/${encodeURIComponent(wsId)}/notes/content`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, content, ...(expectedMtime !== undefined ? { expectedMtime } : {}) }),
-        });
+    saveContent(wsId: string, notePath: string, content: string, expectedMtime?: number): Promise<SaveNoteContentResponse> {
+        return withConflictError(notesClient().saveContent(wsId, notePath, content, expectedMtime));
     },
 
-    createNode(wsId: string, nodePath: string, type: 'notebook' | 'section' | 'page'): Promise<{ path: string; type: string }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/page`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: nodePath, type }),
-        });
+    createNode(wsId: string, nodePath: string, type: NoteNodeType): Promise<CreateNoteNodeResponse> {
+        return withSpaErrors(notesClient().createNode(wsId, nodePath, type));
     },
 
-    renameNode(wsId: string, oldPath: string, newPath: string): Promise<{ oldPath: string; newPath: string }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/path`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oldPath, newPath }),
-        });
+    renameNode(wsId: string, oldPath: string, newPath: string): Promise<RenameNoteNodeResponse> {
+        return withSpaErrors(notesClient().renameNode(wsId, oldPath, newPath));
     },
 
     deleteNode(wsId: string, nodePath: string): Promise<void> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/path?path=${encodeURIComponent(nodePath)}`, {
-            method: 'DELETE',
-        });
+        return withSpaErrors(notesClient().deleteNode(wsId, nodePath));
     },
 
-    reorder(wsId: string, parentPath: string, order: string[]): Promise<{ parentPath: string; order: string[] }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/order`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parentPath, order }),
-        });
+    reorder(wsId: string, parentPath: string, order: string[]): Promise<ReorderNotesResponse> {
+        return withSpaErrors(notesClient().reorder(wsId, parentPath, order));
     },
 
     search(wsId: string, query: string): Promise<NoteSearchResponse> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/search?q=${encodeURIComponent(query)}`);
+        return withSpaErrors(notesClient().search(wsId, query));
     },
 
-    // ── Image endpoints ─────────────────────────────────────────────────────
-
-    uploadImage(wsId: string, fileName: string, data: string): Promise<{ path: string }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/image`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileName, data }),
-        });
+    uploadImage(wsId: string, fileName: string, data: string): Promise<UploadNoteImageResponse> {
+        return withSpaErrors(notesClient().uploadImage(wsId, fileName, data));
     },
 
-    // ── Comment endpoints ───────────────────────────────────────────────────
+    getFilePreview(wsId: string, filePath: string): Promise<NoteFilePreviewResponse> {
+        return withSpaErrors(notesClient().previewFile(wsId, filePath));
+    },
 
     getComments(wsId: string, notePath: string): Promise<NoteSidecar> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/comments?path=${encodeURIComponent(notePath)}`,
-        );
+        return withSpaErrors(notesClient().getComments(wsId, notePath));
     },
 
     saveComments(wsId: string, notePath: string, threads: Record<string, CommentThread>): Promise<void> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, threads }),
-        });
+        return withSpaErrors(notesClient().saveComments(wsId, notePath, threads));
     },
 
     createThread(wsId: string, notePath: string, thread: CommentThread): Promise<{ thread: CommentThread }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, thread }),
-        });
+        return withSpaErrors(notesClient().createThread(wsId, notePath, thread));
     },
 
-    updateThread(wsId: string, notePath: string, threadId: string, status: 'open' | 'resolved'): Promise<{ thread: CommentThread }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, status }),
-        });
+    updateThread(wsId: string, notePath: string, threadId: string, status: CommentThreadStatus): Promise<{ thread: CommentThread }> {
+        return withSpaErrors(notesClient().updateThread(wsId, notePath, threadId, status));
     },
 
     deleteThread(wsId: string, notePath: string, threadId: string): Promise<void> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}?path=${encodeURIComponent(notePath)}`,
-            { method: 'DELETE' },
-        );
+        return withSpaErrors(notesClient().deleteThread(wsId, notePath, threadId));
     },
 
     addComment(wsId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, content }),
-        });
+        return withSpaErrors(notesClient().addComment(wsId, notePath, threadId, content));
     },
 
     editComment(wsId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment/${encodeURIComponent(commentId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, content }),
-        });
+        return withSpaErrors(notesClient().editComment(wsId, notePath, threadId, commentId, content));
     },
 
     deleteComment(wsId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment/${encodeURIComponent(commentId)}?path=${encodeURIComponent(notePath)}`,
-            { method: 'DELETE' },
-        );
+        return withSpaErrors(notesClient().deleteComment(wsId, notePath, threadId, commentId));
     },
 
-    /**
-     * Enqueue a batch-resolve task for all open comment threads on a note.
-     * Returns the queue task ID on success (202).
-     */
     batchResolve(wsId: string, notePath: string, documentContent: string, userContext?: string): Promise<{ taskId: string }> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/batch-resolve?path=${encodeURIComponent(notePath)}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ documentContent, ...(userContext ? { userContext } : {}) }),
-            },
-        );
+        return withSpaErrors(notesClient().batchResolve(wsId, notePath, documentContent, userContext));
     },
 
-    // ── Git status endpoint ──────────────────────────────────────────
-
-    getGitStatus(wsId: string): Promise<{
-        initialized: boolean;
-        branch?: string;
-        clean?: boolean;
-    }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/status`);
+    createWithAI(wsId: string, prompt: string, chatTaskId?: string): Promise<CreateNoteWithAIResponse> {
+        return withSpaErrors(notesClient().createWithAI(wsId, prompt, chatTaskId));
     },
 
-    // ── Auto-commit timer endpoints ──────────────────────────────────
+    initializeGit(wsId: string): Promise<{ initialized: boolean }> {
+        return withSpaErrors(notesClient().initializeGit(wsId));
+    },
 
-    getAutoCommitStatus(wsId: string): Promise<{
-        enabled: boolean;
-        intervalMs?: number;
-        lastCommittedAt?: string | null;
-        lastError?: string | null;
-        warning?: string;
-    }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit/status`);
+    getGitStatus(wsId: string): Promise<NotesGitStatus> {
+        return withSpaErrors(notesClient().getGitStatus(wsId));
+    },
+
+    getGitLog(wsId: string, limit?: number, offset?: number): Promise<NotesGitLogResponse> {
+        return withSpaErrors(notesClient().getGitLog(wsId, { limit, offset }));
+    },
+
+    getGitDiff(wsId: string, hash?: string): Promise<NotesGitDiff> {
+        return withSpaErrors(notesClient().getGitDiff(wsId, hash));
+    },
+
+    commitGit(wsId: string, message?: string): Promise<NotesGitCommitResponse> {
+        return withSpaErrors(notesClient().commitGit(wsId, message));
+    },
+
+    getAutoCommitStatus(wsId: string): Promise<NotesGitAutoCommitStatus> {
+        return withSpaErrors(notesClient().getAutoCommitStatus(wsId));
     },
 
     enableAutoCommit(wsId: string, intervalMs?: number): Promise<{ enabled: boolean; intervalMs: number }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ intervalMs: intervalMs ?? 1_800_000 }),
-        });
+        return withSpaErrors(notesClient().enableAutoCommit(wsId, intervalMs));
     },
 
     disableAutoCommit(wsId: string): Promise<{ deleted: boolean }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
-            method: 'DELETE',
-        });
+        return withSpaErrors(notesClient().disableAutoCommit(wsId));
     },
 
     updateAutoCommitInterval(wsId: string, intervalMs: number): Promise<{ enabled: boolean; intervalMs: number }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/auto-commit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ intervalMs }),
-        });
+        return withSpaErrors(notesClient().updateAutoCommitInterval(wsId, intervalMs));
     },
 
-    // ── Per-file version history endpoints ──────────────────────────
-
-    getFileLog(wsId: string, notePath: string, limit = 50): Promise<{
-        entries: Array<{
-            hash: string; shortHash: string; message: string; date: string; isNamedCheckpoint: boolean;
-        }>;
-        path: string;
-        limit: number;
-    }> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/git/file-log?path=${encodeURIComponent(notePath)}&limit=${limit}`,
-        );
+    getFileLog(wsId: string, notePath: string, limit = 50): Promise<NoteFileLogResponse> {
+        return withSpaErrors(notesClient().getFileLog(wsId, notePath, limit));
     },
 
-    getFileContentAtRevision(wsId: string, hash: string, notePath: string): Promise<{
-        content: string; hash: string; path: string;
-    }> {
-        return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/git/file-content?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(notePath)}`,
-        );
+    getFileContentAtRevision(wsId: string, hash: string, notePath: string): Promise<NoteFileContentAtRevisionResponse> {
+        return withSpaErrors(notesClient().getFileContentAtRevision(wsId, hash, notePath));
     },
 
-    saveCheckpoint(wsId: string, notePath: string, name: string): Promise<{ hash: string; message: string }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/save-checkpoint`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, name }),
-        });
+    saveCheckpoint(wsId: string, notePath: string, name: string): Promise<SaveNoteCheckpointResponse> {
+        return withSpaErrors(notesClient().saveCheckpoint(wsId, notePath, name));
     },
 
-    restoreVersion(wsId: string, notePath: string, hash: string): Promise<{ mtime: number }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/git/restore-version`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, hash }),
-        });
+    restoreVersion(wsId: string, notePath: string, hash: string): Promise<RestoreNoteVersionResponse> {
+        return withSpaErrors(notesClient().restoreVersion(wsId, notePath, hash));
     },
 };

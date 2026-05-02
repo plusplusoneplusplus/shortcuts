@@ -2,6 +2,7 @@ export * from './common';
 export * from './explorer';
 export * from './git';
 export * from './memory';
+export * from './notes';
 export * from './preferences';
 export * from './processes';
 export * from './pull-requests';

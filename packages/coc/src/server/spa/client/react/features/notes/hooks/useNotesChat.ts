@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 
 /** Whether the chat is scoped to the current note or the whole workspace. */
@@ -187,27 +187,16 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     const createChat = useCallback(async (prompt: string, model?: string | null, mode: 'ask' | 'autopilot' = 'ask', skills?: string[], attachments?: AttachmentPayload[]): Promise<string | null> => {
         try {
-            const res = await fetchApi('/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode,
-                        prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
-                        workspaceId,
-                        ...(model ? { model } : {}),
-                        ...(attachments && attachments.length > 0 ? { attachments } : {}),
-                        context: {
-                            noteChat: notePath ? { notePath, noteTitle } : undefined,
-                            ...(skills && skills.length > 0 ? { skills } : {}),
-                        },
-                    },
-                }),
+            const res = await getSpaCocClient().notes.createChat(workspaceId, {
+                prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
+                notePath,
+                noteTitle,
+                mode,
+                model,
+                skills,
+                attachments,
             });
-            const newTaskId = res.task?.id ?? res.id;
+            const newTaskId = res.task.id;
 
             if (scope === 'per-workspace') {
                 setPerWorkspaceTaskId(newTaskId);

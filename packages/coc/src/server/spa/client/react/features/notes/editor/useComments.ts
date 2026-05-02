@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { fetchApi } from '../../../hooks/useApi';
+import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi, type CommentThread, type Comment } from '../notesApi';
 import type { TextAnchor } from './textAnchor';
 
@@ -271,22 +271,14 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                 });
                 message += `\nThe current document content is provided. Please address each comment and make the necessary changes.`;
 
-                await fetchApi(`/processes/${encodeURIComponent(ppId)}/message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: message,
-                        ...(selectedModeRef.current ? { mode: selectedModeRef.current } : {}),
-                        context: {
-                            noteContent: documentContent,
-                            resolveComments: {
-                                documentUri: path,
-                                commentIds: openThreads.map(t => t.id),
-                                documentContent,
-                                wsId,
-                            },
-                        },
-                    }),
+                await getSpaCocClient().notes.sendCommentResolutionMessage(ppId, {
+                    content: message,
+                    ...(selectedModeRef.current ? { mode: selectedModeRef.current } : {}),
+                    noteContent: documentContent,
+                    documentUri: path,
+                    commentIds: openThreads.map(t => t.id),
+                    documentContent,
+                    workspaceId: wsId,
                 });
                 return;
             }

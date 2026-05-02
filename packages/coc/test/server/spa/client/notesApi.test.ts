@@ -1,307 +1,90 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
+import { resetSpaCocClientForTests } from '../../../../src/server/spa/client/react/api/cocClient';
 
-// Mock getApiBase used by fetchApi
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
 }));
 
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+    return new Response(JSON.stringify(body), {
+        ...init,
+        headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    });
+}
+
 describe('notesApi', () => {
     const mockFetch = vi.fn();
-    beforeEach(() => { globalThis.fetch = mockFetch; });
-    afterEach(() => { vi.resetAllMocks(); });
 
-    function mockOk(data: any) {
-        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => data });
-    }
-    function mock204() {
-        mockFetch.mockResolvedValueOnce({ ok: true, status: 204, json: async () => undefined });
-    }
+    beforeEach(() => {
+        resetSpaCocClientForTests();
+        globalThis.fetch = mockFetch as unknown as typeof fetch;
+    });
 
-    describe('getTree', () => {
-        it('calls GET /workspaces/:id/notes/tree', async () => {
-            const treeNodes = [{ name: 'root', path: '/', type: 'notebook', children: [] }];
-            const response = { tree: treeNodes, notesRoot: '/home/user/.coc/repos/ws-1/notes' };
-            mockOk(response);
-            const result = await notesApi.getTree('ws-1');
-            expect(result).toEqual(response);
-            expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws-1/notes/tree', {});
-        });
+    afterEach(() => {
+        resetSpaCocClientForTests();
+        vi.resetAllMocks();
+    });
 
-        it('encodes workspaceId', async () => {
-            mockOk({ tree: [], notesRoot: '/path/to/notes' });
-            await notesApi.getTree('ws/special chars');
-            expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/ws%2Fspecial%20chars/notes/tree', {});
+    it('uses the typed client for note CRUD routes with encoded workspace and query paths', async () => {
+        mockFetch
+            .mockResolvedValueOnce(jsonResponse({ tree: [], notesRoot: 'notes' }))
+            .mockResolvedValueOnce(jsonResponse({ content: '# Hello', path: 'Notebook/Page One.md', mtime: 1 }))
+            .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+        await expect(notesApi.getTree('ws/special chars')).resolves.toEqual({ tree: [], notesRoot: 'notes' });
+        await expect(notesApi.getContent('ws/special chars', 'Notebook/Page One.md')).resolves.toMatchObject({ content: '# Hello' });
+        await expect(notesApi.deleteNode('ws/special chars', 'Notebook/Old Page.md')).resolves.toBeUndefined();
+
+        expect(mockFetch.mock.calls.map(call => call[0])).toEqual([
+            '/api/workspaces/ws%2Fspecial%20chars/notes/tree',
+            '/api/workspaces/ws%2Fspecial%20chars/notes/content?path=Notebook%2FPage+One.md',
+            '/api/workspaces/ws%2Fspecial%20chars/notes/path?path=Notebook%2FOld+Page.md',
+        ]);
+        expect(mockFetch.mock.calls[2][1]).toMatchObject({ method: 'DELETE' });
+    });
+
+    it('preserves enriched 409 conflict errors for saveContent', async () => {
+        mockFetch.mockResolvedValueOnce(jsonResponse(
+            { reason: 'mtime-mismatch', currentMtime: 20 },
+            { status: 409, statusText: 'Conflict' },
+        ));
+
+        await expect(notesApi.saveContent('ws-1', 'Page.md', '# Updated', 10)).rejects.toMatchObject({
+            message: 'conflict',
+            status: 409,
+            reason: 'mtime-mismatch',
+            currentMtime: 20,
         });
     });
 
-    describe('getContent', () => {
-        it('calls GET with path query parameter', async () => {
-            const data = { content: '# Hello', path: 'notes/hello.md' };
-            mockOk(data);
-            const result = await notesApi.getContent('ws-1', 'notes/hello.md');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/content?path=notes%2Fhello.md',
-                {},
-            );
-        });
+    it('uses typed note comment routes with encoded thread and comment IDs', async () => {
+        mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+        await notesApi.deleteComment('ws-1', 'Notebook/Page.md', 'thread/1', 'comment/2');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            '/api/workspaces/ws-1/notes/comments/thread/thread%2F1/comment/comment%2F2?path=Notebook%2FPage.md',
+            expect.objectContaining({ method: 'DELETE' }),
+        );
     });
 
-    describe('saveContent', () => {
-        it('calls PUT with JSON body', async () => {
-            const data = { path: 'notes/hello.md', updated: true };
-            mockOk(data);
-            const result = await notesApi.saveContent('ws-1', 'notes/hello.md', '# Updated');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/content',
-                expect.objectContaining({
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: 'notes/hello.md', content: '# Updated' }),
-                }),
-            );
-        });
-    });
+    it('uses typed notes git and AI helper routes', async () => {
+        mockFetch
+            .mockResolvedValueOnce(jsonResponse({ initialized: true, branch: 'main', clean: true, staged: [], unstaged: [], untracked: [], totalChanges: 0 }))
+            .mockResolvedValueOnce(jsonResponse({ taskId: 'task-1' }))
+            .mockResolvedValueOnce(jsonResponse({ enabled: true, intervalMs: 900_000 }));
 
-    describe('createNode', () => {
-        it('calls POST with path and type', async () => {
-            const data = { path: 'notes/new-page.md', type: 'page' };
-            mockOk(data);
-            const result = await notesApi.createNode('ws-1', 'notes/new-page.md', 'page');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/page',
-                expect.objectContaining({
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: 'notes/new-page.md', type: 'page' }),
-                }),
-            );
-        });
-    });
+        await notesApi.getGitStatus('repo/a');
+        await notesApi.createWithAI('repo/a', 'Create note');
+        await notesApi.enableAutoCommit('repo/a', 900_000);
 
-    describe('renameNode', () => {
-        it('calls PATCH with oldPath and newPath', async () => {
-            const data = { oldPath: 'notes/old.md', newPath: 'notes/new.md' };
-            mockOk(data);
-            const result = await notesApi.renameNode('ws-1', 'notes/old.md', 'notes/new.md');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/path',
-                expect.objectContaining({
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldPath: 'notes/old.md', newPath: 'notes/new.md' }),
-                }),
-            );
-        });
-    });
-
-    describe('deleteNode', () => {
-        it('calls DELETE with path query parameter', async () => {
-            mock204();
-            await notesApi.deleteNode('ws-1', 'notes/old.md');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/path?path=notes%2Fold.md',
-                expect.objectContaining({ method: 'DELETE' }),
-            );
-        });
-    });
-
-    describe('search', () => {
-        it('calls GET with query parameter', async () => {
-            const data = { results: [{ path: 'notes/hello.md', matches: [{ line: 1, text: 'hello world' }] }], truncated: false };
-            mockOk(data);
-            const result = await notesApi.search('ws-1', 'hello world');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/search?q=hello%20world',
-                {},
-            );
-        });
-    });
-
-    describe('comment endpoints', () => {
-        it('getComments — calls GET with path query param', async () => {
-            const sidecar = { noteId: 'notes/hello.md', threads: {} };
-            mockOk(sidecar);
-            const result = await notesApi.getComments('ws-1', 'notes/hello.md');
-            expect(result).toEqual(sidecar);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments?path=notes%2Fhello.md',
-                {},
-            );
-        });
-
-        it('saveComments — calls PUT with threads body', async () => {
-            mock204();
-            await notesApi.saveComments('ws-1', 'notes/hello.md', {});
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments',
-                expect.objectContaining({
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: 'notes/hello.md', threads: {} }),
-                }),
-            );
-        });
-
-        it('createThread — calls POST with thread payload', async () => {
-            const thread = { id: 't1', anchor: { quotedText: 'x', prefix: '', suffix: '' }, status: 'open', comments: [], createdAt: '2025-01-01T00:00:00Z' };
-            mockOk({ thread });
-            const result = await notesApi.createThread('ws-1', 'notes/hello.md', thread as any);
-            expect(result).toEqual({ thread });
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread',
-                expect.objectContaining({
-                    method: 'POST',
-                    body: JSON.stringify({ path: 'notes/hello.md', thread }),
-                }),
-            );
-        });
-
-        it('updateThread — calls PATCH with threadId in path and status in body', async () => {
-            const thread = { id: 't1', status: 'resolved' };
-            mockOk({ thread });
-            const result = await notesApi.updateThread('ws-1', 'notes/hello.md', 't1', 'resolved');
-            expect(result).toEqual({ thread });
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/t1',
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ path: 'notes/hello.md', status: 'resolved' }),
-                }),
-            );
-        });
-
-        it('deleteThread — calls DELETE with threadId in path and path query param', async () => {
-            mock204();
-            await notesApi.deleteThread('ws-1', 'notes/hello.md', 't1');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/t1?path=notes%2Fhello.md',
-                expect.objectContaining({ method: 'DELETE' }),
-            );
-        });
-
-        it('addComment — calls POST with threadId in path and content in body', async () => {
-            const comment = { id: 'c1', body: 'Hello', createdAt: '2025-01-01T00:00:00Z' };
-            mockOk({ comment });
-            const result = await notesApi.addComment('ws-1', 'notes/hello.md', 't1', 'Hello');
-            expect(result).toEqual({ comment });
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/t1/comment',
-                expect.objectContaining({
-                    method: 'POST',
-                    body: JSON.stringify({ path: 'notes/hello.md', content: 'Hello' }),
-                }),
-            );
-        });
-
-        it('editComment — calls PATCH with threadId and commentId in path', async () => {
-            const comment = { id: 'c1', body: 'Updated', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-02T00:00:00Z' };
-            mockOk({ comment });
-            const result = await notesApi.editComment('ws-1', 'notes/hello.md', 't1', 'c1', 'Updated');
-            expect(result).toEqual({ comment });
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/t1/comment/c1',
-                expect.objectContaining({
-                    method: 'PATCH',
-                    body: JSON.stringify({ path: 'notes/hello.md', content: 'Updated' }),
-                }),
-            );
-        });
-
-        it('deleteComment — calls DELETE with threadId and commentId in path', async () => {
-            mock204();
-            await notesApi.deleteComment('ws-1', 'notes/hello.md', 't1', 'c1');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/t1/comment/c1?path=notes%2Fhello.md',
-                expect.objectContaining({ method: 'DELETE' }),
-            );
-        });
-
-        it('encodes special characters in threadId and commentId path segments', async () => {
-            mock204();
-            await notesApi.deleteComment('ws-1', 'notes/hello.md', 'thread/1', 'comment/2');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread/thread%2F1/comment/comment%2F2?path=notes%2Fhello.md',
-                expect.objectContaining({ method: 'DELETE' }),
-            );
-        });
-    });
-
-    describe('auto-commit endpoints', () => {
-        it('getAutoCommitStatus — calls GET /workspaces/:id/notes/git/auto-commit/status', async () => {
-            const data = { enabled: true, intervalMs: 1_800_000, lastCommittedAt: '2025-01-01T01:00:00Z', lastError: null };
-            mockOk(data);
-            const result = await notesApi.getAutoCommitStatus('ws-1');
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/git/auto-commit/status',
-                {},
-            );
-        });
-
-        it('enableAutoCommit — sends POST with intervalMs body', async () => {
-            const data = { enabled: true, intervalMs: 900_000 };
-            mockOk(data);
-            const result = await notesApi.enableAutoCommit('ws-1', 900_000);
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/git/auto-commit',
-                expect.objectContaining({
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ intervalMs: 900_000 }),
-                }),
-            );
-        });
-
-        it('enableAutoCommit — uses default intervalMs (30 min) when none provided', async () => {
-            mockOk({ enabled: true, intervalMs: 1_800_000 });
-            await notesApi.enableAutoCommit('ws-1');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/git/auto-commit',
-                expect.objectContaining({
-                    body: JSON.stringify({ intervalMs: 1_800_000 }),
-                }),
-            );
-        });
-
-        it('disableAutoCommit — sends DELETE', async () => {
-            mockOk({ deleted: true });
-            const result = await notesApi.disableAutoCommit('ws-1');
-            expect(result).toEqual({ deleted: true });
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/git/auto-commit',
-                expect.objectContaining({ method: 'DELETE' }),
-            );
-        });
-
-        it('updateAutoCommitInterval — sends POST with intervalMs body', async () => {
-            const data = { enabled: true, intervalMs: 600_000 };
-            mockOk(data);
-            const result = await notesApi.updateAutoCommitInterval('ws-1', 600_000);
-            expect(result).toEqual(data);
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/git/auto-commit',
-                expect.objectContaining({
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ intervalMs: 600_000 }),
-                }),
-            );
-        });
-
-        it('encodes workspaceId in auto-commit endpoints', async () => {
-            mockOk({ enabled: false });
-            await notesApi.getAutoCommitStatus('ws/special');
-            expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws%2Fspecial/notes/git/auto-commit/status',
-                {},
-            );
-        });
+        expect(mockFetch.mock.calls.map(call => call[0])).toEqual([
+            '/api/workspaces/repo%2Fa/notes/git/status',
+            '/api/workspaces/repo%2Fa/notes/ai-create',
+            '/api/workspaces/repo%2Fa/notes/git/auto-commit',
+        ]);
+        expect(mockFetch.mock.calls[1][1]).toMatchObject({ method: 'POST' });
+        expect(mockFetch.mock.calls[2][1]?.body).toBe(JSON.stringify({ intervalMs: 900_000 }));
     });
 });

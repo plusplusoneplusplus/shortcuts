@@ -8,6 +8,7 @@ import {
   HealthClient,
   MemoryClient,
   ModelsClient,
+  NotesClient,
   PreferencesClient,
   ProcessesClient,
   PullRequestsClient,
@@ -103,6 +104,7 @@ describe('CocClient integration wiring', () => {
     expect(client.git).toBeInstanceOf(GitClient);
     expect(client.memory).toBeInstanceOf(MemoryClient);
     expect(client.models).toBeInstanceOf(ModelsClient);
+    expect(client.notes).toBeInstanceOf(NotesClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
     expect(client.processes).toBeInstanceOf(ProcessesClient);
     expect(client.pullRequests).toBeInstanceOf(PullRequestsClient);
@@ -126,6 +128,7 @@ describe('CocClient integration wiring', () => {
       client.git,
       client.memory,
       client.models,
+      client.notes,
       client.preferences,
       client.processes,
       client.pullRequests,
@@ -145,6 +148,7 @@ describe('CocClient integration wiring', () => {
     await client.git.getBranchRange('repo-a');
     await client.memory.getConfig();
     await client.models.list();
+    await client.notes.getTree('repo-a');
     await client.preferences.getGlobal();
     await client.processes.list();
     await client.pullRequests.getProviderConfig();
@@ -159,6 +163,7 @@ describe('CocClient integration wiring', () => {
       '/workspaces/repo-a/git/branch-range',
       '/memory/config',
       '/models',
+      '/workspaces/repo-a/notes/tree',
       '/preferences',
       '/processes',
       '/providers/config',

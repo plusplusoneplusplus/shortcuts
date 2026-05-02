@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { notesApi } from '../notesApi';
 
 export interface FilePreviewTooltipProps {
     /** The file path being previewed. */
@@ -48,11 +49,7 @@ export function FilePreviewTooltip({
         setError(false);
         setPreview(null);
 
-        fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/notes/file-preview?path=${encodeURIComponent(filePath)}`)
-            .then(res => {
-                if (!res.ok) throw new Error(`${res.status}`);
-                return res.json();
-            })
+        notesApi.getFilePreview(workspaceId, filePath)
             .then((data: PreviewData) => {
                 if (!cancelled) {
                     setPreview(data);
