@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     createMemoryTool,
+    MemoryCandidateStore,
     RawMemoryRecordStore,
 } from '../../src/memory';
 import type {
@@ -18,6 +19,7 @@ import type {
     MemoryToolStores,
     MemoryToolCaptureContext,
     MemoryToolRawStores,
+    MemoryToolCandidateStores,
     MemoryToolCaptureResult,
 } from '../../src/memory';
 import type { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
@@ -235,6 +237,55 @@ describe('createMemoryTool — capture mode', () => {
             await tool.handler({ action: 'add', target: 'system', content: 'Fact B' }, mockInvocation);
 
             expect(getWrittenFacts()).toEqual(['Fact A', 'Fact B']);
+        });
+
+        it('persists explicit memory intent in raw capture metadata', async () => {
+            const { tool } = createMemoryTool(boundedStores, captureOptions, {
+                rawStores,
+                context: captureContext,
+            });
+
+            await tool.handler(
+                {
+                    action: 'add',
+                    target: 'repo',
+                    content: 'Explicit fact',
+                    explicitMemoryIntent: true,
+                },
+                mockInvocation,
+            );
+
+            const pending = await repoRawStore.listPending();
+            expect(JSON.parse(pending[0].metadataJson ?? '{}')).toEqual({ explicitMemoryIntent: true });
+        });
+
+        it('persists explicit memory intent in candidate capture mode', async () => {
+            const repoCandidateStore = new MemoryCandidateStore({
+                dbPath: path.join(tmpDir, 'repo-candidates', 'raw-memory.db'),
+            });
+            const candidateStores: MemoryToolCandidateStores = { repo: repoCandidateStore };
+            try {
+                const { tool } = createMemoryTool(boundedStores, captureOptions, {
+                    candidateStores,
+                    context: captureContext,
+                });
+
+                const result = await tool.handler(
+                    {
+                        action: 'add',
+                        target: 'repo',
+                        content: 'Explicit candidate fact',
+                        explicitMemoryIntent: true,
+                    },
+                    mockInvocation,
+                );
+
+                expect(result).toMatchObject({ success: true, candidateId: expect.any(String) });
+                const pending = await repoCandidateStore.listPendingCandidates();
+                expect(pending[0].explicitMemoryIntent).toBe(true);
+            } finally {
+                repoCandidateStore.close();
+            }
         });
     });
 

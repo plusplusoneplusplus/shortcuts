@@ -31,7 +31,7 @@ Entry point: `src/index.ts` — re-exports all public API from the modules above
 
 ## Memory System
 
-Bounded, file-backed memory that lets AI chat sessions learn from past interactions. The AI writes `write_memory` tool calls (add/replace/remove) which are applied immediately to `MEMORY.md`; the frozen snapshot is injected into subsequent prompts. There is no batch-consolidation pipeline.
+Bounded, file-backed memory lets AI chat sessions learn from past interactions. Direct bounded memory actions mutate `MEMORY.md`; chat-time capture mode upserts durable candidate rows instead of rewriting bounded memory. Candidate ranking is deterministic and explainable from stored metadata. The frozen bounded-memory snapshot is injected into subsequent prompts.
 
 **Storage layout:** `~/.coc/repos/<workspaceId>/memory/MEMORY.md` (per-repo), `~/.coc/memory/system/MEMORY.md` (global system). `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
 
@@ -45,8 +45,9 @@ Bounded, file-backed memory that lets AI chat sessions learn from past interacti
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
-| `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`; capture mode routes `add` into durable memory candidates without mutating `MEMORY.md`. |
-| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content dedupe, signal counts, provenance, and one-time migration from pending legacy raw records. |
+| `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`; capture mode routes `add` into durable memory candidates without mutating `MEMORY.md` and preserves explicit memory intent metadata. |
+| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content dedupe, signal counts, provenance, explicit intent, and one-time migration from pending legacy raw records. |
+| `memory-candidate-ranking.ts` | `rankMemoryCandidates` | Pure deterministic ranking and selection policy for pending candidates using frequency, relevance, diversity, recency, consolidation, conceptual tags, and explicit memory intent. |
 
 ### Usage Pattern
 

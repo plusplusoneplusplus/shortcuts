@@ -13,6 +13,7 @@ import * as path from 'path';
 import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import {
     MemoryCandidateStore,
+    rankMemoryCandidates,
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/forge';
@@ -49,10 +50,12 @@ export class MemoryAggregateExecutor {
             }
 
             logger.debug(LogCategory.AI, `[MemoryAggregate] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
+            const ranked = rankMemoryCandidates(candidates);
+            const selectedCount = ranked.filter(candidate => candidate.selected).length;
 
             return {
                 success: true,
-                result: `Memory promotion pending; retained ${candidates.length} candidate(s)`,
+                result: `Memory promotion pending; ranked ${ranked.length} candidate(s), selected ${selectedCount}`,
                 durationMs: Date.now() - startTime,
             };
         } catch (error) {

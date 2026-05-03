@@ -110,7 +110,7 @@ describe('MemoryAggregateExecutor', () => {
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
-        expect(result.result).toBe('Memory promotion pending; retained 2 candidate(s)');
+        expect(result.result).toBe('Memory promotion pending; ranked 2 candidate(s), selected 0');
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(readBoundedMemoryRaw(wsId)).toBe(originalMemory);
 
@@ -202,5 +202,29 @@ describe('MemoryAggregateExecutor', () => {
 
         expect(typeof result.durationMs).toBe('number');
         expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('reports deterministic selected candidate count without invoking AI', async () => {
+        const wsId = 'ws-selected';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers concise responses',
+            source: 'test',
+            workspaceId: wsId,
+            processId: 'proc-1',
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+
+        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toBe('Memory promotion pending; ranked 1 candidate(s), selected 1');
+        expect(mockAiService.sendMessage).not.toHaveBeenCalled();
     });
 });

@@ -26,6 +26,7 @@ export interface MemoryCandidate {
     uniqueProcessCount: number;
     recallDays: string[];
     conceptTags: string[];
+    explicitMemoryIntent: boolean;
     status: MemoryCandidateStatus;
     promotedAt: string | null;
     droppedAt: string | null;
@@ -41,6 +42,7 @@ export interface MemoryCandidateInput {
     turnIndex?: number | null;
     score?: number;
     conceptTags?: string[];
+    explicitMemoryIntent?: boolean;
     seenAt?: string;
 }
 

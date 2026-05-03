@@ -85,6 +85,18 @@ export type {
     MemoryCandidateStatus,
     MemoryCandidateTarget,
 } from './memory-candidate-types';
+export {
+    DEFAULT_MEMORY_CANDIDATE_RANKING_WEIGHTS,
+    DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY,
+    rankMemoryCandidates,
+} from './memory-candidate-ranking';
+export type {
+    MemoryCandidateRankingOptions,
+    MemoryCandidateRankingWeights,
+    MemoryCandidateScoreComponents,
+    MemoryCandidateSelectionPolicy,
+    RankedMemoryCandidate,
+} from './memory-candidate-ranking';
 
 // Raw-to-bounded reconciler
 export {

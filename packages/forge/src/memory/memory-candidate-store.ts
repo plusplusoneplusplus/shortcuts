@@ -43,6 +43,7 @@ interface CandidateRow {
     unique_process_count: number;
     recall_days_json: string;
     concept_tags_json: string;
+    explicit_memory_intent: number;
     status: string;
     promoted_at: string | null;
     dropped_at: string | null;
@@ -58,6 +59,7 @@ interface LegacyRawRecordRow {
     process_id: string | null;
     turn_index: number | null;
     created_at: string;
+    metadata_json: string | null;
 }
 
 const KNOWN_STATUSES: readonly MemoryCandidateStatus[] = ['pending', 'promoted', 'dropped', 'ignored'];
@@ -80,6 +82,7 @@ CREATE TABLE IF NOT EXISTS memory_candidates (
     unique_process_count INTEGER NOT NULL DEFAULT 0 CHECK(unique_process_count >= 0),
     recall_days_json     TEXT NOT NULL DEFAULT '[]',
     concept_tags_json    TEXT NOT NULL DEFAULT '[]',
+    explicit_memory_intent INTEGER NOT NULL DEFAULT 0 CHECK(explicit_memory_intent IN (0, 1)),
     status               TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'promoted', 'dropped', 'ignored')),
     promoted_at          TEXT,
     dropped_at           TEXT,
@@ -219,6 +222,13 @@ export class MemoryCandidateStore {
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
         this.db.exec(SCHEMA_SQL);
+        this.ensureExplicitMemoryIntentColumn();
+    }
+
+    private ensureExplicitMemoryIntentColumn(): void {
+        const columns = this.db.prepare(`PRAGMA table_info(memory_candidates)`).all() as { name: string }[];
+        if (columns.some(column => column.name === 'explicit_memory_intent')) return;
+        this.db.exec(`ALTER TABLE memory_candidates ADD COLUMN explicit_memory_intent INTEGER NOT NULL DEFAULT 0`);
     }
 
     private prepareStatements(): void {
@@ -231,11 +241,11 @@ export class MemoryCandidateStore {
             INSERT INTO memory_candidates
                 (id, target, content, content_hash, source, workspace_id, process_id, turn_index,
                  created_at, last_seen_at, signal_count, total_score, max_score, unique_process_count,
-                 recall_days_json, concept_tags_json, status)
+                 recall_days_json, concept_tags_json, explicit_memory_intent, status)
             VALUES
                 (@id, @target, @content, @contentHash, @source, @workspaceId, @processId, @turnIndex,
                  @createdAt, @lastSeenAt, 1, @score, @score, 0,
-                 @recallDaysJson, @conceptTagsJson, 'pending')
+                 @recallDaysJson, @conceptTagsJson, @explicitMemoryIntent, 'pending')
         `);
         this.stmtUpdateCandidateSignal = this.db.prepare(`
             UPDATE memory_candidates
@@ -244,7 +254,8 @@ export class MemoryCandidateStore {
                 total_score = total_score + @score,
                 max_score = MAX(max_score, @score),
                 recall_days_json = @recallDaysJson,
-                concept_tags_json = @conceptTagsJson
+                concept_tags_json = @conceptTagsJson,
+                explicit_memory_intent = MAX(explicit_memory_intent, @explicitMemoryIntent)
             WHERE id = @id
         `);
         this.stmtSelectPending = this.db.prepare(`
@@ -281,6 +292,7 @@ export class MemoryCandidateStore {
         const contentHash = hashContent(content);
         const recallDay = seenAt.slice(0, 10);
         const conceptTags = normalizeConceptTags(input.conceptTags);
+        const explicitMemoryIntent = input.explicitMemoryIntent ? 1 : 0;
 
         const existing = this.stmtSelectByScopeHash.get({
             target,
@@ -305,6 +317,7 @@ export class MemoryCandidateStore {
                 score,
                 recallDaysJson: JSON.stringify([recallDay]),
                 conceptTagsJson: JSON.stringify(conceptTags),
+                explicitMemoryIntent,
             });
         } else {
             candidateId = existing.id;
@@ -314,6 +327,7 @@ export class MemoryCandidateStore {
                 score,
                 recallDaysJson: JSON.stringify(mergeJsonArray(existing.recall_days_json, [recallDay])),
                 conceptTagsJson: JSON.stringify(mergeJsonArray(existing.concept_tags_json, conceptTags)),
+                explicitMemoryIntent,
             });
         }
 
@@ -339,7 +353,7 @@ export class MemoryCandidateStore {
         if (!hasRawTable) return;
 
         const pendingRows = this.db.prepare(`
-            SELECT r.id, r.target, r.content, r.source, r.workspace_id, r.process_id, r.turn_index, r.created_at
+            SELECT r.id, r.target, r.content, r.source, r.workspace_id, r.process_id, r.turn_index, r.created_at, r.metadata_json
             FROM raw_memory_records r
             LEFT JOIN memory_candidate_legacy_records m ON m.raw_record_id = r.id
             WHERE r.status = 'pending' AND m.raw_record_id IS NULL
@@ -363,6 +377,7 @@ export class MemoryCandidateStore {
                     processId: row.process_id,
                     turnIndex: row.turn_index,
                     seenAt: row.created_at,
+                    explicitMemoryIntent: parseExplicitMemoryIntent(row.metadata_json),
                 });
                 insertMigration.run({ rawRecordId: row.id, candidateId: candidate.id });
             }
@@ -387,6 +402,7 @@ export class MemoryCandidateStore {
             uniqueProcessCount: row.unique_process_count,
             recallDays: parseJsonArray(row.recall_days_json),
             conceptTags: parseJsonArray(row.concept_tags_json),
+            explicitMemoryIntent: row.explicit_memory_intent === 1,
             status: normalizeStatus(row.status),
             promotedAt: row.promoted_at,
             droppedAt: row.dropped_at,
@@ -424,6 +440,16 @@ function parseJsonArray(json: string): string[] {
             : [];
     } catch {
         return [];
+    }
+}
+
+function parseExplicitMemoryIntent(metadataJson: string | null): boolean {
+    if (!metadataJson) return false;
+    try {
+        const parsed = JSON.parse(metadataJson) as { explicitMemoryIntent?: unknown };
+        return parsed.explicitMemoryIntent === true;
+    } catch {
+        return false;
     }
 }
 

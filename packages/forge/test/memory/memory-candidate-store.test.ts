@@ -68,6 +68,7 @@ describe('MemoryCandidateStore', () => {
             expect(second.uniqueProcessCount).toBe(2);
             expect(second.recallDays).toEqual(['2026-05-01', '2026-05-02']);
             expect(second.conceptTags).toEqual(['preference', 'ui']);
+            expect(second.explicitMemoryIntent).toBe(false);
 
             const stats = await store.getStats();
             expect(stats).toMatchObject({ pending: 1, total: 1 });
@@ -105,6 +106,26 @@ describe('MemoryCandidateStore', () => {
             expect(candidate.turnIndex).toBe(7);
             expect(candidate.source).toBe('background-review');
             expect(candidate.status).toBe('pending');
+        } finally {
+            store.close();
+        }
+    });
+
+    it('preserves explicit memory intent after later matching signals', async () => {
+        const store = createStore();
+        try {
+            const first = await store.upsertCandidate(makeInput({
+                content: 'Remember to run package tests',
+                explicitMemoryIntent: true,
+            }));
+            const second = await store.upsertCandidate(makeInput({
+                content: 'Remember   to run package tests',
+                explicitMemoryIntent: false,
+            }));
+
+            expect(first.explicitMemoryIntent).toBe(true);
+            expect(second.id).toBe(first.id);
+            expect(second.explicitMemoryIntent).toBe(true);
         } finally {
             store.close();
         }
@@ -181,6 +202,7 @@ describe('MemoryCandidateStore', () => {
             workspaceId: 'ws-test',
             processId: 'proc-legacy',
             turnIndex: 4,
+            metadataJson: JSON.stringify({ explicitMemoryIntent: true }),
         });
         rawStore.close();
 
@@ -194,6 +216,7 @@ describe('MemoryCandidateStore', () => {
                 processId: 'proc-legacy',
                 turnIndex: 4,
                 signalCount: 1,
+                explicitMemoryIntent: true,
             });
         } finally {
             store.close();

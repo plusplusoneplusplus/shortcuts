@@ -57,6 +57,8 @@ export interface MemoryToolArgs {
     content?: string;
     /** Short unique substring identifying the entry to replace or remove. */
     old_text?: string;
+    /** True only when the user explicitly asked to remember/save this fact. */
+    explicitMemoryIntent?: boolean;
 }
 
 /** Map of target name → BoundedMemoryStore instance. */
@@ -220,6 +222,10 @@ export function createMemoryTool(
                     type: 'string',
                     description: 'Short unique substring identifying the entry to replace or remove.',
                 },
+                explicitMemoryIntent: {
+                    type: 'boolean',
+                    description: "Set true only when the user explicitly asked to remember/save this fact or gave a durable correction.",
+                },
             },
             required: ['action', 'target'],
         },
@@ -334,6 +340,7 @@ async function handleCaptureMode(
             workspaceId: captureConfig.context.workspaceId ?? '',
             processId: captureConfig.context.processId ?? null,
             turnIndex: captureConfig.context.turnIndex ?? null,
+            explicitMemoryIntent: args.explicitMemoryIntent === true,
         });
 
         writtenFacts.push(trimmed);
@@ -358,6 +365,7 @@ async function handleCaptureMode(
         workspaceId: captureConfig.context.workspaceId ?? '',
         processId: captureConfig.context.processId ?? null,
         turnIndex: captureConfig.context.turnIndex ?? null,
+        metadataJson: JSON.stringify({ explicitMemoryIntent: args.explicitMemoryIntent === true }),
     });
 
     writtenFacts.push(trimmed);
