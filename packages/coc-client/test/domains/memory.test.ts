@@ -16,14 +16,6 @@ describe('MemoryClient', () => {
     await client.getRepoBounded('repo/a');
     await client.saveRepoBounded('repo/a', 'Remember this');
     await client.aggregateRepo('repo/a', { model: 'gpt-test', target: 'system' });
-    await client.rawDbTables('repo/a');
-    await client.rawDbTable('repo/a', 'raw_memory_records', {
-      page: 2,
-      pageSize: 25,
-      sort: 'content',
-      order: 'asc',
-    });
-
     expect(adapter.calls).toEqual([
       { path: '/repos/repo%2Fa/memory/overview', options: undefined },
       { path: '/repos/repo%2Fa/memory/bounded', options: undefined },
@@ -34,18 +26,6 @@ describe('MemoryClient', () => {
       {
         path: '/repos/repo%2Fa/memory/aggregate',
         options: { method: 'POST', body: { model: 'gpt-test', target: 'system' } },
-      },
-      { path: '/repos/repo%2Fa/memory/raw-db/tables', options: undefined },
-      {
-        path: '/repos/repo%2Fa/memory/raw-db/tables/raw_memory_records',
-        options: {
-          query: {
-            page: 2,
-            pageSize: 25,
-            sort: 'content',
-            order: 'asc',
-          },
-        },
       },
     ]);
   });

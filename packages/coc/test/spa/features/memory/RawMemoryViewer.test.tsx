@@ -56,10 +56,10 @@ const LONG_CONTENT = 'x'.repeat(200);
 function mockDefaultFetch() {
     mockFetch.mockImplementation(async (url: string) => {
         const urlStr = String(url);
-        if (urlStr.includes('/memory/raw-db/tables/')) {
+        if (urlStr.includes('/db-browser/repo-raw-memory-db/tables/')) {
             return { ok: true, status: 200, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
         }
-        if (urlStr.includes('/memory/raw-db/tables')) {
+        if (urlStr.includes('/db-browser/repo-raw-memory-db/tables')) {
             return { ok: true, status: 200, json: () => Promise.resolve(TABLES_RESPONSE) };
         }
         return { ok: true, status: 200, json: () => Promise.resolve({}) };
@@ -167,14 +167,14 @@ describe('RawMemoryViewer', () => {
         it('shows "No rows" when table is empty', async () => {
             mockFetch.mockImplementation(async (url: string) => {
                 const urlStr = String(url);
-                if (urlStr.includes('/memory/raw-db/tables/')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables/')) {
                     return {
                         ok: true,
                         status: 200,
                         json: () => Promise.resolve({ ...TABLE_DATA_RESPONSE, rows: [], total: 0 }),
                     };
                 }
-                if (urlStr.includes('/memory/raw-db/tables')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables')) {
                     return { ok: true, status: 200, json: () => Promise.resolve(TABLES_RESPONSE) };
                 }
                 return { ok: true, status: 200, json: () => Promise.resolve({}) };
@@ -226,7 +226,7 @@ describe('RawMemoryViewer', () => {
         it('truncates long cell values', async () => {
             mockFetch.mockImplementation(async (url: string) => {
                 const urlStr = String(url);
-                if (urlStr.includes('/memory/raw-db/tables/')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables/')) {
                     return {
                         ok: true,
                         status: 200,
@@ -237,7 +237,7 @@ describe('RawMemoryViewer', () => {
                         }),
                     };
                 }
-                if (urlStr.includes('/memory/raw-db/tables')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables')) {
                     return { ok: true, status: 200, json: () => Promise.resolve(TABLES_RESPONSE) };
                 }
                 return { ok: true, status: 200, json: () => Promise.resolve({}) };
@@ -251,7 +251,7 @@ describe('RawMemoryViewer', () => {
         it('expands truncated cell on click', async () => {
             mockFetch.mockImplementation(async (url: string) => {
                 const urlStr = String(url);
-                if (urlStr.includes('/memory/raw-db/tables/')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables/')) {
                     return {
                         ok: true,
                         status: 200,
@@ -262,7 +262,7 @@ describe('RawMemoryViewer', () => {
                         }),
                     };
                 }
-                if (urlStr.includes('/memory/raw-db/tables')) {
+                if (urlStr.includes('/db-browser/repo-raw-memory-db/tables')) {
                     return { ok: true, status: 200, json: () => Promise.resolve(TABLES_RESPONSE) };
                 }
                 return { ok: true, status: 200, json: () => Promise.resolve({}) };

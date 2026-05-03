@@ -61,39 +61,4 @@ describe('AdminClient', () => {
     ]);
   });
 
-  it('calls db browser endpoints with correct paths and bodies', async () => {
-    const adapter = createMockAdapter({});
-    const client = new AdminClient(adapter, {
-      baseUrl: '',
-      apiBasePath: '/api',
-      fetch: globalThis.fetch,
-      wsPath: '/ws',
-    });
-
-    await client.db.listTables();
-    await client.db.getTable('processes', { page: 2, pageSize: 25, sort: 'id', order: 'asc' });
-    await client.db.updateRow('processes', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } });
-    await client.db.deleteRow('processes', { pkColumns: { id: 'p-1' } });
-    await client.db.deleteBulk('processes', { rows: [{ id: 'p-1' }, { id: 'p-2' }] });
-
-    expect(adapter.calls).toMatchObject([
-      { path: '/admin/db/tables' },
-      {
-        path: '/admin/db/tables/processes',
-        options: { query: { page: 2, pageSize: 25, sort: 'id', order: 'asc' } },
-      },
-      {
-        path: '/admin/db/tables/processes/rows',
-        options: { method: 'PUT', body: { pkColumns: { id: 'p-1' }, updates: { status: 'done' } } },
-      },
-      {
-        path: '/admin/db/tables/processes/rows',
-        options: { method: 'DELETE', body: { pkColumns: { id: 'p-1' } } },
-      },
-      {
-        path: '/admin/db/tables/processes/rows/delete-bulk',
-        options: { method: 'POST', body: { rows: [{ id: 'p-1' }, { id: 'p-2' }] } },
-      },
-    ]);
-  });
 });

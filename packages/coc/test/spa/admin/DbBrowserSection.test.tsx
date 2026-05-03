@@ -17,14 +17,12 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 const mocks = vi.hoisted(() => ({
-    admin: {
-        db: {
-            listTables: vi.fn(),
-            getTable: vi.fn(),
-            updateRow: vi.fn(),
-            deleteRow: vi.fn(),
-            deleteBulk: vi.fn(),
-        },
+    dbBrowser: {
+        listTables: vi.fn(),
+        getTable: vi.fn(),
+        updateRow: vi.fn(),
+        deleteRow: vi.fn(),
+        deleteBulk: vi.fn(),
     },
 }));
 
@@ -32,7 +30,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', async (importOrigi
     const actual = await importOriginal<typeof import('../../../src/server/spa/client/react/api/cocClient')>();
     return {
         ...actual,
-        getSpaCocClient: () => ({ admin: mocks.admin }),
+        getSpaCocClient: () => ({ dbBrowser: mocks.dbBrowser }),
     };
 });
 
@@ -73,11 +71,11 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 function mockDefaultResponses() {
-    mocks.admin.db.listTables.mockResolvedValue(TABLES_RESPONSE);
-    mocks.admin.db.getTable.mockResolvedValue(TABLE_DATA_RESPONSE);
-    mocks.admin.db.updateRow.mockResolvedValue({ row: { id: 1, name: 'Updated', email: 'new@example.com' }, changes: 1 });
-    mocks.admin.db.deleteRow.mockResolvedValue({ deleted: 1 });
-    mocks.admin.db.deleteBulk.mockImplementation(async (_table: string, req: { rows: unknown[] }) =>
+    mocks.dbBrowser.listTables.mockResolvedValue(TABLES_RESPONSE);
+    mocks.dbBrowser.getTable.mockResolvedValue(TABLE_DATA_RESPONSE);
+    mocks.dbBrowser.updateRow.mockResolvedValue({ row: { id: 1, name: 'Updated', email: 'new@example.com' }, changes: 1 });
+    mocks.dbBrowser.deleteRow.mockResolvedValue({ deleted: 1 });
+    mocks.dbBrowser.deleteBulk.mockImplementation(async (_source: string, _table: string, req: { rows: unknown[] }) =>
         ({ deleted: req.rows.length, requested: req.rows.length }),
     );
 }
@@ -94,11 +92,11 @@ function renderSection() {
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mocks.admin.db.listTables.mockReset();
-    mocks.admin.db.getTable.mockReset();
-    mocks.admin.db.updateRow.mockReset();
-    mocks.admin.db.deleteRow.mockReset();
-    mocks.admin.db.deleteBulk.mockReset();
+    mocks.dbBrowser.listTables.mockReset();
+    mocks.dbBrowser.getTable.mockReset();
+    mocks.dbBrowser.updateRow.mockReset();
+    mocks.dbBrowser.deleteRow.mockReset();
+    mocks.dbBrowser.deleteBulk.mockReset();
     mockDefaultResponses();
 });
 
@@ -176,7 +174,7 @@ describe('DbBrowserSection — inline editing', () => {
             // Edit button should reappear
             expect(screen.getByTestId('db-edit-row-0')).toBeDefined();
             // No update call made
-            expect(mocks.admin.db.updateRow).not.toHaveBeenCalled();
+            expect(mocks.dbBrowser.updateRow).not.toHaveBeenCalled();
         });
     });
 
@@ -193,8 +191,9 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-save'));
 
         await waitFor(() => {
-            expect(mocks.admin.db.updateRow).toHaveBeenCalled();
-            const [table, body] = mocks.admin.db.updateRow.mock.calls[0];
+            expect(mocks.dbBrowser.updateRow).toHaveBeenCalled();
+            const [source, table, body] = mocks.dbBrowser.updateRow.mock.calls[0];
+            expect(source).toBe('process-db');
             expect(table).toBe('users');
             expect(body.pkColumns).toEqual({ id: 1 });
             expect(body.updates).toHaveProperty('name', 'Updated');
@@ -221,8 +220,8 @@ describe('DbBrowserSection — inline editing', () => {
 
     it('displays error message on save failure', async () => {
         // Override updateRow to fail
-        mocks.admin.db.updateRow.mockRejectedValue(
-            new CocApiError({ status: 400, statusText: 'Bad Request', url: '/admin/db/tables/users/rows', message: 'Bad Request', body: { error: 'Cannot update primary key column "id"' } }),
+        mocks.dbBrowser.updateRow.mockRejectedValue(
+            new CocApiError({ status: 400, statusText: 'Bad Request', url: '/db-browser/process-db/tables/users/rows', message: 'Bad Request', body: { error: 'Cannot update primary key column "id"' } }),
         );
 
         renderSection();
@@ -273,7 +272,7 @@ describe('DbBrowserSection — inline editing', () => {
         });
 
         // No updateRow call should have been made
-        expect(mocks.admin.db.updateRow).not.toHaveBeenCalled();
+        expect(mocks.dbBrowser.updateRow).not.toHaveBeenCalled();
     });
 
     it('empty string input sets null in the update payload', async () => {
@@ -288,8 +287,8 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-save'));
 
         await waitFor(() => {
-            expect(mocks.admin.db.updateRow).toHaveBeenCalled();
-            const [, body] = mocks.admin.db.updateRow.mock.calls[0];
+            expect(mocks.dbBrowser.updateRow).toHaveBeenCalled();
+            const [, , body] = mocks.dbBrowser.updateRow.mock.calls[0];
             expect(body.updates.email).toBeNull();
         });
     });
@@ -429,7 +428,7 @@ describe('DbBrowserSection — single row delete', () => {
         await waitFor(() => {
             expect(screen.queryByTestId('db-delete-message')).toBeNull();
         });
-        expect(mocks.admin.db.deleteRow).not.toHaveBeenCalled();
+        expect(mocks.dbBrowser.deleteRow).not.toHaveBeenCalled();
     });
 
     it('confirm sends DELETE request with correct pkColumns', async () => {
@@ -442,8 +441,9 @@ describe('DbBrowserSection — single row delete', () => {
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
 
         await waitFor(() => {
-            expect(mocks.admin.db.deleteRow).toHaveBeenCalled();
-            const [table, body] = mocks.admin.db.deleteRow.mock.calls[0];
+            expect(mocks.dbBrowser.deleteRow).toHaveBeenCalled();
+            const [source, table, body] = mocks.dbBrowser.deleteRow.mock.calls[0];
+            expect(source).toBe('process-db');
             expect(table).toBe('users');
             expect(body.pkColumns).toEqual({ id: 1 });
         });
@@ -453,7 +453,7 @@ describe('DbBrowserSection — single row delete', () => {
         renderSection();
         await waitFor(() => screen.getByTestId('db-delete-row-0'));
 
-        const getTableCountBefore = mocks.admin.db.getTable.mock.calls.length;
+        const getTableCountBefore = mocks.dbBrowser.getTable.mock.calls.length;
         fireEvent.click(screen.getByTestId('db-delete-row-0'));
         await waitFor(() => screen.getByTestId('db-delete-confirm'));
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
@@ -462,7 +462,7 @@ describe('DbBrowserSection — single row delete', () => {
             // Dialog should close
             expect(screen.queryByTestId('db-delete-message')).toBeNull();
             // A new data fetch should have been made (refresh)
-            expect(mocks.admin.db.getTable.mock.calls.length).toBeGreaterThan(getTableCountBefore);
+            expect(mocks.dbBrowser.getTable.mock.calls.length).toBeGreaterThan(getTableCountBefore);
         });
 
         // Success toast
@@ -472,8 +472,8 @@ describe('DbBrowserSection — single row delete', () => {
     });
 
     it('delete error shows error toast', async () => {
-        mocks.admin.db.deleteRow.mockRejectedValue(
-            new CocApiError({ status: 404, statusText: 'Not Found', url: '/admin/db/tables/users/rows', message: 'Not Found', body: { error: 'Row not found' } }),
+        mocks.dbBrowser.deleteRow.mockRejectedValue(
+            new CocApiError({ status: 404, statusText: 'Not Found', url: '/db-browser/process-db/tables/users/rows', message: 'Not Found', body: { error: 'Row not found' } }),
         );
 
         renderSection();
@@ -599,8 +599,9 @@ describe('DbBrowserSection — bulk delete', () => {
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
 
         await waitFor(() => {
-            expect(mocks.admin.db.deleteBulk).toHaveBeenCalled();
-            const [table, body] = mocks.admin.db.deleteBulk.mock.calls[0];
+            expect(mocks.dbBrowser.deleteBulk).toHaveBeenCalled();
+            const [source, table, body] = mocks.dbBrowser.deleteBulk.mock.calls[0];
+            expect(source).toBe('process-db');
             expect(table).toBe('users');
             expect(body.rows).toHaveLength(2);
             expect(body.rows).toContainEqual({ id: 1 });
@@ -632,8 +633,8 @@ describe('DbBrowserSection — bulk delete', () => {
     });
 
     it('bulk delete error shows error toast', async () => {
-        mocks.admin.db.deleteBulk.mockRejectedValue(
-            new CocApiError({ status: 500, statusText: 'Internal Server Error', url: '/admin/db/tables/users/rows/delete-bulk', message: 'Internal Server Error', body: { error: 'Database locked' } }),
+        mocks.dbBrowser.deleteBulk.mockRejectedValue(
+            new CocApiError({ status: 500, statusText: 'Internal Server Error', url: '/db-browser/process-db/tables/users/rows/delete-bulk', message: 'Internal Server Error', body: { error: 'Database locked' } }),
         );
 
         renderSection();

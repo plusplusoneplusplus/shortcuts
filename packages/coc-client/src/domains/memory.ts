@@ -14,8 +14,6 @@ import type {
   MemoryConfig,
   MemoryLevel,
   MemoryOverviewResponse,
-  RawDbTableData,
-  RawDbTableInfo,
   ToolCallCacheStats,
   ToolCallQAEntry,
 } from '../contracts';
@@ -28,13 +26,6 @@ export interface MemoryHashOptions {
 
 export interface MemoryDeleteOptions extends MemoryHashOptions {
   token?: string;
-}
-
-export interface RawDbTableOptions {
-  page?: number;
-  pageSize?: number;
-  sort?: string;
-  order?: 'asc' | 'desc';
 }
 
 function repoMemoryPath(repoId: string, suffix = ''): string {
@@ -53,15 +44,6 @@ function queryWithDeleteOptions(options?: MemoryDeleteOptions): CocRequestOption
   return {
     hash: options?.hash,
     token: options?.token,
-  };
-}
-
-function rawDbQuery(options?: RawDbTableOptions): CocRequestOptions['query'] {
-  return {
-    page: options?.page,
-    pageSize: options?.pageSize,
-    sort: options?.sort,
-    order: options?.order,
   };
 }
 
@@ -183,14 +165,4 @@ export class MemoryClient {
     });
   }
 
-  rawDbTables(repoId: string): Promise<{ tables: RawDbTableInfo[] }> {
-    return this.transport.request(repoMemoryPath(repoId, '/raw-db/tables'));
-  }
-
-  rawDbTable(repoId: string, tableName: string, options?: RawDbTableOptions): Promise<RawDbTableData> {
-    return this.transport.request<RawDbTableData>(
-      repoMemoryPath(repoId, `/raw-db/tables/${encodePathSegment(tableName)}`),
-      { query: rawDbQuery(options) },
-    );
-  }
 }

@@ -39,7 +39,7 @@ function mockDefaultFetch() {
             };
         }
         // Raw DB endpoints
-        if (urlStr.includes('/memory/raw-db/tables')) {
+        if (urlStr.includes('/db-browser/repo-raw-memory-db/tables')) {
             return { ok: true, status: 200, json: () => Promise.resolve({ tables: [] }) };
         }
         // Preferences

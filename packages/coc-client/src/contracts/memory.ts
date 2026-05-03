@@ -73,28 +73,6 @@ export interface MemoryAggregateRequest {
   target?: MemoryAggregateTarget | string;
 }
 
-export interface RawDbTableInfo {
-  name: string;
-  rowCount: number;
-}
-
-export interface RawDbColumnInfo {
-  name: string;
-  type: string;
-  notnull: boolean;
-  pk: boolean;
-}
-
-export interface RawDbTableData {
-  table: string;
-  columns: RawDbColumnInfo[];
-  rows: JsonObject[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
 export interface ExploreCacheStats {
   rawCount: number;
   consolidatedExists: boolean;

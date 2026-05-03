@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { SqliteProcessStore, FileProcessStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, FileProcessStore, RawMemoryRecordStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/index';
 
 // ============================================================================
@@ -88,12 +88,30 @@ describe('DB Browser Handler', () => {
         return server;
     }
 
-    // ── GET /api/admin/db/tables ─────────────────────────────────────────
+    // ── GET /api/db-browser/sources ─────────────────────────────────────
 
-    describe('GET /api/admin/db/tables', () => {
+    describe('GET /api/db-browser/sources', () => {
+        it('should return allowlisted database sources and capabilities', async () => {
+            const srv = await startSqliteServer();
+            const res = await request(`${srv.url}/api/db-browser/sources`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            const processDb = body.sources.find((s: any) => s.id === 'process-db');
+            const rawMemoryDb = body.sources.find((s: any) => s.id === 'repo-raw-memory-db');
+            expect(processDb.capabilities.updateRows).toBe(true);
+            expect(rawMemoryDb.requiredParams).toContain('repoId');
+            expect(rawMemoryDb.capabilities.readonly).toBe(true);
+            expect(rawMemoryDb.capabilities.updateRows).toBe(false);
+        });
+    });
+
+    // ── GET /api/db-browser/process-db/tables ─────────────────────────────────────────
+
+    describe('GET /api/db-browser/process-db/tables', () => {
         it('should return list of tables with row counts', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -119,7 +137,7 @@ describe('DB Browser Handler', () => {
 
         it('should return 501 when store is not SQLite', async () => {
             const srv = await startFileServer();
-            const res = await request(`${srv.url}/api/admin/db/tables`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables`);
             expect(res.status).toBe(501);
 
             const body = JSON.parse(res.body);
@@ -127,12 +145,12 @@ describe('DB Browser Handler', () => {
         });
     });
 
-    // ── GET /api/admin/db/tables/:name ───────────────────────────────────
+    // ── GET /api/db-browser/process-db/tables/:name ───────────────────────────────────
 
-    describe('GET /api/admin/db/tables/:name', () => {
+    describe('GET /api/db-browser/process-db/tables/:name', () => {
         it('should return table columns and paginated rows', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/processes`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/processes`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -160,7 +178,7 @@ describe('DB Browser Handler', () => {
 
         it('should respect page and pageSize query params', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/processes?page=2&pageSize=10`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/processes?page=2&pageSize=10`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -170,7 +188,7 @@ describe('DB Browser Handler', () => {
 
         it('should clamp pageSize to max 200', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/processes?pageSize=999`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/processes?pageSize=999`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -179,14 +197,14 @@ describe('DB Browser Handler', () => {
 
         it('should return 404 for table name with invalid characters', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/DROP%20TABLE`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/DROP%20TABLE`);
             // Route regex rejects names with spaces, so the router returns 404
             expect(res.status).toBe(404);
         });
 
         it('should return 400 for non-existent table', async () => {
             const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/nonexistent_table`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/nonexistent_table`);
             expect(res.status).toBe(400);
 
             const body = JSON.parse(res.body);
@@ -196,7 +214,7 @@ describe('DB Browser Handler', () => {
 
         it('should return 501 when store is not SQLite', async () => {
             const srv = await startFileServer();
-            const res = await request(`${srv.url}/api/admin/db/tables/processes`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/processes`);
             expect(res.status).toBe(501);
 
             const body = JSON.parse(res.body);
@@ -213,7 +231,7 @@ describe('DB Browser Handler', () => {
                 rootPath: '/tmp/test',
             });
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -225,9 +243,9 @@ describe('DB Browser Handler', () => {
         });
     });
 
-    // ── PUT /api/admin/db/tables/:name/rows ────────────────────────────
+    // ── PUT /api/db-browser/process-db/tables/:name/rows ────────────────────────────
 
-    describe('PUT /api/admin/db/tables/:name/rows', () => {
+    describe('PUT /api/db-browser/process-db/tables/:name/rows', () => {
         /** Create a test table with known schema and seed data. */
         function seedTestTable(store: SqliteProcessStore): void {
             const db = store.getDatabase();
@@ -245,7 +263,7 @@ describe('DB Browser Handler', () => {
         }
 
         function putRows(url: string, tableName: string, body: object) {
-            return request(`${url}/api/admin/db/tables/${tableName}/rows`, {
+            return request(`${url}/api/db-browser/process-db/tables/${tableName}/rows`, {
                 method: 'PUT',
                 body: JSON.stringify(body),
                 headers: { 'Content-Type': 'application/json' },
@@ -401,7 +419,7 @@ describe('DB Browser Handler', () => {
             expect(res.status).toBe(400);
 
             // Table should still be accessible
-            const check = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const check = await request(`${srv.url}/api/db-browser/process-db/tables/test_items`);
             expect(check.status).toBe(200);
         });
 
@@ -455,9 +473,9 @@ describe('DB Browser Handler', () => {
         });
     });
 
-    // ── DELETE /api/admin/db/tables/:name/rows ─────────────────────────
+    // ── DELETE /api/db-browser/process-db/tables/:name/rows ─────────────────────────
 
-    describe('DELETE /api/admin/db/tables/:name/rows', () => {
+    describe('DELETE /api/db-browser/process-db/tables/:name/rows', () => {
         function seedTestTable(store: SqliteProcessStore): void {
             const db = store.getDatabase();
             db.exec(`
@@ -475,7 +493,7 @@ describe('DB Browser Handler', () => {
 
         function deleteRows(url: string, tableName: string, body: object) {
             const bodyStr = JSON.stringify(body);
-            return request(`${url}/api/admin/db/tables/${tableName}/rows`, {
+            return request(`${url}/api/db-browser/process-db/tables/${tableName}/rows`, {
                 method: 'DELETE',
                 body: bodyStr,
                 headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(bodyStr)) },
@@ -507,7 +525,7 @@ describe('DB Browser Handler', () => {
             expect(JSON.parse(res.body).deleted).toBe(1);
 
             // Verify row is gone by fetching table data
-            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const tableRes = await request(`${srv.url}/api/db-browser/process-db/tables/test_items`);
             expect(tableRes.status).toBe(200);
             const tableBody = JSON.parse(tableRes.body);
             const ids = tableBody.rows.map((r: any) => r.id);
@@ -617,7 +635,7 @@ describe('DB Browser Handler', () => {
             expect(JSON.parse(res.body).deleted).toBe(1);
 
             // Verify only u1 was deleted
-            const tableRes = await request(`${srv.url}/api/admin/db/tables/composite_pk_del`);
+            const tableRes = await request(`${srv.url}/api/db-browser/process-db/tables/composite_pk_del`);
             const tableBody = JSON.parse(tableRes.body);
             expect(tableBody.rows.length).toBe(1);
             expect(tableBody.rows[0].user_id).toBe('u2');
@@ -648,7 +666,7 @@ describe('DB Browser Handler', () => {
 
     // ── Sorting ─────────────────────────────────────────────────────────
 
-    describe('GET /api/admin/db/tables/:name — sorting', () => {
+    describe('GET /api/db-browser/process-db/tables/:name — sorting', () => {
         it('should sort rows ascending by a valid column', async () => {
             const srv = await startSqliteServer();
 
@@ -657,7 +675,7 @@ describe('DB Browser Handler', () => {
             await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
             await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=asc`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id&order=asc`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -673,7 +691,7 @@ describe('DB Browser Handler', () => {
             await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
             await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=desc`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id&order=desc`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -688,7 +706,7 @@ describe('DB Browser Handler', () => {
             await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
             await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -701,7 +719,7 @@ describe('DB Browser Handler', () => {
             const srv = await startSqliteServer();
 
             // Attempt SQL injection via sort column
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id;DROP%20TABLE%20workspaces&order=asc`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id;DROP%20TABLE%20workspaces&order=asc`);
             expect(res.status).toBe(200);
 
             // Table should still be accessible (no injection happened)
@@ -713,7 +731,7 @@ describe('DB Browser Handler', () => {
         it('should ignore non-existent column name', async () => {
             const srv = await startSqliteServer();
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=nonexistent_column&order=asc`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=nonexistent_column&order=asc`);
             expect(res.status).toBe(200);
 
             // Should return rows without sorting (no error)
@@ -728,7 +746,7 @@ describe('DB Browser Handler', () => {
             await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
             await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
 
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=INVALID`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id&order=INVALID`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -745,7 +763,7 @@ describe('DB Browser Handler', () => {
             await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
 
             // Page 1, size 2, sorted desc by id
-            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=desc&page=1&pageSize=2`);
+            const res = await request(`${srv.url}/api/db-browser/process-db/tables/workspaces?sort=id&order=desc&page=1&pageSize=2`);
             expect(res.status).toBe(200);
 
             const body = JSON.parse(res.body);
@@ -759,9 +777,9 @@ describe('DB Browser Handler', () => {
         });
     });
 
-    // ── POST /api/admin/db/tables/:name/rows/delete-bulk ────────────────
+    // ── POST /api/db-browser/process-db/tables/:name/rows/delete-bulk ────────────────
 
-    describe('POST /api/admin/db/tables/:name/rows/delete-bulk', () => {
+    describe('POST /api/db-browser/process-db/tables/:name/rows/delete-bulk', () => {
         function seedTestTable(store: SqliteProcessStore): void {
             const db = store.getDatabase();
             db.exec(`
@@ -780,7 +798,7 @@ describe('DB Browser Handler', () => {
         }
 
         function bulkDelete(url: string, tableName: string, body: object) {
-            return request(`${url}/api/admin/db/tables/${tableName}/rows/delete-bulk`, {
+            return request(`${url}/api/db-browser/process-db/tables/${tableName}/rows/delete-bulk`, {
                 method: 'POST',
                 body: JSON.stringify(body),
                 headers: { 'Content-Type': 'application/json' },
@@ -801,7 +819,7 @@ describe('DB Browser Handler', () => {
             expect(body.requested).toBe(3);
 
             // Verify remaining rows
-            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const tableRes = await request(`${srv.url}/api/db-browser/process-db/tables/test_items`);
             const tableBody = JSON.parse(tableRes.body);
             const ids = tableBody.rows.map((r: any) => r.id);
             expect(ids).toEqual(expect.arrayContaining([2, 4]));
@@ -838,7 +856,7 @@ describe('DB Browser Handler', () => {
             expect(body.error).toMatch(/not a primary key/i);
 
             // Verify NO rows were deleted (validation failed before execution)
-            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const tableRes = await request(`${srv.url}/api/db-browser/process-db/tables/test_items`);
             const tableBody = JSON.parse(tableRes.body);
             expect(tableBody.total).toBe(5);
         });
@@ -971,7 +989,7 @@ describe('DB Browser Handler', () => {
             expect(body.requested).toBe(2);
 
             // Verify only u2 remains
-            const tableRes = await request(`${srv.url}/api/admin/db/tables/composite_pk_bulk`);
+            const tableRes = await request(`${srv.url}/api/db-browser/process-db/tables/composite_pk_bulk`);
             const tableBody = JSON.parse(tableRes.body);
             expect(tableBody.rows.length).toBe(1);
             expect(tableBody.rows[0].user_id).toBe('u2');
@@ -989,6 +1007,88 @@ describe('DB Browser Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.deleted).toBe(1);
             expect(body.requested).toBe(1);
+        });
+    });
+
+    describe('repo-raw-memory-db source', () => {
+        function rawTableUrl(baseUrl: string, table = 'raw_memory_records', query = ''): string {
+            const suffix = query ? `&${query}` : '';
+            return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}?repoId=ws-test${suffix}`;
+        }
+
+        function rawRowsUrl(baseUrl: string, table = 'raw_memory_records'): string {
+            return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}/rows?repoId=ws-test`;
+        }
+
+        it('returns empty table list when repo raw-memory.db does not exist', async () => {
+            const srv = await startSqliteServer();
+            const res = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables?repoId=ws-test`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.tables).toEqual([]);
+        });
+
+        it('requires repoId for repo raw-memory source', async () => {
+            const srv = await startSqliteServer();
+            const res = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables`);
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/repoId/i);
+        });
+
+        it('lists and reads raw memory tables through the generic API', async () => {
+            const srv = await startSqliteServer();
+            const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
+            const rawStore = new RawMemoryRecordStore({ dbPath });
+            await rawStore.append({ target: 'memory', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
+            await rawStore.append({ target: 'memory', content: 'zeta', source: 'test', workspaceId: 'ws-test' });
+            rawStore.close();
+
+            const tablesRes = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables?repoId=ws-test`);
+            expect(tablesRes.status).toBe(200);
+            const tablesBody = JSON.parse(tablesRes.body);
+            expect(tablesBody.tables.find((t: any) => t.name === 'raw_memory_records').rowCount).toBe(2);
+
+            const tableRes = await request(rawTableUrl(srv.url, 'raw_memory_records', 'sort=content&order=asc&page=1&pageSize=1'));
+            expect(tableRes.status).toBe(200);
+            const tableBody = JSON.parse(tableRes.body);
+            expect(tableBody.table).toBe('raw_memory_records');
+            expect(tableBody.rows).toHaveLength(1);
+            expect(tableBody.rows[0].content).toBe('alpha');
+            expect(tableBody.total).toBe(2);
+            expect(tableBody.totalPages).toBe(2);
+        });
+
+        it('returns not found for raw table reads when raw-memory.db does not exist', async () => {
+            const srv = await startSqliteServer();
+            const res = await request(rawTableUrl(srv.url));
+            expect(res.status).toBe(404);
+        });
+
+        it('rejects mutations for the read-only raw memory source', async () => {
+            const srv = await startSqliteServer();
+            const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
+            const rawStore = new RawMemoryRecordStore({ dbPath });
+            await rawStore.append({ target: 'memory', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
+            rawStore.close();
+
+            const res = await request(rawRowsUrl(srv.url), {
+                method: 'PUT',
+                body: JSON.stringify({ pkColumns: { id: 'r1' }, updates: { content: 'updated' } }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(403);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/read-only/i);
+        });
+
+        it('rejects unregistered source IDs', async () => {
+            const srv = await startSqliteServer();
+            const res = await request(`${srv.url}/api/db-browser/other-db/tables`);
+            expect(res.status).toBe(404);
         });
     });
 });

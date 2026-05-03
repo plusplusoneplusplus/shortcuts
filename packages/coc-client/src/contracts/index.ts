@@ -1,5 +1,6 @@
 export * from './admin';
 export * from './common';
+export * from './db-browser';
 export * from './explorer';
 export * from './git';
 export * from './memory';

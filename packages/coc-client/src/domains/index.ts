@@ -1,4 +1,5 @@
-export { AdminClient, AdminDbClient } from './admin';
+export { AdminClient } from './admin';
+export { DbBrowserClient } from './db-browser';
 export { ExplorerClient } from './explorer';
 export { GitClient } from './git';
 export { HealthClient } from './health';

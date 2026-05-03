@@ -17,9 +17,9 @@ import {
     type MemoryLevel,
     type MemoryOverviewResponse,
     type MemoryStats,
-    type RawDbColumnInfo,
-    type RawDbTableData,
-    type RawDbTableInfo,
+    type DbBrowserColumn,
+    type DbBrowserTableDataResponse,
+    type DbBrowserTable,
     type ToolCallCacheStats,
     type ToolCallQAEntry,
 } from '@plusplusoneplusplus/coc-client';
@@ -55,9 +55,9 @@ export type {
     MemoryLevel,
     MemoryOverviewResponse,
     MemoryStats,
-    RawDbColumnInfo,
-    RawDbTableData,
-    RawDbTableInfo,
+    DbBrowserColumn as RawDbColumnInfo,
+    DbBrowserTableDataResponse as RawDbTableData,
+    DbBrowserTable as RawDbTableInfo,
     ToolCallCacheStats,
     ToolCallQAEntry,
 } from '@plusplusoneplusplus/coc-client';
@@ -167,8 +167,8 @@ export const memoryApi = {
     // ── Raw DB browser ───────────────────────────────────────────────────────
 
     /** List tables in the repo's raw-memory.db with row counts. */
-    getRawDbTables(repoId: string): Promise<{ tables: RawDbTableInfo[] }> {
-        return getSpaCocClient().memory.rawDbTables(repoId);
+    getRawDbTables(repoId: string): Promise<{ tables: DbBrowserTable[] }> {
+        return getSpaCocClient().dbBrowser.listTables('repo-raw-memory-db', { repoId });
     },
 
     /** Read paginated rows from a specific table in the repo's raw-memory.db. */
@@ -179,7 +179,7 @@ export const memoryApi = {
         pageSize = 50,
         sort?: string,
         order?: 'asc' | 'desc',
-    ): Promise<RawDbTableData> {
-        return getSpaCocClient().memory.rawDbTable(repoId, tableName, { page, pageSize, sort, order });
+    ): Promise<DbBrowserTableDataResponse> {
+        return getSpaCocClient().dbBrowser.getTable('repo-raw-memory-db', tableName, { repoId, page, pageSize, sort, order });
     },
 };

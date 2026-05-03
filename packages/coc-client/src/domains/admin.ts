@@ -3,15 +3,6 @@ import type {
   AdminConfigUpdate,
   AdminDataStatsQuery,
   AdminDataStatsResponse,
-  AdminDbBulkDeleteRequest,
-  AdminDbBulkDeleteResponse,
-  AdminDbRowDeleteRequest,
-  AdminDbRowDeleteResponse,
-  AdminDbRowUpdateRequest,
-  AdminDbRowUpdateResponse,
-  AdminDbTableDataQuery,
-  AdminDbTableDataResponse,
-  AdminDbTablesResponse,
   AdminImportMode,
   AdminImportPreviewResponse,
   AdminImportResponse,
@@ -34,19 +25,15 @@ function serializeStatsQuery(query?: AdminDataStatsQuery): CocRequestOptions['qu
   if (!query) return undefined;
   return { includeWikis: query.includeWikis };
 }
-
 function copyConfigUpdate(update: AdminConfigUpdate): AdminConfigUpdate {
   return { ...update };
 }
 
 export class AdminClient {
-  readonly db: AdminDbClient;
-
   constructor(
     private readonly transport: RequestAdapter,
     private readonly options: NormalizedCocClientOptions,
   ) {
-    this.db = new AdminDbClient(transport);
   }
 
   getPrompts(): Promise<AdminPromptsResponse> {
@@ -176,51 +163,6 @@ export class AdminClient {
       headers,
       body,
       signal: options.signal,
-    });
-  }
-}
-
-function serializeDbTableDataQuery(query?: AdminDbTableDataQuery): CocRequestOptions['query'] {
-  if (!query) return undefined;
-  return {
-    page: query.page,
-    pageSize: query.pageSize,
-    sort: query.sort,
-    order: query.order,
-  };
-}
-
-export class AdminDbClient {
-  constructor(private readonly transport: RequestAdapter) {}
-
-  listTables(): Promise<AdminDbTablesResponse> {
-    return this.transport.request<AdminDbTablesResponse>('/admin/db/tables');
-  }
-
-  getTable(tableName: string, query?: AdminDbTableDataQuery): Promise<AdminDbTableDataResponse> {
-    return this.transport.request<AdminDbTableDataResponse>(`/admin/db/tables/${encodeURIComponent(tableName)}`, {
-      query: serializeDbTableDataQuery(query),
-    });
-  }
-
-  updateRow(tableName: string, request: AdminDbRowUpdateRequest): Promise<AdminDbRowUpdateResponse> {
-    return this.transport.request<AdminDbRowUpdateResponse>(`/admin/db/tables/${encodeURIComponent(tableName)}/rows`, {
-      method: 'PUT',
-      body: { ...request },
-    });
-  }
-
-  deleteRow(tableName: string, request: AdminDbRowDeleteRequest): Promise<AdminDbRowDeleteResponse> {
-    return this.transport.request<AdminDbRowDeleteResponse>(`/admin/db/tables/${encodeURIComponent(tableName)}/rows`, {
-      method: 'DELETE',
-      body: { ...request },
-    });
-  }
-
-  deleteBulk(tableName: string, request: AdminDbBulkDeleteRequest): Promise<AdminDbBulkDeleteResponse> {
-    return this.transport.request<AdminDbBulkDeleteResponse>(`/admin/db/tables/${encodeURIComponent(tableName)}/rows/delete-bulk`, {
-      method: 'POST',
-      body: { ...request },
     });
   }
 }

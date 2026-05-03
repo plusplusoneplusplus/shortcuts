@@ -9,15 +9,15 @@ import { Button, Dialog, Spinner, useToast, ToastContainer } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { buildDbBrowserHash } from '../layout/Router';
-import type { AdminDbColumn, AdminDbTableDataResponse } from '@plusplusoneplusplus/coc-client';
+import type { DbBrowserColumn, DbBrowserTableDataResponse } from '@plusplusoneplusplus/coc-client';
 
 interface TableInfo {
     name: string;
     rowCount: number;
 }
 
-type ColumnInfo = AdminDbColumn;
-type TableData = AdminDbTableDataResponse;
+type ColumnInfo = DbBrowserColumn;
+type TableData = DbBrowserTableDataResponse;
 
 const MAX_CELL_LENGTH = 120;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
@@ -190,7 +190,7 @@ export function DbBrowserSection() {
         setLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().admin.db.listTables();
+            const data = await getSpaCocClient().dbBrowser.listTables('process-db');
             setTables(data.tables);
             if (!deepLinkConsumed.current && state.adminDbTable) {
                 deepLinkConsumed.current = true;
@@ -215,7 +215,7 @@ export function DbBrowserSection() {
         setDataLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().admin.db.getTable(tableName, {
+            const data = await getSpaCocClient().dbBrowser.getTable('process-db', tableName, {
                 page: p,
                 pageSize,
                 sort: sort ?? undefined,
@@ -315,7 +315,7 @@ export function DbBrowserSection() {
         setSaving(true);
         setEditError(null);
         try {
-            await getSpaCocClient().admin.db.updateRow(tableData.table, { pkColumns, updates });
+            await getSpaCocClient().dbBrowser.updateRow('process-db', tableData.table, { pkColumns, updates });
             setEditingRow(null);
             setEditValues({});
             setEditError(null);
@@ -374,12 +374,12 @@ export function DbBrowserSection() {
         try {
             if (deleteTarget === 'single' && singleDeleteRow) {
                 const pkColumns = getRowPkValues(singleDeleteRow, tableData.columns);
-                await getSpaCocClient().admin.db.deleteRow(tableData.table, { pkColumns });
+                await getSpaCocClient().dbBrowser.deleteRow('process-db', tableData.table, { pkColumns });
                 addToast('1 row deleted', 'success');
             } else {
                 // Bulk delete
                 const rows = Array.from(selectedRows).map(key => JSON.parse(key) as Record<string, unknown>);
-                const result = await getSpaCocClient().admin.db.deleteBulk(tableData.table, { rows });
+                const result = await getSpaCocClient().dbBrowser.deleteBulk('process-db', tableData.table, { rows });
                 addToast(`${result.deleted} row(s) deleted`, 'success');
             }
             clearSelection();

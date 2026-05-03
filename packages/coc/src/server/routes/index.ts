@@ -203,7 +203,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);
     registerStatsRoutes(routes, store);
-    registerDbBrowserRoutes(routes, store);
+    registerDbBrowserRoutes(routes, store, dataDir);
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);

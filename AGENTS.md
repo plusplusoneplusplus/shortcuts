@@ -112,7 +112,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 ## CoC Client (`packages/coc-client/`)
 
-Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for admin, git, health, memory, models, notes, preferences, processes, pull requests, queue, schedules, seen-state, skills, tasks, templates, wiki, work items, workspaces, and workflows, plus WebSocket events and per-process SSE streaming helpers.
+Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for admin, generic DB browsing, git, health, memory, models, notes, preferences, processes, pull requests, queue, schedules, seen-state, skills, tasks, templates, wiki, work items, workspaces, and workflows, plus WebSocket events and per-process SSE streaming helpers.
 
 **Testing:** Vitest tests cover HTTP transport, URL encoding, domain clients, realtime adapters, and real-server contract routes. `test/mock-server/` provides a lightweight Node `http` + `ws` harness for HTTP, WebSocket, and SSE tests that need status/header/body programming, request recording, scripted socket behavior, SSE chunks, network drops, delays, and idempotent cleanup on `127.0.0.1:0`.
 
@@ -182,7 +182,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `core/` — `api-handler`, `attachment-utils`, `image-utils`, `hostname-utils`, `build-info` (auto-generated, gitignored)
 - `streaming/` — `websocket`, `sse-handler`
 - `logging/` — `server-logger`, `server-log-capture`, `logs-routes`
-- `admin/` — `admin-handler`, `db-browser-handler`, `heap-monitor`, `stats-handler`
+- `admin/` — `admin-handler`, generic allowlisted `db-browser-handler`/`db-browser-core`, `heap-monitor`, `stats-handler`
 - `workspaces/` — `global-workspace`, `my-work-{workspace,handler}`, `my-life-{workspace,handler}`, `workspace-summary-handler`
 - `processes/` — `in-memory-process-store`, `output-{file-manager,pruner}`, `stale-task-detector`, `pin-archive-handler`, `seen-state-handler`, `turn-actions-handler`, `process-{history,resume}-handler`, `commit-chat-binding-store`
 - `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-queue-router`, `image-blob-store`, `queue-partitioner`, `shared/`

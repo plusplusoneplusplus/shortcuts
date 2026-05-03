@@ -107,8 +107,8 @@ describe('AdminClient mock server contract', () => {
 
   it('lists tables, reads paginated data, updates, deletes, and bulk-deletes rows via db browser', async () => {
     mock = await startMockServer();
-    mock.on('GET', '/api/admin/db/tables', { body: { tables: [{ name: 'processes', rowCount: 42 }] } });
-    mock.on('GET', '/api/admin/db/tables/processes', { body: {
+    mock.on('GET', '/api/db-browser/process-db/tables', { body: { tables: [{ name: 'processes', rowCount: 42 }] } });
+    mock.on('GET', '/api/db-browser/process-db/tables/processes', { body: {
       table: 'processes',
       columns: [{ name: 'id', type: 'TEXT', notnull: true, pk: true }],
       rows: [{ id: 'p-1' }],
@@ -117,22 +117,22 @@ describe('AdminClient mock server contract', () => {
       pageSize: 25,
       totalPages: 2,
     } });
-    mock.on('PUT', '/api/admin/db/tables/processes/rows', { body: { row: { id: 'p-1', status: 'done' }, changes: 1 } });
-    mock.on('DELETE', '/api/admin/db/tables/processes/rows', { body: { deleted: 1 } });
-    mock.on('POST', '/api/admin/db/tables/processes/rows/delete-bulk', { body: { deleted: 2, requested: 2 } });
+    mock.on('PUT', '/api/db-browser/process-db/tables/processes/rows', { body: { row: { id: 'p-1', status: 'done' }, changes: 1 } });
+    mock.on('DELETE', '/api/db-browser/process-db/tables/processes/rows', { body: { deleted: 1 } });
+    mock.on('POST', '/api/db-browser/process-db/tables/processes/rows/delete-bulk', { body: { deleted: 2, requested: 2 } });
     const client = createClient(mock);
 
-    await expect(client.admin.db.listTables()).resolves.toEqual({ tables: [{ name: 'processes', rowCount: 42 }] });
-    await expect(client.admin.db.getTable('processes', { page: 2, pageSize: 25, sort: 'id', order: 'asc' })).resolves.toMatchObject({ table: 'processes', total: 42 });
-    await expect(client.admin.db.updateRow('processes', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } })).resolves.toEqual({ row: { id: 'p-1', status: 'done' }, changes: 1 });
-    await expect(client.admin.db.deleteRow('processes', { pkColumns: { id: 'p-1' } })).resolves.toEqual({ deleted: 1 });
-    await expect(client.admin.db.deleteBulk('processes', { rows: [{ id: 'p-1' }, { id: 'p-2' }] })).resolves.toEqual({ deleted: 2, requested: 2 });
+    await expect(client.dbBrowser.listTables('process-db')).resolves.toEqual({ tables: [{ name: 'processes', rowCount: 42 }] });
+    await expect(client.dbBrowser.getTable('process-db', 'processes', { page: 2, pageSize: 25, sort: 'id', order: 'asc' })).resolves.toMatchObject({ table: 'processes', total: 42 });
+    await expect(client.dbBrowser.updateRow('process-db', 'processes', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } })).resolves.toEqual({ row: { id: 'p-1', status: 'done' }, changes: 1 });
+    await expect(client.dbBrowser.deleteRow('process-db', 'processes', { pkColumns: { id: 'p-1' } })).resolves.toEqual({ deleted: 1 });
+    await expect(client.dbBrowser.deleteBulk('process-db', 'processes', { rows: [{ id: 'p-1' }, { id: 'p-2' }] })).resolves.toEqual({ deleted: 2, requested: 2 });
 
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/admin/db/tables');
-    expectEmptyRequest(mock.requests[1], 'GET', '/api/admin/db/tables/processes', { page: '2', pageSize: '25', sort: 'id', order: 'asc' });
-    expectJsonRequest(mock.requests[2], 'PUT', '/api/admin/db/tables/processes/rows', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } });
-    expectJsonRequest(mock.requests[3], 'DELETE', '/api/admin/db/tables/processes/rows', { pkColumns: { id: 'p-1' } });
-    expectJsonRequest(mock.requests[4], 'POST', '/api/admin/db/tables/processes/rows/delete-bulk', { rows: [{ id: 'p-1' }, { id: 'p-2' }] });
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/db-browser/process-db/tables');
+    expectEmptyRequest(mock.requests[1], 'GET', '/api/db-browser/process-db/tables/processes', { page: '2', pageSize: '25', sort: 'id', order: 'asc' });
+    expectJsonRequest(mock.requests[2], 'PUT', '/api/db-browser/process-db/tables/processes/rows', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } });
+    expectJsonRequest(mock.requests[3], 'DELETE', '/api/db-browser/process-db/tables/processes/rows', { pkColumns: { id: 'p-1' } });
+    expectJsonRequest(mock.requests[4], 'POST', '/api/db-browser/process-db/tables/processes/rows/delete-bulk', { rows: [{ id: 'p-1' }, { id: 'p-2' }] });
   });
 });
 
