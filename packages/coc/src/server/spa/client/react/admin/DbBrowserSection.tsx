@@ -6,31 +6,18 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, Dialog, Spinner, useToast, ToastContainer } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { buildDbBrowserHash } from '../layout/Router';
+import type { AdminDbColumn, AdminDbTableDataResponse } from '@plusplusoneplusplus/coc-client';
 
 interface TableInfo {
     name: string;
     rowCount: number;
 }
 
-interface ColumnInfo {
-    name: string;
-    type: string;
-    notnull: boolean;
-    pk: boolean;
-}
-
-interface TableData {
-    table: string;
-    columns: ColumnInfo[];
-    rows: Record<string, unknown>[];
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-}
+type ColumnInfo = AdminDbColumn;
+type TableData = AdminDbTableDataResponse;
 
 const MAX_CELL_LENGTH = 120;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
@@ -203,12 +190,7 @@ export function DbBrowserSection() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${getApiBase()}/admin/db/tables`);
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || `HTTP ${res.status}`);
-            }
-            const data = await res.json();
+            const data = await getSpaCocClient().admin.db.listTables();
             setTables(data.tables);
             if (!deepLinkConsumed.current && state.adminDbTable) {
                 deepLinkConsumed.current = true;
@@ -222,7 +204,7 @@ export function DbBrowserSection() {
                 setSelectedTable(data.tables[0].name);
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getSpaCocClientErrorMessage(err, 'Failed to load tables'));
         } finally {
             setLoading(false);
         }
@@ -233,20 +215,15 @@ export function DbBrowserSection() {
         setDataLoading(true);
         setError(null);
         try {
-            const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
-            if (sort && order) {
-                params.set('sort', sort);
-                params.set('order', order);
-            }
-            const res = await fetch(`${getApiBase()}/admin/db/tables/${encodeURIComponent(tableName)}?${params}`);
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || `HTTP ${res.status}`);
-            }
-            const data: TableData = await res.json();
+            const data = await getSpaCocClient().admin.db.getTable(tableName, {
+                page: p,
+                pageSize,
+                sort: sort ?? undefined,
+                order: order ?? undefined,
+            });
             setTableData(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getSpaCocClientErrorMessage(err, 'Failed to load table data'));
         } finally {
             setDataLoading(false);
         }
@@ -338,25 +315,14 @@ export function DbBrowserSection() {
         setSaving(true);
         setEditError(null);
         try {
-            const res = await fetch(
-                `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows`,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pkColumns, updates }),
-                }
-            );
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || `HTTP ${res.status}`);
-            }
+            await getSpaCocClient().admin.db.updateRow(tableData.table, { pkColumns, updates });
             setEditingRow(null);
             setEditValues({});
             setEditError(null);
             // Refresh to show updated data
             fetchTableData(tableData.table, page, sortColumn, sortOrder);
         } catch (err) {
-            setEditError(err instanceof Error ? err.message : String(err));
+            setEditError(getSpaCocClientErrorMessage(err, 'Failed to update row'));
         } finally {
             setSaving(false);
         }
@@ -408,35 +374,12 @@ export function DbBrowserSection() {
         try {
             if (deleteTarget === 'single' && singleDeleteRow) {
                 const pkColumns = getRowPkValues(singleDeleteRow, tableData.columns);
-                const res = await fetch(
-                    `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows`,
-                    {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ pkColumns }),
-                    }
-                );
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    throw new Error(body.error || `HTTP ${res.status}`);
-                }
+                await getSpaCocClient().admin.db.deleteRow(tableData.table, { pkColumns });
                 addToast('1 row deleted', 'success');
             } else {
                 // Bulk delete
                 const rows = Array.from(selectedRows).map(key => JSON.parse(key) as Record<string, unknown>);
-                const res = await fetch(
-                    `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows/delete-bulk`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ rows }),
-                    }
-                );
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    throw new Error(body.error || `HTTP ${res.status}`);
-                }
-                const result = await res.json();
+                const result = await getSpaCocClient().admin.db.deleteBulk(tableData.table, { rows });
                 addToast(`${result.deleted} row(s) deleted`, 'success');
             }
             clearSelection();
@@ -444,7 +387,7 @@ export function DbBrowserSection() {
             setShowDeleteConfirm(false);
             fetchTableData(tableData.table, page, sortColumn, sortOrder);
         } catch (err) {
-            addToast(err instanceof Error ? err.message : String(err), 'error');
+            addToast(getSpaCocClientErrorMessage(err, 'Delete failed'), 'error');
             setShowDeleteConfirm(false);
         } finally {
             setDeleting(false);

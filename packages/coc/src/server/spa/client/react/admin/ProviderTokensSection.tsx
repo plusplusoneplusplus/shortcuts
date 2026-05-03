@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 interface ProviderTokensSectionProps {
     onError: (msg: string) => void;
@@ -37,9 +37,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
     useEffect(() => {
         async function load() {
             try {
-                const res = await fetch(getApiBase() + '/providers/config');
-                if (!res.ok) throw new Error('Failed to load provider config');
-                const data = await res.json();
+                const data = await getSpaCocClient().request<{ providers?: { github?: { hasToken?: boolean }; ado?: { orgUrl?: string }; tavily?: { hasApiKey?: boolean } } }>('/providers/config');
                 const providers = data?.providers ?? {};
                 setHasGithubToken(!!providers?.github?.hasToken);
                 if (providers?.ado?.orgUrl) {
@@ -47,8 +45,8 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                     setAdoOrgUrl(providers.ado.orgUrl);
                 }
                 setHasTavilyApiKey(!!providers?.tavily?.hasApiKey);
-            } catch (err: any) {
-                onError(err.message || 'Failed to load provider config');
+            } catch (err: unknown) {
+                onError(getSpaCocClientErrorMessage(err, 'Failed to load provider config'));
             }
         }
         load();
@@ -60,22 +58,17 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         setGithubStatus('saving');
         setGithubError('');
         try {
-            const res = await fetch(getApiBase() + '/providers/config', {
+            await getSpaCocClient().request('/providers/config', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ github: { token: githubToken } }),
+                body: { github: { token: githubToken } },
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error((body as any).error || `Error ${res.status}`);
-            }
             setGithubToken('');
             setHasGithubToken(true);
             setGithubStatus('success');
             onSuccess('GitHub token saved');
             setTimeout(() => setGithubStatus('idle'), 3000);
-        } catch (err: any) {
-            setGithubError(err.message || 'Failed to save');
+        } catch (err: unknown) {
+            setGithubError(getSpaCocClientErrorMessage(err, 'Failed to save'));
             setGithubStatus('error');
         }
     };
@@ -85,22 +78,17 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         setTavilyStatus('saving');
         setTavilyError('');
         try {
-            const res = await fetch(getApiBase() + '/providers/config', {
+            await getSpaCocClient().request('/providers/config', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tavily: { apiKey: tavilyApiKey } }),
+                body: { tavily: { apiKey: tavilyApiKey } },
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error((body as any).error || `Error ${res.status}`);
-            }
             setTavilyApiKey('');
             setHasTavilyApiKey(true);
             setTavilyStatus('success');
             onSuccess('Tavily API key saved');
             setTimeout(() => setTavilyStatus('idle'), 3000);
-        } catch (err: any) {
-            setTavilyError(err.message || 'Failed to save');
+        } catch (err: unknown) {
+            setTavilyError(getSpaCocClientErrorMessage(err, 'Failed to save'));
             setTavilyStatus('error');
         }
     };
@@ -110,21 +98,16 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         setAdoStatus('saving');
         setAdoError('');
         try {
-            const res = await fetch(getApiBase() + '/providers/config', {
+            await getSpaCocClient().request('/providers/config', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ado: { orgUrl: adoOrgUrl } }),
+                body: { ado: { orgUrl: adoOrgUrl } },
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error((body as any).error || `Error ${res.status}`);
-            }
             setAdoOrgUrlSaved(adoOrgUrl);
             setAdoStatus('success');
             onSuccess('ADO settings saved');
             setTimeout(() => setAdoStatus('idle'), 3000);
-        } catch (err: any) {
-            setAdoError(err.message || 'Failed to save');
+        } catch (err: unknown) {
+            setAdoError(getSpaCocClientErrorMessage(err, 'Failed to save'));
             setAdoStatus('error');
         }
     };

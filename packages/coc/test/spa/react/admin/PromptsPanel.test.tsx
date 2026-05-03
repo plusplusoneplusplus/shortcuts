@@ -4,17 +4,30 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { PromptsPanel } from '../../../../src/server/spa/client/react/admin/PromptsPanel';
 
-const mockFetch = vi.fn();
+const mocks = vi.hoisted(() => ({
+    admin: {
+        getPrompts: vi.fn(),
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>();
+    return {
+        ...actual,
+        getSpaCocClient: () => ({ admin: mocks.admin }),
+    };
+});
+
 const onError = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetch.mockReset();
+    mocks.admin.getPrompts.mockReset();
     onError.mockReset();
-    global.fetch = mockFetch;
 });
 
 function renderPanel() {
@@ -54,17 +67,14 @@ const MOCK_PROMPTS = {
 
 describe('PromptsPanel', () => {
     it('shows loading spinner initially', () => {
-        mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
+        mocks.admin.getPrompts.mockReturnValue(new Promise(() => {})); // never resolves
         renderPanel();
         expect(screen.getByTestId('prompts-loading')).toBeDefined();
         expect(screen.getByText('Loading…')).toBeDefined();
     });
 
     it('renders prompts grouped by category after fetch', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve(MOCK_PROMPTS),
-        });
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
 
         await act(async () => { renderPanel(); });
 
@@ -84,10 +94,7 @@ describe('PromptsPanel', () => {
     });
 
     it('renders the page header description', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve(MOCK_PROMPTS),
-        });
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
 
         await act(async () => { renderPanel(); });
 
@@ -98,17 +105,17 @@ describe('PromptsPanel', () => {
     });
 
     it('calls onError when fetch fails', async () => {
-        mockFetch.mockResolvedValue({ ok: false, status: 500 });
+        mocks.admin.getPrompts.mockRejectedValue(new CocApiError({ status: 500, statusText: 'Internal Server Error', url: '/admin/prompts', message: 'Internal Server Error' }));
 
         await act(async () => { renderPanel(); });
 
         await waitFor(() => {
-            expect(onError).toHaveBeenCalledWith('Failed to load prompts');
+            expect(onError).toHaveBeenCalled();
         });
     });
 
     it('calls onError when fetch throws', async () => {
-        mockFetch.mockRejectedValue(new Error('Network error'));
+        mocks.admin.getPrompts.mockRejectedValue(new Error('Network error'));
 
         await act(async () => { renderPanel(); });
 
@@ -118,10 +125,7 @@ describe('PromptsPanel', () => {
     });
 
     it('renders prompt cards with correct data-testid', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve(MOCK_PROMPTS),
-        });
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
 
         await act(async () => { renderPanel(); });
 

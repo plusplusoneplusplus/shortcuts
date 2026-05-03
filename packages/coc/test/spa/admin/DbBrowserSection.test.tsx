@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { type ReactNode } from 'react';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { DbBrowserSection } from '../../../src/server/spa/client/react/admin/DbBrowserSection';
 
@@ -15,7 +16,25 @@ if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = vi.fn();
 }
 
-const mockFetch = vi.fn();
+const mocks = vi.hoisted(() => ({
+    admin: {
+        db: {
+            listTables: vi.fn(),
+            getTable: vi.fn(),
+            updateRow: vi.fn(),
+            deleteRow: vi.fn(),
+            deleteBulk: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../../../src/server/spa/client/react/api/cocClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../src/server/spa/client/react/api/cocClient')>();
+    return {
+        ...actual,
+        getSpaCocClient: () => ({ admin: mocks.admin }),
+    };
+});
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -53,42 +72,14 @@ function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider>{children}</AppProvider>;
 }
 
-function mockDefaultFetch() {
-    mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
-        const urlStr = String(url);
-        if (urlStr.includes('/admin/db/tables/') && opts?.method === 'PUT') {
-            return {
-                ok: true,
-                json: () => Promise.resolve({ row: { id: 1, name: 'Updated', email: 'new@example.com' }, changes: 1 }),
-            };
-        }
-        if (urlStr.includes('/rows/delete-bulk') && opts?.method === 'POST') {
-            const body = JSON.parse(opts.body as string);
-            return {
-                ok: true,
-                json: () => Promise.resolve({ deleted: body.rows.length, requested: body.rows.length }),
-            };
-        }
-        if (urlStr.includes('/admin/db/tables/') && opts?.method === 'DELETE') {
-            return {
-                ok: true,
-                json: () => Promise.resolve({ deleted: 1 }),
-            };
-        }
-        if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
-            return {
-                ok: true,
-                json: () => Promise.resolve(TABLE_DATA_RESPONSE),
-            };
-        }
-        if (urlStr.includes('/admin/db/tables')) {
-            return {
-                ok: true,
-                json: () => Promise.resolve(TABLES_RESPONSE),
-            };
-        }
-        return { ok: true, json: () => Promise.resolve([]) };
-    });
+function mockDefaultResponses() {
+    mocks.admin.db.listTables.mockResolvedValue(TABLES_RESPONSE);
+    mocks.admin.db.getTable.mockResolvedValue(TABLE_DATA_RESPONSE);
+    mocks.admin.db.updateRow.mockResolvedValue({ row: { id: 1, name: 'Updated', email: 'new@example.com' }, changes: 1 });
+    mocks.admin.db.deleteRow.mockResolvedValue({ deleted: 1 });
+    mocks.admin.db.deleteBulk.mockImplementation(async (_table: string, req: { rows: unknown[] }) =>
+        ({ deleted: req.rows.length, requested: req.rows.length }),
+    );
 }
 
 function renderSection() {
@@ -103,9 +94,12 @@ function renderSection() {
 
 beforeEach(() => {
     vi.restoreAllMocks();
-    mockFetch.mockReset();
-    vi.stubGlobal('fetch', mockFetch);
-    mockDefaultFetch();
+    mocks.admin.db.listTables.mockReset();
+    mocks.admin.db.getTable.mockReset();
+    mocks.admin.db.updateRow.mockReset();
+    mocks.admin.db.deleteRow.mockReset();
+    mocks.admin.db.deleteBulk.mockReset();
+    mockDefaultResponses();
 });
 
 afterEach(() => {
@@ -176,14 +170,13 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-row-0'));
         await waitFor(() => screen.getByTestId('db-edit-cancel'));
 
-        const fetchCountBefore = mockFetch.mock.calls.length;
         fireEvent.click(screen.getByTestId('db-edit-cancel'));
 
         await waitFor(() => {
             // Edit button should reappear
             expect(screen.getByTestId('db-edit-row-0')).toBeDefined();
-            // No new fetch calls made
-            expect(mockFetch.mock.calls.length).toBe(fetchCountBefore);
+            // No update call made
+            expect(mocks.admin.db.updateRow).not.toHaveBeenCalled();
         });
     });
 
@@ -200,11 +193,9 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-save'));
 
         await waitFor(() => {
-            const putCall = mockFetch.mock.calls.find(
-                (call: any[]) => call[1]?.method === 'PUT'
-            );
-            expect(putCall).toBeDefined();
-            const body = JSON.parse(putCall![1].body);
+            expect(mocks.admin.db.updateRow).toHaveBeenCalled();
+            const [table, body] = mocks.admin.db.updateRow.mock.calls[0];
+            expect(table).toBe('users');
             expect(body.pkColumns).toEqual({ id: 1 });
             expect(body.updates).toHaveProperty('name', 'Updated');
         });
@@ -229,24 +220,10 @@ describe('DbBrowserSection — inline editing', () => {
     });
 
     it('displays error message on save failure', async () => {
-        // Override PUT to fail
-        mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
-            const urlStr = String(url);
-            if (urlStr.includes('/admin/db/tables/') && opts?.method === 'PUT') {
-                return {
-                    ok: false,
-                    status: 400,
-                    json: () => Promise.resolve({ error: 'Cannot update primary key column "id"' }),
-                };
-            }
-            if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
-                return { ok: true, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
-            }
-            if (urlStr.includes('/admin/db/tables')) {
-                return { ok: true, json: () => Promise.resolve(TABLES_RESPONSE) };
-            }
-            return { ok: true, json: () => Promise.resolve([]) };
-        });
+        // Override updateRow to fail
+        mocks.admin.db.updateRow.mockRejectedValue(
+            new CocApiError({ status: 400, statusText: 'Bad Request', url: '/admin/db/tables/users/rows', message: 'Bad Request', body: { error: 'Cannot update primary key column "id"' } }),
+        );
 
         renderSection();
         await waitFor(() => screen.getByTestId('db-edit-row-0'));
@@ -295,11 +272,8 @@ describe('DbBrowserSection — inline editing', () => {
             expect(screen.getByTestId('db-edit-row-0')).toBeDefined();
         });
 
-        // No PUT call should have been made
-        const putCalls = mockFetch.mock.calls.filter(
-            (call: any[]) => call[1]?.method === 'PUT'
-        );
-        expect(putCalls.length).toBe(0);
+        // No updateRow call should have been made
+        expect(mocks.admin.db.updateRow).not.toHaveBeenCalled();
     });
 
     it('empty string input sets null in the update payload', async () => {
@@ -314,11 +288,8 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-save'));
 
         await waitFor(() => {
-            const putCall = mockFetch.mock.calls.find(
-                (call: any[]) => call[1]?.method === 'PUT'
-            );
-            expect(putCall).toBeDefined();
-            const body = JSON.parse(putCall![1].body);
+            expect(mocks.admin.db.updateRow).toHaveBeenCalled();
+            const [, body] = mocks.admin.db.updateRow.mock.calls[0];
             expect(body.updates.email).toBeNull();
         });
     });
@@ -453,13 +424,12 @@ describe('DbBrowserSection — single row delete', () => {
         fireEvent.click(screen.getByTestId('db-delete-row-0'));
         await waitFor(() => screen.getByTestId('db-delete-cancel'));
 
-        const fetchCountBefore = mockFetch.mock.calls.length;
         fireEvent.click(screen.getByTestId('db-delete-cancel'));
 
         await waitFor(() => {
             expect(screen.queryByTestId('db-delete-message')).toBeNull();
         });
-        expect(mockFetch.mock.calls.length).toBe(fetchCountBefore);
+        expect(mocks.admin.db.deleteRow).not.toHaveBeenCalled();
     });
 
     it('confirm sends DELETE request with correct pkColumns', async () => {
@@ -472,11 +442,9 @@ describe('DbBrowserSection — single row delete', () => {
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
 
         await waitFor(() => {
-            const deleteCall = mockFetch.mock.calls.find(
-                (call: any[]) => call[1]?.method === 'DELETE'
-            );
-            expect(deleteCall).toBeDefined();
-            const body = JSON.parse(deleteCall![1].body);
+            expect(mocks.admin.db.deleteRow).toHaveBeenCalled();
+            const [table, body] = mocks.admin.db.deleteRow.mock.calls[0];
+            expect(table).toBe('users');
             expect(body.pkColumns).toEqual({ id: 1 });
         });
     });
@@ -485,7 +453,7 @@ describe('DbBrowserSection — single row delete', () => {
         renderSection();
         await waitFor(() => screen.getByTestId('db-delete-row-0'));
 
-        const fetchCountBefore = mockFetch.mock.calls.length;
+        const getTableCountBefore = mocks.admin.db.getTable.mock.calls.length;
         fireEvent.click(screen.getByTestId('db-delete-row-0'));
         await waitFor(() => screen.getByTestId('db-delete-confirm'));
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
@@ -494,8 +462,7 @@ describe('DbBrowserSection — single row delete', () => {
             // Dialog should close
             expect(screen.queryByTestId('db-delete-message')).toBeNull();
             // A new data fetch should have been made (refresh)
-            const newCalls = mockFetch.mock.calls.slice(fetchCountBefore);
-            expect(newCalls.length).toBeGreaterThan(0);
+            expect(mocks.admin.db.getTable.mock.calls.length).toBeGreaterThan(getTableCountBefore);
         });
 
         // Success toast
@@ -505,23 +472,9 @@ describe('DbBrowserSection — single row delete', () => {
     });
 
     it('delete error shows error toast', async () => {
-        mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
-            const urlStr = String(url);
-            if (opts?.method === 'DELETE') {
-                return {
-                    ok: false,
-                    status: 404,
-                    json: () => Promise.resolve({ error: 'Row not found' }),
-                };
-            }
-            if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
-                return { ok: true, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
-            }
-            if (urlStr.includes('/admin/db/tables')) {
-                return { ok: true, json: () => Promise.resolve(TABLES_RESPONSE) };
-            }
-            return { ok: true, json: () => Promise.resolve([]) };
-        });
+        mocks.admin.db.deleteRow.mockRejectedValue(
+            new CocApiError({ status: 404, statusText: 'Not Found', url: '/admin/db/tables/users/rows', message: 'Not Found', body: { error: 'Row not found' } }),
+        );
 
         renderSection();
         await waitFor(() => screen.getByTestId('db-delete-row-0'));
@@ -646,11 +599,9 @@ describe('DbBrowserSection — bulk delete', () => {
         fireEvent.click(screen.getByTestId('db-delete-confirm'));
 
         await waitFor(() => {
-            const bulkCall = mockFetch.mock.calls.find(
-                (call: any[]) => String(call[0]).includes('/delete-bulk') && call[1]?.method === 'POST'
-            );
-            expect(bulkCall).toBeDefined();
-            const body = JSON.parse(bulkCall![1].body);
+            expect(mocks.admin.db.deleteBulk).toHaveBeenCalled();
+            const [table, body] = mocks.admin.db.deleteBulk.mock.calls[0];
+            expect(table).toBe('users');
             expect(body.rows).toHaveLength(2);
             expect(body.rows).toContainEqual({ id: 1 });
             expect(body.rows).toContainEqual({ id: 2 });
@@ -681,23 +632,9 @@ describe('DbBrowserSection — bulk delete', () => {
     });
 
     it('bulk delete error shows error toast', async () => {
-        mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
-            const urlStr = String(url);
-            if (urlStr.includes('/delete-bulk') && opts?.method === 'POST') {
-                return {
-                    ok: false,
-                    status: 500,
-                    json: () => Promise.resolve({ error: 'Database locked' }),
-                };
-            }
-            if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
-                return { ok: true, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
-            }
-            if (urlStr.includes('/admin/db/tables')) {
-                return { ok: true, json: () => Promise.resolve(TABLES_RESPONSE) };
-            }
-            return { ok: true, json: () => Promise.resolve([]) };
-        });
+        mocks.admin.db.deleteBulk.mockRejectedValue(
+            new CocApiError({ status: 500, statusText: 'Internal Server Error', url: '/admin/db/tables/users/rows/delete-bulk', message: 'Internal Server Error', body: { error: 'Database locked' } }),
+        );
 
         renderSection();
         await waitFor(() => screen.getByTestId('db-select-all'));

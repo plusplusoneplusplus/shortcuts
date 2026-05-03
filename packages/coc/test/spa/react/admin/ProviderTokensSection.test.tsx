@@ -5,10 +5,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
-// Mock getApiBase so fetch URLs are predictable.
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => '',
+const mocks = vi.hoisted(() => ({
+    request: vi.fn(),
 }));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>();
+    return {
+        ...actual,
+        getSpaCocClient: () => ({ request: mocks.request }),
+    };
+});
 
 const onError = vi.fn();
 const onSuccess = vi.fn();
@@ -31,12 +38,9 @@ beforeEach(() => {
 
 describe('initial load', () => {
     it('shows "already saved" message when GitHub hasToken is true', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                providers: { github: { hasToken: true } },
-            }),
-        } as any);
+        mocks.request.mockResolvedValue({
+            providers: { github: { hasToken: true } },
+        });
 
         await act(async () => { await renderSection(); });
 
@@ -47,12 +51,9 @@ describe('initial load', () => {
     });
 
     it('does NOT show "already saved" message when GitHub hasToken is false', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                providers: { github: { hasToken: false } },
-            }),
-        } as any);
+        mocks.request.mockResolvedValue({
+            providers: { github: { hasToken: false } },
+        });
 
         await act(async () => { await renderSection(); });
 
@@ -62,10 +63,7 @@ describe('initial load', () => {
     });
 
     it('does NOT show "already saved" message when no GitHub entry in providers', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ providers: {} }),
-        } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
 
         await act(async () => { await renderSection(); });
 
@@ -75,12 +73,9 @@ describe('initial load', () => {
     });
 
     it('pre-fills ADO org URL from saved config', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                providers: { ado: { orgUrl: 'https://dev.azure.com/myorg' } },
-            }),
-        } as any);
+        mocks.request.mockResolvedValue({
+            providers: { ado: { orgUrl: 'https://dev.azure.com/myorg' } },
+        });
 
         await act(async () => { await renderSection(); });
 
@@ -91,7 +86,7 @@ describe('initial load', () => {
     });
 
     it('calls onError when load fails', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) } as any);
+        mocks.request.mockRejectedValue(new Error('Failed to load provider config'));
 
         await act(async () => { await renderSection(); });
 
@@ -99,10 +94,7 @@ describe('initial load', () => {
     });
 
     it('does NOT render ADO PAT input field', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ providers: {} }),
-        } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
 
         await act(async () => { await renderSection(); });
 
@@ -112,10 +104,7 @@ describe('initial load', () => {
     });
 
     it('does NOT render ADO token visibility toggle', async () => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ providers: {} }),
-        } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
 
         await act(async () => { await renderSection(); });
 
@@ -129,9 +118,9 @@ describe('initial load', () => {
 
 describe('GitHub save', () => {
     it('calls PUT /providers/config with correct GitHub body', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -139,18 +128,21 @@ describe('GitHub save', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('github-save-button')); });
 
         await waitFor(() => {
-            const calls = (global.fetch as any).mock.calls;
-            const putCall = calls.find(([_url, opts]: [string, any]) => opts?.method === 'PUT');
+            const putCall = mocks.request.mock.calls.find(
+                (args: unknown[]) => (args[1] as any)?.method === 'PUT'
+            );
             expect(putCall).toBeDefined();
-            const body = JSON.parse(putCall[1].body);
-            expect(body).toEqual({ github: { token: 'ghp_newtoken' } });
+            expect(putCall![1]).toEqual(expect.objectContaining({
+                method: 'PUT',
+                body: { github: { token: 'ghp_newtoken' } },
+            }));
         });
     });
 
     it('shows success message after GitHub save', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -162,9 +154,9 @@ describe('GitHub save', () => {
     });
 
     it('sets hasGithubToken true after successful GitHub save', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -179,9 +171,9 @@ describe('GitHub save', () => {
     });
 
     it('clears input after successful GitHub save', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -195,9 +187,9 @@ describe('GitHub save', () => {
     });
 
     it('shows error message when GitHub save fails', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: false, status: 400, statusText: 'Bad Request', json: () => Promise.resolve({ error: 'Invalid token' }) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockRejectedValueOnce(new Error('Invalid token'));
 
         await act(async () => { await renderSection(); });
 
@@ -209,7 +201,7 @@ describe('GitHub save', () => {
     });
 
     it('GitHub save button is disabled when token is empty', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
 
         await act(async () => { await renderSection(); });
 
@@ -221,9 +213,9 @@ describe('GitHub save', () => {
 
 describe('ADO save', () => {
     it('calls PUT /providers/config with orgUrl only (no token)', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -231,19 +223,20 @@ describe('ADO save', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('ado-save-button')); });
 
         await waitFor(() => {
-            const calls = (global.fetch as any).mock.calls;
-            const putCall = calls.find(([_url, opts]: [string, any]) => opts?.method === 'PUT');
+            const putCall = mocks.request.mock.calls.find(
+                (args: unknown[]) => (args[1] as any)?.method === 'PUT'
+            );
             expect(putCall).toBeDefined();
-            const body = JSON.parse(putCall[1].body);
+            const body = (putCall![1] as any).body;
             expect(body).toEqual({ ado: { orgUrl: 'https://dev.azure.com/myorg' } });
             expect(body.ado.token).toBeUndefined();
         });
     });
 
     it('shows success message after ADO org URL save', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockResolvedValueOnce(undefined);
 
         await act(async () => { await renderSection(); });
 
@@ -255,9 +248,9 @@ describe('ADO save', () => {
     });
 
     it('shows error message when ADO save fails', async () => {
-        global.fetch = vi.fn()
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
-            .mockResolvedValueOnce({ ok: false, status: 400, statusText: 'Bad Request', json: () => Promise.resolve({ error: 'Bad org URL' }) } as any);
+        mocks.request
+            .mockResolvedValueOnce({ providers: {} })
+            .mockRejectedValueOnce(new Error('Bad org URL'));
 
         await act(async () => { await renderSection(); });
 
@@ -269,7 +262,7 @@ describe('ADO save', () => {
     });
 
     it('ADO save button is disabled when org URL is empty', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
 
         await act(async () => { await renderSection(); });
 
@@ -281,7 +274,7 @@ describe('ADO save', () => {
 
 describe('token visibility toggle', () => {
     beforeEach(async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any);
+        mocks.request.mockResolvedValue({ providers: {} });
     });
 
     it('GitHub token input defaults to type=password', async () => {

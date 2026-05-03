@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Spinner } from '../ui';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { PromptCard } from './PromptCard';
 
 interface BuiltInPrompt {
@@ -30,12 +30,10 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/admin/prompts');
-            if (!res.ok) throw new Error('Failed to load prompts');
-            const data: Record<string, BuiltInPrompt> = await res.json();
+            const data = await getSpaCocClient().admin.getPrompts();
             setPrompts(Object.values(data));
-        } catch (err: any) {
-            onError(err.message || 'Failed to load prompts');
+        } catch (err: unknown) {
+            onError(getSpaCocClientErrorMessage(err, 'Failed to load prompts'));
         } finally {
             setLoading(false);
         }
