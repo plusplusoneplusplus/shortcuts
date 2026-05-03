@@ -10,17 +10,19 @@
  * Mobile: single-pane toggle (list ↔ detail).
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { PullRequestRow } from './PullRequestRow';
 import { PullRequestDetail } from './PullRequestDetail';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { ProviderConfigPanel } from './ProviderConfigPanel';
+import { AttentionGroupSection } from './AttentionGroupSection';
+import { AttentionSummaryBar } from './AttentionSummaryBar';
+import { ATTENTION_GROUP_CONFIGS, AttentionGroup, classifyPr } from './pr-attention-groups';
 
 export interface PullRequestsTabProps {
     repoId: string;
@@ -81,6 +83,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const authorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const authorInputRef = useRef<HTMLInputElement>(null);
     const scopeDropdownRef = useRef<HTMLDivElement>(null);
+    const groupSectionRefs = useRef<Map<AttentionGroup, HTMLDivElement>>(new Map());
 
     // Derived: the effective scope param sent to the server
     const effectiveScope = scopeMode === 'author' ? 'all' : scopeMode;
@@ -200,10 +203,41 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         }
     }, [scopeMode]);
 
-    const filtered = prs.filter(pr => {
+    const filtered = useMemo(() => prs.filter(pr => {
         const matchesSearch = !searchText || pr.title.toLowerCase().includes(searchText.toLowerCase());
         return matchesSearch;
-    });
+    }), [prs, searchText]);
+
+    const groupedPrs = useMemo(() => {
+        const buckets = new Map<AttentionGroup, PullRequest[]>();
+        for (const config of ATTENTION_GROUP_CONFIGS) {
+            buckets.set(config.group, []);
+        }
+        for (const pr of filtered) {
+            buckets.get(classifyPr(pr))?.push(pr);
+        }
+        return ATTENTION_GROUP_CONFIGS.map(config => ({
+            config,
+            prs: buckets.get(config.group) ?? [],
+        }));
+    }, [filtered]);
+
+    const groupCounts = useMemo(() => groupedPrs.map(({ config, prs }) => ({
+        config,
+        count: prs.length,
+    })), [groupedPrs]);
+
+    const setGroupSectionRef = useCallback((group: AttentionGroup, element: HTMLDivElement | null) => {
+        if (element) {
+            groupSectionRefs.current.set(group, element);
+        } else {
+            groupSectionRefs.current.delete(group);
+        }
+    }, []);
+
+    const scrollToGroup = useCallback((group: AttentionGroup) => {
+        groupSectionRefs.current.get(group)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, []);
 
     function handleScopeSelect(mode: ScopeMode) {
         setScopeDropdownOpen(false);
@@ -434,9 +468,21 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
 
             {/* PR list */}
             <div className="flex-1 overflow-y-auto" data-testid="pr-list">
-                {filtered.map(pr => (
-                    <PullRequestRow key={pr.id} pr={pr} onClick={() => handleRowClick(pr)} isSelected={(pr.number ?? pr.id) === state.selectedPrId} />
-                ))}
+                {!error && !unconfigured && !(loading && prs.length === 0) && (
+                    <>
+                        <AttentionSummaryBar groups={groupCounts} onChipClick={scrollToGroup} />
+                        {groupedPrs.map(({ config, prs: groupPrs }) => (
+                            <AttentionGroupSection
+                                key={config.group}
+                                ref={element => setGroupSectionRef(config.group, element)}
+                                config={config}
+                                prs={groupPrs}
+                                selectedPrId={state.selectedPrId}
+                                onRowClick={handleRowClick}
+                            />
+                        ))}
+                    </>
+                )}
                 {!loading && !error && !unconfigured && prs.length > 0 && filtered.length === 0 && (
                     <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
                         No pull requests match your filters.
