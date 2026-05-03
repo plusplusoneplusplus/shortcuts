@@ -14,6 +14,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CopySectionBtn } from '../ui/CopySectionBtn';
+import { useMermaid } from '../hooks/ui/useMermaid';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
@@ -42,6 +43,8 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [tablePortals, setTablePortals] = React.useState<
         { mountEl: HTMLElement; table: ExtractedTable; key: string }[]
     >([]);
+
+    useMermaid(containerRef, html);
 
     useEffect(() => {
         const hljs = (window as any).hljs;

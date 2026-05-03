@@ -18,6 +18,7 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
 import { DEFAULT_HTML_EMBED_HEIGHT, isEmbeddableHtmlPath } from '@plusplusoneplusplus/forge/editor/rendering';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
@@ -37,11 +38,39 @@ function escapeAttr(value: string): string {
         .replace(/>/g, '&gt;');
 }
 
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 function createChatMarked(htmlEmbedEnabled: boolean): Marked {
+    let mermaidBlockIndex = 0;
+
     return new Marked({
         gfm: true,
         breaks: true,
         renderer: {
+            code(code: string, infostring: string | undefined, escaped: boolean): string {
+                const language = (infostring ?? '').trim().split(/\s+/)[0] || '';
+                if (language.toLowerCase() === 'mermaid') {
+                    mermaidBlockIndex++;
+                    const block: CodeBlock = {
+                        language: 'mermaid',
+                        startLine: 1,
+                        endLine: code.split('\n').length + 2,
+                        code,
+                        id: `chat-mermaid-${mermaidBlockIndex}`,
+                        isMermaid: true,
+                    };
+                    return renderMermaidContainer(block);
+                }
+
+                const classAttr = language ? ` class="language-${escapeAttr(language)}"` : '';
+                const html = escaped ? code : escapeHtml(code);
+                return `<pre><code${classAttr}>${html}</code></pre>\n`;
+            },
             html(raw: string) {
                 return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
             },

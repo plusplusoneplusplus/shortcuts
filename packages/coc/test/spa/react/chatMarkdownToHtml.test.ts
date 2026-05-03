@@ -2,8 +2,16 @@
  * Tests for chatMarkdownToHtml — the marked-based renderer for chat messages.
  */
 
-import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { chatMarkdownToHtml, toContentHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+
+afterEach(() => {
+    cleanup();
+    delete (globalThis as any).mermaid;
+});
 
 describe('chatMarkdownToHtml', () => {
     // --- Empty / whitespace ---
@@ -75,7 +83,16 @@ describe('chatMarkdownToHtml', () => {
         const html = chatMarkdownToHtml('```js\nconst x = 1;\n```');
         expect(html).toContain('<pre>');
         expect(html).toContain('<code');
+        expect(html).toContain('class="language-js"');
         expect(html).toContain('const x = 1;');
+    });
+
+    it('renders mermaid fences as diagram containers instead of raw code blocks', () => {
+        const html = chatMarkdownToHtml('```mermaid\nflowchart TD\n  A --> B\n```');
+        expect(html).toContain('class="mermaid-container"');
+        expect(html).toContain('class="mermaid-source"');
+        expect(html).toContain('flowchart TD');
+        expect(html).not.toContain('language-mermaid');
     });
 
     // --- Angle brackets (the HTML_LIKE_RE bypass bug) ---
@@ -320,6 +337,24 @@ describe('chatMarkdownToHtml', () => {
         const html = chatMarkdownToHtml('Use the <chosen-folder> path');
         expect(html).toContain('&lt;chosen-folder&gt;');
         expect(html).not.toContain('&amp;lt;');
+    });
+});
+
+describe('MarkdownView mermaid integration', () => {
+    it('initializes mermaid containers rendered by chatMarkdownToHtml', async () => {
+        const run = vi.fn().mockResolvedValue(undefined);
+        (globalThis as any).mermaid = {
+            initialize: vi.fn(),
+            run,
+        };
+
+        const html = chatMarkdownToHtml('```mermaid\nflowchart TD\n  A --> B\n```');
+        const { container } = render(React.createElement(MarkdownView, { html }));
+
+        await waitFor(() => expect(run).toHaveBeenCalled());
+        const mermaidContainer = container.querySelector('.mermaid-container');
+        expect(mermaidContainer).toHaveAttribute('data-mermaid-ready', '1');
+        expect(container.querySelector('.task-mermaid-viewport')).not.toBeNull();
     });
 });
 

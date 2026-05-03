@@ -3,11 +3,9 @@
  * header with name + status, stats grid, markdown result with mermaid support.
  */
 
-import { useRef } from 'react';
 import { Card, Badge, Button } from '../ui';
 import { MarkdownView } from '../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
-import { useMermaid } from '../hooks/ui/useMermaid';
 import { formatDuration, copyToClipboard } from '../utils/format';
 
 export interface WorkflowResultCardProps {
@@ -16,13 +14,10 @@ export interface WorkflowResultCardProps {
 }
 
 export function WorkflowResultCard({ process, className }: WorkflowResultCardProps) {
-    const cardRef = useRef<HTMLDivElement>(null);
     const pipelineName = process.metadata?.pipelineName || 'Workflow Execution';
     const stats = process.metadata?.executionStats;
     const result = process.result || '';
     const status = process.status || 'running';
-
-    useMermaid(cardRef, result);
 
     const successRate = stats && stats.totalItems > 0
         ? Math.round((stats.successfulMaps / stats.totalItems) * 100)
@@ -36,7 +31,7 @@ export function WorkflowResultCard({ process, className }: WorkflowResultCardPro
 
     return (
         <Card className={className}>
-            <div ref={cardRef} data-testid="workflow-result-card">
+            <div data-testid="workflow-result-card">
                 {/* Header */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
