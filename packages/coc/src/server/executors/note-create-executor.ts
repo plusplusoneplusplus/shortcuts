@@ -289,7 +289,7 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const wsId = payload.workspaceId;
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task), prompt);
         const systemMessage = await systemMessageBuilder()
             .appendMemory(boundedMemory)
             .build();

@@ -138,6 +138,16 @@ export interface PerRepoPreferences {
         charLimit?: number;
         /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
         writeFrequency?: 'low' | 'medium' | 'high';
+        /** Ranked recall settings for prompt injection. Enabled by default when memory is enabled. */
+        recall?: {
+            enabled?: boolean;
+            /** Maximum ranked repo/system entries to inject, excluding protected entries. */
+            maxEntries?: number;
+            /** Maximum serialized characters for recalled entries. Protected entries are always included. */
+            charBudget?: number;
+            /** Optional FTS5 BM25 upper bound. Lower scores are better. */
+            maxBm25Score?: number;
+        };
     };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
@@ -404,6 +414,25 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
             }
             if (bm.writeFrequency === 'low' || bm.writeFrequency === 'medium' || bm.writeFrequency === 'high') {
                 validated.writeFrequency = bm.writeFrequency;
+            }
+            if (typeof bm.recall === 'object' && bm.recall !== null) {
+                const recall = bm.recall as Record<string, unknown>;
+                const validatedRecall: NonNullable<NonNullable<PerRepoPreferences['boundedMemory']>['recall']> = {};
+                if (typeof recall.enabled === 'boolean') {
+                    validatedRecall.enabled = recall.enabled;
+                }
+                if (typeof recall.maxEntries === 'number' && recall.maxEntries > 0) {
+                    validatedRecall.maxEntries = recall.maxEntries;
+                }
+                if (typeof recall.charBudget === 'number' && recall.charBudget > 0) {
+                    validatedRecall.charBudget = recall.charBudget;
+                }
+                if (typeof recall.maxBm25Score === 'number' && Number.isFinite(recall.maxBm25Score)) {
+                    validatedRecall.maxBm25Score = recall.maxBm25Score;
+                }
+                if (Object.keys(validatedRecall).length > 0) {
+                    validated.recall = validatedRecall;
+                }
             }
             result.boundedMemory = validated;
         }

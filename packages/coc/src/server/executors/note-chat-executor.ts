@@ -118,7 +118,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task));
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task), prompt);
         const systemMessage = await systemMessageBuilder()
             .appendMemory(boundedMemory)
             .appendAutoFolder(autoFolderContext)

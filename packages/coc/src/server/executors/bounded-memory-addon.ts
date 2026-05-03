@@ -17,8 +17,10 @@ import type { MemoryToolCaptureContext, MemoryWriteFrequency, Tool } from '@plus
 import {
     BoundedMemoryStore,
     createMemoryTool,
+    DEFAULT_CHAR_LIMIT,
     MemoryCandidateStore,
     MemoryPromptBuilder,
+    MemoryRecallIndex,
 } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
@@ -46,6 +48,8 @@ export interface BoundedMemoryAddon {
 const MEMORY_TOOL_SUFFIX =
     '\n\nUse the `memory` tool to save durable, high-value facts you discover during this session.';
 
+const DEFAULT_RECALL_MAX_ENTRIES = 8;
+
 const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
     systemMessageSuffix: undefined,
     tools: [],
@@ -71,6 +75,7 @@ export async function buildBoundedMemoryAddon(
     dataDir: string | undefined,
     workspaceId: string | undefined,
     captureContext?: MemoryToolCaptureContext,
+    recallQuery?: string,
 ): Promise<BoundedMemoryAddon> {
     if (!dataDir || !workspaceId) return EMPTY_ADDON;
 
@@ -80,6 +85,7 @@ export async function buildBoundedMemoryAddon(
 
         const charLimit = prefs.boundedMemory.charLimit;
         const writeFrequency = prefs.boundedMemory.writeFrequency as MemoryWriteFrequency | undefined;
+        const recallPrefs = prefs.boundedMemory.recall;
         const memoryPath = getRepoDataPath(dataDir, workspaceId, 'memory/MEMORY.md');
 
         const store = new BoundedMemoryStore({
@@ -95,8 +101,30 @@ export async function buildBoundedMemoryAddon(
         });
         await systemStore.load();
 
-        // Prompt injection always reads bounded MEMORY.md (unchanged)
-        const builder = new MemoryPromptBuilder({ store, systemStore, writeFrequency });
+        const recallEnabled = recallPrefs?.enabled !== false && !!recallQuery?.trim();
+        const recallIndex = recallEnabled
+            ? new MemoryRecallIndex({
+                dbPath: getRepoDataPath(dataDir, workspaceId, 'memory/recall-index.db'),
+            })
+            : undefined;
+        const recallCharBudget = recallPrefs?.charBudget
+            ?? Math.min(charLimit ?? DEFAULT_CHAR_LIMIT, DEFAULT_CHAR_LIMIT);
+
+        const builder = new MemoryPromptBuilder({
+            store,
+            systemStore,
+            writeFrequency,
+            ...(recallIndex && recallQuery ? {
+                recall: {
+                    index: recallIndex,
+                    namespace: workspaceId,
+                    query: recallQuery,
+                    maxEntries: recallPrefs?.maxEntries ?? DEFAULT_RECALL_MAX_ENTRIES,
+                    charBudget: recallCharBudget,
+                    maxBm25Score: recallPrefs?.maxBm25Score,
+                },
+            } : {}),
+        });
         const systemMessageSuffix = builder.getSystemPromptBlock() ?? undefined;
 
         // Determine mode and build the tool
@@ -134,6 +162,7 @@ export async function buildBoundedMemoryAddon(
             tools: [tool],
             suffix: MEMORY_TOOL_SUFFIX,
             dispose: () => {
+                try { recallIndex?.close(); } catch { /* already closed */ }
                 for (const store of candidateStoreInstances) {
                     try { store.close(); } catch { /* already closed */ }
                 }

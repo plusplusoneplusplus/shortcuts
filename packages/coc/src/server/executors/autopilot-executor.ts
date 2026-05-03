@@ -70,7 +70,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         );
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task), prompt);
 
         const disabledLlmTools = this.dataDir && payload.workspaceId
             ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)

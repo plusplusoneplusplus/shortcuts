@@ -19,7 +19,15 @@ export type { BoundedMemoryStoreOptions, MemoryMutationResult, MemoryUsage, Memo
 export { ENTRY_DELIMITER, DEFAULT_CHAR_LIMIT } from './bounded-memory-types';
 export { scanMemoryContent, SECURITY_PATTERNS_DESCRIPTION } from './memory-security-scanner';
 export { MemoryPromptBuilder, MEMORY_GUIDANCE, getMemoryGuidance } from './memory-prompt-builder';
-export type { MemoryPromptBuilderOptions } from './memory-prompt-builder';
+export type { MemoryPromptBuilderOptions, MemoryPromptRecallOptions } from './memory-prompt-builder';
+export { MemoryRecallIndex } from './memory-recall-index';
+export type {
+    MemoryRecallIndexOptions,
+    MemoryRecallQuery,
+    MemoryRecallResultEntry,
+    MemoryRecallScope,
+    MemoryRecallSyncInput,
+} from './memory-recall-index';
 export { createMemoryTool, MEMORY_SCHEMA, getMemorySchema } from './memory-tool';
 export type {
     MemoryToolOptions,

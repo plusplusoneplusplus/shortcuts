@@ -1641,6 +1641,48 @@ describe('Per-Repo Preferences REST API', () => {
         expect(body.boundedMemory.charLimit).toBeUndefined();
     });
 
+    it('validates boundedMemory ranked recall settings', async () => {
+        await putJSON(repoUrl(repoId), {
+            boundedMemory: {
+                enabled: true,
+                recall: {
+                    enabled: true,
+                    maxEntries: 6,
+                    charBudget: 1200,
+                    maxBm25Score: 0,
+                },
+            },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toEqual({
+            enabled: true,
+            recall: {
+                enabled: true,
+                maxEntries: 6,
+                charBudget: 1200,
+                maxBm25Score: 0,
+            },
+        });
+    });
+
+    it('drops invalid boundedMemory ranked recall settings', async () => {
+        await putJSON(repoUrl(repoId), {
+            boundedMemory: {
+                enabled: true,
+                recall: {
+                    enabled: 'yes',
+                    maxEntries: 0,
+                    charBudget: -1,
+                    maxBm25Score: Number.NaN,
+                },
+            },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toEqual({ enabled: true });
+    });
+
     it('rejects non-object boundedMemory', async () => {
         await putJSON(repoUrl(repoId), { boundedMemory: 'yes' });
         const res = await getJSON(repoUrl(repoId));

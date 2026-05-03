@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
+import { MemoryRecallIndex } from '../../src/memory/memory-recall-index';
 import {
     MemoryPromptBuilder,
     MEMORY_GUIDANCE,
@@ -195,6 +196,43 @@ describe('MemoryPromptBuilder', () => {
         expect(block).toContain(entries[2]);
         // Ends with guidance
         expect(block).toContain(MEMORY_GUIDANCE);
+    });
+
+    it('ranked recall injects relevant repo memory and protected system memory only', async () => {
+        const repoDir = makeTempDir();
+        const sysDir = makeTempDir();
+        const repoPath = writeMemory(repoDir, [
+            'User prefers dark mode',
+            'Project uses Vitest for package tests',
+            'Deploy production with Docker',
+        ].join(ENTRY_DELIMITER));
+        const sysPath = writeMemory(sysDir, 'Always prefer Windows-style paths');
+        const repoStore = await loadedStore(repoPath, 3000);
+        const systemStore = await loadedStore(sysPath, 3000);
+        const recallIndex = new MemoryRecallIndex({ dbPath: path.join(makeTempDir(), 'recall.db') });
+
+        try {
+            const builder = new MemoryPromptBuilder({
+                store: repoStore,
+                systemStore,
+                recall: {
+                    index: recallIndex,
+                    namespace: 'ws-test',
+                    query: 'How do I run vitest tests?',
+                    maxEntries: 1,
+                    charBudget: 120,
+                },
+            });
+
+            const block = builder.getSystemPromptBlock()!;
+
+            expect(block).toContain('Project uses Vitest for package tests');
+            expect(block).toContain('Always prefer Windows-style paths');
+            expect(block).not.toContain('User prefers dark mode');
+            expect(block).not.toContain('Deploy production with Docker');
+        } finally {
+            recallIndex.close();
+        }
     });
 
     // -----------------------------------------------------------------------

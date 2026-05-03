@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import Database from 'better-sqlite3';
 import { buildBoundedMemoryAddon } from '../../../src/server/executors/bounded-memory-addon';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { ENTRY_DELIMITER, MEMORY_SCHEMA, getMemorySchema } from '@plusplusoneplusplus/forge';
@@ -135,6 +136,55 @@ describe('buildBoundedMemoryAddon', () => {
         expect(addon.systemMessageSuffix).toContain('System-level fact');
         expect(addon.systemMessageSuffix).toContain('MEMORY (your personal notes)');
         expect(addon.systemMessageSuffix).toContain('SYSTEM MEMORY (cross-project notes)');
+    });
+
+    it('uses ranked recall when a query is provided and records recall events', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, {
+            boundedMemory: {
+                enabled: true,
+                recall: { maxEntries: 1, charBudget: 140 },
+            },
+        });
+        writeMemoryFile(tmpDir, WORKSPACE_ID, [
+            'User prefers dark mode',
+            'Project uses Vitest for package tests',
+            'Deploy production with Docker',
+        ].join(ENTRY_DELIMITER));
+        writeSystemMemoryFile(tmpDir, 'Always prefer Windows-style paths');
+
+        const addon = await buildBoundedMemoryAddon(
+            tmpDir,
+            WORKSPACE_ID,
+            { processId: 'proc-recall', turnIndex: 0 },
+            'How should I run vitest tests?',
+        );
+
+        try {
+            expect(addon.systemMessageSuffix).toContain('Project uses Vitest for package tests');
+            expect(addon.systemMessageSuffix).toContain('Always prefer Windows-style paths');
+            expect(addon.systemMessageSuffix).not.toContain('User prefers dark mode');
+            expect(addon.systemMessageSuffix).not.toContain('Deploy production with Docker');
+
+            const db = new Database(path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory', 'recall-index.db'), { readonly: true });
+            try {
+                const events = db.prepare(`
+                    SELECT e.scope, e.content, r.query_hash
+                    FROM memory_recall_events r
+                    JOIN memory_recall_entries e ON e.id = r.entry_id
+                    ORDER BY e.scope ASC, e.ordinal ASC
+                `).all() as Array<{ scope: string; content: string; query_hash: string }>;
+
+                expect(events.map(event => event.content).sort()).toEqual([
+                    'Always prefer Windows-style paths',
+                    'Project uses Vitest for package tests',
+                ].sort());
+                expect(events.every(event => /^[a-f0-9]{64}$/.test(event.query_hash))).toBe(true);
+            } finally {
+                db.close();
+            }
+        } finally {
+            addon.dispose();
+        }
     });
 
     it('system target is available in the tool when enabled', async () => {

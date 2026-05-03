@@ -66,7 +66,7 @@ export class ChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task));
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task), prompt);
         const notePath = payload.context?.noteChat?.notePath;
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)

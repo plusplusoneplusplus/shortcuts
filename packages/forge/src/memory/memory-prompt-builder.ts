@@ -10,6 +10,11 @@
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { ENTRY_DELIMITER } from './bounded-memory-types';
 import type { MemoryWriteFrequency } from './memory-tool';
+import type {
+    MemoryRecallIndex,
+    MemoryRecallResultEntry,
+    MemoryRecallScope,
+} from './memory-recall-index';
 
 export { ENTRY_DELIMITER };
 
@@ -54,6 +59,18 @@ export interface MemoryPromptBuilderOptions {
     systemStore?: BoundedMemoryStore;
     /** Controls which guidance text is injected. Default: 'medium'. */
     writeFrequency?: MemoryWriteFrequency;
+    /** Optional ranked recall configuration. Without it, all entries are injected. */
+    recall?: MemoryPromptRecallOptions;
+}
+
+export interface MemoryPromptRecallOptions {
+    index: MemoryRecallIndex;
+    namespace: string;
+    query: string;
+    maxEntries?: number;
+    charBudget?: number;
+    maxBm25Score?: number;
+    protectedEntryMatcher?: (entry: string, context: { scope: MemoryRecallScope; ordinal: number }) => boolean;
 }
 
 export class MemoryPromptBuilder {
@@ -69,23 +86,23 @@ export class MemoryPromptBuilder {
 
         const repoEntries = options.store.read();
         const repoLimit = options.store.getUsage().limit;
+        const sysEntries = options.systemStore?.read() ?? [];
+        const sysLimit = options.systemStore?.getUsage().limit ?? repoLimit;
+        const recalled = this.recallEntries(options.recall, repoEntries, sysEntries, repoLimit);
+
         this.repoBlock = MemoryPromptBuilder.renderBlock(
             'MEMORY (your personal notes)',
-            repoEntries,
-            repoLimit,
+            recalled ? recalled.repo : repoEntries,
+            recalled?.limit ?? repoLimit,
         );
 
-        if (options.systemStore) {
-            const sysEntries = options.systemStore.read();
-            const sysLimit = options.systemStore.getUsage().limit;
-            this.systemBlock = MemoryPromptBuilder.renderBlock(
+        this.systemBlock = options.systemStore
+            ? MemoryPromptBuilder.renderBlock(
                 'SYSTEM MEMORY (cross-project notes)',
-                sysEntries,
-                sysLimit,
-            );
-        } else {
-            this.systemBlock = '';
-        }
+                recalled ? recalled.system : sysEntries,
+                recalled?.limit ?? sysLimit,
+            )
+            : '';
     }
 
     /**
@@ -127,4 +144,48 @@ export class MemoryPromptBuilder {
 
         return `${SEPARATOR}\n${header}\n${SEPARATOR}\n${content}`;
     }
+
+    private recallEntries(
+        recall: MemoryPromptRecallOptions | undefined,
+        repoEntries: string[],
+        systemEntries: string[],
+        fallbackLimit: number,
+    ): { repo: string[]; system: string[]; limit: number } | undefined {
+        if (!recall?.query.trim()) return undefined;
+
+        recall.index.syncEntries({
+            namespace: recall.namespace,
+            scope: 'repo',
+            entries: repoEntries,
+            isProtected: recall.protectedEntryMatcher,
+        });
+        recall.index.syncEntries({
+            namespace: recall.namespace,
+            scope: 'system',
+            entries: systemEntries,
+            isProtected: (entry, context) => recall.protectedEntryMatcher?.(entry, context) ?? true,
+        });
+
+        const selected = recall.index.recall({
+            namespace: recall.namespace,
+            query: recall.query,
+            maxEntries: recall.maxEntries,
+            charBudget: recall.charBudget,
+            maxBm25Score: recall.maxBm25Score,
+            includeProtected: true,
+        });
+
+        return {
+            repo: selectedContentsForScope(selected, 'repo'),
+            system: selectedContentsForScope(selected, 'system'),
+            limit: recall.charBudget ?? fallbackLimit,
+        };
+    }
+}
+
+function selectedContentsForScope(entries: MemoryRecallResultEntry[], scope: MemoryRecallScope): string[] {
+    return entries
+        .filter(entry => entry.scope === scope)
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map(entry => entry.content);
 }

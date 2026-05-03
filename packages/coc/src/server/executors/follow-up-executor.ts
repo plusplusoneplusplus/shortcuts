@@ -204,7 +204,7 @@ export class FollowUpExecutor extends BaseExecutor {
         const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, {
             processId,
             turnIndex: process.conversationTurns?.length ?? 0,
-        });
+        }, message);
         const notePath = process.metadata?.notePath as string | undefined;
         let systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(currentMode)?.content)
