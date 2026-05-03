@@ -266,4 +266,46 @@ describe('MemoryCandidateStore', () => {
             store.close();
         }
     });
+
+    it('drops raw_memory_records and memory_candidate_legacy_records tables after migration', async () => {
+        // Seed a raw record then open MemoryCandidateStore — it should migrate and drop legacy tables
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        await rawStore.append({
+            target: 'repo',
+            content: 'Drop-test fact',
+            source: 'test',
+            workspaceId: 'ws-test',
+        });
+        rawStore.close();
+
+        const store = createStore();
+        store.close();
+
+        // Verify legacy tables are gone by reading the DB directly
+        const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+        try {
+            const tables = db.prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('raw_memory_records', 'memory_candidate_legacy_records')`,
+            ).all() as { name: string }[];
+            expect(tables).toHaveLength(0);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('skips dropping when raw_memory_records never existed', async () => {
+        // No raw store seeded — opening MemoryCandidateStore should not throw
+        const store = createStore();
+        store.close();
+
+        const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+        try {
+            const tables = db.prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('raw_memory_records', 'memory_candidate_legacy_records')`,
+            ).all() as { name: string }[];
+            expect(tables).toHaveLength(0);
+        } finally {
+            db.close();
+        }
+    });
 });

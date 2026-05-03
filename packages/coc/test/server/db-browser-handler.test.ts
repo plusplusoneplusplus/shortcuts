@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { SqliteProcessStore, FileProcessStore, RawMemoryRecordStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, FileProcessStore, MemoryCandidateStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/index';
 
 // ============================================================================
@@ -1011,12 +1011,12 @@ describe('DB Browser Handler', () => {
     });
 
     describe('repo-raw-memory-db source', () => {
-        function rawTableUrl(baseUrl: string, table = 'raw_memory_records', query = ''): string {
+        function rawTableUrl(baseUrl: string, table = 'memory_candidates', query = ''): string {
             const suffix = query ? `&${query}` : '';
             return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}?repoId=ws-test${suffix}`;
         }
 
-        function rawRowsUrl(baseUrl: string, table = 'raw_memory_records'): string {
+        function rawRowsUrl(baseUrl: string, table = 'memory_candidates'): string {
             return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}/rows?repoId=ws-test`;
         }
 
@@ -1038,23 +1038,23 @@ describe('DB Browser Handler', () => {
             expect(body.error).toMatch(/repoId/i);
         });
 
-        it('lists and reads raw memory tables through the generic API', async () => {
+        it('lists and reads memory candidate tables through the generic API', async () => {
             const srv = await startSqliteServer();
             const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
-            const rawStore = new RawMemoryRecordStore({ dbPath });
-            await rawStore.append({ target: 'memory', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
-            await rawStore.append({ target: 'memory', content: 'zeta', source: 'test', workspaceId: 'ws-test' });
-            rawStore.close();
+            const candidateStore = new MemoryCandidateStore({ dbPath });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'zeta', source: 'test', workspaceId: 'ws-test' });
+            candidateStore.close();
 
             const tablesRes = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables?repoId=ws-test`);
             expect(tablesRes.status).toBe(200);
             const tablesBody = JSON.parse(tablesRes.body);
-            expect(tablesBody.tables.find((t: any) => t.name === 'raw_memory_records').rowCount).toBe(2);
+            expect(tablesBody.tables.find((t: any) => t.name === 'memory_candidates').rowCount).toBe(2);
 
-            const tableRes = await request(rawTableUrl(srv.url, 'raw_memory_records', 'sort=content&order=asc&page=1&pageSize=1'));
+            const tableRes = await request(rawTableUrl(srv.url, 'memory_candidates', 'sort=content&order=asc&page=1&pageSize=1'));
             expect(tableRes.status).toBe(200);
             const tableBody = JSON.parse(tableRes.body);
-            expect(tableBody.table).toBe('raw_memory_records');
+            expect(tableBody.table).toBe('memory_candidates');
             expect(tableBody.rows).toHaveLength(1);
             expect(tableBody.rows[0].content).toBe('alpha');
             expect(tableBody.total).toBe(2);
@@ -1070,9 +1070,9 @@ describe('DB Browser Handler', () => {
         it('rejects mutations for the read-only raw memory source', async () => {
             const srv = await startSqliteServer();
             const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
-            const rawStore = new RawMemoryRecordStore({ dbPath });
-            await rawStore.append({ target: 'memory', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
-            rawStore.close();
+            const candidateStore = new MemoryCandidateStore({ dbPath });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
+            candidateStore.close();
 
             const res = await request(rawRowsUrl(srv.url), {
                 method: 'PUT',

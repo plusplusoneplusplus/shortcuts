@@ -101,12 +101,6 @@ CREATE TABLE IF NOT EXISTS memory_candidate_processes (
     PRIMARY KEY(candidate_id, process_key),
     FOREIGN KEY(candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
 );
-
-CREATE TABLE IF NOT EXISTS memory_candidate_legacy_records (
-    raw_record_id TEXT PRIMARY KEY,
-    candidate_id  TEXT NOT NULL,
-    FOREIGN KEY(candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
-);
 `;
 
 export class MemoryCandidateStore {
@@ -351,7 +345,21 @@ export class MemoryCandidateStore {
         const hasRawTable = this.db.prepare(`
             SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'raw_memory_records'
         `).get();
-        if (!hasRawTable) return;
+        if (!hasRawTable) {
+            // No legacy raw table — also drop the bridge table in case it was left from a previous
+            // schema version where it was created unconditionally.
+            this.db.exec(`DROP TABLE IF EXISTS memory_candidate_legacy_records;`);
+            return;
+        }
+
+        // Create the bridge table inline — it is only needed during this one-time migration.
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS memory_candidate_legacy_records (
+                raw_record_id TEXT PRIMARY KEY,
+                candidate_id  TEXT NOT NULL,
+                FOREIGN KEY(candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
+            );
+        `);
 
         const pendingRows = this.db.prepare(`
             SELECT r.id, r.target, r.content, r.source, r.workspace_id, r.process_id, r.turn_index, r.created_at, r.metadata_json
@@ -361,28 +369,35 @@ export class MemoryCandidateStore {
             ORDER BY r.created_at ASC
         `).all() as LegacyRawRecordRow[];
 
-        if (pendingRows.length === 0) return;
+        if (pendingRows.length > 0) {
+            const insertMigration = this.db.prepare(`
+                INSERT OR IGNORE INTO memory_candidate_legacy_records (raw_record_id, candidate_id)
+                VALUES (@rawRecordId, @candidateId)
+            `);
 
-        const insertMigration = this.db.prepare(`
-            INSERT OR IGNORE INTO memory_candidate_legacy_records (raw_record_id, candidate_id)
-            VALUES (@rawRecordId, @candidateId)
+            this.db.transaction(() => {
+                for (const row of pendingRows) {
+                    const candidate = this.upsertCandidateSync({
+                        target: normalizeLegacyTarget(row.target),
+                        content: row.content,
+                        source: row.source,
+                        workspaceId: row.workspace_id,
+                        processId: row.process_id,
+                        turnIndex: row.turn_index,
+                        seenAt: row.created_at,
+                        explicitMemoryIntent: parseExplicitMemoryIntent(row.metadata_json),
+                    });
+                    insertMigration.run({ rawRecordId: row.id, candidateId: candidate.id });
+                }
+            })();
+        }
+
+        // All pending raw records have been migrated into memory_candidates.
+        // Drop both legacy tables — no new records will ever be written to them.
+        this.db.exec(`
+            DROP TABLE IF EXISTS memory_candidate_legacy_records;
+            DROP TABLE IF EXISTS raw_memory_records;
         `);
-
-        this.db.transaction(() => {
-            for (const row of pendingRows) {
-                const candidate = this.upsertCandidateSync({
-                    target: normalizeLegacyTarget(row.target),
-                    content: row.content,
-                    source: row.source,
-                    workspaceId: row.workspace_id,
-                    processId: row.process_id,
-                    turnIndex: row.turn_index,
-                    seenAt: row.created_at,
-                    explicitMemoryIntent: parseExplicitMemoryIntent(row.metadata_json),
-                });
-                insertMigration.run({ rawRecordId: row.id, candidateId: candidate.id });
-            }
-        })();
     }
 
     private rowToCandidate(row: CandidateRow): MemoryCandidate {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { RawMemoryRecordStore } from '@plusplusoneplusplus/forge';
+import { MemoryCandidateStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { registerRepoMemoryRoutes } from '../../../src/server/memory/repo-memory-handler';
 import { createTestRouter } from './test-helpers';
@@ -92,16 +92,15 @@ describe('repo-memory-handler promotion routes', () => {
             expect(body.claimedRawCount).toBe(0);
         });
 
-        it('returns raw-record counts from existing DB', async () => {
-            // Create a real raw-memory DB with some records
+        it('returns raw counts from existing DB', async () => {
             const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
             fs.mkdirSync(memDir, { recursive: true });
             const rawDbPath = path.join(memDir, 'raw-memory.db');
-            const rawStore = new RawMemoryRecordStore({ dbPath: rawDbPath });
-            await rawStore.append({ target: 'memory', content: 'fact 1', source: 'ai', workspaceId: wsId });
-            await rawStore.append({ target: 'memory', content: 'fact 2', source: 'ai', workspaceId: wsId });
-            await rawStore.append({ target: 'memory', content: 'fact 3', source: 'ai', workspaceId: wsId });
-            rawStore.close();
+            const candidateStore = new MemoryCandidateStore({ dbPath: rawDbPath });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'fact 1', source: 'ai', workspaceId: wsId });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'fact 2', source: 'ai', workspaceId: wsId });
+            await candidateStore.upsertCandidate({ target: 'repo', content: 'fact 3', source: 'ai', workspaceId: wsId });
+            candidateStore.close();
 
             const { router } = setup();
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);

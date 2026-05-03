@@ -15,7 +15,6 @@ import { defineTool, Tool } from '../copilot-sdk-wrapper/types';
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { scanMemoryContent } from './memory-security-scanner';
 import type { MemoryCandidateStore } from './memory-candidate-store';
-import type { RawMemoryRecordStore } from './raw-memory-record-store';
 
 // ---------------------------------------------------------------------------
 // Option & argument interfaces
@@ -65,12 +64,6 @@ export interface MemoryToolArgs {
 export type MemoryToolStores = {
     repo?: BoundedMemoryStore;
     system?: BoundedMemoryStore;
-};
-
-/** Legacy map of target name → RawMemoryRecordStore instance (for capture mode). */
-export type MemoryToolRawStores = {
-    repo?: RawMemoryRecordStore;
-    system?: RawMemoryRecordStore;
 };
 
 /** Map of target name → MemoryCandidateStore instance (for capture mode). */
@@ -191,7 +184,6 @@ export function createMemoryTool(
     options: MemoryToolOptions,
     captureConfig?: {
         candidateStores?: MemoryToolCandidateStores;
-        rawStores?: MemoryToolRawStores;
         context: MemoryToolCaptureContext;
     },
 ): { tool: Tool<MemoryToolArgs>; getWrittenFacts: () => string[] } {
@@ -291,7 +283,6 @@ async function handleCaptureMode(
     args: MemoryToolArgs,
     captureConfig: {
         candidateStores?: MemoryToolCandidateStores;
-        rawStores?: MemoryToolRawStores;
         context: MemoryToolCaptureContext;
     } | undefined,
     options: MemoryToolOptions,
@@ -356,28 +347,7 @@ async function handleCaptureMode(
         };
     }
 
-    const rawStore = captureConfig.rawStores?.[args.target];
-    if (!rawStore) {
-        return { success: false, error: `No candidate store configured for target '${args.target}'.` };
-    }
-
-    const record = await rawStore.append({
-        target: rawTarget,
-        content: trimmed,
-        source: options.source,
-        workspaceId: captureConfig.context.workspaceId ?? '',
-        processId: captureConfig.context.processId ?? null,
-        turnIndex: captureConfig.context.turnIndex ?? null,
-        metadataJson: JSON.stringify({ explicitMemoryIntent: explicitIntent }),
-    });
-
-    writtenFacts.push(trimmed);
-
-    return {
-        success: true,
-        message: 'Memory candidate captured; memory will update after promotion.',
-        recordId: record.id,
-    };
+    return { success: false, error: `No candidate store configured for target '${args.target}'.` };
 }
 
 function getCaptureScore(explicitIntent: boolean, frequency: MemoryWriteFrequency | undefined): number {

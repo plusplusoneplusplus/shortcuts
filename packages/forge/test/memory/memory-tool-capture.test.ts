@@ -1,8 +1,8 @@
 /**
  * Tests for capture-mode memory tool.
  *
- * Verifies that when mode='capture', `add` appends a raw record to
- * RawMemoryRecordStore (instead of mutating bounded MEMORY.md),
+ * Verifies that when mode='capture', `add` upserts a memory candidate via
+ * MemoryCandidateStore (instead of mutating bounded MEMORY.md),
  * while `replace`/`remove` are explicitly rejected.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -12,13 +12,11 @@ import * as path from 'path';
 import {
     createMemoryTool,
     MemoryCandidateStore,
-    RawMemoryRecordStore,
 } from '../../src/memory';
 import type {
     MemoryToolOptions,
     MemoryToolStores,
     MemoryToolCaptureContext,
-    MemoryToolRawStores,
     MemoryToolCandidateStores,
     MemoryToolCaptureResult,
 } from '../../src/memory';
@@ -66,9 +64,9 @@ describe('createMemoryTool — capture mode', () => {
     let repoStore: BoundedMemoryStore;
     let systemStore: BoundedMemoryStore;
     let boundedStores: MemoryToolStores;
-    let repoRawStore: RawMemoryRecordStore;
-    let systemRawStore: RawMemoryRecordStore;
-    let rawStores: MemoryToolRawStores;
+    let repoCandidateStore: MemoryCandidateStore;
+    let systemCandidateStore: MemoryCandidateStore;
+    let candidateStores: MemoryToolCandidateStores;
     const captureContext: MemoryToolCaptureContext = {
         workspaceId: 'ws-test-123',
         processId: 'proc-abc',
@@ -82,18 +80,18 @@ describe('createMemoryTool — capture mode', () => {
         systemStore = createMockBoundedStore();
         boundedStores = { repo: repoStore, system: systemStore };
 
-        repoRawStore = new RawMemoryRecordStore({
+        repoCandidateStore = new MemoryCandidateStore({
             dbPath: path.join(tmpDir, 'repo', 'raw-memory.db'),
         });
-        systemRawStore = new RawMemoryRecordStore({
+        systemCandidateStore = new MemoryCandidateStore({
             dbPath: path.join(tmpDir, 'system', 'raw-memory.db'),
         });
-        rawStores = { repo: repoRawStore, system: systemRawStore };
+        candidateStores = { repo: repoCandidateStore, system: systemCandidateStore };
     });
 
     afterEach(() => {
-        repoRawStore.close();
-        systemRawStore.close();
+        repoCandidateStore.close();
+        systemCandidateStore.close();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -102,9 +100,9 @@ describe('createMemoryTool — capture mode', () => {
     // -----------------------------------------------------------------------
 
     describe('action: add', () => {
-        it('appends a raw record to repo raw store when target is "repo"', async () => {
+        it('upserts a candidate into repo candidate store when target is "repo"', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -117,10 +115,11 @@ describe('createMemoryTool — capture mode', () => {
                 success: true,
                 message: expect.stringContaining('captured'),
                 recordId: expect.any(String),
+                candidateId: expect.any(String),
             });
 
-            // Verify raw record was persisted
-            const pending = await repoRawStore.listPending();
+            // Verify candidate was persisted
+            const pending = await repoCandidateStore.listPendingCandidates();
             expect(pending).toHaveLength(1);
             expect(pending[0].content).toBe('Use tabs');
             expect(pending[0].target).toBe('repo');
@@ -130,9 +129,9 @@ describe('createMemoryTool — capture mode', () => {
             expect(pending[0].turnIndex).toBe(3);
         });
 
-        it('appends a raw record to system raw store when target is "system"', async () => {
+        it('upserts a candidate into system candidate store when target is "system"', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -143,7 +142,7 @@ describe('createMemoryTool — capture mode', () => {
 
             expect(result).toMatchObject({ success: true });
 
-            const pending = await systemRawStore.listPending();
+            const pending = await systemCandidateStore.listPendingCandidates();
             expect(pending).toHaveLength(1);
             expect(pending[0].content).toBe('Global preference');
             expect(pending[0].target).toBe('system');
@@ -151,7 +150,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('does NOT mutate bounded MEMORY.md', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -165,19 +164,17 @@ describe('createMemoryTool — capture mode', () => {
         });
 
         it('succeeds even when bounded MEMORY.md would be full', async () => {
-            // Simulate a full bounded store — doesn't matter because capture
-            // never touches bounded stores.
             (repoStore.getUsage as ReturnType<typeof vi.fn>).mockReturnValue(
                 makeUsage({ current: 3000, limit: 3000, percent: 100 }),
             );
 
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
             const result = await tool.handler(
-                { action: 'add', target: 'repo', content: 'Big content that fits raw store' },
+                { action: 'add', target: 'repo', content: 'Big content that fits candidate store' },
                 mockInvocation,
             );
 
@@ -186,7 +183,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('returns error when content is missing', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -200,7 +197,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('returns error when content is whitespace-only', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -214,7 +211,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('trims whitespace from content before persisting', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -223,13 +220,13 @@ describe('createMemoryTool — capture mode', () => {
                 mockInvocation,
             );
 
-            const pending = await repoRawStore.listPending();
+            const pending = await repoCandidateStore.listPendingCandidates();
             expect(pending[0].content).toBe('padded content');
         });
 
         it('tracks content in getWrittenFacts()', async () => {
             const { tool, getWrittenFacts } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -239,9 +236,9 @@ describe('createMemoryTool — capture mode', () => {
             expect(getWrittenFacts()).toEqual(['Fact A', 'Fact B']);
         });
 
-        it('persists explicit memory intent in raw capture metadata', async () => {
+        it('persists explicit memory intent in candidate', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -255,18 +252,18 @@ describe('createMemoryTool — capture mode', () => {
                 mockInvocation,
             );
 
-            const pending = await repoRawStore.listPending();
-            expect(JSON.parse(pending[0].metadataJson ?? '{}')).toEqual({ explicitMemoryIntent: true });
+            const pending = await repoCandidateStore.listPendingCandidates();
+            expect(pending[0].explicitMemoryIntent).toBe(true);
         });
 
         it('persists explicit memory intent in candidate capture mode', async () => {
-            const repoCandidateStore = new MemoryCandidateStore({
+            const repoCandidateStore2 = new MemoryCandidateStore({
                 dbPath: path.join(tmpDir, 'repo-candidates', 'raw-memory.db'),
             });
-            const candidateStores: MemoryToolCandidateStores = { repo: repoCandidateStore };
+            const stores2: MemoryToolCandidateStores = { repo: repoCandidateStore2 };
             try {
                 const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                    candidateStores,
+                    candidateStores: stores2,
                     context: captureContext,
                 });
 
@@ -281,10 +278,10 @@ describe('createMemoryTool — capture mode', () => {
                 );
 
                 expect(result).toMatchObject({ success: true, candidateId: expect.any(String) });
-                const pending = await repoCandidateStore.listPendingCandidates();
+                const pending = await repoCandidateStore2.listPendingCandidates();
                 expect(pending[0].explicitMemoryIntent).toBe(true);
             } finally {
-                repoCandidateStore.close();
+                repoCandidateStore2.close();
             }
         });
     });
@@ -296,7 +293,7 @@ describe('createMemoryTool — capture mode', () => {
     describe('action: replace', () => {
         it('returns explicit error in capture mode', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -313,7 +310,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('does not mutate bounded stores', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -333,7 +330,7 @@ describe('createMemoryTool — capture mode', () => {
     describe('action: remove', () => {
         it('returns explicit error in capture mode', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -350,7 +347,7 @@ describe('createMemoryTool — capture mode', () => {
 
         it('does not mutate bounded stores', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -370,7 +367,7 @@ describe('createMemoryTool — capture mode', () => {
     describe('security scanning', () => {
         it('rejects prompt injection content', async () => {
             const { tool } = createMemoryTool(boundedStores, captureOptions, {
-                rawStores,
+                candidateStores,
                 context: captureContext,
             });
 
@@ -385,7 +382,7 @@ describe('createMemoryTool — capture mode', () => {
             });
 
             // Should NOT be persisted
-            const pending = await repoRawStore.listPending();
+            const pending = await repoCandidateStore.listPendingCandidates();
             expect(pending).toHaveLength(0);
         });
     });
@@ -399,7 +396,7 @@ describe('createMemoryTool — capture mode', () => {
             const { tool } = createMemoryTool(
                 boundedStores,
                 { source: 'test', mode: 'capture', allowedTargets: ['system'] },
-                { rawStores, context: captureContext },
+                { candidateStores, context: captureContext },
             );
 
             const result = await tool.handler(
@@ -414,7 +411,7 @@ describe('createMemoryTool — capture mode', () => {
             const { tool } = createMemoryTool(
                 boundedStores,
                 captureOptions,
-                { rawStores: { repo: repoRawStore }, context: captureContext },
+                { candidateStores: { repo: repoCandidateStore }, context: captureContext },
             );
 
             const result = await tool.handler(

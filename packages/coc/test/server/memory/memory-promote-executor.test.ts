@@ -4,7 +4,6 @@ import * as os from 'os';
 import * as path from 'path';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import {
-    RawMemoryRecordStore,
     MemoryCandidateStore,
     BoundedMemoryStore,
     MemoryPromptBuilder,
@@ -72,16 +71,19 @@ describe('MemoryPromoteExecutor', () => {
 
     function seedRawRecords(workspaceId: string, records: string[]): void {
         const memDir = setupRepoDir(workspaceId);
-        const rawStore = new RawMemoryRecordStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
         for (const content of records) {
-            rawStore.append({
+            // Use low score and no explicit intent so candidates stay pending (not auto-promoted)
+            void candidateStore.upsertCandidate({
                 target: 'repo',
                 content,
                 source: 'test',
                 workspaceId,
+                score: 0,
+                explicitMemoryIntent: false,
             });
         }
-        rawStore.close();
+        candidateStore.close();
     }
 
     function seedBoundedMemory(workspaceId: string, content: string): void {
@@ -213,10 +215,7 @@ describe('MemoryPromoteExecutor', () => {
     it('returns early when no pending candidates exist', async () => {
         const wsId = 'ws-empty';
         setupRepoDir(wsId);
-        const rawStore = new RawMemoryRecordStore({
-            dbPath: path.join(repoMemoryDir(wsId), 'raw-memory.db'),
-        });
-        rawStore.close();
+        // No candidates seeded — empty directory, executor handles gracefully
 
         const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
@@ -243,16 +242,18 @@ describe('MemoryPromoteExecutor', () => {
         fs.mkdirSync(systemDir, { recursive: true });
         fs.writeFileSync(systemMemoryPath, 'Global preference: light theme', 'utf-8');
 
-        const rawStore = new RawMemoryRecordStore({
+        const systemCandidateStore = new MemoryCandidateStore({
             dbPath: path.join(systemDir, 'raw-memory.db'),
         });
-        await rawStore.append({
+        await systemCandidateStore.upsertCandidate({
             target: 'system',
             content: 'Global preference: dark theme',
             source: 'test',
             workspaceId: wsId,
+            score: 0,
+            explicitMemoryIntent: false,
         });
-        rawStore.close();
+        systemCandidateStore.close();
         seedRawRecords(wsId, ['Repo-scoped fact']);
 
         const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);

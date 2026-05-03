@@ -230,19 +230,22 @@ describe('MemoryPromoteExecutor — non-destructive candidate finalization', () 
     });
 
     function seedRawRecords(workspaceId: string, records: string[]) {
-        const { RawMemoryRecordStore } = require('@plusplusoneplusplus/forge');
+        const { MemoryCandidateStore } = require('@plusplusoneplusplus/forge');
         const memDir = path.join(tmpDir, 'repos', workspaceId, 'memory');
         fs.mkdirSync(memDir, { recursive: true });
-        const rawStore = new RawMemoryRecordStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
         for (const content of records) {
-            rawStore.append({
+            // Use low score and no explicit intent so candidates stay pending (not auto-promoted)
+            void candidateStore.upsertCandidate({
                 target: 'repo',
                 content,
                 source: 'test',
                 workspaceId,
+                score: 0,
+                explicitMemoryIntent: false,
             });
         }
-        rawStore.close();
+        candidateStore.close();
     }
 
     function seedBoundedMemory(workspaceId: string, entries: string[]) {
@@ -287,9 +290,9 @@ describe('MemoryPromoteExecutor — non-destructive candidate finalization', () 
         await expect(getCandidateStats(wsId)).resolves.toMatchObject({ pending: 1, dropped: 0 });
     });
 
-    it('surfaces unexpected candidate store errors without changing legacy raw rows', async () => {
+    it('surfaces unexpected candidate store errors without losing migrated candidates', async () => {
         const { MemoryPromoteExecutor } = await import('../../../src/server/memory/memory-promote-executor');
-        const { MemoryCandidateStore, RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const { MemoryCandidateStore } = await import('@plusplusoneplusplus/forge');
         const wsId = 'ws-catch-release';
 
         seedRawRecords(wsId, ['A fact']);
@@ -316,14 +319,14 @@ describe('MemoryPromoteExecutor — non-destructive candidate finalization', () 
 
         listPendingSpy.mockRestore();
 
-        // Legacy raw rows remain pending because candidate reads are non-destructive.
+        // Candidate is still pending — the failure was non-destructive.
         const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
-        const rawStore = new RawMemoryRecordStore({
+        const candidateStore = new MemoryCandidateStore({
             dbPath: path.join(memDir, 'raw-memory.db'),
         });
-        const pending = await rawStore.listPending();
+        const pending = await candidateStore.listPendingCandidates();
         expect(pending).toHaveLength(1);
         expect(pending[0].content).toBe('A fact');
-        rawStore.close();
+        candidateStore.close();
     });
 });
