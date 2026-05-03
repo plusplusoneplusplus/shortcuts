@@ -78,6 +78,11 @@ function Test-DevTunnelAuthError {
     return $Output -match '(?i)(not logged in|not authenticated|login required|log in|401|unauthorized)'
 }
 
+function Test-DevTunnelAlreadyConfigured {
+    param([string]$Output)
+    return $Output -match '(?i)(already exists|conflict with existing entity)'
+}
+
 function Invoke-DevTunnelCli {
     param([string[]]$Arguments)
 
@@ -101,7 +106,7 @@ function Invoke-EnsureTunnel {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
         return 'Unauthenticated'
     }
-    if ($create.ExitCode -ne 0 -and $create.Output -notmatch '(?i)already exists') {
+    if ($create.ExitCode -ne 0 -and -not (Test-DevTunnelAlreadyConfigured $create.Output)) {
         Write-Log "Failed to create dev tunnel '$TunnelId': $($create.Output.Trim())" -Color Red
         return 'Unavailable'
     }
@@ -111,7 +116,7 @@ function Invoke-EnsureTunnel {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
         return 'Unauthenticated'
     }
-    if ($portCreate.ExitCode -ne 0 -and $portCreate.Output -notmatch '(?i)already exists') {
+    if ($portCreate.ExitCode -ne 0 -and -not (Test-DevTunnelAlreadyConfigured $portCreate.Output)) {
         Write-Log "Failed to create dev tunnel port $Port for '$TunnelId': $($portCreate.Output.Trim())" -Color Red
         return 'Unavailable'
     }

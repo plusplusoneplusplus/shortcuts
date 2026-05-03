@@ -29,7 +29,10 @@ describe('CoC service PowerShell scripts', () => {
     it('creates the tunnel and HTTP port idempotently while surfacing auth failures', () => {
       expect(configDevTunnel).toContain("@('create', $TunnelId)");
       expect(configDevTunnel).toContain("@('port', 'create', $TunnelId, '-p', \"$Port\", '--protocol', 'http')");
-      expect(configDevTunnel).toMatch(/\$create\.Output -notmatch '\(\?i\)already exists'/);
+      expect(configDevTunnel).toContain('function Test-DevTunnelAlreadyConfigured');
+      expect(configDevTunnel).toMatch(/already exists\|conflict with existing entity/);
+      expect(configDevTunnel).toContain('-not (Test-DevTunnelAlreadyConfigured $create.Output)');
+      expect(configDevTunnel).toContain('-not (Test-DevTunnelAlreadyConfigured $portCreate.Output)');
       expect(configDevTunnel).toMatch(/not logged in\|not authenticated\|login required\|log in\|401\|unauthorized/);
       expect(configDevTunnel).toContain("devtunnel user login");
     });
