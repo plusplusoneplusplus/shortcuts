@@ -2,6 +2,8 @@
  * Shared utilities for pull request list and detail views.
  */
 
+import { AttentionGroup } from './pr-attention-groups';
+
 export type PrStatus = 'open' | 'closed' | 'merged' | 'draft';
 
 export type ReviewVote = 'approved' | 'approvedWithSuggestions' | 'waitingForAuthor' | 'rejected' | 'noVote';
@@ -54,6 +56,12 @@ export interface StatusBadge {
     className: string;
 }
 
+export interface GroupBadgeStyle {
+    label: string;
+    color: string;
+    emoji: string;
+}
+
 export function prStatusBadge(status: PrStatus | string): StatusBadge {
     switch (status) {
         case 'open':   return { emoji: '🟢', label: 'Open',   className: 'bg-green-100 text-green-800' };
@@ -66,6 +74,19 @@ export function prStatusBadge(status: PrStatus | string): StatusBadge {
 
 export function prStatusColor(status: PrStatus | string): string {
     return prStatusBadge(status).className;
+}
+
+export function getGroupBadgeStyle(group: AttentionGroup): GroupBadgeStyle {
+    switch (group) {
+        case AttentionGroup.RerunNeeded:
+            return { label: 'Rerun needed', color: 'bg-orange-100 text-orange-800', emoji: '🔁' };
+        case AttentionGroup.ManualUpdateNeeded:
+            return { label: 'Update needed', color: 'bg-yellow-100 text-yellow-800', emoji: '✏️' };
+        case AttentionGroup.ReviewerNudge:
+            return { label: 'Nudge reviewer', color: 'bg-blue-100 text-blue-800', emoji: '💬' };
+        case AttentionGroup.MergeValidation:
+            return { label: 'Validate merge', color: 'bg-purple-100 text-purple-800', emoji: '✅' };
+    }
 }
 
 /** Maps a reviewer vote string to a display icon + label. */

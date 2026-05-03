@@ -100,6 +100,62 @@ describe('PullRequestRow — status badge', () => {
     });
 });
 
+describe('PullRequestRow — operational group badge', () => {
+    it('renders the group badge and reason instead of the status badge when group label is supplied', () => {
+        render(
+            <PullRequestRow
+                pr={makePr({ status: 'open' })}
+                onClick={vi.fn()}
+                groupLabel="Nudge reviewer"
+                groupColor="bg-blue-100 text-blue-800"
+                groupEmoji="💬"
+                groupReason="No reviewer response in 2+ days"
+            />,
+        );
+
+        const groupBadge = screen.getByTestId('pr-group-badge');
+        expect(groupBadge.textContent).toContain('Nudge reviewer');
+        expect(groupBadge.textContent).toContain('💬');
+        expect(groupBadge.className).toContain('bg-blue-100');
+        expect(groupBadge.className).toContain('text-blue-800');
+        expect(screen.getByTestId('pr-group-reason').textContent).toBe('No reviewer response in 2+ days');
+        expect(document.querySelector('.pr-status-badge')).toBeNull();
+    });
+
+    it('falls back to the old status badge when group label is absent', () => {
+        render(<PullRequestRow pr={makePr({ status: 'draft' })} onClick={vi.fn()} />);
+
+        expect(document.querySelector('.pr-status-badge')?.textContent).toContain('Draft');
+        expect(screen.queryByTestId('pr-group-badge')).toBeNull();
+        expect(screen.queryByTestId('pr-group-reason')).toBeNull();
+    });
+
+    it('keeps author, branch, reviewer, timestamp, and comment metadata with the group reason', () => {
+        render(
+            <PullRequestRow
+                pr={makePr({
+                    sourceBranch: 'feature/metadata',
+                    targetBranch: 'main',
+                    commentCount: 3,
+                    reviewers: [{ identity: { displayName: 'Reviewer' }, vote: undefined }],
+                })}
+                onClick={vi.fn()}
+                groupLabel="Validate merge"
+                groupColor="bg-purple-100 text-purple-800"
+                groupEmoji="✅"
+                groupReason="All checks passed — ready to merge"
+            />,
+        );
+
+        expect(screen.getByText('Alice')).toBeTruthy();
+        expect(screen.getByText('feature/metadata')).toBeTruthy();
+        expect(screen.getByText('main')).toBeTruthy();
+        expect(screen.getByText('1 reviewer')).toBeTruthy();
+        expect(screen.getByText('3 comments')).toBeTruthy();
+        expect(document.querySelector('.pr-time')?.textContent).toContain('Updated');
+    });
+});
+
 describe('PullRequestRow — click handling', () => {
     it('calls onClick when row is clicked', () => {
         const onClick = vi.fn();

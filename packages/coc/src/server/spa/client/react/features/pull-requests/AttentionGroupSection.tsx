@@ -1,8 +1,9 @@
 import { forwardRef, useState } from 'react';
 import { cn } from '../../ui';
 import { PullRequestRow } from './PullRequestRow';
+import { getGroupBadgeStyle } from './pr-utils';
 import type { PullRequest } from './pr-utils';
-import type { AttentionGroupConfig } from './pr-attention-groups';
+import { AttentionGroup, type AttentionGroupConfig } from './pr-attention-groups';
 
 interface AttentionGroupSectionProps {
     config: AttentionGroupConfig;
@@ -11,9 +12,32 @@ interface AttentionGroupSectionProps {
     onRowClick: (pr: PullRequest) => void;
 }
 
+function normalizeVote(vote: string | undefined): string {
+    return (vote ?? '').toLowerCase().replace(/[-_\s]/g, '');
+}
+
+function getGroupReason(pr: PullRequest, group: AttentionGroup): string {
+    switch (group) {
+        case AttentionGroup.RerunNeeded:
+            return 'CI checks failed or timed out';
+        case AttentionGroup.ManualUpdateNeeded:
+            return pr.reviewers?.some(reviewer => {
+                const vote = normalizeVote(reviewer.vote);
+                return vote === 'waitingforauthor' || vote === 'rejected';
+            })
+                ? 'Requested changes from reviewer'
+                : 'Unresolved reviewer feedback';
+        case AttentionGroup.ReviewerNudge:
+            return 'No reviewer response in 2+ days';
+        case AttentionGroup.MergeValidation:
+            return 'All checks passed — ready to merge';
+    }
+}
+
 export const AttentionGroupSection = forwardRef<HTMLDivElement, AttentionGroupSectionProps>(
     function AttentionGroupSection({ config, prs, selectedPrId, onRowClick }, ref) {
         const [isExpanded, setIsExpanded] = useState(true);
+        const badge = getGroupBadgeStyle(config.group);
 
         return (
             <section
@@ -51,6 +75,10 @@ export const AttentionGroupSection = forwardRef<HTMLDivElement, AttentionGroupSe
                                 pr={pr}
                                 onClick={() => onRowClick(pr)}
                                 isSelected={(pr.number ?? pr.id) === selectedPrId}
+                                groupLabel={badge.label}
+                                groupColor={badge.color}
+                                groupEmoji={badge.emoji}
+                                groupReason={getGroupReason(pr, config.group)}
                             />
                         ))}
                     </div>

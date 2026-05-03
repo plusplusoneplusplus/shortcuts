@@ -6,9 +6,13 @@ interface PullRequestRowProps {
     pr: PullRequest;
     onClick: () => void;
     isSelected?: boolean;
+    groupLabel?: string;
+    groupColor?: string;
+    groupEmoji?: string;
+    groupReason?: string;
 }
 
-export function PullRequestRow({ pr, onClick, isSelected }: PullRequestRowProps) {
+export function PullRequestRow({ pr, onClick, isSelected, groupLabel, groupColor, groupEmoji, groupReason }: PullRequestRowProps) {
     const badge = prStatusBadge(pr.status);
     const reviewerCount = pr.reviewers?.length ?? 0;
 
@@ -23,12 +27,22 @@ export function PullRequestRow({ pr, onClick, isSelected }: PullRequestRowProps)
             onClick={onClick}
             data-testid="pr-row"
         >
-            <span
-                className={`pr-status-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 mt-0.5 ${badge.className}`}
-                title={badge.label}
-            >
-                {badge.emoji} {badge.label}
-            </span>
+            {groupLabel ? (
+                <span
+                    className={cn('pr-group-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 mt-0.5', groupColor)}
+                    title={groupLabel}
+                    data-testid="pr-group-badge"
+                >
+                    {groupEmoji && <span aria-hidden="true">{groupEmoji}</span>} {groupLabel}
+                </span>
+            ) : (
+                <span
+                    className={`pr-status-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 mt-0.5 ${badge.className}`}
+                    title={badge.label}
+                >
+                    {badge.emoji} {badge.label}
+                </span>
+            )}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                     {pr.number != null && (
@@ -38,6 +52,11 @@ export function PullRequestRow({ pr, onClick, isSelected }: PullRequestRowProps)
                         {pr.title}
                     </span>
                 </div>
+                {groupReason && (
+                    <div className="pr-group-reason text-xs text-gray-500 dark:text-gray-400 mt-0.5 italic" data-testid="pr-group-reason">
+                        {groupReason}
+                    </div>
+                )}
                 {pr.author?.displayName && (
                     <div className="pr-author text-xs font-medium text-gray-700 dark:text-gray-300 mt-0.5 flex items-center gap-1">
                         <span className="inline-block w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600 text-center leading-4 text-gray-600 dark:text-gray-200 text-[10px] shrink-0" aria-hidden="true">

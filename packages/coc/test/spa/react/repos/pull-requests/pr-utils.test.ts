@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatRelativeTime, formatTimestamp, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
+import { formatRelativeTime, formatTimestamp, getGroupBadgeStyle, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 describe('formatTimestamp', () => {
     it('returns a non-empty string for a valid ISO date', () => {
@@ -91,5 +92,49 @@ describe('prStatusColor', () => {
     it('returns the className string for a given status', () => {
         expect(prStatusColor('open')).toBe('bg-green-100 text-green-800');
         expect(prStatusColor('merged')).toBe('bg-purple-100 text-purple-800');
+    });
+});
+
+describe('getGroupBadgeStyle', () => {
+    it('returns distinct, non-empty badge styles for every attention group', () => {
+        const styles = [
+            getGroupBadgeStyle(AttentionGroup.RerunNeeded),
+            getGroupBadgeStyle(AttentionGroup.ManualUpdateNeeded),
+            getGroupBadgeStyle(AttentionGroup.ReviewerNudge),
+            getGroupBadgeStyle(AttentionGroup.MergeValidation),
+        ];
+
+        for (const style of styles) {
+            expect(style.label).toBeTruthy();
+            expect(style.color).toBeTruthy();
+            expect(style.emoji).toBeTruthy();
+        }
+
+        expect(new Set(styles.map(style => style.label)).size).toBe(styles.length);
+        expect(new Set(styles.map(style => style.color)).size).toBe(styles.length);
+        expect(new Set(styles.map(style => style.emoji)).size).toBe(styles.length);
+    });
+
+    it('uses the configured label, colour, and emoji for each group', () => {
+        expect(getGroupBadgeStyle(AttentionGroup.RerunNeeded)).toEqual({
+            label: 'Rerun needed',
+            color: 'bg-orange-100 text-orange-800',
+            emoji: '🔁',
+        });
+        expect(getGroupBadgeStyle(AttentionGroup.ManualUpdateNeeded)).toEqual({
+            label: 'Update needed',
+            color: 'bg-yellow-100 text-yellow-800',
+            emoji: '✏️',
+        });
+        expect(getGroupBadgeStyle(AttentionGroup.ReviewerNudge)).toEqual({
+            label: 'Nudge reviewer',
+            color: 'bg-blue-100 text-blue-800',
+            emoji: '💬',
+        });
+        expect(getGroupBadgeStyle(AttentionGroup.MergeValidation)).toEqual({
+            label: 'Validate merge',
+            color: 'bg-purple-100 text-purple-800',
+            emoji: '✅',
+        });
     });
 });
