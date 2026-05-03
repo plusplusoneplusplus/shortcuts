@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { BottomSheet } from '../ui/BottomSheet';
 import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
@@ -28,6 +29,8 @@ export interface MobileTabBarProps {
     workItemCount?: number;
     gitPendingCount?: number;
     actions?: MobileTabBarAction[];
+    /** Optional leading slot rendered to the left of the tab buttons with a divider separator. */
+    leadingSlot?: ReactNode;
 }
 
 export function MobileTabBar({
@@ -40,6 +43,7 @@ export function MobileTabBar({
     workItemCount = 0,
     gitPendingCount = 0,
     actions = [],
+    leadingSlot,
 }: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
 
@@ -67,6 +71,14 @@ export function MobileTabBar({
                 aria-label="Repo tab navigation"
                 data-testid="mobile-tab-bar"
             >
+                {leadingSlot && (
+                    <>
+                        <div className="flex-shrink-0 flex items-center px-2 max-w-[88px] min-w-0 overflow-hidden">
+                            {leadingSlot}
+                        </div>
+                        <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#474749] my-1.5 flex-shrink-0" />
+                    </>
+                )}
                 {pinnedTabItems.map(t => {
                     const active = activeTab === t.key;
                     const badgeCount = getBadgeCount(t.key);

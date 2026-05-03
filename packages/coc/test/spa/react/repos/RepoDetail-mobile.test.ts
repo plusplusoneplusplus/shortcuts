@@ -29,9 +29,12 @@ describe('RepoDetail mobile: imports', () => {
 });
 
 describe('RepoDetail mobile: header layout', () => {
-    it('uses single-line flex-row layout on desktop, flex-col on mobile', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]'");
-        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex flex-col' : 'flex flex-row items-center'");
+    it('desktop header is guarded with !isMobile and uses flex-row layout', () => {
+        // Header is desktop-only — not rendered on mobile
+        expect(REPO_DETAIL_SOURCE).toContain('!isMobile && (');
+        expect(REPO_DETAIL_SOURCE).toContain('repo-detail-header');
+        // Desktop header always uses flex-row (no mobile variant needed)
+        expect(REPO_DETAIL_SOURCE).toContain('flex flex-row items-center');
     });
 
     it('desktop layout: tabs come before action buttons (title | tabs | splitter | buttons)', () => {
@@ -53,11 +56,10 @@ describe('RepoDetail mobile: header layout', () => {
     });
 
     it('title row has min-w-0 for proper flex shrinking', () => {
-        // The title row div has min-w-0 class
-        const titleRowSection = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('title row'));
-        expect(titleRowSection).toBeDefined();
-        const titleRowIdx = REPO_DETAIL_SOURCE.indexOf('title row');
-        const nearby = REPO_DETAIL_SOURCE.substring(titleRowIdx, titleRowIdx + 200);
+        // The mobile leading slot button has min-w-0 so the repo name truncates correctly
+        const leadingSlotIdx = REPO_DETAIL_SOURCE.indexOf('mobileLeadingSlot');
+        expect(leadingSlotIdx).toBeGreaterThan(-1);
+        const nearby = REPO_DETAIL_SOURCE.substring(leadingSlotIdx, leadingSlotIdx + 500);
         expect(nearby).toContain('min-w-0');
     });
 });

@@ -326,37 +326,31 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         onRefresh();
     };
 
+    const mobileLeadingSlot = isMobile ? (
+        <button
+            className="flex items-center gap-1 min-w-0 w-full text-left group touch-target"
+            onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
+            aria-label="Back to repos"
+            data-testid="repo-name-back"
+        >
+            <span
+                className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: color }}
+            />
+            <h1 className="text-[10px] font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70 min-w-0">{ws.name}</h1>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 flex-shrink-0 text-[#999999] dark:text-[#666666]">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
+        </button>
+    ) : undefined;
+
     return (
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
-            {/* Header */}
-            <div className={cn(
-                'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex flex-col' : 'flex flex-row items-center'
-            )}>
-                {isMobile ? (
-                    // Mobile: compact title row (actions moved to MobileTabBar)
-                    <div className="flex gap-3 items-center py-1">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <button
-                                className="flex items-center gap-1.5 min-w-0 flex-1 text-left group"
-                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
-                                aria-label="Back to repos"
-                                data-testid="repo-name-back"
-                            >
-                                <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70">{ws.name}</h1>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 flex-shrink-0 text-[#999999] dark:text-[#666666]">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {/* Title */}
+            {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot */}
+            {!isMobile && (
+            <div className="repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-row items-center">
+                <>
+                    {/* Title */}
                         <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
                             <span
                                 className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
@@ -514,9 +508,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             )}
 
                         </div>
-                    </>
-                )}
+                </>
             </div>
+            )}
 
             {/* Mobile tab bar */}
             {isMobile && (
@@ -528,6 +522,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
+                    leadingSlot={mobileLeadingSlot}
                     actions={[
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
                         ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
