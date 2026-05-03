@@ -17,6 +17,10 @@
     install: do NOT pass -SkipInitialBuild to the loop script (forces a fresh build
     every time the task starts, not just on the first run after registration).
 
+.PARAMETER Tunnel
+    install: pass -Tunnel to the loop script so it hosts the preconfigured
+    Microsoft Dev Tunnel alongside the CoC server. Run config-devtunnel.ps1 first.
+
 .PARAMETER LogLines
     logs: number of trailing lines to display (default: 50).
 
@@ -28,6 +32,8 @@
 
 .EXAMPLE
     .\scripts\Manage-CoCService.ps1 install
+    .\scripts\config-devtunnel.ps1 -Port 4000
+    .\scripts\Manage-CoCService.ps1 install -Tunnel
     .\scripts\Manage-CoCService.ps1 status
     .\scripts\Manage-CoCService.ps1 logs -Follow
     .\scripts\Manage-CoCService.ps1 restart
@@ -41,6 +47,8 @@ param(
     [int]$Port = 4000,
 
     [switch]$NoBuildSkip,
+
+    [switch]$Tunnel,
 
     [int]$LogLines = 50,
 
@@ -76,6 +84,7 @@ function Assert-Admin {
         '-TaskName', "`"$TaskName`""
     )
     if ($NoBuildSkip) { $argParts += '-NoBuildSkip' }
+    if ($Tunnel) { $argParts += '-Tunnel' }
 
     $proc = Start-Process powershell.exe -Verb RunAs -ArgumentList ($argParts -join ' ') -Wait -PassThru
     exit $proc.ExitCode
@@ -85,7 +94,7 @@ function Assert-Admin {
 
 function Get-CocProcesses {
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'coc-serve-loop|coc serve' } |
+        Where-Object { $_.CommandLine -match 'coc-serve-loop|coc serve|devtunnel host .*-coc' } |
         Select-Object ProcessId, Name, CommandLine
 }
 
@@ -126,6 +135,7 @@ function Invoke-Install {
     # Build argument string for the loop script
     $loopArgs = "-NonInteractive -ExecutionPolicy Bypass -File `"$Script:LoopScript`" -Port $Port -LogFile `"$Script:LogFile`""
     if (-not $NoBuildSkip) { $loopArgs += ' -SkipInitialBuild' }
+    if ($Tunnel) { $loopArgs += ' -Tunnel' }
 
     # Optionally run initial build now (before registering the task)
     if (-not $NoBuildSkip) {

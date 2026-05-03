@@ -20,16 +20,22 @@
     (in addition to the console). The file is rotated when it exceeds 10 MB.
     Used by Manage-CoCService.ps1 when running as a scheduled task.
 
+.PARAMETER Tunnel
+    Host the preconfigured Microsoft Dev Tunnel for the CoC server using the
+    stable tunnel ID "$env:COMPUTERNAME-coc". Run config-devtunnel.ps1 first.
+
 .EXAMPLE
     .\scripts\coc-serve-loop.ps1
     .\scripts\coc-serve-loop.ps1 -Port 8080
+    .\scripts\coc-serve-loop.ps1 -Tunnel
     .\scripts\coc-serve-loop.ps1 -SkipInitialBuild
     .\scripts\coc-serve-loop.ps1 -LogFile "$env:USERPROFILE\.coc\logs\coc-service.log"
 #>
 param(
     [int]$Port = 4000,
     [switch]$SkipInitialBuild,
-    [string]$LogFile = ''
+    [string]$LogFile = '',
+    [switch]$Tunnel
 )
 
 $RESTART_EXIT_CODE = 75
@@ -64,6 +70,77 @@ function Invoke-LogRotation {
     Write-Log "Log rotated (previous: $([math]::Round($size / 1MB, 1)) MB → $backup)" -Color Yellow
 }
 
+# ── Dev Tunnel host process ────────────────────────────────────────────────────
+
+function Resolve-DevTunnelCommand {
+    $command = Get-Command devtunnel -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+
+    $localExe = Join-Path $env:USERPROFILE '.coc\bin\devtunnel.exe'
+    if (Test-Path $localExe) { return $localExe }
+
+    return $null
+}
+
+function Start-DevTunnel {
+    param([Parameter(Mandatory)][string]$TunnelId)
+
+    $devTunnelCommand = Resolve-DevTunnelCommand
+    if (-not $devTunnelCommand) {
+        Write-Log 'devtunnel CLI not found. Run .\scripts\config-devtunnel.ps1 before starting the service with -Tunnel.' -Color Yellow
+        return $null
+    }
+
+    $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$TunnelId.out.log"
+    $stderrPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$TunnelId.err.log"
+    Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+    $proc = Start-Process $devTunnelCommand -ArgumentList @('host', $TunnelId) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $url = $null
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline -and -not $proc.HasExited) {
+        $text = ''
+        if (Test-Path $stdoutPath) { $text += (Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue) }
+        if (Test-Path $stderrPath) { $text += "`n" + (Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue) }
+        $match = [regex]::Match($text, 'https://[^\s]+devtunnels\.ms[^\s,]*')
+        if ($match.Success) {
+            $url = $match.Value
+            break
+        }
+        Start-Sleep -Milliseconds 500
+        $proc.Refresh()
+    }
+
+    [pscustomobject]@{
+        Process    = $proc
+        Url        = $url
+        StdoutPath = $stdoutPath
+        StderrPath = $stderrPath
+    }
+}
+
+function Stop-ProcessTree {
+    param([Parameter(Mandatory)][int]$ProcessId)
+
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ParentProcessId -eq $ProcessId } |
+        ForEach-Object { Stop-ProcessTree -ProcessId $_.ProcessId }
+
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-DevTunnel {
+    param($TunnelSession)
+
+    if (-not $TunnelSession -or -not $TunnelSession.Process) { return }
+    $proc = $TunnelSession.Process
+    $proc.Refresh()
+    if (-not $proc.HasExited) {
+        Write-Log "Stopping dev tunnel process $($proc.Id)..." -Color Yellow
+        Stop-ProcessTree -ProcessId $proc.Id
+    }
+}
+
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 function Build-Coc {
@@ -91,6 +168,8 @@ function Build-Coc {
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
 $first = $true
+$tunnelEnabled = [bool]$Tunnel
+$tunnelId = "$($env:COMPUTERNAME.ToLower())-coc"
 
 while ($true) {
     # Rotate log before each cycle to keep file size bounded
@@ -113,17 +192,31 @@ while ($true) {
     Write-Log "=== Starting coc serve (port $Port) ===" -Color Cyan
     Write-Log 'POST /api/admin/restart to rebuild and restart.'
 
-    if ($Script:LogFile) {
-        # Pipe coc serve output through Write-Log so it lands in the log file with timestamps
-        & coc serve --no-open --port $Port 2>&1 | ForEach-Object {
-            $entry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $_"
-            Write-Host $entry
-            try { Add-Content -Path $Script:LogFile -Value $entry -Encoding UTF8 } catch {}
+    $tunnelSession = $null
+    if ($tunnelEnabled) {
+        $tunnelSession = Start-DevTunnel -TunnelId $tunnelId
+        if ($tunnelSession -and $tunnelSession.Url) {
+            Write-Log "Dev tunnel URL: $($tunnelSession.Url)" -Color Green
+        } elseif ($tunnelSession) {
+            Write-Log 'Dev tunnel started but no public URL was detected within 30 seconds. Continuing with local serving.' -Color Yellow
         }
-    } else {
-        & coc serve --no-open --port $Port
     }
-    $exitCode = $LASTEXITCODE
+
+    try {
+        if ($Script:LogFile) {
+            # Pipe coc serve output through Write-Log so it lands in the log file with timestamps
+            & coc serve --no-open --port $Port 2>&1 | ForEach-Object {
+                $entry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $_"
+                Write-Host $entry
+                try { Add-Content -Path $Script:LogFile -Value $entry -Encoding UTF8 } catch {}
+            }
+        } else {
+            & coc serve --no-open --port $Port
+        }
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Stop-DevTunnel -TunnelSession $tunnelSession
+    }
 
     if ($exitCode -eq $RESTART_EXIT_CODE) {
         Write-Log "Restart requested (exit code $RESTART_EXIT_CODE). Rebuilding..." -Color Yellow

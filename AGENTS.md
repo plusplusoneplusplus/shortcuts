@@ -62,7 +62,7 @@ Manages `coc-serve-loop.ps1` as a Windows Task Scheduler task running under the 
 
 | Command      | Description |
 |--------------|-------------|
-| `install`    | Register the startup task (requires elevation). Runs an initial build by default. |
+| `install`    | Register the startup task (requires elevation). Runs an initial build by default. Use `-Tunnel` to host a preconfigured Microsoft Dev Tunnel alongside the server. |
 | `uninstall`  | Stop and remove the task (requires elevation). |
 | `start`      | Start the task immediately (no reboot required). |
 | `stop`       | Stop the task and kill all CoC-related processes. |
@@ -70,7 +70,7 @@ Manages `coc-serve-loop.ps1` as a Windows Task Scheduler task running under the 
 | `status`     | Show task state, running PIDs, log file size, and last log line. |
 | `logs`       | Print the last N log lines. Use `-Follow` for continuous tail. |
 
-Key options: `-Port` (default 4000), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`).
+Key options: `-Port` (default 4000), `-Tunnel` (host the preconfigured Microsoft Dev Tunnel using `<computername>-coc`), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`). Configure the tunnel first with `.\scripts\config-devtunnel.ps1 [-Port <port>]`; the service loop only starts/stops `devtunnel host`.
 
 **Log file:** `~/.coc/logs/coc-service.log` — rotated automatically at 10 MB.
 
