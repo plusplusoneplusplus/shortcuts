@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
         getTaskSettings: vi.fn(),
         updateTaskSettings: vi.fn(),
     },
+    skills: {
+        getWorkspaceConfig: vi.fn(),
+        listWorkspace: vi.fn(),
+    },
 }));
 
 const mockFetchApi = vi.fn();
@@ -23,7 +27,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ preferences: mocks.preferences }),
+    getSpaCocClient: () => ({ preferences: mocks.preferences, skills: mocks.skills }),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -70,6 +74,8 @@ beforeEach(() => {
     mocks.preferences.updateTaskSettings.mockImplementation((_workspaceId: string, data: { folderPaths: string[] }) =>
         Promise.resolve(mockPatchOk(data.folderPaths))
     );
+    mocks.skills.getWorkspaceConfig.mockResolvedValue({ disabledSkills: [], extraSkillFolders: [] });
+    mocks.skills.listWorkspace.mockResolvedValue([]);
 });
 
 describe('TasksSettingsSection', () => {

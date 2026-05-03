@@ -378,7 +378,7 @@ describe('WorkflowDetail', () => {
 
     it('clicking ▶ Run calls runWorkflow and shows success toast', async () => {
         const onRunSuccess = vi.fn();
-        vi.spyOn(pipelineApi, 'runWorkflow').mockResolvedValue({ task: { id: 'abcdef1234567890' } });
+        vi.spyOn(pipelineApi, 'runWorkflow').mockResolvedValue({ taskId: 'abcdef1234567890' });
         render(
             <Wrap>
                 <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} onRunSuccess={onRunSuccess} />

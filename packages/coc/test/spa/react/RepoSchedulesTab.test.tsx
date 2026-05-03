@@ -10,7 +10,7 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { SCHEDULE_TEMPLATES, describeCron, CRON_EXAMPLES } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
-const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockWorkflowClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
         list: vi.fn(),
         history: vi.fn(),
@@ -23,6 +23,9 @@ const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
         run: vi.fn(),
     },
     mockModelsClient: {
+        list: vi.fn(),
+    },
+    mockWorkflowClient: {
         list: vi.fn(),
     },
 }));
@@ -40,7 +43,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, workflow: mockWorkflowClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -335,6 +338,7 @@ describe('Workflow dropdown selector (target field)', () => {
         mockSchedulesClient.history.mockResolvedValue([]);
         mockSchedulesClient.create.mockResolvedValue({});
         mockModelsClient.list.mockResolvedValue([]);
+        mockWorkflowClient.list.mockResolvedValue([]);
         mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
@@ -345,21 +349,11 @@ describe('Workflow dropdown selector (target field)', () => {
     async function openRunWorkflowTemplate() {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
-        // Override fetch to return pipelines for the pipeline API call
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return {
-                    ok: true,
-                    json: () => Promise.resolve({
-                        workflows: [
-                            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
-                            { name: 'data-sync', path: 'pipelines/data-sync/pipeline.yaml' },
-                        ],
-                    }),
-                };
-            }
-            return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
-        });
+        // Set up workflow list mock to return two workflows
+        mockWorkflowClient.list.mockResolvedValue([
+            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
+            { name: 'data-sync', path: 'pipelines/data-sync/pipeline.yaml' },
+        ]);
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
     }
 
@@ -445,13 +439,8 @@ describe('Workflow dropdown selector (target field)', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Return empty pipelines
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return { ok: true, json: () => Promise.resolve({ workflows: [] }) };
-            }
-            return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
-        });
+        // Return empty workflows list
+        mockWorkflowClient.list.mockResolvedValue([]);
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
@@ -465,12 +454,7 @@ describe('Workflow dropdown selector (target field)', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return { ok: false, status: 500, statusText: 'Internal Server Error' };
-            }
-            return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
-        });
+        mockWorkflowClient.list.mockRejectedValue(new Error('Internal Server Error'));
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
@@ -484,13 +468,8 @@ describe('Workflow dropdown selector (target field)', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // Make fetch hang indefinitely
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return new Promise(() => {}); // never resolves
-            }
-            return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
-        });
+        // Make workflow list hang indefinitely
+        mockWorkflowClient.list.mockReturnValue(new Promise(() => {}));
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
@@ -518,19 +497,9 @@ describe('Workflow dropdown selector (target field)', () => {
         fireEvent.click(screen.getByTestId('schedule-action-prompt'));
 
         // Re-select: should be back to dropdown (not stuck in manual)
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return {
-                    ok: true,
-                    json: () => Promise.resolve({
-                        workflows: [
-                            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
-                        ],
-                    }),
-                };
-            }
-            return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
-        });
+        mockWorkflowClient.list.mockResolvedValue([
+            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
+        ]);
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
         await waitFor(() => {
@@ -550,28 +519,12 @@ describe('Workflow dropdown selector (target field)', () => {
     });
 
     it('params.pipeline is set when a workflow is selected from dropdown', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ schedules: [] }),
-        });
-
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return {
-                    ok: true,
-                    json: () => Promise.resolve({
-                        workflows: [
-                            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
-                        ],
-                    }),
-                };
-            }
-            // Accept POST for schedule creation
-            return { ok: true, json: () => Promise.resolve({}) };
-        });
+        mockWorkflowClient.list.mockResolvedValue([
+            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
+        ]);
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 

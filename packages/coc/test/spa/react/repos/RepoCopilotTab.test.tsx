@@ -20,6 +20,7 @@ const mockClient = vi.hoisted(() => ({
         updateWorkspaceConfig: vi.fn(),
         detailWorkspace: vi.fn(),
         deleteWorkspace: vi.fn(),
+        listBundledWorkspace: vi.fn(),
     },
 }));
 
@@ -81,6 +82,7 @@ beforeEach(() => {
     mockClient.skills.updateWorkspaceConfig.mockResolvedValue({});
     mockClient.skills.detailWorkspace.mockResolvedValue({ skill: null });
     mockClient.skills.deleteWorkspace.mockResolvedValue(undefined);
+    mockClient.skills.listBundledWorkspace.mockResolvedValue([]);
     // AppProvider preferences call returns {}
     mockFetch.mockResolvedValue({
         ok: true,

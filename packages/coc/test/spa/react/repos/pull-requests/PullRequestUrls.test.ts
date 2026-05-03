@@ -25,8 +25,11 @@ describe('PullRequestsTab — URL construction', () => {
         expect(source).not.toMatch(/getApiBase\(\).*\/api\/repos/);
     });
 
-    it('builds the pull-requests list URL using /repos without an extra /api segment', () => {
-        expect(source).toMatch(/getApiBase\(\).*\/repos\//);
+    it('uses the typed cocClient for pull requests (no raw getApiBase() URL construction)', () => {
+        // After migrating to cocClient, URLs are built inside the client library.
+        // Check that cocClient is used and there are no manual /repos/ URL constructions with getApiBase().
+        expect(source).toMatch(/getSpaCocClient\(\)/);
+        expect(source).not.toMatch(/getApiBase\(\).*\/repos\//);
     });
 });
 
@@ -41,11 +44,13 @@ describe('PullRequestDetail — URL construction', () => {
         expect(source).not.toMatch(/`\$\{base\}\/api\/repos/);
     });
 
-    it('builds prUrl using /repos without an extra /api segment', () => {
-        expect(source).toMatch(/`\$\{base\}\/repos\//);
+    it('uses the typed cocClient for PR detail (no raw template-literal URL construction)', () => {
+        // After migrating to cocClient, URLs are built inside the client library.
+        expect(source).toMatch(/getSpaCocClient\(\)/);
+        expect(source).not.toMatch(/`\$\{base\}\/repos\//);
     });
 
-    it('builds threadsUrl using /repos without an extra /api segment', () => {
-        expect(source).toMatch(/`\$\{base\}\/repos\/.*\/threads`/);
+    it('does not construct a raw threadsUrl with template literals', () => {
+        expect(source).not.toMatch(/`\$\{base\}\/repos\/.*\/threads`/);
     });
 });

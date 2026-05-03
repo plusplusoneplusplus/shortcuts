@@ -12,7 +12,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -171,7 +171,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                         setError(err.message ?? 'Failed to load pull requests');
                     }
                 } else {
-                    setError(err.message ?? 'Failed to load pull requests');
+                    setError(getSpaCocClientErrorMessage(err, 'Failed to load pull requests'));
                 }
             })
             .finally(() => setLoading(false));
