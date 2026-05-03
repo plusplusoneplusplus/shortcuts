@@ -161,7 +161,7 @@ function buildOverflowItems(
     }
 
     // Resume In CLI
-    if (!props.isPending && props.resumeSessionId) {
+    if (!props.isPending && props.resumeSessionId && !props.isMobile) {
         items.push({
             key: 'resume-cli',
             label: 'Resume In CLI',
@@ -515,9 +515,9 @@ export function ChatHeader({
                             <ConversationMetadataPopover
                                 process={metadataProcess}
                                 turnsCount={turns.length}
-                                resumeSessionId={resumeSessionId}
+                                resumeSessionId={isMobile ? undefined : resumeSessionId}
                                 resumeLaunching={resumeLaunching}
-                                onLaunchInteractiveResume={onLaunchInteractiveResume}
+                                onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
                                 onFork={onFork}
                                 forking={forking}
                             />

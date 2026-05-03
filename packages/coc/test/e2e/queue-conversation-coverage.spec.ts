@@ -892,7 +892,7 @@ test.describe('Resume In CLI', () => {
 
         await gotoQueueTask(page, serverUrl, task.id as string);
 
-        // Resume In CLI button should be visible (hidden on mobile, visible on sm+)
+        // Desktop/tablet viewports show Resume In CLI; mobile hides it entirely.
         const resumeBtn = page.locator('button', { hasText: 'Resume In CLI' });
         await expect(resumeBtn).toBeVisible({ timeout: 5_000 });
 

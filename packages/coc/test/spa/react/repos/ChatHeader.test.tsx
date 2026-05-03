@@ -52,7 +52,15 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
+    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume }: any) => (
+        <span
+            data-testid="metadata-popover"
+            data-resume-session-id={resumeSessionId ?? ''}
+            data-has-resume-handler={onLaunchInteractiveResume ? 'true' : 'false'}
+        >
+            i
+        </span>
+    ),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/ui/ContextWindowIndicator', () => ({
@@ -85,7 +93,17 @@ vi.mock('../../../../src/server/spa/client/react/utils/snapshot-copy-utils', () 
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflowMenu', () => ({
     ChatHeaderOverflowMenu: ({ items }: any) =>
-        items.length > 0 ? <span data-testid="overflow-menu" data-count={items.length}>⋮</span> : null,
+        items.length > 0
+            ? (
+                <span
+                    data-testid="overflow-menu"
+                    data-count={items.length}
+                    data-keys={items.map((item: any) => item.key).join(',')}
+                >
+                    ⋮
+                </span>
+            )
+            : null,
 }));
 
 import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/features/chat/ChatHeader';
@@ -132,7 +150,9 @@ describe('ChatHeader', () => {
     beforeEach(() => {
         setTier('wide');
         mockBreakpoint.isMobile = false;
+        mockBreakpoint.isTablet = false;
         mockBreakpoint.isDesktop = true;
+        mockBreakpoint.breakpoint = 'desktop';
     });
 
     describe('wide tier (>= 700px)', () => {
@@ -147,7 +167,10 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
             expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
             // Resume CLI and Fork are now inside the metadata popover (not standalone inline buttons)
-            expect(screen.getByTestId('metadata-popover')).toBeTruthy();
+            const metadataPopover = screen.getByTestId('metadata-popover');
+            expect(metadataPopover).toBeTruthy();
+            expect(metadataPopover.getAttribute('data-resume-session-id')).toBe('session-1');
+            expect(metadataPopover.getAttribute('data-has-resume-handler')).toBe('true');
             expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
         });
@@ -345,6 +368,38 @@ describe('ChatHeader', () => {
             const menu = screen.getByTestId('overflow-menu');
             const count = parseInt(menu.getAttribute('data-count') ?? '0');
             expect(count).toBeGreaterThanOrEqual(5); // html, pdf, metadata, refs, resume-cli, duration, ctx-window
+        });
+
+        it('includes resume CLI in overflow at medium tier on desktop', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps()} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('resume-cli');
+        });
+
+        it('does not include resume CLI in overflow on mobile', () => {
+            setTier('medium');
+            mockBreakpoint.isMobile = true;
+            mockBreakpoint.isDesktop = false;
+            mockBreakpoint.breakpoint = 'mobile';
+
+            render(<ChatHeader {...defaultProps()} />);
+
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('resume-cli');
+        });
+
+        it('does not pass resume CLI props to metadata popover on mobile', () => {
+            setTier('wide');
+            mockBreakpoint.isMobile = true;
+            mockBreakpoint.isDesktop = false;
+            mockBreakpoint.breakpoint = 'mobile';
+
+            render(<ChatHeader {...defaultProps()} />);
+
+            const metadataPopover = screen.getByTestId('metadata-popover');
+            expect(metadataPopover.getAttribute('data-resume-session-id')).toBe('');
+            expect(metadataPopover.getAttribute('data-has-resume-handler')).toBe('false');
         });
 
         it('has no overflow items when everything is hidden by props', () => {
