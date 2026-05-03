@@ -1,8 +1,8 @@
 /**
  * Memory Aggregate — config and helper types for queued candidate promotion.
  *
- * Automatic full-list reconciliation is disabled. These helpers describe
- * the append-only candidate-selection prompt shape for future promotion work.
+ * Automatic full-list reconciliation is disabled. Promotion is append-only:
+ * selected candidates are added after existing bounded memory entries.
  */
 
 import type { ReconciliationContext } from '@plusplusoneplusplus/forge';

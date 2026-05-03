@@ -1,17 +1,18 @@
 /**
  * Memory Aggregate Executor
  *
- * Queued executor that observes durable memory candidates without rewriting
+ * Queued executor that promotes durable memory candidates without rewriting
  * bounded MEMORY.md. Follows the same pattern as BackgroundReviewExecutor:
  *
  * 1. Resolve the candidate store for the target scope
  * 2. List pending candidates deterministically
- * 3. Leave candidates pending until an explicit promotion decision is added
+ * 3. Append selected candidates to bounded memory without changing existing entries
  */
 
 import * as path from 'path';
 import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import {
+    BoundedMemoryStore,
     MemoryCandidateStore,
     rankMemoryCandidates,
     getLogger,
@@ -51,11 +52,34 @@ export class MemoryAggregateExecutor {
 
             logger.debug(LogCategory.AI, `[MemoryAggregate] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
             const ranked = rankMemoryCandidates(candidates);
-            const selectedCount = ranked.filter(candidate => candidate.selected).length;
+            const selected = ranked.filter(candidate => candidate.selected);
+            if (selected.length === 0) {
+                return {
+                    success: true,
+                    result: `Memory promotion pending; ranked ${ranked.length} candidate(s), selected 0`,
+                    durationMs: Date.now() - startTime,
+                };
+            }
+
+            const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
+            await memoryStore.load();
+            const existingEntries = new Set(memoryStore.read());
+            const uniqueSelectedEntries = [...new Set(selected.map(candidate => candidate.content.trim()).filter(Boolean))];
+            const newEntryCount = uniqueSelectedEntries.filter(entry => !existingEntries.has(entry)).length;
+            const appendResult = await memoryStore.appendEntries(uniqueSelectedEntries);
+            if (!appendResult.success) {
+                return {
+                    success: false,
+                    error: new Error(appendResult.message),
+                    durationMs: Date.now() - startTime,
+                };
+            }
+
+            await candidateStore.markPromoted(selected.map(candidate => candidate.id));
 
             return {
                 success: true,
-                result: `Memory promotion pending; ranked ${ranked.length} candidate(s), selected ${selectedCount}`,
+                result: `Memory promotion completed; ranked ${ranked.length} candidate(s), promoted ${selected.length}, appended ${newEntryCount}`,
                 durationMs: Date.now() - startTime,
             };
         } catch (error) {
@@ -72,5 +96,12 @@ export class MemoryAggregateExecutor {
             return path.join(this.dataDir, 'memory', 'system', 'raw-memory.db');
         }
         return getRepoDataPath(this.dataDir, workspaceId, 'memory/raw-memory.db');
+    }
+
+    private resolveMemoryPath(workspaceId: string, target: 'memory' | 'system'): string {
+        if (target === 'system') {
+            return path.join(this.dataDir, 'memory', 'system', 'MEMORY.md');
+        }
+        return getRepoDataPath(this.dataDir, workspaceId, 'memory/MEMORY.md');
     }
 }

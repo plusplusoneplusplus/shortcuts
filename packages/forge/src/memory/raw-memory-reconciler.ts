@@ -10,7 +10,7 @@
  *   2. (caller invokes AI with the context to produce a proposed entry list)
  *   3. validateProposedEntries() — reject malformed/unsafe output
  *   4. buildApplyPlan() — determine which raw records to aggregate/drop
- *   5. applyReconciliation() — atomically rewrite MEMORY.md via BoundedMemoryStore
+ *   5. applyReconciliation() — atomically append promoted entries to MEMORY.md
  */
 
 import type { RawMemoryRecord } from './raw-memory-record-types';
@@ -112,7 +112,7 @@ export function validateProposedEntries(
     }
 
     if (proposed.length === 0) {
-        // Empty is valid — clears memory
+        // Empty is valid — appends nothing
         return { valid: true, errors: [], validEntries: [], rejectedEntries: [] };
     }
 
@@ -237,10 +237,11 @@ export function buildApplyPlan(
 // ============================================================================
 
 /**
- * Atomically rewrite the bounded memory store with reconciled entries.
+ * Atomically append reconciled entries to the bounded memory store.
  *
- * Delegates to `BoundedMemoryStore.setEntries()` which handles security
- * scanning, char limit enforcement, and atomic file write.
+ * Automatic promotion is append-only: existing entries are never deleted,
+ * rewritten, or reordered. Direct replacement and removal remain available
+ * through explicit bounded-memory APIs, not this path.
  *
  * @returns The mutation result from the store
  */
@@ -248,7 +249,7 @@ export async function applyReconciliation(
     store: BoundedMemoryStore,
     entries: string[],
 ) {
-    return store.setEntries(entries);
+    return store.appendEntries(entries);
 }
 
 // ============================================================================

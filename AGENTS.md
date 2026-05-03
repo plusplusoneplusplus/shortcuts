@@ -269,7 +269,7 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 | Symbol | Role |
 |--------|------|
 | `MemoryStore` (interface) | Full CRUD contract |
-| `BoundedMemoryStore` | File-backed store; add/replace/remove/setEntries with substring matching, char limits, `§` delimiters, mkdir-based file locking. `setEntries()` provides trusted atomic rewrite for reconciled output |
+| `BoundedMemoryStore` | File-backed store; add/replace/remove/setEntries/appendEntries with substring matching, char limits, `§` delimiters, mkdir-based file locking. `setEntries()` is a trusted explicit rewrite operation; `appendEntries()` is the automatic promotion path and preserves existing serialized memory |
 | `scanMemoryContent()` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
 | `MemoryPromptBuilder` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` at construction, renders immutable `═══`-separated block with usage header + `MEMORY_GUIDANCE` for system prompt injection |
 | `createWriteMemoryTool()` | Factory returning an AI-callable `memory` tool + `getWrittenFacts()` accessor. Supports `bounded` mode (direct MEMORY.md mutation) and `capture` mode (raw record append to `RawMemoryRecordStore`, `replace`/`remove` disabled) |
@@ -277,7 +277,7 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 | `prepareReconciliationContext()` | Deterministic pre-processing: dedup raw records, stable-sort, build content→recordId map for post-AI tracking |
 | `validateProposedEntries()` | Validates AI-proposed bounded entry list: type/empty/duplicate/security/char-limit checks |
 | `buildApplyPlan()` | Maps validated entries back to raw record IDs, classifying each as aggregated or dropped |
-| `applyReconciliation()` | Atomically rewrites MEMORY.md via `BoundedMemoryStore.setEntries()` |
+| `applyReconciliation()` | Atomically appends promoted entries to MEMORY.md via `BoundedMemoryStore.appendEntries()` |
 
 **Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
 

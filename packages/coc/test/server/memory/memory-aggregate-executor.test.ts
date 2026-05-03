@@ -121,19 +121,25 @@ describe('MemoryAggregateExecutor', () => {
         expect(stats.ignored).toBe(0);
     });
 
-    it('does not call setEntries when pending raw candidates exist', async () => {
+    it('does not call rewrite, replace, or remove when pending raw candidates exist', async () => {
         const wsId = 'ws-no-set-entries';
         seedRawRecords(wsId, ['New candidate']);
         seedBoundedMemory(wsId, 'Trusted existing memory');
         const setEntriesSpy = vi.spyOn(BoundedMemoryStore.prototype, 'setEntries');
+        const replaceSpy = vi.spyOn(BoundedMemoryStore.prototype, 'replace');
+        const removeSpy = vi.spyOn(BoundedMemoryStore.prototype, 'remove');
 
         const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(setEntriesSpy).not.toHaveBeenCalled();
+        expect(replaceSpy).not.toHaveBeenCalled();
+        expect(removeSpy).not.toHaveBeenCalled();
         expect(readBoundedMemoryRaw(wsId)).toBe('Trusted existing memory');
         setEntriesSpy.mockRestore();
+        replaceSpy.mockRestore();
+        removeSpy.mockRestore();
     });
 
     it('returns early when no pending candidates exist', async () => {
@@ -204,9 +210,14 @@ describe('MemoryAggregateExecutor', () => {
         expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('reports deterministic selected candidate count without invoking AI', async () => {
+    it('promotes selected candidates by appending after existing memory without invoking AI', async () => {
         const wsId = 'ws-selected';
         const memDir = setupRepoDir(wsId);
+        const existingMemory = [
+            'Role: preserve this repo role',
+            '  Stable preference: preserve spacing  ',
+        ].join(ENTRY_DELIMITER);
+        seedBoundedMemory(wsId, existingMemory);
         const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
         await candidateStore.upsertCandidate({
             target: 'repo',
@@ -224,7 +235,45 @@ describe('MemoryAggregateExecutor', () => {
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
-        expect(result.result).toBe('Memory promotion pending; ranked 1 candidate(s), selected 1');
+        expect(result.result).toBe('Memory promotion completed; ranked 1 candidate(s), promoted 1, appended 1');
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
+        expect(readBoundedMemoryRaw(wsId)).toBe(
+            `${existingMemory}${ENTRY_DELIMITER}User explicitly prefers concise responses`,
+        );
+
+        const stats = await readRepoStats(wsId);
+        expect(stats.pending).toBe(0);
+        expect(stats.promoted).toBe(1);
+    });
+
+    it('does not touch system memory during repo-level promotion', async () => {
+        const wsId = 'ws-repo-only';
+        const memDir = setupRepoDir(wsId);
+        const systemDir = path.join(tmpDir, 'memory', 'system');
+        const systemMemoryPath = path.join(systemDir, 'MEMORY.md');
+        fs.mkdirSync(systemDir, { recursive: true });
+        fs.writeFileSync(systemMemoryPath, 'System role: preserve globally', 'utf-8');
+        seedBoundedMemory(wsId, 'Repo role: preserve locally');
+
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'Repo explicitly prefers append-only promotion',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+
+        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId, target: 'memory' })));
+
+        expect(result.success).toBe(true);
+        expect(fs.readFileSync(systemMemoryPath, 'utf-8')).toBe('System role: preserve globally');
+        expect(readBoundedMemoryRaw(wsId)).toBe(
+            `Repo role: preserve locally${ENTRY_DELIMITER}Repo explicitly prefers append-only promotion`,
+        );
     });
 });

@@ -172,9 +172,9 @@ export class BoundedMemoryStore extends BaseFileStore {
     /**
      * Trusted atomic rewrite: replace all entries with a reconciled list.
      *
-     * Used by the reconciliation core after AI-proposed entries have been
-     * validated. Each entry is re-scanned for security threats. The total
-     * serialized size must not exceed the char limit.
+     * Used by explicit administrative flows after entries have been validated.
+     * Each entry is re-scanned for security threats. The total serialized size
+     * must not exceed the char limit.
      *
      * Entries are trimmed, deduplicated, and empty strings are filtered out.
      */
@@ -226,9 +226,83 @@ export class BoundedMemoryStore extends BaseFileStore {
         });
     }
 
+    /**
+     * Atomic append-only promotion: preserve existing serialized memory exactly
+     * and append only new candidate entries that are not already present.
+     */
+    async appendEntries(entriesToAppend: string[]): Promise<MemoryMutationResult> {
+        return this.enqueueWrite(async () => {
+            await this.acquireLock();
+            try {
+                const existingContent = await this.readSerializedFromDisk();
+                const existingEntries = this.parseSerializedEntries(existingContent);
+                const existingComparable = new Set(existingEntries.map(entry => entry.trim()).filter(Boolean));
+                const cleaned: string[] = [];
+                const seenNew = new Set<string>();
+
+                for (const entry of entriesToAppend) {
+                    const trimmed = entry.trim();
+                    if (!trimmed) continue;
+                    if (existingComparable.has(trimmed) || seenNew.has(trimmed)) continue;
+
+                    const scan = scanMemoryContent(trimmed);
+                    if (scan.blocked) {
+                        this.entries = this.deduplicate(await this.readFromDisk());
+                        return this.failResult(
+                            `Entry blocked by security scanner: ${scan.reason} — entry: "${trimmed.substring(0, 80)}"`,
+                        );
+                    }
+
+                    seenNew.add(trimmed);
+                    cleaned.push(trimmed);
+                }
+
+                if (cleaned.length === 0) {
+                    this.entries = this.deduplicate(await this.readFromDisk());
+                    return this.successResult('No new entries to append.');
+                }
+
+                const appendedContent = cleaned.join(ENTRY_DELIMITER);
+                const serialized = existingEntries.length > 0
+                    ? `${existingContent}${ENTRY_DELIMITER}${appendedContent}`
+                    : appendedContent;
+
+                if (serialized.length > this.charLimit) {
+                    this.entries = this.deduplicate(await this.readFromDisk());
+                    return this.failResult(
+                        `Appending entries would put memory at ${serialized.length.toLocaleString()}/${this.charLimit.toLocaleString()} chars. ` +
+                        `Promote fewer or shorter entries, or remove existing entries first.`,
+                    );
+                }
+
+                await this.atomicWrite(this.filePath, serialized);
+                this.entries = this.deduplicate(await this.readFromDisk());
+                return this.successResult(
+                    `Memory appended with ${cleaned.length} entr${cleaned.length === 1 ? 'y' : 'ies'}.`,
+                );
+            } finally {
+                await this.releaseLock();
+            }
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
+
+    private async readSerializedFromDisk(): Promise<string> {
+        try {
+            return await fs.readFile(this.filePath, 'utf-8');
+        } catch (err: any) {
+            if (err.code === 'ENOENT') return '';
+            throw err;
+        }
+    }
+
+    private parseSerializedEntries(content: string): string[] {
+        if (!content.trim()) return [];
+        return content.split(ENTRY_DELIMITER).filter(entry => entry.length > 0);
+    }
 
     private async readFromDisk(): Promise<string[]> {
         try {
