@@ -180,15 +180,10 @@ export abstract class BaseExecutor {
      * `computeTurnIndex` is called lazily at event time to determine the current turn index
      * for suggestion events — this allows callers to supply the correct index based on
      * conversation state at the time the event fires.
-     *
-     * `onMemoryCaptured` is called when a capture-mode `memory.add` completes
-     * successfully (result contains a `recordId`). Used to trigger aggregate-task
-     * enqueueing without performing AI inline.
      */
     protected buildToolEventHandler(
         processId: string,
         computeTurnIndex: () => number,
-        onMemoryCaptured?: (target: string) => void,
     ): (event: ToolEvent) => void {
         return (event: ToolEvent) => {
             // Intercept suggestion tool completions — emit as dedicated SSE event
@@ -208,25 +203,6 @@ export abstract class BaseExecutor {
                     // Malformed suggestions — ignore silently
                 }
                 return;
-            }
-
-            // Detect capture-mode memory tool completions
-            if (
-                onMemoryCaptured
-                && event.type === 'tool-complete'
-                && event.toolName === 'memory'
-            ) {
-                try {
-                    const parsed = JSON.parse(event.result || '{}');
-                    if (parsed?.success && parsed?.recordId) {
-                        const target = event.parameters?.target;
-                        if (target === 'memory' || target === 'system') {
-                            onMemoryCaptured(target);
-                        }
-                    }
-                } catch {
-                    // Malformed result — ignore
-                }
             }
 
             // Append tool timeline item

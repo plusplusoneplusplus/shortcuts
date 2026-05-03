@@ -81,8 +81,6 @@ export interface FollowUpExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     /** Fire-and-forget title generation callback (optional) */
     onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
-    /** Callback when a capture-mode memory.add completes (triggers aggregate enqueue). */
-    onMemoryCaptured?: (workspaceId: string, target: string) => void;
 }
 
 // ============================================================================
@@ -97,7 +95,6 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly _resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
-    private readonly onMemoryCapturedFn?: (workspaceId: string, target: string) => void;
 
     constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -108,7 +105,6 @@ export class FollowUpExecutor extends BaseExecutor {
         this._resolveWorkspaceIdForPath = options.resolveWorkspaceIdForPath;
         this._resolveSkillConfig = options.resolveSkillConfig;
         this.onTitleNeeded = options.onTitleNeeded;
-        this.onMemoryCapturedFn = options.onMemoryCaptured;
     }
 
     /**
@@ -340,9 +336,6 @@ export class FollowUpExecutor extends BaseExecutor {
                 onToolEvent: this.buildToolEventHandler(
                     processId,
                     () => process.conversationTurns?.length ?? 0,
-                    wsId && this.onMemoryCapturedFn
-                        ? (target: string) => this.onMemoryCapturedFn!(wsId, target)
-                        : undefined,
                 ),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             };

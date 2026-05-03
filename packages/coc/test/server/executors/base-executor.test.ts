@@ -339,6 +339,38 @@ describe('BaseExecutor', () => {
             expect(session.timelineBuffer[0].type).toBe('tool-complete');
         });
 
+        it('treats capture-mode memory completion as a normal timeline event only', () => {
+            const handler = executor.buildToolEventHandlerPublic('proc-memory-capture', () => 0);
+            handler({
+                type: 'tool-complete',
+                toolCallId: 'tc-memory',
+                toolName: 'memory',
+                parameters: { action: 'add', target: 'repo', content: 'Useful fact' },
+                result: JSON.stringify({
+                    success: true,
+                    message: 'Memory candidate captured; memory will update after aggregation.',
+                    recordId: 'rec-abc-123',
+                }),
+            } as any);
+
+            const session = executor.getOrCreateSessionPublic('proc-memory-capture');
+            expect(session.timelineBuffer).toHaveLength(1);
+            expect(session.timelineBuffer[0]).toEqual(expect.objectContaining({
+                type: 'tool-complete',
+                toolCall: expect.objectContaining({
+                    name: 'memory',
+                    status: 'completed',
+                    result: expect.stringContaining('rec-abc-123'),
+                }),
+            }));
+            expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-memory-capture', expect.objectContaining({
+                type: 'tool-complete',
+                toolName: 'memory',
+                result: expect.stringContaining('rec-abc-123'),
+            }));
+        });
+
         it('emits process event via store for tool-start', () => {
             const handler = executor.buildToolEventHandlerPublic('proc-emit', () => 0);
             handler({

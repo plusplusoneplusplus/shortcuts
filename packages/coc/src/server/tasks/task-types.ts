@@ -235,7 +235,7 @@ export interface MemoryAggregatePayload {
     workspaceId: string;
     target: 'memory' | 'system';
     model?: string;
-    /** Why this task was enqueued (e.g. 'capture-trigger', 'manual'). */
+    /** Why this task was enqueued (e.g. 'manual', 'schedule'). */
     trigger?: string;
 }
 

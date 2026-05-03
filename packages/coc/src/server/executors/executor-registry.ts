@@ -38,8 +38,6 @@ export interface ExecutorRegistryOptions {
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    /** Callback when capture-mode memory.add completes (triggers aggregate enqueue). */
-    onMemoryCaptured?: (workspaceId: string, target: string) => void;
 }
 
 /**
@@ -88,14 +86,13 @@ export class ExecutorRegistry {
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
-            onMemoryCaptured: options.onMemoryCaptured,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded, onMemoryCaptured: options.onMemoryCaptured }, options.dataDir);
+        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded }, options.dataDir);
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.planExecutor = new PlanExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
