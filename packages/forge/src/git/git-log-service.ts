@@ -306,7 +306,7 @@ export class GitLogService {
 
             return output;
         } catch (error) {
-            getLogger().error(
+            getLogger().debug(
                 LogCategory.GIT,
                 `Failed to get file content for ${filePath} at commit ${commitHash}`,
                 error instanceof Error ? error : undefined,
@@ -359,7 +359,12 @@ export class GitLogService {
                 return hash;
             }
             return undefined;
-        } catch {
+        } catch (error) {
+            getLogger().debug(
+                LogCategory.GIT,
+                `validateRef failed for ref "${ref}" in ${repoRoot}`,
+                error instanceof Error ? error : undefined,
+            );
             return undefined;
         }
     }
