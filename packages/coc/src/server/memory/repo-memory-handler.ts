@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { DEFAULT_CHAR_LIMIT, scanMemoryContent, RawMemoryRecordStore } from '@plusplusoneplusplus/forge';
+import { DEFAULT_CHAR_LIMIT, scanMemoryContent, MemoryCandidateStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { getRepoDataPath } from '../paths';
@@ -161,22 +161,22 @@ export function registerRepoMemoryRoutes(
     }
 
     /**
-     * Get raw-record counts from RawMemoryRecordStore, handling missing DB gracefully.
+     * Get candidate counts from MemoryCandidateStore, handling missing DB gracefully.
      */
     async function getRawRecordCounts(workspaceId: string): Promise<{ pendingRawCount: number; claimedRawCount: number }> {
-        const rawDbPath = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'raw-memory.db'));
-        if (!fs.existsSync(rawDbPath)) {
+        const candidateDbPath = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'raw-memory.db'));
+        if (!fs.existsSync(candidateDbPath)) {
             return { pendingRawCount: 0, claimedRawCount: 0 };
         }
-        let rawStore: RawMemoryRecordStore | undefined;
+        let candidateStore: MemoryCandidateStore | undefined;
         try {
-            rawStore = new RawMemoryRecordStore({ dbPath: rawDbPath });
-            const stats = await rawStore.getStats();
-            return { pendingRawCount: stats.pending, claimedRawCount: stats.claimed };
+            candidateStore = new MemoryCandidateStore({ dbPath: candidateDbPath });
+            const stats = await candidateStore.getStats();
+            return { pendingRawCount: stats.pending, claimedRawCount: 0 };
         } catch {
             return { pendingRawCount: 0, claimedRawCount: 0 };
         } finally {
-            try { rawStore?.close(); } catch { /* already closed */ }
+            try { candidateStore?.close(); } catch { /* already closed */ }
         }
     }
 
@@ -207,7 +207,7 @@ export function registerRepoMemoryRoutes(
                     // File doesn't exist yet
                 }
 
-                // Raw-record counts
+                // Candidate counts, preserved under legacy response names for the SPA.
                 const rawCounts = await getRawRecordCounts(workspaceId);
 
                 // Aggregate task status

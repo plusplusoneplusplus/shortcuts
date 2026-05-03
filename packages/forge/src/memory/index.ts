@@ -27,6 +27,7 @@ export type {
     MemoryToolStores,
     MemoryToolMode,
     MemoryToolRawStores,
+    MemoryToolCandidateStores,
     MemoryToolCaptureContext,
     MemoryToolCaptureResult,
     MemoryWriteFrequency,
@@ -73,6 +74,17 @@ export type {
     RawMemoryRecordStats,
     RawMemoryRecordStatus,
 } from './raw-memory-record-types';
+
+// Memory candidate store
+export { MemoryCandidateStore } from './memory-candidate-store';
+export type { MemoryCandidateStoreOptions } from './memory-candidate-store';
+export type {
+    MemoryCandidate,
+    MemoryCandidateInput,
+    MemoryCandidateStats,
+    MemoryCandidateStatus,
+    MemoryCandidateTarget,
+} from './memory-candidate-types';
 
 // Raw-to-bounded reconciler
 export {

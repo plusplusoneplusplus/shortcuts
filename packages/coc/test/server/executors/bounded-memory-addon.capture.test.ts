@@ -2,7 +2,7 @@
  * Tests for capture-mode integration in buildBoundedMemoryAddon.
  *
  * Verifies that when captureContext is provided:
- *  - `add` writes raw records instead of mutating MEMORY.md
+ *  - `add` writes memory candidates instead of mutating MEMORY.md
  *  - Prompt injection still reads only bounded MEMORY.md
  *  - `replace`/`remove` are explicitly rejected
  *  - Without captureContext, existing bounded behavior is preserved
@@ -34,11 +34,11 @@ function writeSystemMemoryFile(dataDir: string, content: string): void {
     fs.writeFileSync(path.join(systemDir, 'MEMORY.md'), content, 'utf-8');
 }
 
-function readRawRecords(dbPath: string): any[] {
+function readCandidates(dbPath: string): any[] {
     if (!fs.existsSync(dbPath)) return [];
     const db = new Database(dbPath, { readonly: true });
     try {
-        return db.prepare('SELECT * FROM raw_memory_records ORDER BY created_at ASC').all();
+        return db.prepare('SELECT * FROM memory_candidates ORDER BY created_at ASC').all();
     } finally {
         db.close();
     }
@@ -92,10 +92,10 @@ describe('buildBoundedMemoryAddon — capture mode', () => {
     });
 
     // -----------------------------------------------------------------------
-    // add → raw record
+    // add → memory candidate
     // -----------------------------------------------------------------------
 
-    it('add writes a raw record instead of mutating bounded MEMORY.md', async () => {
+    it('add writes a memory candidate instead of mutating bounded MEMORY.md', async () => {
         writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
         writeMemoryFile(tmpDir, WORKSPACE_ID, 'Existing fact');
 
@@ -114,10 +114,11 @@ describe('buildBoundedMemoryAddon — capture mode', () => {
         expect(result.success).toBe(true);
         expect(result.message).toContain('captured');
         expect(result.recordId).toBeDefined();
+        expect(result.candidateId).toBe(result.recordId);
 
-        // Verify raw record persisted
+        // Verify candidate persisted
         const repoRawDbPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory', 'raw-memory.db');
-        const rows = readRawRecords(repoRawDbPath);
+        const rows = readCandidates(repoRawDbPath);
         expect(rows).toHaveLength(1);
         expect(rows[0].content).toBe('New captured fact');
         expect(rows[0].target).toBe('repo');
@@ -134,7 +135,7 @@ describe('buildBoundedMemoryAddon — capture mode', () => {
         expect(memoryContent).toBe('Existing fact');
     });
 
-    it('add to system target writes to system raw store', async () => {
+    it('add to system target writes to system candidate store', async () => {
         writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true } });
 
         const addon = await buildAddon(tmpDir, WORKSPACE_ID, {
@@ -151,7 +152,7 @@ describe('buildBoundedMemoryAddon — capture mode', () => {
         expect(result.success).toBe(true);
 
         const systemRawDbPath = path.join(tmpDir, 'memory', 'system', 'raw-memory.db');
-        const rows = readRawRecords(systemRawDbPath);
+        const rows = readCandidates(systemRawDbPath);
         expect(rows).toHaveLength(1);
         expect(rows[0].content).toBe('System captured fact');
         expect(rows[0].target).toBe('system');

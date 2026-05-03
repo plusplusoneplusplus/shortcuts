@@ -17,8 +17,8 @@ import type { MemoryToolCaptureContext, MemoryWriteFrequency, Tool } from '@plus
 import {
     BoundedMemoryStore,
     createMemoryTool,
+    MemoryCandidateStore,
     MemoryPromptBuilder,
-    RawMemoryRecordStore,
 } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
@@ -64,8 +64,8 @@ const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
  * Instantiates BoundedMemoryStore per-request (cheap — single file read).
  *
  * When `captureContext` is provided the tool operates in capture mode:
- * `add` appends raw records to RawMemoryRecordStore instead of mutating
- * MEMORY.md. Prompt injection still reads only bounded MEMORY.md.
+ * `add` upserts durable candidates instead of mutating MEMORY.md. Prompt
+ * injection still reads only bounded MEMORY.md.
  */
 export async function buildBoundedMemoryAddon(
     dataDir: string | undefined,
@@ -103,18 +103,18 @@ export async function buildBoundedMemoryAddon(
         const useCapture = !!captureContext;
 
         let captureConfig: Parameters<typeof createMemoryTool>[2];
-        const rawStoreInstances: RawMemoryRecordStore[] = [];
+        const candidateStoreInstances: MemoryCandidateStore[] = [];
         if (useCapture) {
-            const repoRawDbPath = getRepoDataPath(dataDir, workspaceId, 'memory/raw-memory.db');
-            const systemRawDbPath = path.join(dataDir, 'memory', 'system', 'raw-memory.db');
-            const repoRaw = new RawMemoryRecordStore({ dbPath: repoRawDbPath });
-            const systemRaw = new RawMemoryRecordStore({ dbPath: systemRawDbPath });
-            rawStoreInstances.push(repoRaw, systemRaw);
+            const repoCandidateDbPath = getRepoDataPath(dataDir, workspaceId, 'memory/raw-memory.db');
+            const systemCandidateDbPath = path.join(dataDir, 'memory', 'system', 'raw-memory.db');
+            const repoCandidates = new MemoryCandidateStore({ dbPath: repoCandidateDbPath });
+            const systemCandidates = new MemoryCandidateStore({ dbPath: systemCandidateDbPath });
+            candidateStoreInstances.push(repoCandidates, systemCandidates);
 
             captureConfig = {
-                rawStores: {
-                    repo: repoRaw,
-                    system: systemRaw,
+                candidateStores: {
+                    repo: repoCandidates,
+                    system: systemCandidates,
                 },
                 context: {
                     ...captureContext,
@@ -134,8 +134,8 @@ export async function buildBoundedMemoryAddon(
             tools: [tool],
             suffix: MEMORY_TOOL_SUFFIX,
             dispose: () => {
-                for (const rs of rawStoreInstances) {
-                    try { rs.close(); } catch { /* already closed */ }
+                for (const store of candidateStoreInstances) {
+                    try { store.close(); } catch { /* already closed */ }
                 }
             },
         };

@@ -359,7 +359,7 @@ describe('createMemoryTool — capture mode', () => {
             expect(result).toEqual({ success: false, error: "Target 'repo' is not available." });
         });
 
-        it('returns error when no raw store is configured for target', async () => {
+        it('returns error when no candidate store is configured for target', async () => {
             const { tool } = createMemoryTool(
                 boundedStores,
                 captureOptions,
@@ -373,7 +373,7 @@ describe('createMemoryTool — capture mode', () => {
 
             expect(result).toEqual({
                 success: false,
-                error: "No raw store configured for target 'system'.",
+                error: "No candidate store configured for target 'system'.",
             });
         });
     });
@@ -397,7 +397,7 @@ describe('createMemoryTool — capture mode', () => {
 
             expect(result).toEqual({
                 success: false,
-                error: 'Capture mode is enabled but no raw stores are configured.',
+                error: 'Capture mode is enabled but no candidate stores are configured.',
             });
         });
 

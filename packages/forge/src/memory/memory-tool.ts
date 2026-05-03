@@ -6,14 +6,15 @@
  *
  *  - `bounded` (default) — direct MEMORY.md mutation, retained for
  *    internal reconciliation flows and backward compatibility.
- *  - `capture` — chat-time mode where `add` appends a raw record to
- *    a RawMemoryRecordStore and returns a success payload without
- *    changing MEMORY.md. `replace`/`remove` are disabled until the
- *    queued reconciler is implemented.
+ *  - `capture` — chat-time mode where `add` upserts a durable memory
+ *    candidate and returns a success payload without changing MEMORY.md.
+ *    `replace`/`remove` are disabled until explicit promotion is
+ *    implemented.
  */
 import { defineTool, Tool } from '../copilot-sdk-wrapper/types';
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { scanMemoryContent } from './memory-security-scanner';
+import type { MemoryCandidateStore } from './memory-candidate-store';
 import type { RawMemoryRecordStore } from './raw-memory-record-store';
 
 // ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ export interface MemoryToolOptions {
     writeFrequency?: MemoryWriteFrequency;
 }
 
-/** Extra context for capture mode — attached as metadata to raw records. */
+/** Extra context for capture mode — attached as candidate provenance. */
 export interface MemoryToolCaptureContext {
     /** Workspace identifier for provenance tracking */
     workspaceId?: string;
@@ -64,10 +65,16 @@ export type MemoryToolStores = {
     system?: BoundedMemoryStore;
 };
 
-/** Map of target name → RawMemoryRecordStore instance (for capture mode). */
+/** Legacy map of target name → RawMemoryRecordStore instance (for capture mode). */
 export type MemoryToolRawStores = {
     repo?: RawMemoryRecordStore;
     system?: RawMemoryRecordStore;
+};
+
+/** Map of target name → MemoryCandidateStore instance (for capture mode). */
+export type MemoryToolCandidateStores = {
+    repo?: MemoryCandidateStore;
+    system?: MemoryCandidateStore;
 };
 
 // ---------------------------------------------------------------------------
@@ -167,7 +174,9 @@ export function getMemorySchema(frequency?: MemoryWriteFrequency): string {
 export interface MemoryToolCaptureResult {
     success: true;
     message: string;
-    /** The raw record ID that was persisted */
+    /** The candidate ID that was persisted when candidate stores are configured */
+    candidateId?: string;
+    /** The persisted candidate ID, or the legacy raw record ID for older callers */
     recordId: string;
 }
 
@@ -179,7 +188,8 @@ export function createMemoryTool(
     stores: MemoryToolStores,
     options: MemoryToolOptions,
     captureConfig?: {
-        rawStores: MemoryToolRawStores;
+        candidateStores?: MemoryToolCandidateStores;
+        rawStores?: MemoryToolRawStores;
         context: MemoryToolCaptureContext;
     },
 ): { tool: Tool<MemoryToolArgs>; getWrittenFacts: () => string[] } {
@@ -273,7 +283,11 @@ export function createMemoryTool(
 
 async function handleCaptureMode(
     args: MemoryToolArgs,
-    captureConfig: { rawStores: MemoryToolRawStores; context: MemoryToolCaptureContext } | undefined,
+    captureConfig: {
+        candidateStores?: MemoryToolCandidateStores;
+        rawStores?: MemoryToolRawStores;
+        context: MemoryToolCaptureContext;
+    } | undefined,
     options: MemoryToolOptions,
     writtenFacts: string[],
 ): Promise<MemoryToolCaptureResult | { success: false; error: string }> {
@@ -281,7 +295,7 @@ async function handleCaptureMode(
     if (args.action === 'replace' || args.action === 'remove') {
         return {
             success: false,
-            error: `'${args.action}' is not supported in capture mode. Memory updates will be reconciled during aggregation.`,
+            error: `'${args.action}' is not supported in capture mode. Memory updates require explicit candidate promotion.`,
         };
     }
 
@@ -294,12 +308,7 @@ async function handleCaptureMode(
     }
 
     if (!captureConfig) {
-        return { success: false, error: 'Capture mode is enabled but no raw stores are configured.' };
-    }
-
-    const rawStore = captureConfig.rawStores[args.target];
-    if (!rawStore) {
-        return { success: false, error: `No raw store configured for target '${args.target}'.` };
+        return { success: false, error: 'Capture mode is enabled but no candidate stores are configured.' };
     }
 
     // Security scan before accepting
@@ -316,6 +325,32 @@ async function handleCaptureMode(
     // args.target is already 'repo' or 'system' — pass through directly
     const rawTarget = args.target;
 
+    const candidateStore = captureConfig.candidateStores?.[args.target];
+    if (candidateStore) {
+        const candidate = await candidateStore.upsertCandidate({
+            target: rawTarget,
+            content: trimmed,
+            source: options.source,
+            workspaceId: captureConfig.context.workspaceId ?? '',
+            processId: captureConfig.context.processId ?? null,
+            turnIndex: captureConfig.context.turnIndex ?? null,
+        });
+
+        writtenFacts.push(trimmed);
+
+        return {
+            success: true,
+            message: 'Memory candidate captured; memory will update after promotion.',
+            candidateId: candidate.id,
+            recordId: candidate.id,
+        };
+    }
+
+    const rawStore = captureConfig.rawStores?.[args.target];
+    if (!rawStore) {
+        return { success: false, error: `No candidate store configured for target '${args.target}'.` };
+    }
+
     const record = await rawStore.append({
         target: rawTarget,
         content: trimmed,
@@ -329,7 +364,7 @@ async function handleCaptureMode(
 
     return {
         success: true,
-        message: 'Memory candidate captured; memory will update after aggregation.',
+        message: 'Memory candidate captured; memory will update after promotion.',
         recordId: record.id,
     };
 }

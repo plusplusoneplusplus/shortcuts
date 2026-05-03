@@ -1,8 +1,8 @@
 /**
- * PipelineStatusStrip — compact status indicator for the raw-memory aggregation pipeline.
+ * PipelineStatusStrip — compact status indicator for the memory candidate pipeline.
  *
- * Displays pending record count, consolidation status, and last-run time.
- * Hidden when there is no raw-record database yet (pendingRawCount is undefined/null).
+ * Displays pending candidate count, consolidation status, and last-run time.
+ * Hidden when there is no candidate database yet (pendingRawCount is undefined/null).
  */
 
 import { formatRelativeTime } from '../../utils/format';
@@ -15,7 +15,7 @@ export interface PipelineStatusStripProps {
 export function PipelineStatusStrip({ stats }: PipelineStatusStripProps) {
     if (!stats) return null;
 
-    // Hide strip if there's no raw-record data at all (no pending, no claimed, never aggregated)
+    // Hide strip if there's no candidate data at all (no pending, no active task, never run)
     const hasRawPipeline =
         stats.pendingRawCount > 0 ||
         stats.claimedRawCount > 0 ||

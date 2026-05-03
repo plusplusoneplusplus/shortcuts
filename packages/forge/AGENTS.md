@@ -45,7 +45,8 @@ Bounded, file-backed memory that lets AI chat sessions learn from past interacti
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
-| `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`. Hermes-style: capacity-aware, duplicate-preventing, security scanning via store. Takes `MemoryToolStores` map (memory→repo store, system→global store). |
+| `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`; capture mode routes `add` into durable memory candidates without mutating `MEMORY.md`. |
+| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content dedupe, signal counts, provenance, and one-time migration from pending legacy raw records. |
 
 ### Usage Pattern
 

@@ -166,12 +166,12 @@ export const memoryApi = {
 
     // ── Raw DB browser ───────────────────────────────────────────────────────
 
-    /** List tables in the repo's raw-memory.db with row counts. */
+    /** List tables in the repo's memory candidate database with row counts. */
     getRawDbTables(repoId: string): Promise<{ tables: DbBrowserTable[] }> {
         return getSpaCocClient().dbBrowser.listTables('repo-raw-memory-db', { repoId });
     },
 
-    /** Read paginated rows from a specific table in the repo's raw-memory.db. */
+    /** Read paginated rows from a specific candidate database table. */
     getRawDbTable(
         repoId: string,
         tableName: string,

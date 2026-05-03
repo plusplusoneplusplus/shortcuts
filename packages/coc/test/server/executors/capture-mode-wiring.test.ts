@@ -6,7 +6,7 @@
  *   captureContext to buildBoundedMemoryAddon
  * - FollowUpExecutor passes captureContext with correct turnIndex
  * - Addon dispose() is called after execution completes
- * - Aggregate finalization drains raw candidates without rewriting bounded memory
+ * - Aggregate finalization retains candidates without rewriting bounded memory
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
@@ -213,7 +213,7 @@ describe('Executor capture-mode wiring', () => {
 // Test: MemoryAggregateExecutor finalization
 // ============================================================================
 
-describe('MemoryAggregateExecutor — non-destructive batch finalization', () => {
+describe('MemoryAggregateExecutor — non-destructive candidate finalization', () => {
     let tmpDir: string;
     let mockAiService: any;
 
@@ -254,16 +254,16 @@ describe('MemoryAggregateExecutor — non-destructive batch finalization', () =>
         }
     }
 
-    async function getRawRecordStats(workspaceId: string): Promise<any> {
-        const { RawMemoryRecordStore } = require('@plusplusoneplusplus/forge');
+    async function getCandidateStats(workspaceId: string): Promise<any> {
+        const { MemoryCandidateStore } = require('@plusplusoneplusplus/forge');
         const dbPath = path.join(tmpDir, 'repos', workspaceId, 'memory', 'raw-memory.db');
-        const rawStore = new RawMemoryRecordStore({ dbPath });
-        const stats = await rawStore.getStats();
-        rawStore.close();
+        const candidateStore = new MemoryCandidateStore({ dbPath });
+        const stats = await candidateStore.getStats();
+        candidateStore.close();
         return stats;
     }
 
-    it('marks batch as dropped without invoking AI', async () => {
+    it('retains candidates without invoking AI', async () => {
         const { MemoryAggregateExecutor } = await import('../../../src/server/memory/memory-aggregate-executor');
         const wsId = 'ws-drop-only';
 
@@ -284,20 +284,20 @@ describe('MemoryAggregateExecutor — non-destructive batch finalization', () =>
 
         expect(result.success).toBe(true);
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
-        await expect(getRawRecordStats(wsId)).resolves.toMatchObject({ dropped: 1 });
+        await expect(getCandidateStats(wsId)).resolves.toMatchObject({ pending: 1, dropped: 0 });
     });
 
-    it('releases batch on unexpected errors in catch block', async () => {
+    it('surfaces unexpected candidate store errors without changing legacy raw rows', async () => {
         const { MemoryAggregateExecutor } = await import('../../../src/server/memory/memory-aggregate-executor');
-        const { RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
+        const { MemoryCandidateStore, RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
         const wsId = 'ws-catch-release';
 
         seedRawRecords(wsId, ['A fact']);
         seedBoundedMemory(wsId, []);
 
-        const markDroppedSpy = vi
-            .spyOn(RawMemoryRecordStore.prototype, 'markDropped')
-            .mockRejectedValueOnce(new Error('Unexpected finalization failure'));
+        const listPendingSpy = vi
+            .spyOn(MemoryCandidateStore.prototype, 'listPendingCandidates')
+            .mockRejectedValueOnce(new Error('Unexpected candidate read failure'));
 
         const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
         const result = await executor.execute({
@@ -312,11 +312,11 @@ describe('MemoryAggregateExecutor — non-destructive batch finalization', () =>
         } as any);
 
         expect(result.success).toBe(false);
-        expect(markDroppedSpy).toHaveBeenCalledTimes(1);
+        expect(listPendingSpy).toHaveBeenCalledTimes(1);
 
-        markDroppedSpy.mockRestore();
+        listPendingSpy.mockRestore();
 
-        // Records should be back to pending (released by catch block)
+        // Legacy raw rows remain pending because candidate reads are non-destructive.
         const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
         const rawStore = new RawMemoryRecordStore({
             dbPath: path.join(memDir, 'raw-memory.db'),

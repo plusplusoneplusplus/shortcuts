@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { RawMemoryRecordStore, BoundedMemoryStore, ENTRY_DELIMITER } from '@plusplusoneplusplus/forge';
+import { RawMemoryRecordStore, MemoryCandidateStore, BoundedMemoryStore, ENTRY_DELIMITER } from '@plusplusoneplusplus/forge';
 import { MemoryAggregateExecutor } from '../../../src/server/memory/memory-aggregate-executor';
 import type { MemoryAggregatePayload } from '../../../src/server/tasks/task-types';
 
@@ -88,15 +88,15 @@ describe('MemoryAggregateExecutor', () => {
     }
 
     async function readRepoStats(workspaceId: string) {
-        const rawStore = new RawMemoryRecordStore({
+        const candidateStore = new MemoryCandidateStore({
             dbPath: path.join(repoMemoryDir(workspaceId), 'raw-memory.db'),
         });
-        const stats = await rawStore.getStats();
-        rawStore.close();
+        const stats = await candidateStore.getStats();
+        candidateStore.close();
         return stats;
     }
 
-    it('drains pending raw records without invoking AI or rewriting bounded MEMORY.md', async () => {
+    it('retains pending candidates without invoking AI or rewriting bounded MEMORY.md', async () => {
         const wsId = 'ws-preserve';
         const originalMemory = [
             '  Existing fact with intentional spacing  ',
@@ -110,15 +110,15 @@ describe('MemoryAggregateExecutor', () => {
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
-        expect(result.result).toBe('Automatic memory aggregation disabled; dropped 2 raw records');
+        expect(result.result).toBe('Memory promotion pending; retained 2 candidate(s)');
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(readBoundedMemoryRaw(wsId)).toBe(originalMemory);
 
         const stats = await readRepoStats(wsId);
-        expect(stats.pending).toBe(0);
-        expect(stats.claimed).toBe(0);
-        expect(stats.aggregated).toBe(0);
-        expect(stats.dropped).toBe(2);
+        expect(stats.pending).toBe(2);
+        expect(stats.promoted).toBe(0);
+        expect(stats.dropped).toBe(0);
+        expect(stats.ignored).toBe(0);
     });
 
     it('does not call setEntries when pending raw candidates exist', async () => {
@@ -136,7 +136,7 @@ describe('MemoryAggregateExecutor', () => {
         setEntriesSpy.mockRestore();
     });
 
-    it('returns early when no pending records exist', async () => {
+    it('returns early when no pending candidates exist', async () => {
         const wsId = 'ws-empty';
         setupRepoDir(wsId);
         const rawStore = new RawMemoryRecordStore({
@@ -148,12 +148,12 @@ describe('MemoryAggregateExecutor', () => {
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
-        expect(result.result).toBe('No pending records');
+        expect(result.result).toBe('No pending candidates');
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(fs.existsSync(repoMemoryFile(wsId))).toBe(false);
     });
 
-    it('system-scope aggregation drains only the system raw store and preserves system MEMORY.md', async () => {
+    it('system-scope aggregation reads only system candidates and preserves system MEMORY.md', async () => {
         const wsId = 'ws-sys';
         const systemDir = path.join(tmpDir, 'memory', 'system');
         const systemMemoryPath = path.join(systemDir, 'MEMORY.md');
@@ -181,12 +181,12 @@ describe('MemoryAggregateExecutor', () => {
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(fs.readFileSync(systemMemoryPath, 'utf-8')).toBe('Global preference: light theme');
 
-        const systemRaw = new RawMemoryRecordStore({
+        const systemRaw = new MemoryCandidateStore({
             dbPath: path.join(systemDir, 'raw-memory.db'),
         });
         const systemStats = await systemRaw.getStats();
         systemRaw.close();
-        expect(systemStats.dropped).toBe(1);
+        expect(systemStats.pending).toBe(1);
 
         const repoStats = await readRepoStats(wsId);
         expect(repoStats.pending).toBe(1);

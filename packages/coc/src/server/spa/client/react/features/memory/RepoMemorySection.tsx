@@ -3,7 +3,7 @@
  *
  * Shows two sub-tabs:
  *   1. Bounded Memory — the MEMORY.md viewer/editor
- *   2. Raw Records   — read-only browser for raw-memory.db
+ *   2. Raw Records   — read-only browser for the candidate database
  */
 
 import { useState } from 'react';

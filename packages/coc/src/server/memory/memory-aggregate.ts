@@ -1,6 +1,5 @@
 /**
- * Memory Aggregate — prompts, config, and helper types for queued
- * raw-to-bounded memory promotion.
+ * Memory Aggregate — config and helper types for queued candidate promotion.
  *
  * Automatic full-list reconciliation is disabled. These helpers describe
  * the append-only candidate-selection prompt shape for future promotion work.
@@ -11,7 +10,7 @@ import type { ReconciliationContext } from '@plusplusoneplusplus/forge';
 // ── Configuration ──────────────────────────────────────────────────
 
 export interface MemoryAggregateConfig {
-    /** Maximum raw records to claim per batch (default: 50). */
+    /** Maximum pending candidates to inspect per run (default: 50). */
     batchSize: number;
     /** Timeout for the AI reconciliation call in ms (default: 90_000). */
     timeoutMs: number;
@@ -30,7 +29,7 @@ export const DEFAULT_AGGREGATE_CONFIG: MemoryAggregateConfig = {
 /**
  * Build the system message for a promotion AI call.
  *
- * Provides the current bounded entries and candidate raw records as structured
+ * Provides the current bounded entries and pending candidates as structured
  * context so the AI can select only new entries worth appending.
  */
 export function buildAggregateSystemMessage(ctx: ReconciliationContext): string {

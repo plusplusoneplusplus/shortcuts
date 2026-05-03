@@ -7,7 +7,7 @@
  * from the standard process SSE endpoint. Supports cross-tab awareness:
  * if a consolidation is already running, the panel picks it up automatically.
  *
- * The executor applies reconciliation directly — no accept/revert review step.
+ * The executor currently observes durable candidates without rewriting bounded memory.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,7 +18,7 @@ import { useModels } from '../../hooks/useModels';
 
 interface AggregatePanelProps {
     repoId: string;
-    /** Pending raw-record count (from overview stats). */
+    /** Pending candidate count (from overview stats; legacy field name). */
     pendingRawCount?: number;
     /** Server-reported consolidation status (from stats). */
     consolidationStatus?: 'idle' | 'queued' | 'running';
@@ -263,7 +263,7 @@ export function AggregatePanel({
                     <>
                         <div className="flex items-center gap-4 mb-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                             <span className="text-[#848484]">
-                                {pendingRawCount != null ? `${pendingRawCount} pending record${pendingRawCount !== 1 ? 's' : ''}` : 'Loading…'}
+                                {pendingRawCount != null ? `${pendingRawCount} pending candidate${pendingRawCount !== 1 ? 's' : ''}` : 'Loading…'}
                             </span>
                             <div className="flex items-center gap-1.5 ml-auto">
                                 <span className="text-[#848484]">Model:</span>
@@ -305,7 +305,7 @@ export function AggregatePanel({
 
                 {phase === 'done' && (
                     <div className="text-xs text-green-600 dark:text-green-400 py-2 text-center" data-testid="aggregate-done">
-                        ✓ Aggregation complete. Bounded memory has been updated.
+                        ✓ Candidate review complete. Bounded memory was not changed.
                     </div>
                 )}
             </div>

@@ -1,5 +1,5 @@
 /**
- * RawMemoryViewer — read-only browser for the repo's raw-memory.db.
+ * RawMemoryViewer — read-only browser for the repo's memory candidate database.
  *
  * Shows a table list sidebar with row counts, a paginated data grid,
  * sortable columns, and expandable long/JSON cells.
