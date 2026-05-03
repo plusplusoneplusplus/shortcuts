@@ -191,7 +191,7 @@ describe('background-review', () => {
 
         it('returns false for other kinds', () => {
             expect(isBackgroundReviewPayload({ kind: 'chat' })).toBe(false);
-            expect(isBackgroundReviewPayload({ kind: 'memory-aggregate' })).toBe(false);
+            expect(isBackgroundReviewPayload({ kind: 'memory-promote' })).toBe(false);
             expect(isBackgroundReviewPayload({})).toBe(false);
         });
     });

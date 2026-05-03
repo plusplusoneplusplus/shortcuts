@@ -3,7 +3,7 @@
  *
  * Shows MEMORY.md content for the current repo's workspace with
  * capacity bar, pipeline status strip, and inline editor.
- * Includes an "Aggregate Now" toolbar button that opens the AggregatePanel dialog.
+ * Includes a "Promote Memory" toolbar button that opens the promotion dialog.
  */
 
 import { useState, useEffect, useCallback, useContext } from 'react';
@@ -13,7 +13,7 @@ import { CapacityBar } from '../../ui/CapacityBar';
 import { ToastContext } from '../../contexts/ToastContext';
 import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../hooks/preferences/preferencesApi';
 import { PipelineStatusStrip } from './PipelineStatusStrip';
-import { AggregatePanel } from './AggregatePanel';
+import { PromotePanel } from './PromotePanel';
 
 interface BoundedMemoryTabProps {
     repoId: string;
@@ -42,7 +42,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
 
     // Pipeline overview state
     const [overviewStats, setOverviewStats] = useState<MemoryStats | null>(null);
-    const [aggregatePanelOpen, setAggregatePanelOpen] = useState(false);
+    const [promotePanelOpen, setPromotePanelOpen] = useState(false);
 
     const fetchOverview = useCallback(async () => {
         try {
@@ -83,8 +83,8 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     useEffect(() => { fetchContent(); }, [fetchContent]);
     useEffect(() => { if (enabled) fetchOverview(); }, [enabled, fetchOverview]);
 
-    const handleAggregateClose = () => setAggregatePanelOpen(false);
-    const handleAggregateDone = () => {
+    const handlePromoteClose = () => setPromotePanelOpen(false);
+    const handlePromoteDone = () => {
         fetchContent();
         fetchOverview();
     };
@@ -292,11 +292,11 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 </button>
                 {enabled && !editing && (
                     <button
-                        onClick={() => setAggregatePanelOpen(true)}
+                        onClick={() => setPromotePanelOpen(true)}
                         className="text-xs px-2.5 py-1 rounded border border-[#0078d4]/60 text-[#0078d4] hover:bg-[#0078d4]/10 transition-colors"
                         data-testid="bounded-aggregate-btn"
                     >
-                        Aggregate Now ▶
+                        Promote Memory ▶
                     </button>
                 )}
                 {!editing ? (
@@ -378,16 +378,16 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 )}
             </div>
 
-            {/* Aggregate panel dialog */}
-            {aggregatePanelOpen && (
-                <AggregatePanel
+            {/* Promotion panel dialog */}
+            {promotePanelOpen && (
+                <PromotePanel
                     repoId={repoId}
                     pendingRawCount={overviewStats?.pendingRawCount}
-                    consolidationStatus={overviewStats?.consolidationStatus}
-                    consolidationProcessId={overviewStats?.consolidationProcessId}
-                    consolidationTaskId={overviewStats?.consolidationTaskId}
-                    onClose={handleAggregateClose}
-                    onDone={handleAggregateDone}
+                    promotionStatus={overviewStats?.promotionStatus ?? overviewStats?.consolidationStatus}
+                    promotionProcessId={overviewStats?.promotionProcessId ?? overviewStats?.consolidationProcessId}
+                    promotionTaskId={overviewStats?.promotionTaskId ?? overviewStats?.consolidationTaskId}
+                    onClose={handlePromoteClose}
+                    onDone={handlePromoteDone}
                 />
             )}
         </div>

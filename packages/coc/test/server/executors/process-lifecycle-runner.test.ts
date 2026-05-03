@@ -422,11 +422,11 @@ describe('ProcessLifecycleRunner — metadata.workspaceId from task.repoId', () 
         expect(proc?.metadata?.workspaceId).toBe('ws-workflows');
     });
 
-    it('falls back to task.repoId for memory-aggregate payload', async () => {
+    it('falls back to task.repoId for memory-promote payload', async () => {
         const task = makeTask({
-            type: 'memory-aggregate',
+            type: 'memory-promote',
             payload: {
-                kind: 'memory-aggregate',
+                kind: 'memory-promote',
                 repoId: 'ws-mem',
                 sources: ['notes'],
             } as any,

@@ -58,7 +58,7 @@ function createFakeStore(workspaces: Array<{ id: string; rootPath: string }> = [
     } as any;
 }
 
-describe('repo-memory-handler aggregate routes', () => {
+describe('repo-memory-handler promotion routes', () => {
     let tmpDir: string;
     const wsId = 'ws-test-1';
     const wsRoot = '/fake/repo';
@@ -111,22 +111,23 @@ describe('repo-memory-handler aggregate routes', () => {
             expect(body.claimedRawCount).toBe(0);
         });
 
-        it('reports consolidation status idle when no queue tasks exist', async () => {
+        it('reports promotion status idle when no queue tasks exist', async () => {
             const { router } = setup();
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);
             const body = res.json();
+            expect(body.promotionStatus).toBe('idle');
+            expect(body.promotionTaskId).toBeUndefined();
+            expect(body.promotionProcessId).toBeUndefined();
             expect(body.consolidationStatus).toBe('idle');
-            expect(body.consolidationTaskId).toBeUndefined();
-            expect(body.consolidationProcessId).toBeUndefined();
         });
 
-        it('reports consolidation status queued when a queued task exists', async () => {
+        it('reports promotion status queued when a queued task exists', async () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'agg-1',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'queued',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now(),
                 processId: 'proc-1',
                 priority: 'low',
@@ -136,18 +137,19 @@ describe('repo-memory-handler aggregate routes', () => {
             const { router } = setup({ queueManager: qm });
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);
             const body = res.json();
+            expect(body.promotionStatus).toBe('queued');
+            expect(body.promotionTaskId).toBe('agg-1');
+            expect(body.promotionProcessId).toBe('proc-1');
             expect(body.consolidationStatus).toBe('queued');
-            expect(body.consolidationTaskId).toBe('agg-1');
-            expect(body.consolidationProcessId).toBe('proc-1');
         });
 
-        it('reports consolidation status running when a running task exists', async () => {
+        it('reports promotion status running when a running task exists', async () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'agg-r',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'running',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now(),
                 processId: 'proc-r',
                 priority: 'low',
@@ -157,18 +159,19 @@ describe('repo-memory-handler aggregate routes', () => {
             const { router } = setup({ queueManager: qm });
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);
             const body = res.json();
+            expect(body.promotionStatus).toBe('running');
+            expect(body.promotionTaskId).toBe('agg-r');
             expect(body.consolidationStatus).toBe('running');
-            expect(body.consolidationTaskId).toBe('agg-r');
         });
 
-        it('reports lastAggregatedAt from most recent completed task', async () => {
+        it('reports lastPromotedAt from most recent completed task', async () => {
             const qm = createFakeQueueManager();
             const completedAt = Date.now() - 5000;
             qm._addExisting({
                 id: 'agg-done',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'completed',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: completedAt - 10000,
                 completedAt,
                 priority: 'low',
@@ -178,17 +181,18 @@ describe('repo-memory-handler aggregate routes', () => {
             const { router } = setup({ queueManager: qm });
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);
             const body = res.json();
-            expect(body.consolidationStatus).toBe('idle');
+            expect(body.promotionStatus).toBe('idle');
+            expect(body.lastPromotedAt).toBe(new Date(completedAt).toISOString());
             expect(body.lastAggregatedAt).toBe(new Date(completedAt).toISOString());
         });
 
-        it('reports lastAggregateError from most recent failed task', async () => {
+        it('reports lastPromotionError from most recent failed task', async () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'agg-fail',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'failed',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now() - 10000,
                 error: 'AI model not available',
                 priority: 'low',
@@ -198,6 +202,7 @@ describe('repo-memory-handler aggregate routes', () => {
             const { router } = setup({ queueManager: qm });
             const res = await router.get(`/api/repos/${wsId}/memory/overview`);
             const body = res.json();
+            expect(body.lastPromotionError).toBe('AI model not available');
             expect(body.lastAggregateError).toBe('AI model not available');
         });
 
@@ -222,7 +227,7 @@ describe('repo-memory-handler aggregate routes', () => {
         });
     });
 
-    // ── POST aggregate: manual trigger ──────────────────────────────────
+    // ── POST aggregate: legacy promotion trigger ────────────────────────
 
     describe('POST /api/repos/:repoId/memory/aggregate', () => {
         it('enqueues a new task and returns 200 with queued status', async () => {
@@ -235,10 +240,13 @@ describe('repo-memory-handler aggregate routes', () => {
 
             expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
             const call = queueManager.enqueue.mock.calls[0][0];
-            expect(call.type).toBe('memory-aggregate');
+            expect(call.type).toBe('memory-promote');
+            expect(call.payload.kind).toBe('memory-promote');
             expect(call.payload.workspaceId).toBe(wsId);
             expect(call.payload.target).toBe('memory');
             expect(call.payload.trigger).toBe('manual');
+            expect(call.displayName).toBe('Memory promotion (memory)');
+            expect(body.operation).toBe('promotion');
             expect(call.priority).toBe('low');
         });
 
@@ -267,9 +275,9 @@ describe('repo-memory-handler aggregate routes', () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'existing-q',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'queued',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now(),
                 processId: 'proc-existing',
                 priority: 'low',
@@ -281,6 +289,7 @@ describe('repo-memory-handler aggregate routes', () => {
             expect(res.status).toBe(409);
             const body = res.json();
             expect(body.status).toBe('already-queued');
+            expect(body.operation).toBe('promotion');
             expect(body.taskId).toBe('existing-q');
             expect(body.processId).toBe('proc-existing');
             expect(qm.enqueue).not.toHaveBeenCalled();
@@ -290,9 +299,9 @@ describe('repo-memory-handler aggregate routes', () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'existing-r',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'running',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now(),
                 processId: 'proc-running',
                 priority: 'low',
@@ -311,9 +320,9 @@ describe('repo-memory-handler aggregate routes', () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'done-task',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'completed',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now() - 10000,
                 priority: 'low',
                 config: {},
@@ -330,9 +339,9 @@ describe('repo-memory-handler aggregate routes', () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'fail-task',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'failed',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now() - 10000,
                 error: 'some error',
                 priority: 'low',
@@ -364,9 +373,9 @@ describe('repo-memory-handler aggregate routes', () => {
             const qm = createFakeQueueManager();
             qm._addExisting({
                 id: 'existing-mem',
-                type: 'memory-aggregate',
+                type: 'memory-promote',
                 status: 'queued',
-                payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+                payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
                 createdAt: Date.now(),
                 priority: 'low',
                 config: {},

@@ -140,9 +140,9 @@ export const memoryApi = {
         return getSpaCocClient().memory.getRepoOverview(repoId);
     },
 
-    /** Enqueue a memory-aggregate task. Returns { taskId, status } or 409 with already-queued/already-running. */
-    aggregate(repoId: string, model?: string, target?: string): Promise<{ taskId: string; processId: string | null; status: string }> {
-        return getSpaCocClient().memory.aggregateRepo(repoId, { model, target });
+    /** Enqueue a memory promotion task. Returns { taskId, status } or 409 with already-queued/already-running. */
+    promote(repoId: string, model?: string, target?: string): Promise<{ taskId: string; processId: string | null; operation?: 'promotion'; status: string }> {
+        return getSpaCocClient().memory.promoteRepo(repoId, { model, target });
     },
 
     /** Read the consolidated (bounded) MEMORY.md content for a workspace. */

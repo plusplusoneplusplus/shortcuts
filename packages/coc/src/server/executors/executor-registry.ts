@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryAggregatePayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -21,7 +21,7 @@ import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 import { BackgroundReviewExecutor } from '../memory/background-review-executor';
-import { MemoryAggregateExecutor } from '../memory/memory-aggregate-executor';
+import { MemoryPromoteExecutor } from '../memory/memory-promote-executor';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -49,7 +49,7 @@ export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
     readonly runner: ProcessLifecycleRunner;
     readonly backgroundReviewExecutor: BackgroundReviewExecutor;
-    readonly memoryAggregateExecutor: MemoryAggregateExecutor | undefined;
+    readonly memoryPromoteExecutor: MemoryPromoteExecutor | undefined;
 
     private readonly store: ProcessStore;
     private readonly approvePermissions: boolean;
@@ -105,8 +105,8 @@ export class ExecutorRegistry {
             options.aiService,
             options.getMemoryStore ?? (() => undefined),
         );
-        this.memoryAggregateExecutor = options.dataDir
-            ? new MemoryAggregateExecutor(options.aiService, options.dataDir)
+        this.memoryPromoteExecutor = options.dataDir
+            ? new MemoryPromoteExecutor(options.aiService, options.dataDir)
             : undefined;
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview);
     }
@@ -114,9 +114,9 @@ export class ExecutorRegistry {
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {
         if (isBackgroundReviewPayload(task.payload)) return this.backgroundReviewExecutor.execute(task);
-        if (isMemoryAggregatePayload(task.payload)) {
-            if (this.memoryAggregateExecutor) return this.memoryAggregateExecutor.execute(task);
-            return { status: 'completed', message: 'memory-aggregate: no dataDir configured' };
+        if (isMemoryPromotePayload(task.payload)) {
+            if (this.memoryPromoteExecutor) return this.memoryPromoteExecutor.execute(task);
+            return { status: 'completed', message: 'memory-promote: no dataDir configured' };
         }
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);

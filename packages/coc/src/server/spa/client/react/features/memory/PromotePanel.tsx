@@ -1,13 +1,13 @@
 /**
- * AggregatePanel — queue-based memory aggregation trigger.
+ * PromotePanel — queue-based memory promotion trigger.
  *
  * Phases: idle → submitting → queued → streaming → done
  *
- * The panel enqueues a memory-aggregate task via POST, then streams output
+ * The panel enqueues a memory-promote task via POST, then streams output
  * from the standard process SSE endpoint. Supports cross-tab awareness:
- * if a consolidation is already running, the panel picks it up automatically.
+ * if a promotion is already running, the panel picks it up automatically.
  *
- * The executor currently observes durable candidates without rewriting bounded memory.
+ * The executor promotes durable candidates without rewriting bounded memory.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,31 +16,31 @@ import { memoryApi } from './memoryApi';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useModels } from '../../hooks/useModels';
 
-interface AggregatePanelProps {
+interface PromotePanelProps {
     repoId: string;
     /** Pending candidate count (from overview stats; legacy field name). */
     pendingRawCount?: number;
-    /** Server-reported consolidation status (from stats). */
-    consolidationStatus?: 'idle' | 'queued' | 'running';
+    /** Server-reported promotion status (from stats). */
+    promotionStatus?: 'idle' | 'queued' | 'running';
     /** Active processId from server stats (for cross-tab awareness). */
-    consolidationProcessId?: string;
+    promotionProcessId?: string;
     /** Active taskId from server stats (for cancellation). */
-    consolidationTaskId?: string;
+    promotionTaskId?: string;
     onClose: () => void;
     onDone: () => void;
 }
 
 type AggregatePhase = 'idle' | 'submitting' | 'queued' | 'streaming' | 'done';
 
-export function AggregatePanel({
+export function PromotePanel({
     repoId,
     pendingRawCount,
-    consolidationStatus,
-    consolidationProcessId,
-    consolidationTaskId,
+    promotionStatus,
+    promotionProcessId,
+    promotionTaskId,
     onClose,
     onDone,
-}: AggregatePanelProps) {
+}: PromotePanelProps) {
     const { models: modelInfos } = useModels();
     const enabledModels = modelInfos.filter(m => m.enabled);
     const modelIds = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
@@ -73,16 +73,16 @@ export function AggregatePanel({
     // Cross-tab awareness: pick up running/queued tasks on mount
     useEffect(() => {
         if (phase !== 'idle') return;
-        if (consolidationStatus === 'running' && consolidationProcessId) {
-            setProcessId(consolidationProcessId);
-            setTaskId(consolidationTaskId ?? null);
+        if (promotionStatus === 'running' && promotionProcessId) {
+            setProcessId(promotionProcessId);
+            setTaskId(promotionTaskId ?? null);
             setPhase('streaming');
-        } else if (consolidationStatus === 'queued' && consolidationProcessId) {
-            setProcessId(consolidationProcessId);
-            setTaskId(consolidationTaskId ?? null);
+        } else if (promotionStatus === 'queued' && promotionProcessId) {
+            setProcessId(promotionProcessId);
+            setTaskId(promotionTaskId ?? null);
             setPhase('queued');
         }
-    }, [consolidationStatus, consolidationProcessId, consolidationTaskId, phase]);
+    }, [promotionStatus, promotionProcessId, promotionTaskId, phase]);
 
     // Start SSE streaming when entering streaming phase
     const startStreaming = useCallback((pid: string) => {
@@ -123,12 +123,14 @@ export function AggregatePanel({
         const poll = setInterval(async () => {
             try {
                 const stats = await memoryApi.getOverview(repoId);
-                if (stats.consolidationStatus === 'running') {
-                    if (stats.consolidationProcessId) {
-                        setProcessId(stats.consolidationProcessId);
+                const status = stats.promotionStatus ?? stats.consolidationStatus;
+                const activeProcessId = stats.promotionProcessId ?? stats.consolidationProcessId;
+                if (status === 'running') {
+                    if (activeProcessId) {
+                        setProcessId(activeProcessId);
                     }
                     setPhase('streaming');
-                } else if (!stats.consolidationStatus || stats.consolidationStatus === 'idle') {
+                } else if (!status || status === 'idle') {
                     setPhase('done');
                     onDone();
                 }
@@ -146,7 +148,7 @@ export function AggregatePanel({
                 setPhase('done');
                 onDone();
             } else if (proc.status === 'failed') {
-                setError((proc as any).error ?? 'Aggregation failed');
+                setError((proc as any).error ?? 'Promotion failed');
                 setPhase('idle');
             } else {
                 // Still running — reconnect SSE
@@ -164,7 +166,7 @@ export function AggregatePanel({
         setError(null);
 
         try {
-            const result = await memoryApi.aggregate(repoId, model || undefined);
+            const result = await memoryApi.promote(repoId, model || undefined);
             if (result.status === 'already-running' || result.status === 'already-queued') {
                 setProcessId(result.processId);
                 setTaskId(result.taskId);
@@ -175,7 +177,7 @@ export function AggregatePanel({
             setProcessId(result.processId);
             setPhase('queued');
         } catch (e: any) {
-            setError(e?.message ?? 'Failed to enqueue');
+            setError(e?.message ?? 'Failed to enqueue promotion');
             setPhase('idle');
         }
     };
@@ -208,7 +210,7 @@ export function AggregatePanel({
                         className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="aggregate-run-btn"
                     >
-                        Aggregate Now ▶
+                         Promote Memory ▶
                     </button>
                 </>
             );
@@ -251,7 +253,7 @@ export function AggregatePanel({
         <Dialog
             open={true}
             onClose={onClose}
-            title="Aggregate Memory"
+            title="Promote Memory"
             className="max-w-[672px]"
             id="aggregate-panel"
             disableClose={isRunning}
@@ -305,7 +307,7 @@ export function AggregatePanel({
 
                 {phase === 'done' && (
                     <div className="text-xs text-green-600 dark:text-green-400 py-2 text-center" data-testid="aggregate-done">
-                        ✓ Candidate review complete. Bounded memory was not changed.
+                        ✓ Memory promotion complete.
                     </div>
                 )}
             </div>

@@ -10,26 +10,26 @@ import {
     MemoryPromptBuilder,
     ENTRY_DELIMITER,
 } from '@plusplusoneplusplus/forge';
-import { MemoryAggregateExecutor } from '../../../src/server/memory/memory-aggregate-executor';
-import type { MemoryAggregatePayload } from '../../../src/server/tasks/task-types';
+import { MemoryPromoteExecutor } from '../../../src/server/memory/memory-promote-executor';
+import type { MemoryPromotePayload } from '../../../src/server/tasks/task-types';
 
 function makeTmpDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'mem-agg-test-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'mem-promote-test-'));
 }
 
-function makePayload(overrides?: Partial<MemoryAggregatePayload>): MemoryAggregatePayload {
+function makePayload(overrides?: Partial<MemoryPromotePayload>): MemoryPromotePayload {
     return {
-        kind: 'memory-aggregate',
+        kind: 'memory-promote',
         workspaceId: 'ws-test',
         target: 'memory',
         ...overrides,
     };
 }
 
-function makeTask(payload: MemoryAggregatePayload, model?: string): QueuedTask {
+function makeTask(payload: MemoryPromotePayload, model?: string): QueuedTask {
     return {
-        id: 'task-agg-1',
-        type: 'memory-aggregate',
+        id: 'task-promote-1',
+        type: 'memory-promote',
         priority: 'low',
         status: 'running',
         createdAt: Date.now(),
@@ -39,7 +39,7 @@ function makeTask(payload: MemoryAggregatePayload, model?: string): QueuedTask {
     } as QueuedTask;
 }
 
-describe('MemoryAggregateExecutor', () => {
+describe('MemoryPromoteExecutor', () => {
     let tmpDir: string;
     let mockAiService: any;
 
@@ -121,14 +121,19 @@ describe('MemoryAggregateExecutor', () => {
         seedRawRecords(wsId, ['User prefers dark mode', 'Project uses pnpm']);
         seedBoundedMemory(wsId, originalMemory);
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
             message: 'Memory promotion pending; ranked 2 candidate(s), selected 0',
-            counts: { ranked: 2, promoted: 0, dropped: 0, ignored: 0, pending: 2 },
-            appended: 0,
+            ranked: 2,
+            promoted: 0,
+            dropped: 0,
+            ignored: 0,
+            pending: 2,
+            preservedExistingEntries: 2,
+            promotedCandidateIds: [],
         });
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(readBoundedMemoryRaw(wsId)).toBe(originalMemory);
@@ -148,7 +153,7 @@ describe('MemoryAggregateExecutor', () => {
         const replaceSpy = vi.spyOn(BoundedMemoryStore.prototype, 'replace');
         const removeSpy = vi.spyOn(BoundedMemoryStore.prototype, 'remove');
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
@@ -169,20 +174,25 @@ describe('MemoryAggregateExecutor', () => {
         });
         rawStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
             message: 'No pending candidates',
-            counts: { ranked: 0, promoted: 0, dropped: 0, ignored: 0, pending: 0 },
-            appended: 0,
+            ranked: 0,
+            promoted: 0,
+            dropped: 0,
+            ignored: 0,
+            pending: 0,
+            preservedExistingEntries: 0,
+            promotedCandidateIds: [],
         });
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(fs.existsSync(repoMemoryFile(wsId))).toBe(false);
     });
 
-    it('system-scope aggregation reads only system candidates and preserves system MEMORY.md', async () => {
+    it('system-scope promotion reads only system candidates and preserves system MEMORY.md', async () => {
         const wsId = 'ws-sys';
         const systemDir = path.join(tmpDir, 'memory', 'system');
         const systemMemoryPath = path.join(systemDir, 'MEMORY.md');
@@ -201,7 +211,7 @@ describe('MemoryAggregateExecutor', () => {
         rawStore.close();
         seedRawRecords(wsId, ['Repo-scoped fact']);
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(
             makeTask(makePayload({ workspaceId: wsId, target: 'system' })),
         );
@@ -226,7 +236,7 @@ describe('MemoryAggregateExecutor', () => {
         const wsId = 'ws-dur';
         seedRawRecords(wsId, ['Fact']);
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(typeof result.durationMs).toBe('number');
@@ -255,14 +265,19 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
             message: 'Memory promotion completed; ranked 1 candidate(s), promoted 1, dropped 0, ignored 0, pending 0, appended 1',
-            counts: { ranked: 1, promoted: 1, dropped: 0, ignored: 0, pending: 0 },
-            appended: 1,
+            ranked: 1,
+            promoted: 1,
+            dropped: 0,
+            ignored: 0,
+            pending: 0,
+            preservedExistingEntries: 2,
+            promotedCandidateIds: [candidate.id],
         });
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(readBoundedMemoryRaw(wsId)).toBe(
@@ -311,13 +326,18 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
-            counts: { ranked: 1, promoted: 0, dropped: 0, ignored: 1, pending: 0 },
-            appended: 0,
+            ranked: 1,
+            promoted: 0,
+            dropped: 0,
+            ignored: 1,
+            pending: 0,
+            preservedExistingEntries: 1,
+            promotedCandidateIds: [],
             ignoredReasons: {
                 [coveredCandidate.id]: 'already covered by bounded memory',
             },
@@ -353,7 +373,7 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId, target: 'memory' })));
 
         expect(result.success).toBe(true);
@@ -390,13 +410,18 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
-            counts: { ranked: 2, promoted: 1, dropped: 0, ignored: 1, pending: 0 },
-            appended: 1,
+            ranked: 2,
+            promoted: 1,
+            dropped: 0,
+            ignored: 1,
+            pending: 0,
+            preservedExistingEntries: 1,
+            promotedCandidateIds: [promotedCandidate.id],
             ignoredReasons: {
                 [droppedCandidate.id]: 'already covered by bounded memory',
             },
@@ -439,13 +464,18 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
-            counts: { ranked: 2, promoted: 1, dropped: 0, ignored: 0, pending: 1 },
-            appended: 1,
+            ranked: 2,
+            promoted: 1,
+            dropped: 0,
+            ignored: 0,
+            pending: 1,
+            preservedExistingEntries: 0,
+            promotedCandidateIds: [promotedCandidate.id],
         });
         await expect(readRepoCandidate(wsId, promotedCandidate.id)).resolves.toMatchObject({
             status: 'promoted',
@@ -471,13 +501,18 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
-            counts: { ranked: 1, promoted: 0, dropped: 1, ignored: 0, pending: 0 },
-            appended: 0,
+            ranked: 1,
+            promoted: 0,
+            dropped: 1,
+            ignored: 0,
+            pending: 0,
+            preservedExistingEntries: 0,
+            promotedCandidateIds: [],
         });
         expect((result.result as any).droppedReasons[droppedCandidate.id]).toContain('blocked by security scanner');
         expect(readBoundedMemoryRaw(wsId)).toBe('');
@@ -504,7 +539,7 @@ describe('MemoryAggregateExecutor', () => {
         });
         candidateStore.close();
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(false);

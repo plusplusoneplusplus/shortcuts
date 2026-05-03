@@ -210,15 +210,15 @@ describe('Executor capture-mode wiring', () => {
 });
 
 // ============================================================================
-// Test: MemoryAggregateExecutor finalization
+// Test: MemoryPromoteExecutor finalization
 // ============================================================================
 
-describe('MemoryAggregateExecutor — non-destructive candidate finalization', () => {
+describe('MemoryPromoteExecutor — non-destructive candidate finalization', () => {
     let tmpDir: string;
     let mockAiService: any;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-agg-drop-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-promote-drop-'));
         mockAiService = {
             sendMessage: vi.fn(),
         };
@@ -264,21 +264,21 @@ describe('MemoryAggregateExecutor — non-destructive candidate finalization', (
     }
 
     it('retains candidates without invoking AI', async () => {
-        const { MemoryAggregateExecutor } = await import('../../../src/server/memory/memory-aggregate-executor');
+        const { MemoryPromoteExecutor } = await import('../../../src/server/memory/memory-promote-executor');
         const wsId = 'ws-drop-only';
 
         seedRawRecords(wsId, ['Duplicate existing fact']);
         seedBoundedMemory(wsId, ['Duplicate existing fact']);
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute({
             id: 'task-drop-1',
-            type: 'memory-aggregate',
+            type: 'memory-promote',
             priority: 'low',
             status: 'running',
             createdAt: Date.now(),
             retryCount: 0,
-            payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+            payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
             config: {},
         } as any);
 
@@ -288,7 +288,7 @@ describe('MemoryAggregateExecutor — non-destructive candidate finalization', (
     });
 
     it('surfaces unexpected candidate store errors without changing legacy raw rows', async () => {
-        const { MemoryAggregateExecutor } = await import('../../../src/server/memory/memory-aggregate-executor');
+        const { MemoryPromoteExecutor } = await import('../../../src/server/memory/memory-promote-executor');
         const { MemoryCandidateStore, RawMemoryRecordStore } = await import('@plusplusoneplusplus/forge');
         const wsId = 'ws-catch-release';
 
@@ -299,15 +299,15 @@ describe('MemoryAggregateExecutor — non-destructive candidate finalization', (
             .spyOn(MemoryCandidateStore.prototype, 'listPendingCandidates')
             .mockRejectedValueOnce(new Error('Unexpected candidate read failure'));
 
-        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
         const result = await executor.execute({
             id: 'task-catch-1',
-            type: 'memory-aggregate',
+            type: 'memory-promote',
             priority: 'low',
             status: 'running',
             createdAt: Date.now(),
             retryCount: 0,
-            payload: { kind: 'memory-aggregate', workspaceId: wsId, target: 'memory' },
+            payload: { kind: 'memory-promote', workspaceId: wsId, target: 'memory' },
             config: {},
         } as any);
 

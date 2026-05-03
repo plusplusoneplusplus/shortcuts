@@ -46,19 +46,19 @@ describe('PipelineStatusStrip — hidden state', () => {
 // ---------------------------------------------------------------------------
 
 describe('PipelineStatusStrip — up to date', () => {
-    it('shows checkmark when no pending records and has lastAggregatedAt', () => {
+    it('shows checkmark when no pending records and has lastPromotedAt', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ lastAggregatedAt: '2024-01-15T10:00:00Z' })}
+                stats={makeStats({ lastPromotedAt: '2024-01-15T10:00:00Z' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
         expect(strip.dataset.status).toBe('up-to-date');
         expect(strip.textContent).toContain('Up to date');
-        expect(strip.textContent).toContain('Last run');
+        expect(strip.textContent).toContain('Last promotion');
     });
 
-    it('shows up-to-date without last-run when lastAggregatedAt is null but claimedRawCount > 0', () => {
+    it('shows up-to-date without last-promotion when lastPromotedAt is null but claimedRawCount > 0', () => {
         render(
             <PipelineStatusStrip
                 stats={makeStats({ claimedRawCount: 1 })}
@@ -66,7 +66,7 @@ describe('PipelineStatusStrip — up to date', () => {
         );
         const strip = screen.getByTestId('pipeline-status-strip');
         expect(strip.dataset.status).toBe('up-to-date');
-        expect(strip.textContent).not.toContain('Last run');
+        expect(strip.textContent).not.toContain('Last promotion');
     });
 });
 
@@ -87,14 +87,14 @@ describe('PipelineStatusStrip — pending idle', () => {
         expect(strip.textContent).toContain('idle');
     });
 
-    it('includes last-run time when available', () => {
+    it('includes last-promotion time when available', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 3, lastAggregatedAt: '2024-01-15T10:00:00Z' })}
+                stats={makeStats({ pendingRawCount: 3, lastPromotedAt: '2024-01-15T10:00:00Z' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
-        expect(strip.textContent).toContain('Last run');
+        expect(strip.textContent).toContain('Last promotion');
     });
 });
 
@@ -106,7 +106,7 @@ describe('PipelineStatusStrip — queued', () => {
     it('shows queued state with pending count', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 5, consolidationStatus: 'queued' })}
+                stats={makeStats({ pendingRawCount: 5, promotionStatus: 'queued' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
@@ -118,7 +118,7 @@ describe('PipelineStatusStrip — queued', () => {
     it('renders strip even with 0 pending when status is queued', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 0, consolidationStatus: 'queued' })}
+                stats={makeStats({ pendingRawCount: 0, promotionStatus: 'queued' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
@@ -134,25 +134,25 @@ describe('PipelineStatusStrip — running', () => {
     it('shows running state with claimed count', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 3, claimedRawCount: 2, consolidationStatus: 'running' })}
+                stats={makeStats({ pendingRawCount: 3, claimedRawCount: 2, promotionStatus: 'running' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
         expect(strip.dataset.status).toBe('running');
         expect(strip.textContent).toContain('3 pending');
         expect(strip.textContent).toContain('2 claimed');
-        expect(strip.textContent).toContain('▶ running');
+        expect(strip.textContent).toContain('▶ promoting');
     });
 
     it('renders strip with 0 pending when status is running', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 0, claimedRawCount: 0, consolidationStatus: 'running' })}
+                stats={makeStats({ pendingRawCount: 0, claimedRawCount: 0, promotionStatus: 'running' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
         expect(strip.dataset.status).toBe('running');
-        expect(strip.textContent).toContain('▶ running');
+        expect(strip.textContent).toContain('▶ promoting');
     });
 });
 
@@ -165,7 +165,7 @@ describe('PipelineStatusStrip — error', () => {
         const longError = 'A'.repeat(100);
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 5, lastAggregateError: longError })}
+                stats={makeStats({ pendingRawCount: 5, lastPromotionError: longError })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
@@ -178,7 +178,7 @@ describe('PipelineStatusStrip — error', () => {
     it('shows short error without truncation', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 1, lastAggregateError: 'Model unavailable' })}
+                stats={makeStats({ pendingRawCount: 1, lastPromotionError: 'Model unavailable' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');
@@ -186,10 +186,10 @@ describe('PipelineStatusStrip — error', () => {
         expect(strip.textContent).toContain('Model unavailable');
     });
 
-    it('ignores error when consolidation is running', () => {
+    it('ignores error when promotion is running', () => {
         render(
             <PipelineStatusStrip
-                stats={makeStats({ pendingRawCount: 1, lastAggregateError: 'stale error', consolidationStatus: 'running' })}
+                stats={makeStats({ pendingRawCount: 1, lastPromotionError: 'stale error', promotionStatus: 'running' })}
             />
         );
         const strip = screen.getByTestId('pipeline-status-strip');

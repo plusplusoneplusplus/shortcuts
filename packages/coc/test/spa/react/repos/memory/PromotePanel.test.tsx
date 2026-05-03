@@ -1,12 +1,12 @@
 /**
- * Tests for the AggregatePanel component.
+ * Tests for the PromotePanel component.
  * Covers model dropdown, cancel via cocClient.queue.cancel, and
  * process result fetching via cocClient.processes.get.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AggregatePanel } from '../../../../../src/server/spa/client/react/features/memory/AggregatePanel';
+import { PromotePanel } from '../../../../../src/server/spa/client/react/features/memory/PromotePanel';
 
 // Mock useModels hook
 const mockModels = [
@@ -22,7 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
 const mocks = vi.hoisted(() => ({
     memory: {
         getRepoOverview: vi.fn(),
-        aggregateRepo: vi.fn(),
+        promoteRepo: vi.fn(),
     },
     queue: {
         cancel: vi.fn(),
@@ -44,12 +44,12 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', async (impor
 beforeEach(() => {
     vi.restoreAllMocks();
     mocks.memory.getRepoOverview.mockReset();
-    mocks.memory.aggregateRepo.mockReset();
+    mocks.memory.promoteRepo.mockReset();
     mocks.queue.cancel.mockReset().mockResolvedValue({});
     mocks.processes.get.mockReset();
 });
 
-describe('AggregatePanel model dropdown', () => {
+describe('PromotePanel model dropdown', () => {
     const defaultProps = {
         repoId: 'ws-abc',
         onClose: vi.fn(),
@@ -57,13 +57,13 @@ describe('AggregatePanel model dropdown', () => {
     };
 
     it('renders a select dropdown instead of a text input', () => {
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         const select = screen.getByTestId('aggregate-model-select');
         expect(select.tagName).toBe('SELECT');
     });
 
     it('has a Default option as the first choice', () => {
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         const select = screen.getByTestId('aggregate-model-select') as HTMLSelectElement;
         const options = select.querySelectorAll('option');
         expect(options[0].value).toBe('');
@@ -71,7 +71,7 @@ describe('AggregatePanel model dropdown', () => {
     });
 
     it('shows only enabled models when some are enabled', () => {
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         const select = screen.getByTestId('aggregate-model-select') as HTMLSelectElement;
         const options = Array.from(select.querySelectorAll('option'));
         const modelOptions = options.filter(o => o.value !== '');
@@ -81,7 +81,7 @@ describe('AggregatePanel model dropdown', () => {
     });
 
     it('allows selecting a model from the dropdown', () => {
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         const select = screen.getByTestId('aggregate-model-select') as HTMLSelectElement;
         expect(select.value).toBe(''); // Default initially
         fireEvent.change(select, { target: { value: 'claude-haiku-4.5' } });
@@ -89,20 +89,20 @@ describe('AggregatePanel model dropdown', () => {
     });
 
     it('sends selected model when Run is clicked', async () => {
-        mocks.memory.aggregateRepo.mockResolvedValue({ processId: 'p1', taskId: 't1', status: 'queued' });
+        mocks.memory.promoteRepo.mockResolvedValue({ processId: 'p1', taskId: 't1', operation: 'promotion', status: 'queued' });
 
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         const select = screen.getByTestId('aggregate-model-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'claude-sonnet-4.6' } });
         fireEvent.click(screen.getByTestId('aggregate-run-btn'));
 
         await waitFor(() => {
-            expect(mocks.memory.aggregateRepo).toHaveBeenCalledWith('ws-abc', { model: 'claude-sonnet-4.6', target: undefined });
+            expect(mocks.memory.promoteRepo).toHaveBeenCalledWith('ws-abc', { model: 'claude-sonnet-4.6', target: undefined });
         });
     });
 });
 
-describe('AggregatePanel cancel', () => {
+describe('PromotePanel cancel', () => {
     const defaultProps = {
         repoId: 'ws-abc',
         onClose: vi.fn(),
@@ -110,9 +110,9 @@ describe('AggregatePanel cancel', () => {
     };
 
     it('uses cocClient.queue.cancel to cancel a queued task', async () => {
-        mocks.memory.aggregateRepo.mockResolvedValue({ processId: 'p1', taskId: 't-cancel', status: 'queued' });
+        mocks.memory.promoteRepo.mockResolvedValue({ processId: 'p1', taskId: 't-cancel', operation: 'promotion', status: 'queued' });
 
-        render(<AggregatePanel {...defaultProps} />);
+        render(<PromotePanel {...defaultProps} />);
         fireEvent.click(screen.getByTestId('aggregate-run-btn'));
 
         await waitFor(() => {
@@ -128,10 +128,10 @@ describe('AggregatePanel cancel', () => {
     });
 });
 
-describe('AggregatePanel fetchProcessResult', () => {
+describe('PromotePanel fetchProcessResult', () => {
     it('transitions to done when process is completed', async () => {
-        mocks.memory.aggregateRepo.mockResolvedValue({ processId: 'p-done', taskId: 't1', status: 'queued' });
-        mocks.memory.getRepoOverview.mockResolvedValue({ consolidationStatus: 'running', consolidationProcessId: 'p-done' });
+        mocks.memory.promoteRepo.mockResolvedValue({ processId: 'p-done', taskId: 't1', operation: 'promotion', status: 'queued' });
+        mocks.memory.getRepoOverview.mockResolvedValue({ promotionStatus: 'running', promotionProcessId: 'p-done' });
         mocks.processes.get.mockResolvedValue({ process: { status: 'completed' } });
 
         // Stub EventSource so the streaming phase doesn't throw in jsdom
@@ -143,9 +143,9 @@ describe('AggregatePanel fetchProcessResult', () => {
         });
 
         const onDone = vi.fn();
-        const { unmount } = render(<AggregatePanel repoId="ws-abc" onClose={vi.fn()} onDone={onDone} />);
+        const { unmount } = render(<PromotePanel repoId="ws-abc" onClose={vi.fn()} onDone={onDone} />);
 
-        // Start aggregation
+        // Start promotion
         await act(async () => {
             fireEvent.click(screen.getByTestId('aggregate-run-btn'));
         });
@@ -167,7 +167,7 @@ describe('AggregatePanel fetchProcessResult', () => {
         const fs = await import('fs');
         const path = await import('path');
         const source = fs.readFileSync(
-            path.resolve(__dirname, '../../../../../src/server/spa/client/react/features/memory/AggregatePanel.tsx'),
+            path.resolve(__dirname, '../../../../../src/server/spa/client/react/features/memory/PromotePanel.tsx'),
             'utf-8',
         );
         expect(source).not.toMatch(/\bfetch\s*\(/);

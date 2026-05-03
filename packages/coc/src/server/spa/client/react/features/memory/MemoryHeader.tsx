@@ -36,9 +36,9 @@ export function MemoryHeader({
                 <button
                     onClick={onAggregate}
                     className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
-                    data-testid="memory-aggregate-btn"
+                    data-testid="memory-promote-btn"
                 >
-                    Aggregate ▾
+                    Promote ▾
                 </button>
             </div>
             <div className="mt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />

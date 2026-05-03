@@ -34,7 +34,7 @@ function mockDefaultFetch() {
                 status: 200,
                 json: () => Promise.resolve({
                     charCount: 0, charLimit: 2200, lastModified: null,
-                    pendingRawCount: 0, claimedRawCount: 0, consolidationStatus: 'idle',
+                    pendingRawCount: 0, claimedRawCount: 0, promotionStatus: 'idle',
                 }),
             };
         }

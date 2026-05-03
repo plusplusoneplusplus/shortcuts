@@ -1,5 +1,5 @@
 /**
- * Memory Aggregate Executor
+ * Memory Promote Executor
  *
  * Queued executor that promotes durable memory candidates without rewriting
  * bounded MEMORY.md. Follows the same pattern as BackgroundReviewExecutor:
@@ -22,14 +22,14 @@ import {
     LogCategory,
 } from '@plusplusoneplusplus/forge';
 import type { RankedMemoryCandidate } from '@plusplusoneplusplus/forge';
-import type { MemoryAggregatePayload } from '../tasks/task-types';
+import type { MemoryPromotePayload } from '../tasks/task-types';
 import {
-    DEFAULT_AGGREGATE_CONFIG,
-} from './memory-aggregate';
-import type { MemoryAggregateConfig } from './memory-aggregate';
+    DEFAULT_PROMOTE_CONFIG,
+} from './memory-promote';
+import type { MemoryPromoteConfig } from './memory-promote';
 import { getRepoDataPath } from '../paths';
 
-interface MemoryAggregateCounts {
+interface MemoryPromoteCounts {
     ranked: number;
     promoted: number;
     dropped: number;
@@ -37,10 +37,10 @@ interface MemoryAggregateCounts {
     pending: number;
 }
 
-interface MemoryAggregateResult {
+interface MemoryPromoteResult extends MemoryPromoteCounts {
     message: string;
-    counts: MemoryAggregateCounts;
-    appended: number;
+    preservedExistingEntries: number;
+    promotedCandidateIds: string[];
     droppedReasons: Record<string, string>;
     ignoredReasons: Record<string, string>;
 }
@@ -51,17 +51,17 @@ interface CandidatePromotion {
     contentHash: string;
 }
 
-export class MemoryAggregateExecutor {
+export class MemoryPromoteExecutor {
     constructor(
         _aiService: CopilotSDKService,
         private readonly dataDir: string,
-        private readonly config: MemoryAggregateConfig = DEFAULT_AGGREGATE_CONFIG,
+        private readonly config: MemoryPromoteConfig = DEFAULT_PROMOTE_CONFIG,
     ) {}
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         const logger = getLogger();
         const startTime = Date.now();
-        const payload = task.payload as unknown as MemoryAggregatePayload;
+        const payload = task.payload as unknown as MemoryPromotePayload;
         const { workspaceId, target } = payload;
 
         const candidateDbPath = this.resolveCandidatePath(workspaceId, target);
@@ -72,27 +72,29 @@ export class MemoryAggregateExecutor {
 
             const candidates = await candidateStore.listPendingCandidates(this.config.batchSize);
             if (candidates.length === 0) {
-                logger.debug(LogCategory.AI, `[MemoryAggregate] No pending candidates for ${target}@${workspaceId}`);
+                logger.debug(LogCategory.AI, `[MemoryPromote] No pending candidates for ${target}@${workspaceId}`);
+                const preservedExistingEntries = await this.readExistingEntryCount(workspaceId, target);
                 return {
                     success: true,
-                    result: createAggregateResult('No pending candidates', {
+                    result: createPromoteResult('No pending candidates', {
                         ranked: 0,
                         promoted: 0,
                         dropped: 0,
                         ignored: 0,
                         pending: 0,
-                    }),
+                    }, preservedExistingEntries, []),
                     durationMs: Date.now() - startTime,
                 };
             }
 
-            logger.debug(LogCategory.AI, `[MemoryAggregate] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
+            logger.debug(LogCategory.AI, `[MemoryPromote] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
             const ranked = rankMemoryCandidates(candidates);
             const selected = ranked.filter(candidate => candidate.selected);
             if (selected.length === 0) {
+                const preservedExistingEntries = await this.readExistingEntryCount(workspaceId, target);
                 return {
                     success: true,
-                    result: createAggregateResult(
+                    result: createPromoteResult(
                         `Memory promotion pending; ranked ${ranked.length} candidate(s), selected 0`,
                         {
                             ranked: ranked.length,
@@ -101,6 +103,8 @@ export class MemoryAggregateExecutor {
                             ignored: 0,
                             pending: ranked.length,
                         },
+                        preservedExistingEntries,
+                        [],
                     ),
                     durationMs: Date.now() - startTime,
                 };
@@ -108,7 +112,8 @@ export class MemoryAggregateExecutor {
 
             const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
             await memoryStore.load();
-            const existingContentHashes = toContentHashSet(memoryStore.read());
+            const existingEntries = memoryStore.read();
+            const existingContentHashes = toContentHashSet(existingEntries);
             const plan = planCandidateFinalization(selected, existingContentHashes);
 
             let appendedEntries: string[] = [];
@@ -117,7 +122,7 @@ export class MemoryAggregateExecutor {
                 if (!appendResult.success) {
                     logger.debug(
                         LogCategory.AI,
-                        `[MemoryAggregate] Promotion append failed for ${target}@${workspaceId}: ${appendResult.message}`,
+                        `[MemoryPromote] Promotion append failed for ${target}@${workspaceId}: ${appendResult.message}`,
                     );
                     return {
                         success: false,
@@ -141,22 +146,23 @@ export class MemoryAggregateExecutor {
             const promoted = await candidateStore.markPromoted(promotedIds);
             const dropped = await markDroppedByReason(candidateStore, plan.droppedReasons);
             const ignored = await markIgnoredByReason(candidateStore, plan.ignoredReasons);
-            const counts: MemoryAggregateCounts = {
+            const counts: MemoryPromoteCounts = {
                 ranked: ranked.length,
                 promoted,
                 dropped,
                 ignored,
                 pending: Math.max(0, ranked.length - promoted - dropped - ignored),
             };
-            const result = createAggregateResult(
+            const result = createPromoteResult(
                 `Memory promotion completed; ranked ${ranked.length} candidate(s), promoted ${promoted}, dropped ${dropped}, ignored ${ignored}, pending ${counts.pending}, appended ${appendedEntries.length}`,
                 counts,
-                appendedEntries.length,
+                existingEntries.length,
+                promotedIds,
                 plan.droppedReasons,
                 plan.ignoredReasons,
             );
 
-            logger.debug(LogCategory.AI, `[MemoryAggregate] Finalized ${target}@${workspaceId}: ${JSON.stringify(counts)}`);
+            logger.debug(LogCategory.AI, `[MemoryPromote] Finalized ${target}@${workspaceId}: ${JSON.stringify(counts)}`);
 
             return {
                 success: true,
@@ -165,7 +171,7 @@ export class MemoryAggregateExecutor {
             };
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            logger.debug(LogCategory.AI, `[MemoryAggregate] Executor error: ${errorMsg}`);
+            logger.debug(LogCategory.AI, `[MemoryPromote] Executor error: ${errorMsg}`);
             return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: Date.now() - startTime };
         } finally {
             try { candidateStore?.close(); } catch { /* already closed */ }
@@ -184,6 +190,12 @@ export class MemoryAggregateExecutor {
             return path.join(this.dataDir, 'memory', 'system', 'MEMORY.md');
         }
         return getRepoDataPath(this.dataDir, workspaceId, 'memory/MEMORY.md');
+    }
+
+    private async readExistingEntryCount(workspaceId: string, target: 'memory' | 'system'): Promise<number> {
+        const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
+        await memoryStore.load();
+        return memoryStore.read().length;
     }
 }
 
@@ -279,17 +291,19 @@ function groupIdsByReason(reasonsById: Record<string, string>): Map<string, stri
     return grouped;
 }
 
-function createAggregateResult(
+function createPromoteResult(
     message: string,
-    counts: MemoryAggregateCounts,
-    appended = 0,
+    counts: MemoryPromoteCounts,
+    preservedExistingEntries: number,
+    promotedCandidateIds: string[],
     droppedReasons: Record<string, string> = {},
     ignoredReasons: Record<string, string> = {},
-): MemoryAggregateResult {
+): MemoryPromoteResult {
     return {
         message,
-        counts,
-        appended,
+        ...counts,
+        preservedExistingEntries,
+        promotedCandidateIds,
         droppedReasons,
         ignoredReasons,
     };

@@ -19,7 +19,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi
         getBounded: (...a: any[]) => mockGetBounded(...a),
         getOverview: (...a: any[]) => mockGetOverview(...a),
         saveBounded: vi.fn(async () => ({ charCount: 0, charLimit: 2200, lastModified: new Date().toISOString() })),
-        aggregate: vi.fn(async () => ({ taskId: 't1', processId: 'p1', status: 'queued' })),
+        promote: vi.fn(async () => ({ taskId: 't1', processId: 'p1', operation: 'promotion', status: 'queued' })),
     },
 }));
 
@@ -32,12 +32,12 @@ vi.mock('../../../../../../src/server/spa/client/react/contexts/ToastContext', (
     ToastContext: { Consumer: ({ children }: any) => children(null), Provider: ({ children }: any) => children },
 }));
 
-// Mock useModels used by AggregatePanel
+// Mock useModels used by the promotion panel
 vi.mock('../../../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [], loading: false }),
 }));
 
-// Mock Dialog used by AggregatePanel
+// Mock Dialog used by the promotion panel
 vi.mock('../../../../../../src/server/spa/client/react/ui/Dialog', () => ({
     Dialog: ({ children, open, title, footer }: any) =>
         open ? (
@@ -48,7 +48,7 @@ vi.mock('../../../../../../src/server/spa/client/react/ui/Dialog', () => ({
         ) : null,
 }));
 
-// Mock getApiBase used by AggregatePanel
+// Mock getApiBase used by the promotion panel
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000',
 }));
@@ -76,8 +76,8 @@ function defaultOverviewResponse() {
         pendingRawCount: 5,
         claimedRawCount: 0,
         consolidatedAt: null,
-        consolidationStatus: 'idle' as const,
-        lastAggregatedAt: '2024-04-20T08:00:00Z',
+        promotionStatus: 'idle' as const,
+        lastPromotedAt: '2024-04-20T08:00:00Z',
     };
 }
 
@@ -121,20 +121,20 @@ describe('BoundedMemoryTab — pipeline status strip', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Aggregate Now button
+// Promote Memory button
 // ---------------------------------------------------------------------------
 
-describe('BoundedMemoryTab — Aggregate Now button', () => {
-    it('shows Aggregate Now button when memory is enabled and not editing', async () => {
+describe('BoundedMemoryTab — Promote Memory button', () => {
+    it('shows Promote Memory button when memory is enabled and not editing', async () => {
         render(<BoundedMemoryTab repoId="repo-1" />);
 
         await waitFor(() => {
             expect(screen.getByTestId('bounded-aggregate-btn')).toBeTruthy();
         });
-        expect(screen.getByTestId('bounded-aggregate-btn').textContent).toContain('Aggregate Now');
+        expect(screen.getByTestId('bounded-aggregate-btn').textContent).toContain('Promote Memory');
     });
 
-    it('opens AggregatePanel dialog on click', async () => {
+    it('opens promotion dialog on click', async () => {
         render(<BoundedMemoryTab repoId="repo-1" />);
 
         await waitFor(() => {

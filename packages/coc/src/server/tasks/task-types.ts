@@ -62,9 +62,9 @@ export const TaskDefs = {
         exclusive: true,
         visible: true,
     },
-    memoryAggregate: {
-        kind: 'memory-aggregate',
-        label: 'Memory Aggregate',
+    memoryPromote: {
+        kind: 'memory-promote',
+        label: 'Memory Promotion',
         exclusive: false,
         visible: false,
     },
@@ -230,8 +230,8 @@ export interface RunScriptPayload {
     scheduleId?: string;
 }
 
-export interface MemoryAggregatePayload {
-    readonly kind: 'memory-aggregate';
+export interface MemoryPromotePayload {
+    readonly kind: 'memory-promote';
     workspaceId: string;
     target: 'memory' | 'system';
     model?: string;
@@ -251,7 +251,7 @@ export interface BackgroundReviewPayload {
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryAggregatePayload | BackgroundReviewPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryPromotePayload | BackgroundReviewPayload;
 
 // ============================================================================
 // Type Guards
@@ -273,8 +273,8 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
     return payload.kind === 'run-script';
 }
 
-export function isMemoryAggregatePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & MemoryAggregatePayload {
-    return payload.kind === 'memory-aggregate';
+export function isMemoryPromotePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & MemoryPromotePayload {
+    return payload.kind === 'memory-promote';
 }
 
 export function isBackgroundReviewPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & BackgroundReviewPayload {

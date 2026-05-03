@@ -44,7 +44,7 @@ export interface DiffLine {
 export interface RepoMemoryRouteOptions {
     /** Process store used to resolve workspace rootPath from workspaceId. */
     store: ProcessStore;
-    /** Task queue manager for aggregate-task status and manual trigger. */
+    /** Task queue manager for promotion-task status and manual trigger. */
     queueManager?: TaskQueueManager;
 }
 
@@ -119,21 +119,21 @@ export function registerRepoMemoryRoutes(
     const { store, queueManager } = options;
 
     /**
-     * Find the most recent memory-aggregate task for a workspace from the queue.
+     * Find the most recent memory-promote task for a workspace from the queue.
      * Returns undefined if no queueManager or no matching task.
      */
-    function findAggregateTask(workspaceId: string, target: string): {
+    function findPromotionTask(workspaceId: string, target: string): {
         status: 'idle' | 'queued' | 'running';
         taskId?: string;
         processId?: string;
-        lastAggregatedAt?: string;
-        lastAggregateError?: string;
+        lastPromotedAt?: string;
+        lastPromotionError?: string;
     } {
         if (!queueManager) return { status: 'idle' };
 
         const tasks = queueManager.getAll()
             .filter(t =>
-                t.type === TaskDefs.memoryAggregate.kind
+                t.type === TaskDefs.memoryPromote.kind
                 && (t.payload as any)?.workspaceId === workspaceId
                 && (t.payload as any)?.target === target,
             )
@@ -155,8 +155,8 @@ export function registerRepoMemoryRoutes(
 
         return {
             status: 'idle',
-            lastAggregatedAt: completed?.completedAt ? new Date(completed.completedAt).toISOString() : undefined,
-            lastAggregateError: failed?.error,
+            lastPromotedAt: completed?.completedAt ? new Date(completed.completedAt).toISOString() : undefined,
+            lastPromotionError: failed?.error,
         };
     }
 
@@ -180,7 +180,7 @@ export function registerRepoMemoryRoutes(
         }
     }
 
-    // -- GET /api/repos/:repoId/memory/overview (with raw-record + aggregate status) --
+    // -- GET /api/repos/:repoId/memory/overview (with candidate + promotion status) --
 
     routes.push({
         method: 'GET',
@@ -210,8 +210,8 @@ export function registerRepoMemoryRoutes(
                 // Candidate counts, preserved under legacy response names for the SPA.
                 const rawCounts = await getRawRecordCounts(workspaceId);
 
-                // Aggregate task status
-                const aggregateInfo = findAggregateTask(workspaceId, 'memory');
+                // Promotion task status
+                const promotionInfo = findPromotionTask(workspaceId, 'memory');
 
                 sendJson(res, {
                     charCount,
@@ -219,11 +219,16 @@ export function registerRepoMemoryRoutes(
                     lastModified,
                     pendingRawCount: rawCounts.pendingRawCount,
                     claimedRawCount: rawCounts.claimedRawCount,
-                    consolidationStatus: aggregateInfo.status,
-                    consolidationTaskId: aggregateInfo.taskId,
-                    consolidationProcessId: aggregateInfo.processId,
-                    lastAggregatedAt: aggregateInfo.lastAggregatedAt ?? null,
-                    lastAggregateError: aggregateInfo.lastAggregateError ?? null,
+                    promotionStatus: promotionInfo.status,
+                    promotionTaskId: promotionInfo.taskId,
+                    promotionProcessId: promotionInfo.processId,
+                    lastPromotedAt: promotionInfo.lastPromotedAt ?? null,
+                    lastPromotionError: promotionInfo.lastPromotionError ?? null,
+                    consolidationStatus: promotionInfo.status,
+                    consolidationTaskId: promotionInfo.taskId,
+                    consolidationProcessId: promotionInfo.processId,
+                    lastAggregatedAt: promotionInfo.lastPromotedAt ?? null,
+                    lastAggregateError: promotionInfo.lastPromotionError ?? null,
                 });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -329,7 +334,7 @@ export function registerRepoMemoryRoutes(
         },
     });
 
-    // -- POST /api/repos/:repoId/memory/aggregate (manual trigger) ------------
+    // -- POST /api/repos/:repoId/memory/aggregate (legacy promotion trigger) --
 
     routes.push({
         method: 'POST',
@@ -355,7 +360,7 @@ export function registerRepoMemoryRoutes(
                 // Dedupe check: is there already a queued or running task?
                 const existing = queueManager.getAll()
                     .find(t =>
-                        t.type === TaskDefs.memoryAggregate.kind
+                        t.type === TaskDefs.memoryPromote.kind
                         && (t.payload as any)?.workspaceId === workspaceId
                         && (t.payload as any)?.target === target
                         && (t.status === 'queued' || t.status === 'running'),
@@ -365,6 +370,7 @@ export function registerRepoMemoryRoutes(
                     sendJson(res, {
                         taskId: existing.id,
                         processId: existing.processId ?? null,
+                        operation: 'promotion',
                         status: existing.status === 'running' ? 'already-running' : 'already-queued',
                     }, 409);
                     return;
@@ -372,23 +378,24 @@ export function registerRepoMemoryRoutes(
 
                 // Enqueue new task
                 const taskId = queueManager.enqueue({
-                    type: TaskDefs.memoryAggregate.kind,
+                    type: TaskDefs.memoryPromote.kind,
                     repoId: workspaceId,
                     priority: 'low',
                     payload: {
-                        kind: 'memory-aggregate' as const,
+                        kind: 'memory-promote' as const,
                         workspaceId,
                         target,
                         trigger: 'manual',
                         ...(body.model ? { model: body.model } : {}),
                     },
                     config: {},
-                    displayName: `Memory aggregate (${target})`,
+                    displayName: `Memory promotion (${target})`,
                 });
 
                 sendJson(res, {
                     taskId,
                     processId: null,
+                    operation: 'promotion',
                     status: 'queued',
                 });
             } catch (err) {

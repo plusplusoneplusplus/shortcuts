@@ -15,7 +15,7 @@ describe('MemoryClient', () => {
     await client.getRepoOverview('repo/a');
     await client.getRepoBounded('repo/a');
     await client.saveRepoBounded('repo/a', 'Remember this');
-    await client.aggregateRepo('repo/a', { model: 'gpt-test', target: 'system' });
+    await client.promoteRepo('repo/a', { model: 'gpt-test', target: 'system' });
     expect(adapter.calls).toEqual([
       { path: '/repos/repo%2Fa/memory/overview', options: undefined },
       { path: '/repos/repo%2Fa/memory/bounded', options: undefined },
@@ -97,7 +97,7 @@ describe('MemoryClient', () => {
     ]);
   });
 
-  it('returns aggregate conflict bodies as successful aggregate responses', async () => {
+  it('returns promotion conflict bodies as successful promotion responses', async () => {
     const adapter = createMockAdapter({});
     adapter.request = async () => {
       throw new CocApiError({
@@ -105,14 +105,15 @@ describe('MemoryClient', () => {
         statusText: 'Conflict',
         url: '/api/repos/repo-a/memory/aggregate',
         message: 'Already queued',
-        body: { taskId: 'task-1', processId: 'proc-1', status: 'already-queued' },
+        body: { taskId: 'task-1', processId: 'proc-1', operation: 'promotion', status: 'already-queued' },
       });
     };
     const client = new MemoryClient(adapter);
 
-    await expect(client.aggregateRepo('repo-a')).resolves.toEqual({
+    await expect(client.promoteRepo('repo-a')).resolves.toEqual({
       taskId: 'task-1',
       processId: 'proc-1',
+      operation: 'promotion',
       status: 'already-queued',
     });
   });

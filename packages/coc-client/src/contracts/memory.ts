@@ -2,7 +2,7 @@ import type { JsonObject } from './common';
 
 export type MemoryBackend = 'file' | 'sqlite' | 'vector';
 export type MemoryLevel = 'system' | 'repo' | 'git-remote';
-export type MemoryAggregateTarget = 'memory' | 'system';
+export type MemoryPromoteTarget = 'memory' | 'system';
 
 export interface MemoryConfig {
   storageDir: string;
@@ -20,6 +20,11 @@ export interface MemoryStats {
   pendingRawCount: number;
   claimedRawCount: number;
   consolidatedAt: string | null;
+  promotionStatus?: 'idle' | 'queued' | 'running';
+  promotionTaskId?: string;
+  promotionProcessId?: string;
+  lastPromotedAt?: string | null;
+  lastPromotionError?: string | null;
   consolidationStatus?: 'idle' | 'queued' | 'running';
   consolidationTaskId?: string;
   consolidationProcessId?: string;
@@ -62,15 +67,16 @@ export interface BoundedMemoryDeleteResponse {
   success: true;
 }
 
-export interface MemoryAggregateResponse {
+export interface MemoryPromoteResponse {
   taskId: string;
   processId: string | null;
+  operation?: 'promotion';
   status: string;
 }
 
-export interface MemoryAggregateRequest {
+export interface MemoryPromoteRequest {
   model?: string;
-  target?: MemoryAggregateTarget | string;
+  target?: MemoryPromoteTarget | string;
 }
 
 export interface ExploreCacheStats {

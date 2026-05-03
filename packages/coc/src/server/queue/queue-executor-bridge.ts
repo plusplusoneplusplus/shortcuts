@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, isBackgroundReviewPayload, isMemoryAggregatePayload, TaskDefs, getTaskDef } from '../tasks/task-types';
+import { isChatPayload, isBackgroundReviewPayload, isMemoryPromotePayload, TaskDefs, getTaskDef } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
@@ -143,9 +143,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
-        // Background-review and memory-aggregate tasks bypass the lifecycle
+        // Background-review and memory-promote tasks bypass the lifecycle
         // runner — they don't create visible processes or conversation turns.
-        if (isBackgroundReviewPayload(task.payload) || isMemoryAggregatePayload(task.payload)) {
+        if (isBackgroundReviewPayload(task.payload) || isMemoryPromotePayload(task.payload)) {
             try {
                 const result = await this.executors.dispatch(task, '');
                 return { success: true, result, durationMs: 0 };

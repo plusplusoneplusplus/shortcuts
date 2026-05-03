@@ -9,8 +9,8 @@ import type {
   ExploreCacheConsolidatedListResponse,
   ExploreCacheLevelsOverview,
   ExploreCacheRawListResponse,
-  MemoryAggregateRequest,
-  MemoryAggregateResponse,
+  MemoryPromoteRequest,
+  MemoryPromoteResponse,
   MemoryConfig,
   MemoryLevel,
   MemoryOverviewResponse,
@@ -47,20 +47,21 @@ function queryWithDeleteOptions(options?: MemoryDeleteOptions): CocRequestOption
   };
 }
 
-function aggregateBody(request?: MemoryAggregateRequest): MemoryAggregateRequest {
+function promoteBody(request?: MemoryPromoteRequest): MemoryPromoteRequest {
   return {
     model: request?.model || undefined,
     target: request?.target || undefined,
   };
 }
 
-function responseFromConflict(error: CocApiError): MemoryAggregateResponse | undefined {
+function responseFromConflict(error: CocApiError): MemoryPromoteResponse | undefined {
   if (error.status !== 409 || !error.body || typeof error.body !== 'object') return undefined;
-  const body = error.body as Partial<MemoryAggregateResponse>;
+  const body = error.body as Partial<MemoryPromoteResponse>;
   if (typeof body.taskId !== 'string' || typeof body.status !== 'string') return undefined;
   return {
     taskId: body.taskId,
     processId: typeof body.processId === 'string' ? body.processId : null,
+    operation: body.operation === 'promotion' ? 'promotion' : undefined,
     status: body.status,
   };
 }
@@ -139,11 +140,11 @@ export class MemoryClient {
     return this.transport.request<MemoryOverviewResponse>(repoMemoryPath(repoId, '/overview'));
   }
 
-  async aggregateRepo(repoId: string, request?: MemoryAggregateRequest): Promise<MemoryAggregateResponse> {
+  async promoteRepo(repoId: string, request?: MemoryPromoteRequest): Promise<MemoryPromoteResponse> {
     try {
-      return await this.transport.request<MemoryAggregateResponse>(repoMemoryPath(repoId, '/aggregate'), {
+      return await this.transport.request<MemoryPromoteResponse>(repoMemoryPath(repoId, '/aggregate'), {
         method: 'POST',
-        body: aggregateBody(request),
+        body: promoteBody(request),
       });
     } catch (error) {
       if (error instanceof CocApiError) {
@@ -152,6 +153,10 @@ export class MemoryClient {
       }
       throw error;
     }
+  }
+
+  async aggregateRepo(repoId: string, request?: MemoryPromoteRequest): Promise<MemoryPromoteResponse> {
+    return this.promoteRepo(repoId, request);
   }
 
   getRepoBounded(repoId: string): Promise<BoundedMemoryResponse> {
