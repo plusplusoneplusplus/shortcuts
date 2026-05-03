@@ -226,8 +226,10 @@ describe('MarkdownReviewEditor – task status dropdown', () => {
             <MarkdownReviewEditor wsId="ws1" filePath="task.md" fetchMode="tasks" />
         );
 
+        // Wait until taskStatus is loaded from content (not just element existence)
         await waitFor(() => {
-            expect(screen.getByTestId('task-status-select')).toBeTruthy();
+            const el = screen.getByTestId('task-status-select') as HTMLSelectElement;
+            expect(el.value).toBe('pending');
         });
 
         // Make the PATCH call fail
