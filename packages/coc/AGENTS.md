@@ -322,6 +322,7 @@ src/
 │               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
 │               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName. Notes sidebar update indicators compare tree node lastModifiedAt against localStorage key `coc-notes-seen-<workspaceId>`.
+│               ├── features/pull-requests/ # Pull request dashboard: attention groups, row selection, detail view, and BatchCommandPanel queueing `pr-batch` chat tasks from selected PRs
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)

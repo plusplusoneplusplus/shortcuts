@@ -23,6 +23,7 @@ import { ProviderConfigPanel } from './ProviderConfigPanel';
 import { AttentionGroupSection } from './AttentionGroupSection';
 import { AttentionSummaryBar } from './AttentionSummaryBar';
 import { ATTENTION_GROUP_CONFIGS, AttentionGroup, classifyPr } from './pr-attention-groups';
+import { BatchCommandPanel } from './BatchCommandPanel';
 
 export interface PullRequestsTabProps {
     repoId: string;
@@ -59,7 +60,7 @@ function getPrSelectionId(pr: PullRequest): string {
     return String(pr.number ?? pr.id);
 }
 
-export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
+export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
@@ -232,6 +233,32 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         config,
         count: prs.length,
     })), [groupedPrs]);
+
+    const selectedPrs = useMemo(
+        () => prs.filter(pr => selectedPrIds.has(getPrSelectionId(pr))),
+        [prs, selectedPrIds],
+    );
+
+    const dominantGroup = useMemo(() => {
+        if (selectedPrs.length === 0) return undefined;
+
+        const counts = new Map<AttentionGroup, number>();
+        for (const pr of selectedPrs) {
+            const group = classifyPr(pr);
+            counts.set(group, (counts.get(group) ?? 0) + 1);
+        }
+
+        let bestGroup: AttentionGroup | undefined;
+        let bestCount = -1;
+        for (const config of ATTENTION_GROUP_CONFIGS) {
+            const count = counts.get(config.group) ?? 0;
+            if (count > bestCount) {
+                bestGroup = config.group;
+                bestCount = count;
+            }
+        }
+        return bestGroup;
+    }, [selectedPrs]);
 
     const setGroupSectionRef = useCallback((group: AttentionGroup, element: HTMLDivElement | null) => {
         if (element) {
@@ -597,7 +624,19 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         </>
     );
 
-    const detailContent = state.selectedPrId != null ? (
+    const detailContent = selectedPrIds.size > 0 ? (
+        <BatchCommandPanel
+            selectedPrIds={selectedPrIds}
+            selectedPrs={selectedPrs}
+            repoId={repoId}
+            workspaceId={workspaceId}
+            activeGroup={dominantGroup}
+            onClearSelection={() => {
+                setSelectedPrIds(new Set());
+                setAnchorPrId(null);
+            }}
+        />
+    ) : state.selectedPrId != null ? (
         <PullRequestDetail
             repoId={repoId}
             prId={state.selectedPrId}
