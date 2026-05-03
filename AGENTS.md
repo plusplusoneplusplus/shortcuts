@@ -185,7 +185,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `admin/` — `admin-handler`, `db-browser-handler`, `heap-monitor`, `stats-handler`
 - `workspaces/` — `global-workspace`, `my-work-{workspace,handler}`, `my-life-{workspace,handler}`, `workspace-summary-handler`
 - `processes/` — `in-memory-process-store`, `output-{file-manager,pruner}`, `stale-task-detector`, `pin-archive-handler`, `seen-state-handler`, `turn-actions-handler`, `process-{history,resume}-handler`, `commit-chat-binding-store`
-- `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-executor-bridge`, `image-blob-store`, `queue-partitioner`, `shared/`
+- `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-queue-router`, `image-blob-store`, `queue-partitioner`, `shared/`
 - `schedule/` — `schedule-{handler,manager,run-persistence,yaml-persistence}`, `sqlite-schedule-run-persistence`, `repo-schedule-{loader,overrides}`, `cron-utils`
 - `tasks/` — `task-{cache,migration,root-resolver,types,watcher,generation-handler}`, `tasks-{handler,read-handler,write-handler,handler-utils}`, plus `tasks/comments/` for `task-comments-*`, `diff-comments-*`, `base-comments-manager`, `comments-ai-helpers`
 - `notes/` — every `notes-*.ts` file (read/write/comments/AI/files), plus `notes/git/` for `notes-git-*.ts`

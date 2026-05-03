@@ -35,7 +35,6 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
-import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-executor-bridge';
 import * as queueExecutorBridgeMod from '../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
@@ -337,21 +336,6 @@ describe('MultiRepoQueueRouter', () => {
     // --------------------------------------------------------------------
 
     describe('createAggregateQueueFacade resolveManager', () => {
-        it('keeps deprecated class and facade aliases compatible', () => {
-            expect(MultiRepoQueueExecutorBridge).toBe(MultiRepoQueueRouter);
-
-            const registry = new RepoQueueRegistry();
-            const store = createMockProcessStore();
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
-            const newFacade = bridge.createAggregateQueueFacade();
-            const oldFacade = bridge.createAggregateFacade();
-
-            expect(newFacade.enqueue).toEqual(expect.any(Function));
-            expect(oldFacade.enqueue).toEqual(expect.any(Function));
-
-            bridge.dispose();
-        });
-
         it('enqueues into the correct repo queue when input carries a repoId (not a path)', () => {
             const { bridge, registry } = createBridge();
             const rootPath = '/repo/schedule-test';

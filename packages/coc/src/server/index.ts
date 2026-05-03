@@ -312,7 +312,7 @@ export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/qu
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export type { ITaskExecutor } from './executors/executor-types';
-export { MultiRepoQueueRouter, MultiRepoQueueExecutorBridge } from './queue/multi-repo-queue-router';
+export { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';
 export type { RestartPolicy } from './queue/sqlite-queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';

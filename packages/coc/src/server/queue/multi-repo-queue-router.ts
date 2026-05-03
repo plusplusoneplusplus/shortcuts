@@ -593,11 +593,6 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return facade as unknown as TaskQueueManager;
     }
 
-    /** @deprecated Use createAggregateQueueFacade(). */
-    createAggregateFacade(): TaskQueueManager {
-        return this.createAggregateQueueFacade();
-    }
-
     /**
      * Dispose all per-repo QueueExecutors, the registry, and clear internal state.
      */
@@ -612,6 +607,3 @@ export class MultiRepoQueueRouter extends EventEmitter {
         this.removeAllListeners();
     }
 }
-
-/** @deprecated Use MultiRepoQueueRouter. */
-export { MultiRepoQueueRouter as MultiRepoQueueExecutorBridge };
