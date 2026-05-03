@@ -231,4 +231,39 @@ describe('MemoryCandidateStore', () => {
             reopened.close();
         }
     });
+
+    it('migrates duplicate legacy raw records into one strengthened candidate', async () => {
+        const rawStore = new RawMemoryRecordStore({ dbPath });
+        await rawStore.append({
+            target: 'repo',
+            content: '  Legacy raw fact  ',
+            source: 'coc-chat',
+            workspaceId: 'ws-test',
+            processId: 'proc-1',
+            turnIndex: 4,
+        });
+        await rawStore.append({
+            target: 'repo',
+            content: 'Legacy   raw fact',
+            source: 'coc-chat',
+            workspaceId: 'ws-test',
+            processId: 'proc-2',
+            turnIndex: 5,
+        });
+        rawStore.close();
+
+        const store = createStore();
+        try {
+            const pending = await store.listPendingCandidates();
+            expect(pending).toHaveLength(1);
+            expect(pending[0]).toMatchObject({
+                content: 'Legacy raw fact',
+                signalCount: 2,
+                uniqueProcessCount: 2,
+            });
+            expect(await store.getStats()).toMatchObject({ pending: 1, total: 1 });
+        } finally {
+            store.close();
+        }
+    });
 });

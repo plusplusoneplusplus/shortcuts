@@ -54,6 +54,22 @@ describe('rankMemoryCandidates', () => {
         expect(first.map(candidate => candidate.id)).toEqual(['c', 'a', 'b']);
     });
 
+    it('orders exact score ties deterministically regardless of input order', () => {
+        const alphaB = makeCandidate({ id: 'alpha-b', content: 'Alpha' });
+        const beta = makeCandidate({ id: 'beta', content: 'Beta' });
+        const alphaA = makeCandidate({ id: 'alpha-a', content: 'Alpha' });
+
+        const options = { now: '2026-05-01T00:00:00.000Z' };
+        const first = rankMemoryCandidates([alphaB, beta, alphaA], options);
+        const second = rankMemoryCandidates([beta, alphaA, alphaB], options);
+        const third = rankMemoryCandidates([alphaA, alphaB, beta], options);
+
+        expect(first.map(candidate => candidate.id)).toEqual(['alpha-a', 'alpha-b', 'beta']);
+        expect(second.map(candidate => candidate.id)).toEqual(first.map(candidate => candidate.id));
+        expect(third.map(candidate => candidate.id)).toEqual(first.map(candidate => candidate.id));
+        expect(new Set(first.map(candidate => candidate.score)).size).toBe(1);
+    });
+
     it('increases score when repeated evidence strengthens a candidate', () => {
         const weak = makeCandidate({ id: 'weak', signalCount: 1, totalScore: 1 });
         const strong = makeCandidate({
@@ -69,6 +85,20 @@ describe('rankMemoryCandidates', () => {
 
         expect(ranked[0].id).toBe('strong');
         expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
+    });
+
+    it('leaves low-score single-signal candidates unselected', () => {
+        const [ranked] = rankMemoryCandidates([
+            makeCandidate({
+                id: 'weak-single-signal',
+                totalScore: 0.1,
+                maxScore: 0.1,
+                explicitMemoryIntent: false,
+            }),
+        ], { now: '2026-05-01T00:00:00.000Z' });
+
+        expect(ranked.score).toBeLessThan(DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY.minScore);
+        expect(ranked.selected).toBe(false);
     });
 
     it('decays older candidates when recency is enabled', () => {

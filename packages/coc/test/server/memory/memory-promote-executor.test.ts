@@ -177,6 +177,39 @@ describe('MemoryPromoteExecutor', () => {
         removeSpy.mockRestore();
     });
 
+    it('uses append-only store APIs when a selected candidate is promoted', async () => {
+        const wsId = 'ws-selected-append-only';
+        const memDir = setupRepoDir(wsId);
+        seedBoundedMemory(wsId, 'Role: keep first');
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers append-only memory promotion',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+        const appendSpy = vi.spyOn(BoundedMemoryStore.prototype, 'appendEntries');
+        const setEntriesSpy = vi.spyOn(BoundedMemoryStore.prototype, 'setEntries');
+        const replaceSpy = vi.spyOn(BoundedMemoryStore.prototype, 'replace');
+        const removeSpy = vi.spyOn(BoundedMemoryStore.prototype, 'remove');
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(appendSpy).toHaveBeenCalledWith(['User explicitly prefers append-only memory promotion']);
+        expect(setEntriesSpy).not.toHaveBeenCalled();
+        expect(replaceSpy).not.toHaveBeenCalled();
+        expect(removeSpy).not.toHaveBeenCalled();
+        expect(readBoundedMemoryRaw(wsId)).toBe(
+            `Role: keep first${ENTRY_DELIMITER}User explicitly prefers append-only memory promotion`,
+        );
+    });
+
     it('returns early when no pending candidates exist', async () => {
         const wsId = 'ws-empty';
         setupRepoDir(wsId);
@@ -480,6 +513,8 @@ describe('MemoryPromoteExecutor', () => {
     it('falls back to deterministic promotion when AI normalization returns malformed output', async () => {
         const wsId = 'ws-ai-malformed';
         const memDir = setupRepoDir(wsId);
+        const originalMemory = 'Existing memory must stay byte-for-byte first';
+        seedBoundedMemory(wsId, originalMemory);
         const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
         const candidate = await candidateStore.upsertCandidate({
             target: 'repo',
@@ -500,7 +535,9 @@ describe('MemoryPromoteExecutor', () => {
         const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
 
         expect(result.success).toBe(true);
-        expect(readBoundedMemoryRaw(wsId)).toBe('User explicitly prefers safe fallback behavior');
+        expect(readBoundedMemoryRaw(wsId)).toBe(
+            `${originalMemory}${ENTRY_DELIMITER}User explicitly prefers safe fallback behavior`,
+        );
         await expect(readRepoCandidate(wsId, candidate.id)).resolves.toMatchObject({ status: 'promoted' });
     });
 
