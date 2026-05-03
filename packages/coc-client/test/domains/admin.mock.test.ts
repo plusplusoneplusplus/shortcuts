@@ -84,6 +84,56 @@ describe('AdminClient mock server contract', () => {
 
     await expect(client.admin.updateConfig({ parallel: 0 })).rejects.toBeInstanceOf(CocApiError);
   });
+
+  it('reads built-in prompts from the admin prompts route', async () => {
+    mock = await startMockServer();
+    const prompts = {
+      'read-only-mode': {
+        id: 'read-only-mode',
+        title: 'Read-only Mode',
+        group: 'Pipeline',
+        source: 'forge/copilot-sdk-wrapper/types.ts',
+        description: 'System message injected in ask/plan modes blocking file edits',
+        text: 'You are in read-only mode.',
+      },
+    };
+    mock.on('GET', '/api/admin/prompts', { body: prompts });
+    const client = createClient(mock);
+
+    await expect(client.admin.getPrompts()).resolves.toEqual(prompts);
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/admin/prompts');
+  });
+
+  it('lists tables, reads paginated data, updates, deletes, and bulk-deletes rows via db browser', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/admin/db/tables', { body: { tables: [{ name: 'processes', rowCount: 42 }] } });
+    mock.on('GET', '/api/admin/db/tables/processes', { body: {
+      table: 'processes',
+      columns: [{ name: 'id', type: 'TEXT', notnull: true, pk: true }],
+      rows: [{ id: 'p-1' }],
+      total: 42,
+      page: 2,
+      pageSize: 25,
+      totalPages: 2,
+    } });
+    mock.on('PUT', '/api/admin/db/tables/processes/rows', { body: { row: { id: 'p-1', status: 'done' }, changes: 1 } });
+    mock.on('DELETE', '/api/admin/db/tables/processes/rows', { body: { deleted: 1 } });
+    mock.on('POST', '/api/admin/db/tables/processes/rows/delete-bulk', { body: { deleted: 2, requested: 2 } });
+    const client = createClient(mock);
+
+    await expect(client.admin.db.listTables()).resolves.toEqual({ tables: [{ name: 'processes', rowCount: 42 }] });
+    await expect(client.admin.db.getTable('processes', { page: 2, pageSize: 25, sort: 'id', order: 'asc' })).resolves.toMatchObject({ table: 'processes', total: 42 });
+    await expect(client.admin.db.updateRow('processes', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } })).resolves.toEqual({ row: { id: 'p-1', status: 'done' }, changes: 1 });
+    await expect(client.admin.db.deleteRow('processes', { pkColumns: { id: 'p-1' } })).resolves.toEqual({ deleted: 1 });
+    await expect(client.admin.db.deleteBulk('processes', { rows: [{ id: 'p-1' }, { id: 'p-2' }] })).resolves.toEqual({ deleted: 2, requested: 2 });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/admin/db/tables');
+    expectEmptyRequest(mock.requests[1], 'GET', '/api/admin/db/tables/processes', { page: '2', pageSize: '25', sort: 'id', order: 'asc' });
+    expectJsonRequest(mock.requests[2], 'PUT', '/api/admin/db/tables/processes/rows', { pkColumns: { id: 'p-1' }, updates: { status: 'done' } });
+    expectJsonRequest(mock.requests[3], 'DELETE', '/api/admin/db/tables/processes/rows', { pkColumns: { id: 'p-1' } });
+    expectJsonRequest(mock.requests[4], 'POST', '/api/admin/db/tables/processes/rows/delete-bulk', { rows: [{ id: 'p-1' }, { id: 'p-2' }] });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

@@ -24,3 +24,28 @@ export interface SanitizedProviderConfigResponse {
     tavily?: { hasApiKey: boolean };
   };
 }
+
+// ── PR data routes ──────────────────────────────────────────────────
+
+export interface PullRequestListQuery {
+  status?: string;
+  scope?: 'mine' | 'all';
+  top?: number;
+  skip?: number;
+  force?: boolean;
+  author?: string;
+  search?: string;
+}
+
+export interface PullRequestListResponse {
+  pullRequests: unknown[];
+  total: number;
+}
+
+export interface PullRequestThreadsResponse {
+  threads: unknown[];
+}
+
+export interface PullRequestReviewersResponse {
+  reviewers: unknown[];
+}

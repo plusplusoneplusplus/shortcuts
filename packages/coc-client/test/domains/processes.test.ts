@@ -66,4 +66,26 @@ describe('ProcessesClient', () => {
       options: { method: 'POST', query: { workspace: 'repo/a' }, body: { content: 'hello', deliveryMode: 'enqueue' } },
     });
   });
+
+  it('sends ask-user responses with answer and skip variants', async () => {
+    const adapter = createMockAdapter({ ok: true });
+    const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
+
+    await client.askUserResponse('proc/1', { questionId: 'q-1', answer: 'yes' });
+    await client.askUserResponse('proc/2', { questionId: 'q-2', skipped: true });
+    await client.askUserResponse('proc/3', { questionId: 'q-3', answer: ['a', 'b'] });
+
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/processes/proc%2F1/ask-user-response',
+      options: { method: 'POST', body: { questionId: 'q-1', answer: 'yes' } },
+    });
+    expect(adapter.calls[1]).toMatchObject({
+      path: '/processes/proc%2F2/ask-user-response',
+      options: { method: 'POST', body: { questionId: 'q-2', skipped: true } },
+    });
+    expect(adapter.calls[2]).toMatchObject({
+      path: '/processes/proc%2F3/ask-user-response',
+      options: { method: 'POST', body: { questionId: 'q-3', answer: ['a', 'b'] } },
+    });
+  });
 });

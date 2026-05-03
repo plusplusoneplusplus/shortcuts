@@ -398,6 +398,34 @@ describe('ProcessesClient mock server contract', () => {
     stream.close();
     expect(FakeEventSource.instances[0].closed).toBe(true);
   });
+
+  it('sends ask-user responses with answer and propagates 404 on unknown questions', async () => {
+    mock = await startMockServer();
+    mock.on('POST', '/api/processes/proc%2F1/ask-user-response', { body: { ok: true } });
+    mock.on('POST', '/api/processes/proc%2F2/ask-user-response', {
+      status: 404,
+      body: {
+        error: {
+          message: 'Question not found or already answered',
+          code: 'NOT_FOUND',
+        },
+      },
+    });
+    const client = createClient(mock);
+
+    await expect(client.processes.askUserResponse('proc/1', { questionId: 'q-1', answer: 'yes' })).resolves.toEqual({ ok: true });
+    await expect(client.processes.askUserResponse('proc/1', { questionId: 'q-2', skipped: true })).resolves.toEqual({ ok: true });
+    await expect(client.processes.askUserResponse('proc/2', { questionId: 'q-3', answer: 'no' })).rejects.toMatchObject({
+      name: 'CocApiError',
+      status: 404,
+      message: 'Question not found or already answered',
+      code: 'NOT_FOUND',
+    } satisfies Partial<CocApiError>);
+
+    expectJsonRequest(mock.requests[0], 'POST', '/api/processes/proc%2F1/ask-user-response', { questionId: 'q-1', answer: 'yes' });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/processes/proc%2F1/ask-user-response', { questionId: 'q-2', skipped: true });
+    expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F2/ask-user-response', { questionId: 'q-3', answer: 'no' });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

@@ -71,6 +71,98 @@ describe('PullRequestsClient mock coverage', () => {
       body: { error: 'ado.orgUrl must be a non-empty string' },
     } satisfies Partial<CocApiError>);
   });
+
+  it('lists pull requests with encoded repo ID and query serialization', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests', {
+      body: {
+        pullRequests: [{ id: 1, title: 'Fix bug' }],
+        total: 1,
+      },
+    });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.list('repo/a', {
+      status: 'open',
+      scope: 'all',
+      top: 10,
+      skip: 5,
+      force: true,
+      author: 'dev',
+      search: 'bug',
+    })).resolves.toEqual({ pullRequests: [{ id: 1, title: 'Fix bug' }], total: 1 });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests', {
+      status: 'open',
+      scope: 'all',
+      top: '10',
+      skip: '5',
+      force: 'true',
+      author: 'dev',
+      search: 'bug',
+    });
+  });
+
+  it('gets a single PR by repo and PR ID', async () => {
+    mock = await startMockServer();
+    const pr = { id: 42, title: 'My PR', status: 'active' };
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42', { body: pr });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.get('repo/a', '42')).resolves.toEqual(pr);
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42');
+  });
+
+  it('gets comment threads for a PR', async () => {
+    mock = await startMockServer();
+    const threads = [{ id: 't-1', comments: [{ content: 'LGTM' }] }];
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/threads', { body: { threads } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getThreads('repo/a', '42')).resolves.toEqual({ threads });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/threads');
+  });
+
+  it('gets reviewers for a PR', async () => {
+    mock = await startMockServer();
+    const reviewers = [{ id: 'r-1', displayName: 'Dev', vote: 10 }];
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/reviewers', { body: { reviewers } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getReviewers('repo/a', '42')).resolves.toEqual({ reviewers });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/reviewers');
+  });
+
+  it('gets unified diff as text/plain string via the raw-text transport path', async () => {
+    mock = await startMockServer();
+    const diff = '--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n+import { foo } from "bar";\n export const x = 1;';
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/diff', {
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      rawBody: diff,
+    });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getDiff('repo/a', '42')).resolves.toBe(diff);
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/diff');
+  });
+
+  it('propagates 404 on missing PRs as CocApiError', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/repos/repo-a/pull-requests/999', {
+      status: 404,
+      body: { error: 'Pull request not found' },
+    });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.get('repo-a', '999')).rejects.toMatchObject({
+      name: 'CocApiError',
+      status: 404,
+    } satisfies Partial<CocApiError>);
+  });
 });
 
 function createClient(mock: MockServer): CocClient {
@@ -81,11 +173,12 @@ function expectEmptyRequest(
   request: RecordedRequest,
   method: string,
   path: string,
+  query: Record<string, string> = {},
 ): void {
   expect(request).toMatchObject({
     method,
     path,
-    query: {},
+    query,
     rawBody: '',
     body: undefined,
   });

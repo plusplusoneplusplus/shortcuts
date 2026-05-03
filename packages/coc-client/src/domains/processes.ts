@@ -1,5 +1,7 @@
 import type {
   AIProcess,
+  AskUserResponseRequest,
+  AskUserResponseResponse,
   CreateProcessRequest,
   ProcessDetailResponse,
   CreatePendingProcessMessageResponse,
@@ -167,6 +169,13 @@ export class ProcessesClient {
   output(processId: string, query?: ProcessOutputQuery): Promise<ProcessOutputResponse | string> {
     return this.transport.request<ProcessOutputResponse | string>(`/processes/${encodePathSegment(processId)}/output`, {
       query: serializeOutputQuery(query),
+    });
+  }
+
+  askUserResponse(processId: string, request: AskUserResponseRequest): Promise<AskUserResponseResponse> {
+    return this.transport.request<AskUserResponseResponse>(`/processes/${encodePathSegment(processId)}/ask-user-response`, {
+      method: 'POST',
+      body: { ...request },
     });
   }
 

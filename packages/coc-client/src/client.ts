@@ -43,7 +43,7 @@ export class CocClient {
     this.notes = new NotesClient(this.transport);
     this.preferences = new PreferencesClient(this.transport);
     this.processes = new ProcessesClient(this.transport, this.options);
-    this.pullRequests = new PullRequestsClient(this.transport);
+    this.pullRequests = new PullRequestsClient(this.transport, this.options);
     this.queue = new QueueClient(this.transport);
     this.schedules = new SchedulesClient(this.transport);
     this.seenState = new SeenStateClient(this.transport);

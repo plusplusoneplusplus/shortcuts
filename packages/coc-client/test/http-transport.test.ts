@@ -221,6 +221,37 @@ describe('HTTP transport response parsing and errors', () => {
     await expect(transport.request('/plain-text')).resolves.toBe('plain text');
   });
 
+  it('requestText returns raw text without JSON parsing', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/diff', {
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      rawBody: '--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new',
+    });
+    mock.on('GET', '/api/json-as-text', {
+      body: { value: 1 },
+    });
+    mock.on('DELETE', '/api/empty', { noContent: true });
+    const transport = createTransport({ baseUrl: mock.url, fetch: globalThis.fetch });
+
+    await expect(transport.requestText('/diff')).resolves.toBe('--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new');
+    await expect(transport.requestText('/json-as-text')).resolves.toBe('{"value":1}');
+    await expect(transport.requestText('/empty', { method: 'DELETE' })).resolves.toBe('');
+  });
+
+  it('requestText propagates CocApiError on non-OK responses', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/missing', {
+      status: 404,
+      body: { error: 'Not found' },
+    });
+    const transport = createTransport({ baseUrl: mock.url, fetch: globalThis.fetch });
+
+    await expect(transport.requestText('/missing')).rejects.toMatchObject({
+      name: 'CocApiError',
+      status: 404,
+    } satisfies Partial<CocApiError>);
+  });
+
   it('rejects fetch results that are not Response-like', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       status: 200,

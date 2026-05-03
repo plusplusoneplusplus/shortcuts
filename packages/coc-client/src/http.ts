@@ -69,6 +69,30 @@ export class HttpTransport {
   constructor(private readonly options: NormalizedCocClientOptions) {}
 
   async request<T = unknown>(path: string, requestOptions: CocRequestOptions = {}): Promise<T> {
+    const response = await this.fetch(path, requestOptions);
+
+    if (response.status === 204) return undefined as T;
+
+    const contentType = response.headers?.get?.('content-type') ?? '';
+    if (contentType.includes('application/json') || typeof response.text !== 'function') {
+      return await response.json() as T;
+    }
+    const text = await response.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
+  }
+
+  async requestText(path: string, requestOptions: CocRequestOptions = {}): Promise<string> {
+    const response = await this.fetch(path, requestOptions);
+
+    if (response.status === 204) return '';
+    return await response.text();
+  }
+
+  private async fetch(path: string, requestOptions: CocRequestOptions): Promise<Response> {
     const url = buildApiUrl(this.options.baseUrl, this.options.apiBasePath, path, requestOptions.query);
     const headers = mergeHeaders(this.options.defaultHeaders, requestOptions.headers);
     const method = requestOptions.method ?? (requestOptions.body !== undefined || requestOptions.rawBody !== undefined ? 'POST' : 'GET');
@@ -105,17 +129,6 @@ export class HttpTransport {
     if (!response.ok) {
       throw await createApiError(response, url);
     }
-    if (response.status === 204) return undefined as T;
-
-    const contentType = response.headers?.get?.('content-type') ?? '';
-    if (contentType.includes('application/json') || typeof response.text !== 'function') {
-      return await response.json() as T;
-    }
-    const text = await response.text();
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return text as T;
-    }
+    return response;
   }
 }

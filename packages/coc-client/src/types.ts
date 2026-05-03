@@ -36,6 +36,7 @@ export interface NormalizedCocClientOptions {
 
 export interface RequestAdapter {
   request<T = unknown>(path: string, options?: CocRequestOptions): Promise<T>;
+  requestText?(path: string, options?: CocRequestOptions): Promise<string>;
 }
 
 export interface CocWebSocket {

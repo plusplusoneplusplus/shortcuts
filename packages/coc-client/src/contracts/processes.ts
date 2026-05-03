@@ -167,3 +167,13 @@ export interface ProcessOutputQuery {
   range?: string;
   offset?: number;
 }
+
+export interface AskUserResponseRequest {
+  questionId: string;
+  answer?: string | string[] | boolean;
+  skipped?: boolean;
+}
+
+export interface AskUserResponseResponse {
+  ok: boolean;
+}

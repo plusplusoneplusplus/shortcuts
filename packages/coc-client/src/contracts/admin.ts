@@ -210,3 +210,78 @@ export interface AdminStorageDirectoryImportSummary {
 export interface AdminStorageCancelMigrationResponse {
   success: boolean;
 }
+
+// ── DB Browser types ────────────────────────────────────────────────
+
+export interface AdminDbTable {
+  name: string;
+  rowCount: number;
+}
+
+export interface AdminDbTablesResponse {
+  tables: AdminDbTable[];
+}
+
+export interface AdminDbColumn {
+  name: string;
+  type: string;
+  notnull: boolean;
+  pk: boolean;
+}
+
+export interface AdminDbTableDataQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
+export interface AdminDbTableDataResponse {
+  table: string;
+  columns: AdminDbColumn[];
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface AdminDbRowUpdateRequest {
+  pkColumns: Record<string, unknown>;
+  updates: Record<string, unknown>;
+}
+
+export interface AdminDbRowUpdateResponse {
+  row: Record<string, unknown>;
+  changes: number;
+}
+
+export interface AdminDbRowDeleteRequest {
+  pkColumns: Record<string, unknown>;
+}
+
+export interface AdminDbRowDeleteResponse {
+  deleted: number;
+}
+
+export interface AdminDbBulkDeleteRequest {
+  rows: Record<string, unknown>[];
+}
+
+export interface AdminDbBulkDeleteResponse {
+  deleted: number;
+  requested: number;
+}
+
+// ── Built-in Prompts types ──────────────────────────────────────────
+
+export interface BuiltInPrompt {
+  id: string;
+  title: string;
+  group: string;
+  source: string;
+  description: string;
+  text: string;
+}
+
+export type AdminPromptsResponse = Record<string, BuiltInPrompt>;
