@@ -68,6 +68,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'fresh-written',
         description: 'Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version',
         relativePath: 'fresh-written',
+    },
+    {
+        name: 'terse-replies',
+        description: 'Ultra-compressed reply mode that cuts token usage ~50% while keeping full technical accuracy. Triggers on "be brief", "be terse", "less tokens", "/terse", or explicit token-efficiency requests',
+        relativePath: 'terse-replies',
     }
 ];
 
