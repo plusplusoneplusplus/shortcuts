@@ -58,6 +58,7 @@ describe('createQueueInfrastructure', () => {
             { queue: { autoStart: false } },
             DEFAULT_AI_TIMEOUT_MS,
             undefined,
+            undefined,
             getWsServer,
         );
 
@@ -75,6 +76,7 @@ describe('createQueueInfrastructure', () => {
             { queue: { autoStart: false, historyLimit: 42 } },
             DEFAULT_AI_TIMEOUT_MS,
             undefined,
+            undefined,
             getWsServer,
         );
 
@@ -91,6 +93,7 @@ describe('createQueueInfrastructure', () => {
                 { queue: { autoStart: false } },
                 DEFAULT_AI_TIMEOUT_MS,
                 followUpSuggestions,
+                undefined,
                 getWsServer,
             ),
         ).not.toThrow();
@@ -104,6 +107,7 @@ describe('createQueueInfrastructure', () => {
                 { queue: { autoStart: false } },
                 DEFAULT_AI_TIMEOUT_MS,
                 undefined,
+                undefined,
                 getWsServer,
             ),
         ).not.toThrow();
@@ -115,6 +119,7 @@ describe('createQueueInfrastructure', () => {
             dataDir,
             {},
             DEFAULT_AI_TIMEOUT_MS,
+            undefined,
             undefined,
             getWsServer,
         );
@@ -129,6 +134,7 @@ describe('createQueueInfrastructure', () => {
             { queue: { autoStart: false, restartPickupDelayMs: 5000 } },
             DEFAULT_AI_TIMEOUT_MS,
             undefined,
+            undefined,
             getWsServer,
         );
 
@@ -141,6 +147,7 @@ describe('createQueueInfrastructure', () => {
             dataDir,
             { queue: { autoStart: false, restartPickupDelayMs: 30000 } },
             DEFAULT_AI_TIMEOUT_MS,
+            undefined,
             undefined,
             getWsServer,
         );
@@ -163,6 +170,7 @@ describe('createQueueInfrastructure', () => {
             { queue: { autoStart: false } },
             DEFAULT_AI_TIMEOUT_MS,
             undefined,
+            undefined,
             getWsServer,
         );
 
@@ -176,6 +184,7 @@ describe('createQueueInfrastructure', () => {
             dataDir,
             { queue: { autoStart: false } },
             DEFAULT_AI_TIMEOUT_MS,
+            undefined,
             undefined,
             getWsServer,
         );

@@ -693,6 +693,7 @@ describe('createQueueInfrastructure integration', () => {
                 { queue: { autoStart: false } },
                 30000,
                 undefined,
+                undefined,
                 () => ({ broadcast: () => {} }) as any,
             );
 
@@ -720,6 +721,7 @@ describe('createQueueInfrastructure integration', () => {
                 tmpDir,
                 { queue: { autoStart: false } },
                 30000,
+                undefined,
                 undefined,
                 () => ({ broadcast: () => {} }) as any,
             );
