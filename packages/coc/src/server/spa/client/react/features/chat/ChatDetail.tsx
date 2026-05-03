@@ -172,9 +172,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const processId = task?.processId ?? (taskId
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
-    const isPending = task?.status === 'queued';
-    const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
-    const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
+    const effectiveStatus = processDetails?.status ?? task?.status;
+    const isActiveGeneration = effectiveStatus === 'running' || effectiveStatus === 'cancelling' || isStreaming;
+    const isCancelling = effectiveStatus === 'cancelling';
+    const isPending = effectiveStatus === 'queued';
+    const isTerminal = effectiveStatus === 'completed' || effectiveStatus === 'failed' || effectiveStatus === 'cancelled';
+    const inputDisabled = loading || isPending || effectiveStatus === 'cancelled' || isCancelling || sessionExpired;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
@@ -323,6 +326,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         taskId,
         inputDisabled,
         sending,
+        isActiveGeneration,
         setSending,
         setError,
         setSessionExpired,
@@ -902,6 +906,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             richTextRef={richTextRef}
                             inputDisabled={inputDisabled}
                             sending={sending}
+                            isActiveGeneration={isActiveGeneration}
+                            isCancelling={isCancelling}
                             error={error}
                             resumeFeedback={resumeFeedback}
                             suggestions={suggestions}
@@ -985,6 +991,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
                     sending={sending}
+                    isActiveGeneration={isActiveGeneration}
+                    isCancelling={isCancelling}
                     error={error}
                     resumeFeedback={resumeFeedback}
                     suggestions={suggestions}

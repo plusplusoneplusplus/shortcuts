@@ -52,6 +52,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useSendMessage>[0]> = 
         taskId: 'task-1',
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
         setSending: vi.fn(),
         setError: vi.fn(),
         setSessionExpired: vi.fn(),
@@ -165,15 +166,24 @@ describe('useSendMessage', () => {
         expect(setError).toHaveBeenCalledWith(expect.stringContaining('Network error'));
     });
 
-    it('POSTs to /message when sending=true (second message while first in-flight)', async () => {
+    it('POSTs to /message when active generation is running', async () => {
         mockFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-        // sending=true simulates first message is in-flight
-        const opts = makeOptions({ sending: true });
+        const opts = makeOptions({ isActiveGeneration: true });
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('Second message'); });
         expect(mockFetch).toHaveBeenCalled();
         const url = mockFetch.mock.calls[0][0] as string;
         expect(url).toContain('/processes/proc-1/message');
+    });
+
+    it('does not POST while an initial submit is already in flight', async () => {
+        mockFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+        const setSending = vi.fn();
+        const opts = makeOptions({ sending: true, isActiveGeneration: false, setSending });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Second message'); });
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(setSending).not.toHaveBeenCalled();
     });
 
     it('POSTs to /api/processes/:id/message with correct content', async () => {

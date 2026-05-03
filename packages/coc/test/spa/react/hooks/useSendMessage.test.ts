@@ -51,6 +51,7 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
         taskId: 'task-1',
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
         setSending: vi.fn(),
         setError: vi.fn(),
         setSessionExpired: vi.fn(),
@@ -170,9 +171,9 @@ describe('useSendMessage', () => {
         expect(setSessionExpired).toHaveBeenCalledWith(true);
     });
 
-    it('sends to /message when already sending with immediate delivery', async () => {
+    it('sends to /message when active generation is running with immediate delivery', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-        const opts = makeOptions({ sending: true });
+        const opts = makeOptions({ isActiveGeneration: true });
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -184,9 +185,9 @@ describe('useSendMessage', () => {
         expect(body.deliveryMode).toBe('immediate');
     });
 
-    it('sends to /message (not /pending-messages) when already sending with enqueue delivery', async () => {
+    it('sends to /message (not /pending-messages) when active generation is running with enqueue delivery', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-        const opts = makeOptions({ sending: true });
+        const opts = makeOptions({ isActiveGeneration: true });
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('queued msg', 'enqueue'); });
@@ -208,6 +209,20 @@ describe('useSendMessage', () => {
             await result.current.sendFollowUp('hello');
         });
         expect(setSending).toHaveBeenCalledWith(true);
+    });
+
+    it('ignores duplicate initial submit while local request is in flight', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTurnsAndRef = vi.fn();
+        const setSending = vi.fn();
+        const opts = makeOptions({ sending: true, isActiveGeneration: false, setSending, setTurnsAndRef });
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(setSending).not.toHaveBeenCalled();
+        expect(setTurnsAndRef).not.toHaveBeenCalled();
     });
 
     it('auto-unarchives chat when sending a follow-up on an archived chat', async () => {
@@ -362,12 +377,12 @@ describe('useSendMessage', () => {
         expect(clearPaste).toHaveBeenCalled();
     });
 
-    // ── Group 1: sendFollowUp while sending=true, deliveryMode='immediate' ──
+    // ── Group 1: sendFollowUp while active generation is running, deliveryMode='immediate' ──
 
-    describe('immediate steer (sending=true, immediate)', () => {
+    describe('immediate steer (active generation, immediate)', () => {
         it('S1: fires POST to /message with deliveryMode=immediate', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-            const opts = makeOptions({ sending: true });
+            const opts = makeOptions({ isActiveGeneration: true });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -382,7 +397,7 @@ describe('useSendMessage', () => {
         it('S2: does NOT call setSending(true) — fire-and-forget', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const setSending = vi.fn();
-            const opts = makeOptions({ sending: true, setSending });
+            const opts = makeOptions({ isActiveGeneration: true, setSending });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -393,7 +408,7 @@ describe('useSendMessage', () => {
         it('S3: adds optimistic user turn via setTurnsAndRef', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const setTurnsAndRef = vi.fn();
-            const opts = makeOptions({ sending: true, setTurnsAndRef });
+            const opts = makeOptions({ isActiveGeneration: true, setTurnsAndRef });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -409,7 +424,7 @@ describe('useSendMessage', () => {
         it('S4: optimistic turn does NOT include assistant placeholder', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const setTurnsAndRef = vi.fn();
-            const opts = makeOptions({ sending: true, setTurnsAndRef });
+            const opts = makeOptions({ isActiveGeneration: true, setTurnsAndRef });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -423,7 +438,7 @@ describe('useSendMessage', () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const clearImages = vi.fn();
             const clearPaste = vi.fn();
-            const opts = makeOptions({ sending: true, clearImages, clearPaste });
+            const opts = makeOptions({ isActiveGeneration: true, clearImages, clearPaste });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('steer msg', 'immediate'); });
@@ -433,12 +448,12 @@ describe('useSendMessage', () => {
         });
     });
 
-    // ── Group 2: sendFollowUp while sending=true, deliveryMode='enqueue' ──
+    // ── Group 2: sendFollowUp while active generation is running, deliveryMode='enqueue' ──
 
-    describe('enqueue while running (sending=true, enqueue)', () => {
+    describe('enqueue while running (active generation, enqueue)', () => {
         it('E1: POSTs to /message (not /pending-messages) with deliveryMode=enqueue', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-            const opts = makeOptions({ sending: true });
+            const opts = makeOptions({ isActiveGeneration: true });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('queued msg', 'enqueue'); });
@@ -454,7 +469,7 @@ describe('useSendMessage', () => {
         it('E2: does NOT call setSending — server handles queuing', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const setSending = vi.fn();
-            const opts = makeOptions({ sending: true, setSending });
+            const opts = makeOptions({ isActiveGeneration: true, setSending });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('queued msg', 'enqueue'); });
@@ -465,7 +480,7 @@ describe('useSendMessage', () => {
         it('E3: does NOT add optimistic turns — waits for server confirmation', async () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const setTurnsAndRef = vi.fn();
-            const opts = makeOptions({ sending: true, setTurnsAndRef });
+            const opts = makeOptions({ isActiveGeneration: true, setTurnsAndRef });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('queued msg', 'enqueue'); });
@@ -477,7 +492,7 @@ describe('useSendMessage', () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const clearImages = vi.fn();
             const clearPaste = vi.fn();
-            const opts = makeOptions({ sending: true, clearImages, clearPaste });
+            const opts = makeOptions({ isActiveGeneration: true, clearImages, clearPaste });
 
             const { result } = renderHook(() => useSendMessage(opts));
             await act(async () => { await result.current.sendFollowUp('queued msg', 'enqueue'); });
@@ -525,7 +540,7 @@ describe('useSendMessage', () => {
             fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
             const clearAttachedContext = vi.fn();
             const opts = makeOptions({
-                sending: true,
+                isActiveGeneration: true,
                 getAttachedContext: () => [{ id: 'ctx-1', turnIndex: 1, role: 'user', snippet: 'x', preview: 'x' }],
                 clearAttachedContext,
             });

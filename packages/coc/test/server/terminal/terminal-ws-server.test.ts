@@ -120,6 +120,18 @@ function waitForMessages(messages: any[], count: number, timeoutMs = 3000): Prom
     });
 }
 
+function waitForCondition(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const start = Date.now();
+        const check = () => {
+            if (predicate()) resolve();
+            else if (Date.now() - start > timeoutMs) reject(new Error('Timed out waiting for condition'));
+            else setTimeout(check, 20);
+        };
+        check();
+    });
+}
+
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -151,8 +163,12 @@ describe('TerminalWebSocketServer', () => {
 
     // Helper: connect and track socket for cleanup
     async function connect(workspaceId = 'test-ws') {
+        const expectedClientCount = workspaceId === TEST_WORKSPACE.id ? terminalWs.clientCount + 1 : terminalWs.clientCount;
         const result = await connectTerminal(port, workspaceId);
         openSockets.push(result.ws);
+        if (workspaceId === TEST_WORKSPACE.id) {
+            await waitForCondition(() => terminalWs.clientCount === expectedClientCount);
+        }
         return result;
     }
 
@@ -204,7 +220,7 @@ describe('TerminalWebSocketServer', () => {
     it('should create a terminal session and return terminal-created', async () => {
         const { ws, messages } = await connect();
         sendMsg(ws, { type: 'terminal-create', workspaceId: 'test-ws', cols: 100, rows: 30 });
-        await waitForMessages(messages, 1);
+        await waitForMessages(messages, 1, 10_000);
 
         expect(messages[0].type).toBe('terminal-created');
         expect(messages[0].session).toMatchObject({

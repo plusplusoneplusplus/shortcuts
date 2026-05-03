@@ -55,6 +55,7 @@ function createOptions(overrides: Record<string, any> = {}) {
         taskId: 'queue_task-1',
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
         setSending: vi.fn(),
         setError: vi.fn(),
         setSessionExpired: vi.fn(),
@@ -165,12 +166,12 @@ describe('useSendMessage – attachment forwarding', () => {
         expect(body.attachments).toEqual(attachmentPayload);
     });
 
-    it('sends attachments during active streaming (sending=true)', async () => {
+    it('sends attachments during active generation', async () => {
         const attachmentPayload = [
             { name: 'doc.md', mimeType: 'text/markdown', size: 80, dataUrl: 'data:text/markdown;base64,IyBoZWxsbw==' },
         ];
         const toPayload = vi.fn().mockReturnValue(attachmentPayload);
-        const options = createOptions({ toPayload, sending: true });
+        const options = createOptions({ toPayload, isActiveGeneration: true });
         const { result } = renderHook(() => useSendMessage(options as any));
 
         await act(async () => {

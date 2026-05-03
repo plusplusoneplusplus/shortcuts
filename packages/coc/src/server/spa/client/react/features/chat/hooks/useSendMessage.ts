@@ -17,6 +17,7 @@ export interface UseSendMessageOptions {
     taskId: string;
     inputDisabled: boolean;
     sending: boolean;
+    isActiveGeneration: boolean;
     setSending: (v: boolean) => void;
     setError: (v: string | null) => void;
     setSessionExpired: (v: boolean) => void;
@@ -55,6 +56,7 @@ export function useSendMessage({
     taskId,
     inputDisabled,
     sending,
+    isActiveGeneration,
     setSending,
     setError,
     setSessionExpired,
@@ -143,6 +145,7 @@ export function useSendMessage({
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!rawContent || !processId || inputDisabled) return;
+        if (sending && !isActiveGeneration) return;
 
         if (archivedChatIds.has(taskId)) {
             unarchiveChat(taskId);
@@ -157,7 +160,7 @@ export function useSendMessage({
         setError(null);
 
         // ── While AI is running: route through /message, let server decide ──
-        if (sending) {
+        if (isActiveGeneration) {
             if (deliveryMode === 'immediate') {
                 // Immediate steer: add optimistic user turn so it appears in
                 // the conversation right away. The server will attempt to inject
@@ -228,7 +231,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

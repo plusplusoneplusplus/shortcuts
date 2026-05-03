@@ -21,6 +21,8 @@ export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
     inputDisabled: boolean;
     sending: boolean;
+    isActiveGeneration: boolean;
+    isCancelling: boolean;
     error: string | null;
     resumeFeedback: { type: 'success' | 'error'; message: string; command?: string } | null;
     suggestions: string[];
@@ -87,6 +89,8 @@ export function FollowUpInputArea({
     richTextRef,
     inputDisabled,
     sending,
+    isActiveGeneration,
+    isCancelling,
     error,
     resumeFeedback,
     suggestions,
@@ -163,7 +167,7 @@ export function FollowUpInputArea({
                     Retry
                 </Button>
             )}
-            {suggestions.length > 0 && !sending && task?.status !== 'running' && !suggestionsDismissed && (
+            {suggestions.length > 0 && !sending && !isActiveGeneration && !suggestionsDismissed && (
                 <div className="relative">
                     <SuggestionChips
                         suggestions={suggestions}
@@ -263,7 +267,7 @@ export function FollowUpInputArea({
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}
-                        placeholder={inputDisabled && !sending ? 'Session expired.' : 'Send a message... (type / for commands)'}
+                        placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Send a message... (type / for commands)'}
                         className={cn(
                             'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
                             MODE_BORDER_COLORS[selectedMode].border,
@@ -386,19 +390,22 @@ export function FollowUpInputArea({
                         >✕</button>
                     </div>
                 )}
-                {sending ? (
+                {isActiveGeneration ? (
                     <button
                         type="button"
-                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
-                        onClick={() => onStop?.()}
+                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]"
+                        onClick={() => {
+                            if (!isCancelling) onStop?.();
+                        }}
+                        disabled={isCancelling}
                         data-testid="activity-chat-stop-btn"
-                        title="Stop generation"
+                        title={isCancelling ? 'Stopping generation' : 'Stop generation'}
                     >
-                        Stop
+                        {isCancelling ? 'Stopping...' : 'Stop'}
                     </button>
                 ) : (
                     <SendButton
-                        disabled={inputDisabled}
+                        disabled={inputDisabled || sending}
                         ctrlHeld={modHeld}
                         onSend={(dm) => { void onSend(undefined, dm); }}
                     />

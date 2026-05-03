@@ -75,6 +75,8 @@ function defaultProps(overrides: Partial<Parameters<typeof FollowUpInputArea>[0]
         richTextRef: createRef<any>(),
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
+        isCancelling: false,
         error: null,
         resumeFeedback: null,
         suggestions: [],
@@ -123,11 +125,29 @@ describe('FollowUpInputArea – single send button', () => {
         expect(getSendButton().textContent).toBe('Send');
     });
 
-    it('shows Stop button when sending=true (no split button)', () => {
-        render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
+    it('shows Stop button when active generation is true, even if sending is false', () => {
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true, sending: false })} />);
         expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
         expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
         expect(screen.queryByTestId('split-send-group')).toBeNull();
+    });
+
+    it('keeps Send visible but disabled during local request submission', () => {
+        render(<FollowUpInputArea {...defaultProps({ sending: true, isActiveGeneration: false })} />);
+        expect(screen.queryByTestId('activity-chat-stop-btn')).toBeNull();
+        const sendButton = getSendButton();
+        expect(sendButton.textContent).toBe('Send');
+        expect(sendButton.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('shows cancelling state and blocks duplicate stop clicks', () => {
+        const onStop = vi.fn();
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true, isCancelling: true, onStop })} />);
+        const stopButton = screen.getByTestId('activity-chat-stop-btn');
+        expect(stopButton.textContent).toBe('Stopping...');
+        expect(stopButton.hasAttribute('disabled')).toBe(true);
+        stopButton.click();
+        expect(onStop).not.toHaveBeenCalled();
     });
 
     it('shows "⚡ Steer" when Ctrl is held', () => {
@@ -136,9 +156,9 @@ describe('FollowUpInputArea – single send button', () => {
         expect(getSendButton().textContent).toBe('⚡ Steer');
     });
 
-    it('shows Stop button when Ctrl is held and sending=true', () => {
+    it('shows Stop button when Ctrl is held and active generation is true', () => {
         mockModHeld = true;
-        render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
+        render(<FollowUpInputArea {...defaultProps({ isActiveGeneration: true })} />);
         expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
         expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
         expect(screen.queryByTestId('split-send-group')).toBeNull();

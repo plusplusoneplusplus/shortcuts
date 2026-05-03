@@ -311,6 +311,41 @@ describe('ChatDetail', () => {
             );
             expect(sendBlock).toContain('deliveryMode');
         });
+
+        it('derives active generation from process/task status and SSE state', () => {
+            expect(source).toContain('const effectiveStatus = processDetails?.status ?? task?.status');
+            expect(source).toContain("effectiveStatus === 'running' || effectiveStatus === 'cancelling' || isStreaming");
+            expect(source).toContain("const isCancelling = effectiveStatus === 'cancelling'");
+        });
+
+        it('passes active generation state to useSendMessage and FollowUpInputArea', () => {
+            const sendMessageBlock = source.substring(
+                source.indexOf('useSendMessage({'),
+                source.indexOf('useSendMessage({') + 700,
+            );
+            expect(sendMessageBlock).toContain('isActiveGeneration');
+            expect(source).toContain('isActiveGeneration={isActiveGeneration}');
+            expect(source).toContain('isCancelling={isCancelling}');
+        });
+
+        it('renders Stop from active generation instead of local sending state', () => {
+            const stopSection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('{isActiveGeneration ? ('),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('{isActiveGeneration ? (') + 700,
+            );
+            expect(stopSection).toContain('activity-chat-stop-btn');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("isCancelling ? 'Stopping...' : 'Stop'");
+            expect(stopSection).not.toContain('{sending ? (');
+        });
+
+        it('branches active follow-up sends on durable active generation state', () => {
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 3000,
+            );
+            expect(sendBlock).toContain('if (sending && !isActiveGeneration) return');
+            expect(sendBlock).toContain('if (isActiveGeneration)');
+        });
     });
 
     describe('session expiry (410)', () => {
@@ -710,12 +745,12 @@ describe('ChatDetail', () => {
     });
 
     describe('client-side queue', () => {
-        it('routes through /message when sending is true', () => {
+        it('routes through /message when active generation is true', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 10000,
             );
-            expect(sendBlock).toContain('if (sending)');
+            expect(sendBlock).toContain('if (isActiveGeneration)');
             expect(sendBlock).toContain('/message');
         });
 
@@ -1141,15 +1176,13 @@ describe('ChatDetail', () => {
             expect(stopBtnBlock).toContain('onStop?.()');
         });
 
-        it('stop button is shown when sending', () => {
-            const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
-            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 400, stopBtnIdx + 50);
-            expect(stopBtnBlock).toContain('sending');
+        it('stop button is shown during active generation', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? (');
         });
     });
 
     describe('ongoing-state indicator', () => {
-        it('FollowUpInputArea renders stop button when sending', () => {
+        it('FollowUpInputArea renders stop button for active generation', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-stop-btn"');
         });
 
@@ -1165,10 +1198,8 @@ describe('ChatDetail', () => {
             expect(stopBlock).toContain('f14c4c');
         });
 
-        it('stop button is conditionally rendered based on sending state', () => {
-            const stopIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
-            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx - 400, stopIdx + 50);
-            expect(stopBlock).toContain('sending');
+        it('stop button is conditionally rendered based on active generation state', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? (');
         });
     });
 

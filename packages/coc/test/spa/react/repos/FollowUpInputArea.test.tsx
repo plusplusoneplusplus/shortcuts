@@ -59,6 +59,8 @@ function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInp
         richTextRef: createRef<RichTextInputHandle>(),
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
+        isCancelling: false,
         error: null,
         resumeFeedback: null,
         suggestions: [],

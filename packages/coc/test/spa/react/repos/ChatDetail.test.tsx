@@ -749,7 +749,7 @@ describe('ChatDetail', () => {
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+                expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
             });
         });
     });
@@ -1054,8 +1054,9 @@ describe('ChatDetail', () => {
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                const sendBtn = screen.getByTestId('activity-chat-send-btn');
-                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                const stopBtn = screen.getByTestId('activity-chat-stop-btn');
+                expect(stopBtn.textContent).toBe('Stopping...');
+                expect(stopBtn.hasAttribute('disabled')).toBe(true);
             });
         });
 
@@ -1078,6 +1079,61 @@ describe('ChatDetail', () => {
             await waitFor(() => {
                 // Running tasks should show the conversation area
                 expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
+            });
+        });
+
+        it('passes active generation state from running task status', async () => {
+            const task = makeTask({ status: 'running', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'running', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect((globalThis as any).__useSendMessage_opts?.isActiveGeneration).toBe(true);
+                expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+            });
+        });
+
+        it('uses running process status when queue task status is stale', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'running', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect((globalThis as any).__useSendMessage_opts?.isActiveGeneration).toBe(true);
+                expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+            });
+        });
+
+        it('keeps Stop visible after switching away from and back to a running chat', async () => {
+            const task1 = makeTask({ id: 'task-1', status: 'running', processId: 'proc-1', displayName: 'Running Chat' });
+            const proc1 = makeProcess({ id: 'proc-1', status: 'running', metadata: { sessionId: 'sess-1' } });
+            const task2 = makeTask({ id: 'task-2', status: 'completed', processId: 'proc-2', displayName: 'Idle Chat' });
+            const proc2 = makeProcess({ id: 'proc-2', status: 'completed', metadata: { sessionId: 'sess-2' } });
+            const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/models': { body: [] },
+                '/queue/': (url: string) => jsonResponse({ task: url.includes('task-2') ? task2 : task1 }),
+                '/processes/': (url: string) => jsonResponse({ process: url.includes('proc-2') ? proc2 : proc1 }),
+            });
+
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+            });
+
+            rerender(<Wrap><ChatDetail taskId="task-2" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+
+            rerender(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+                expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
             });
         });
     });
