@@ -6,7 +6,7 @@
  *   captureContext to buildBoundedMemoryAddon
  * - FollowUpExecutor passes captureContext with correct turnIndex
  * - Addon dispose() is called after execution completes
- * - Aggregate finalization handles dropped-only batches correctly
+ * - Aggregate finalization drains raw candidates without rewriting bounded memory
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
@@ -213,7 +213,7 @@ describe('Executor capture-mode wiring', () => {
 // Test: MemoryAggregateExecutor finalization
 // ============================================================================
 
-describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
+describe('MemoryAggregateExecutor — non-destructive batch finalization', () => {
     let tmpDir: string;
     let mockAiService: any;
 
@@ -225,6 +225,7 @@ describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -253,27 +254,21 @@ describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
         }
     }
 
-    function getRawRecordStats(workspaceId: string): any {
+    async function getRawRecordStats(workspaceId: string): Promise<any> {
         const { RawMemoryRecordStore } = require('@plusplusoneplusplus/forge');
         const dbPath = path.join(tmpDir, 'repos', workspaceId, 'memory', 'raw-memory.db');
         const rawStore = new RawMemoryRecordStore({ dbPath });
-        const stats = rawStore.getStatsSync?.() ?? { pending: 0, claimed: 0, aggregated: 0, dropped: 0 };
+        const stats = await rawStore.getStats();
         rawStore.close();
         return stats;
     }
 
-    it('marks batch as dropped when AI returns only existing entries (no new ones aggregated)', async () => {
+    it('marks batch as dropped without invoking AI', async () => {
         const { MemoryAggregateExecutor } = await import('../../../src/server/memory/memory-aggregate-executor');
         const wsId = 'ws-drop-only';
 
         seedRawRecords(wsId, ['Duplicate existing fact']);
         seedBoundedMemory(wsId, ['Duplicate existing fact']);
-
-        // AI returns same entries — nothing new aggregated
-        mockAiService.sendMessage.mockResolvedValue({
-            success: true,
-            response: JSON.stringify(['Duplicate existing fact']),
-        });
 
         const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
         const result = await executor.execute({
@@ -288,6 +283,8 @@ describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
         } as any);
 
         expect(result.success).toBe(true);
+        expect(mockAiService.sendMessage).not.toHaveBeenCalled();
+        await expect(getRawRecordStats(wsId)).resolves.toMatchObject({ dropped: 1 });
     });
 
     it('releases batch on unexpected errors in catch block', async () => {
@@ -298,28 +295,9 @@ describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
         seedRawRecords(wsId, ['A fact']);
         seedBoundedMemory(wsId, []);
 
-        // AI returns valid JSON that will pass parsing but break during apply
-        // by making the response trigger an unexpected error downstream
-        mockAiService.sendMessage.mockResolvedValue({
-            success: true,
-            response: JSON.stringify(['Valid entry']),
-        });
-
-        // Monkey-patch applyReconciliation to throw
-        const origModule = await import('@plusplusoneplusplus/forge');
-        const origApply = origModule.applyReconciliation;
-        const applyMock = vi.fn().mockRejectedValue(new Error('Unexpected disk failure'));
-
-        // We can't easily mock module-level exports, so we test the catch block
-        // indirectly by verifying that raw store constructor errors are handled.
-        // Instead, verify the contract: after a failed execution, if the batch
-        // was claimed, it should be released.
-
-        // Simulate by testing a scenario where raw store creates successfully
-        // but bounded store load fails
-        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
-        // Make MEMORY.md a directory to cause BoundedMemoryStore.load() to fail
-        fs.mkdirSync(path.join(memDir, 'MEMORY.md'), { recursive: true });
+        const markDroppedSpy = vi
+            .spyOn(RawMemoryRecordStore.prototype, 'markDropped')
+            .mockRejectedValueOnce(new Error('Unexpected finalization failure'));
 
         const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
         const result = await executor.execute({
@@ -334,11 +312,12 @@ describe('MemoryAggregateExecutor — dropped-only batch finalization', () => {
         } as any);
 
         expect(result.success).toBe(false);
+        expect(markDroppedSpy).toHaveBeenCalledTimes(1);
 
-        // Clean up the directory-as-file so we can check raw store
-        fs.rmSync(path.join(memDir, 'MEMORY.md'), { recursive: true, force: true });
+        markDroppedSpy.mockRestore();
 
         // Records should be back to pending (released by catch block)
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
         const rawStore = new RawMemoryRecordStore({
             dbPath: path.join(memDir, 'raw-memory.db'),
         });

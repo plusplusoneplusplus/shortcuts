@@ -1,9 +1,9 @@
 /**
  * Memory Aggregate — prompts, config, and helper types for queued
- * raw-to-bounded memory aggregation.
+ * raw-to-bounded memory promotion.
  *
- * The queued executor uses these to build the AI prompt that reconciles
- * raw memory records into bounded MEMORY.md.
+ * Automatic full-list reconciliation is disabled. These helpers describe
+ * the append-only candidate-selection prompt shape for future promotion work.
  */
 
 import type { ReconciliationContext } from '@plusplusoneplusplus/forge';
@@ -28,16 +28,16 @@ export const DEFAULT_AGGREGATE_CONFIG: MemoryAggregateConfig = {
 // ── Prompt ─────────────────────────────────────────────────────────
 
 /**
- * Build the system message for the reconciliation AI call.
+ * Build the system message for a promotion AI call.
  *
- * Provides the current bounded entries and candidate raw records as
- * structured context so the AI can produce a merged entry list.
+ * Provides the current bounded entries and candidate raw records as structured
+ * context so the AI can select only new entries worth appending.
  */
 export function buildAggregateSystemMessage(ctx: ReconciliationContext): string {
     const parts: string[] = [
-        'You are a memory reconciliation agent. Your job is to merge new memory',
-        'candidates into the existing bounded memory while staying within the',
-        `character limit of ${ctx.charLimit} characters.`,
+        'You are a memory promotion agent. Your job is to identify which new',
+        'memory candidates are worth appending to bounded memory while staying',
+        `within the character limit of ${ctx.charLimit} characters.`,
         '',
     ];
 
@@ -62,15 +62,15 @@ export function buildAggregateSystemMessage(ctx: ReconciliationContext): string 
 }
 
 export const AGGREGATE_USER_PROMPT = `\
-Reconcile the candidate memory entries into the current bounded memory.
+Select candidate memory entries worth appending to the current bounded memory.
 
 Rules:
-1. Return ONLY a JSON array of strings — the complete final memory entry list.
-2. Merge duplicate or overlapping candidates with existing entries.
+1. Return ONLY a JSON array of strings containing new entries to append.
+2. Do not return existing memory entries.
 3. Drop candidates that are redundant, trivial, or already covered.
-4. Keep existing entries that are still relevant.
+4. Merge duplicate or overlapping candidates into a single new entry.
 5. Each entry must be a single, self-contained fact.
-6. Stay within the character limit (entries joined with "\\n§\\n").
-7. If no candidates are worth keeping, return the current entries unchanged.
+6. Stay within the remaining character budget.
+7. If no candidates are worth keeping, return [].
 
 Respond with ONLY the JSON array, no explanation or markdown fencing.`;

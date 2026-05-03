@@ -1,35 +1,24 @@
 /**
  * Memory Aggregate Executor
  *
- * Queued executor that reconciles raw memory records into bounded
+ * Queued executor that drains raw memory records without rewriting bounded
  * MEMORY.md. Follows the same pattern as BackgroundReviewExecutor:
  *
- * 1. Resolve raw + bounded stores for the target scope
+ * 1. Resolve raw store and bounded memory paths for the target scope
  * 2. Claim pending raw records into a batch
- * 3. Build reconciliation context and AI prompt
- * 4. Invoke AI through the queue-owned CopilotSDKService
- * 5. Validate the proposed entries
- * 6. Apply reconciliation to bounded store and finalize row statuses
- * 7. On failure, release claimed rows for retry
+ * 3. Drain the batch without rewriting bounded MEMORY.md
+ * 4. On failure, release claimed rows for retry
  */
 
 import * as path from 'path';
 import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import {
-    BoundedMemoryStore,
     RawMemoryRecordStore,
-    prepareReconciliationContext,
-    validateProposedEntries,
-    buildApplyPlan,
-    applyReconciliation,
-    DEFAULT_CHAR_LIMIT,
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/forge';
 import type { MemoryAggregatePayload } from '../tasks/task-types';
 import {
-    buildAggregateSystemMessage,
-    AGGREGATE_USER_PROMPT,
     DEFAULT_AGGREGATE_CONFIG,
 } from './memory-aggregate';
 import type { MemoryAggregateConfig } from './memory-aggregate';
@@ -37,7 +26,7 @@ import { getRepoDataPath } from '../paths';
 
 export class MemoryAggregateExecutor {
     constructor(
-        private readonly aiService: CopilotSDKService,
+        _aiService: CopilotSDKService,
         private readonly dataDir: string,
         private readonly config: MemoryAggregateConfig = DEFAULT_AGGREGATE_CONFIG,
     ) {}
@@ -66,91 +55,20 @@ export class MemoryAggregateExecutor {
 
             logger.debug(LogCategory.AI, `[MemoryAggregate] Claimed ${batch.records.length} records (batch ${batch.batchId}) for ${target}@${workspaceId}`);
 
-            // 2. Load current bounded memory
-            const boundedStore = new BoundedMemoryStore({ filePath: boundedPath });
-            await boundedStore.load();
-            const currentEntries = boundedStore.read();
-            const charLimit = DEFAULT_CHAR_LIMIT;
-
-            // 3. Build reconciliation context
-            const reconCtx = prepareReconciliationContext({
-                currentEntries,
-                claimedRecords: batch.records,
-                charLimit,
-                scope: target === 'memory' ? 'repo' : 'system',
-                workspaceId,
-            });
-
-            // 4. Invoke AI for reconciliation
-            const systemMessage = buildAggregateSystemMessage(reconCtx);
-            const aiResult = await this.aiService.sendMessage({
-                prompt: AGGREGATE_USER_PROMPT,
-                model: payload.model ?? task.config.model ?? this.config.model,
-                systemMessage: { mode: 'replace', content: systemMessage },
-                tools: [],
-                workingDirectory: undefined,
-                timeoutMs: this.config.timeoutMs,
-            });
-
-            if (!aiResult.success || !aiResult.response) {
-                // Release claims so the batch can be retried
-                await rawStore.releaseClaim(batch.batchId);
-                const errorMsg = aiResult.error || 'Empty AI response';
-                logger.debug(LogCategory.AI, `[MemoryAggregate] AI call failed for batch ${batch.batchId}: ${errorMsg}`);
-                return { success: false, error: new Error(errorMsg), durationMs: Date.now() - startTime };
-            }
-
-            // 5. Parse and validate AI output
-            let proposed: unknown;
-            try {
-                proposed = JSON.parse(aiResult.response.trim());
-            } catch {
-                // Try extracting JSON array from markdown-fenced response
-                const jsonMatch = aiResult.response.match(/\[[\s\S]*\]/);
-                if (jsonMatch) {
-                    try {
-                        proposed = JSON.parse(jsonMatch[0]);
-                    } catch {
-                        await rawStore.releaseClaim(batch.batchId);
-                        logger.debug(LogCategory.AI, `[MemoryAggregate] Failed to parse AI response for batch ${batch.batchId}`);
-                        return { success: false, error: new Error('Failed to parse AI response as JSON array'), durationMs: Date.now() - startTime };
-                    }
-                } else {
-                    await rawStore.releaseClaim(batch.batchId);
-                    return { success: false, error: new Error('Failed to parse AI response as JSON array'), durationMs: Date.now() - startTime };
-                }
-            }
-
-            const validation = validateProposedEntries(proposed, charLimit);
-            if (!validation.valid) {
-                await rawStore.releaseClaim(batch.batchId);
-                const reason = validation.errors.join('; ');
-                logger.debug(LogCategory.AI, `[MemoryAggregate] Validation failed for batch ${batch.batchId}: ${reason}`);
-                return { success: false, error: new Error(`Validation failed: ${reason}`), durationMs: Date.now() - startTime };
-            }
-
-            // 6. Build apply plan and execute
-            const plan = buildApplyPlan(validation.validEntries, reconCtx);
-            await applyReconciliation(boundedStore, plan.entries);
-
-            // 7. Finalize raw record statuses
-            if (plan.aggregatedRecordIds.length > 0) {
-                await rawStore.markAggregated(batch.batchId);
-            } else if (plan.droppedRecordIds.length > 0) {
-                await rawStore.markDropped(batch.batchId);
-            }
+            // Full-list AI reconciliation is disabled because it can delete,
+            // rewrite, or reorder trusted bounded memory. Drain claimed raw
+            // candidates until append-only promotion is introduced.
+            const dropped = await rawStore.markDropped(batch.batchId);
 
             logger.debug(
                 LogCategory.AI,
-                `[MemoryAggregate] Batch ${batch.batchId} complete: ` +
-                `${plan.entries.length} entries, ` +
-                `${plan.aggregatedRecordIds.length} aggregated, ` +
-                `${plan.droppedRecordIds.length} dropped`,
+                `[MemoryAggregate] Automatic full-list reconciliation disabled for batch ${batch.batchId}; ` +
+                `dropped ${dropped} raw records without modifying ${boundedPath}`,
             );
 
             return {
                 success: true,
-                result: `Reconciled ${batch.records.length} records into ${plan.entries.length} entries`,
+                result: `Automatic memory aggregation disabled; dropped ${dropped} raw records`,
                 durationMs: Date.now() - startTime,
             };
         } catch (error) {
