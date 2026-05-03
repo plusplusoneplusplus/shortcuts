@@ -520,7 +520,7 @@ function ScriptTemplateDetailView({ template, workspaceId, editing, onEdit, onCa
             if (template.model) config.model = template.model;
             if (template.pauseOnFailure) config.pauseOnFailure = true;
 
-            await getSpaCocClient().queue.enqueueTask({
+            await getSpaCocClient().queue.enqueue({
                 type: 'run-script',
                 displayName,
                 payload,

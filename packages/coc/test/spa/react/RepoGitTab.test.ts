@@ -983,7 +983,7 @@ describe('RepoGitTab', () => {
             const block = source.match(/const handleEnqueueSkill = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setPendingSkillRun');
-            expect(block![0]).not.toContain('/queue/tasks');
+            expect(block![0]).not.toContain('/queue');
         });
 
         it('tracks pendingSkillRun state', () => {
@@ -1019,7 +1019,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleConfirmSkillRun enqueues through typed queue client', () => {
-            expect(source).toContain('getSpaCocClient().queue.enqueueTask');
+            expect(source).toContain('getSpaCocClient().queue.enqueue');
         });
 
         it('handleConfirmSkillRun appends user context to prompt when non-empty', () => {

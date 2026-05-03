@@ -136,7 +136,7 @@ describe('NotesClient', () => {
 
     expect(adapter.calls).toMatchObject([
       {
-        path: '/queue/tasks',
+        path: '/queue',
         options: {
           method: 'POST',
           body: {

@@ -63,7 +63,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
             const attachmentPayload = toPayload();
-            const result = await getSpaCocClient().queue.enqueueTask({
+            const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {

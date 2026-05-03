@@ -1,6 +1,6 @@
 /**
  * RunScriptDialog — form to enqueue a run-script task.
- * Posts to POST /api/queue/tasks with type 'run-script'.
+ * Posts to POST /api/queue with type 'run-script'.
  * On desktop: renders as a draggable/resizable FloatingDialog with minimize-to-tray.
  * On mobile: falls back to a full-screen modal Dialog.
  */
@@ -107,7 +107,7 @@ export function RunScriptDialog() {
             if (model) config.model = model;
             if (pauseOnFailure) config.pauseOnFailure = true;
 
-            await getSpaCocClient().queue.enqueueTask({
+            await getSpaCocClient().queue.enqueue({
                 type: TaskDefs.runScript.kind,
                 displayName,
                 payload,

@@ -1,6 +1,6 @@
 /**
  * EnqueueDialog — form to enqueue a new AI task.
- * Posts to POST /api/queue/tasks with type 'follow-prompt' for both freeform and skill-based tasks.
+ * Posts to POST /api/queue with type 'follow-prompt' for both freeform and skill-based tasks.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -356,7 +356,7 @@ export function EnqueueDialog() {
                     const taskNameFromFile = file.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '';
                     const body = buildBody([file], taskNameFromFile);
                     try {
-                        await getSpaCocClient().queue.enqueueTask(body);
+                        await getSpaCocClient().queue.enqueue(body);
                         succeeded++;
                     } catch {
                         failed++;
@@ -371,7 +371,7 @@ export function EnqueueDialog() {
                 const body = buildBody(
                     contextFiles.length > 0 ? contextFiles : undefined,
                 );
-                const created = await getSpaCocClient().queue.enqueueTask(body);
+                const created = await getSpaCocClient().queue.enqueue(body);
                 if (queueState.dialogLaunchMode === 'floating-chat') {
                     const createdId = created?.task?.id;
                     if (createdId) {

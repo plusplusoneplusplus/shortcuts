@@ -380,7 +380,7 @@ describe('EnqueueDialog — Attachments', () => {
     it('includes images in POST body when submitting', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -432,7 +432,7 @@ describe('EnqueueDialog — Attachments', () => {
 
     it('clears attachments after successful submit', async () => {
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             if (typeof url === 'string' && url.includes('/api/models')) {
@@ -488,7 +488,7 @@ describe('EnqueueDialog — Attachments', () => {
     it('disables attach button while submitting', async () => {
         let resolvePost: (() => void) | undefined;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return new Promise<any>(resolve => {
                     resolvePost = () => resolve({ ok: true, json: () => Promise.resolve({}) });
                 });

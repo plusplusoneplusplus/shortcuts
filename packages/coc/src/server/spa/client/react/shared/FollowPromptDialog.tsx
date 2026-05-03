@@ -133,7 +133,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             };
             if (model) body.config = { model };
 
-            await getSpaCocClient().queue.enqueueTask(body);
+            await getSpaCocClient().queue.enqueue(body);
             setSelectedSkills([]);
             setSkill('plan', skillNames);
             addToast('Queued successfully', 'success');

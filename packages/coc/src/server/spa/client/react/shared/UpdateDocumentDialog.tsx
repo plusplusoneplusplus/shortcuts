@@ -116,7 +116,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             };
             if (model) body.config = { model };
 
-            await getSpaCocClient().queue.enqueueTask(body);
+            await getSpaCocClient().queue.enqueue(body);
             addToast('Queued successfully', 'success');
             onClose();
         } catch (err) {

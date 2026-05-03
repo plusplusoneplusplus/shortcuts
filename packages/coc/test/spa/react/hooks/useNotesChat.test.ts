@@ -126,7 +126,7 @@ describe('useNotesChat', () => {
     });
 
     describe('createChat creates queue task', () => {
-        it('POSTs to /queue/tasks with chat payload', () => {
+        it('POSTs to /queue with chat payload', () => {
             expect(source).toContain('getSpaCocClient().notes.createChat');
         });
 

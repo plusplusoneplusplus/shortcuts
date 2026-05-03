@@ -469,52 +469,22 @@ describe('Queue Handler', () => {
         });
     });
 
-    describe('POST /api/queue/enqueue — Legacy enqueue compatibility', () => {
-        it('should enqueue chat from prompt/model shorthand body', async () => {
+    describe('Removed queue task creation aliases', () => {
+        it('should not register POST /api/queue/enqueue', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
                 prompt: 'what time is it',
                 model: 'claude-haiku-4.5',
             });
-            expect(res.status).toBe(201);
-            const body = JSON.parse(res.body);
-            expect(body.task).toBeDefined();
-            expect(body.task.type).toBe('chat');
-            expect(body.task.payload.kind).toBe('chat');
-            expect(body.task.payload.prompt).toBe('what time is it');
-            expect(body.task.config.model).toBe('claude-haiku-4.5');
+            expect(res.status).toBe(404);
         });
 
-        it('should return 400 when prompt is missing in shorthand body', async () => {
+        it('should not register POST /api/queue/tasks', async () => {
             const srv = await startServer();
 
-            const res = await postJSON(`${srv.url}/api/queue/enqueue`, { model: 'claude-haiku-4.5' });
-            expect(res.status).toBe(400);
-            expect(JSON.parse(res.body).error).toContain('prompt');
-        });
-
-        it('should pass through folderPath in shorthand body', async () => {
-            const srv = await startServer();
-
-            const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
-                prompt: 'test prompt',
-                folderPath: 'feature1/backlog',
-            });
-            expect(res.status).toBe(201);
-            const body = JSON.parse(res.body);
-            expect(body.task.payload.folderPath).toBe('feature1/backlog');
-        });
-
-        it('should omit folderPath when not provided in shorthand body', async () => {
-            const srv = await startServer();
-
-            const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
-                prompt: 'test prompt',
-            });
-            expect(res.status).toBe(201);
-            const body = JSON.parse(res.body);
-            expect(body.task.payload.folderPath).toBeUndefined();
+            const res = await postJSON(`${srv.url}/api/queue/tasks`, makeTask());
+            expect(res.status).toBe(404);
         });
     });
 
@@ -1943,13 +1913,6 @@ describe('Queue Handler', () => {
         it('should log [Queue] enqueue on POST /api/queue', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue`, makeTask());
-            const lines = stderrLines();
-            expect(lines.some(l => l.startsWith('[Queue] enqueue task='))).toBe(true);
-        });
-
-        it('should log [Queue] enqueue on POST /api/queue/enqueue', async () => {
-            const srv = await startServer();
-            await postJSON(`${srv.url}/api/queue/enqueue`, makeTask());
             const lines = stderrLines();
             expect(lines.some(l => l.startsWith('[Queue] enqueue task='))).toBe(true);
         });

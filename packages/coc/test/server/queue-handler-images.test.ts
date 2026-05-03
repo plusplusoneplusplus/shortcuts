@@ -340,7 +340,7 @@ describe('GET /api/queue/:id/images', () => {
     });
 });
 
-describe('Queue Handler — legacy enqueue image forwarding', () => {
+describe('Queue Handler — canonical enqueue image forwarding', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
 
@@ -362,14 +362,14 @@ describe('Queue Handler — legacy enqueue image forwarding', () => {
         return server;
     }
 
-    it('should forward images from legacy enqueue body to the task', async () => {
+    it('should forward images from the canonical task envelope to the task', async () => {
         const srv = await startServer();
 
-        // Legacy enqueue path: POST /api/queue/enqueue with { prompt, images }
-        const res = await request(`${srv.url}/api/queue/enqueue`, {
+        const res = await request(`${srv.url}/api/queue`, {
             method: 'POST',
             body: JSON.stringify({
-                prompt: 'Describe this screenshot',
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Describe this screenshot' },
                 images: [PNG_DATA_URL],
             }),
             headers: { 'Content-Type': 'application/json' },
@@ -386,13 +386,14 @@ describe('Queue Handler — legacy enqueue image forwarding', () => {
         expect(task.payload.hasImages).toBe(true);
     });
 
-    it('should not include images in legacy enqueue when images is empty', async () => {
+    it('should not include images from the canonical task envelope when images is empty', async () => {
         const srv = await startServer();
 
-        const res = await request(`${srv.url}/api/queue/enqueue`, {
+        const res = await request(`${srv.url}/api/queue`, {
             method: 'POST',
             body: JSON.stringify({
-                prompt: 'No images here',
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'No images here' },
                 images: [],
             }),
             headers: { 'Content-Type': 'application/json' },

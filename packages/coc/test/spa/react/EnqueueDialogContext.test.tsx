@@ -92,7 +92,7 @@ beforeEach(() => {
         if (typeof url === 'string' && url.includes('/summary')) {
             return Promise.resolve({ ok: true, json: async () => ({ tasks: { name: 'root', relativePath: '', children: [] } }) });
         }
-        if (typeof url === 'string' && url.includes('/queue/tasks')) {
+        if (typeof url === 'string' && url.includes('/queue')) {
             return Promise.resolve({
                 ok: true,
                 json: async () => ({ task: { id: 'task-1' } }),
@@ -209,7 +209,7 @@ describe('EnqueueDialog — document context mode', () => {
 
         await waitFor(() => {
             const postCall = mockFetch.mock.calls.find(
-                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/tasks') && c[1]?.method === 'POST',
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue') && c[1]?.method === 'POST',
             );
             expect(postCall).toBeTruthy();
             const body = JSON.parse(postCall![1].body);
@@ -257,7 +257,7 @@ describe('EnqueueDialog — document context mode', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/tasks') && c[1]?.method === 'POST',
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue') && c[1]?.method === 'POST',
             );
             expect(postCalls).toHaveLength(3);
 

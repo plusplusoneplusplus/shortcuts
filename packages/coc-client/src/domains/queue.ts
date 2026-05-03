@@ -102,10 +102,6 @@ export class QueueClient {
     return this.transport.request<EnqueueTaskResponse>('/queue', { method: 'POST', body: { ...request } });
   }
 
-  enqueueTask(request: EnqueueTaskRequest): Promise<EnqueueTaskResponse> {
-    return this.transport.request<EnqueueTaskResponse>('/queue/tasks', { method: 'POST', body: { ...request } });
-  }
-
   pause(scope?: QueueScope): Promise<QueueStatsResponse & { paused: boolean; workspace?: string; repoId?: string }> {
     return this.transport.request('/queue/pause', { method: 'POST', query: serializeQueueScope(scope) });
   }

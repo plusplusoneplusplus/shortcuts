@@ -85,8 +85,8 @@ describe('useCommitChatBinding', () => {
     });
 
     describe('createChat creates task + binding', () => {
-        it('POSTs to /queue/tasks with chat payload', () => {
-            expect(source).toContain('queue.enqueueTask');
+        it('POSTs to /queue with chat payload', () => {
+            expect(source).toContain('queue.enqueue');
             expect(source).toContain("kind: 'chat'");
             expect(source).toContain("mode: 'ask'");
         });

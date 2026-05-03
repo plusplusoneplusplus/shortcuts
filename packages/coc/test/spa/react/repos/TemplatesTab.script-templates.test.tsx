@@ -25,7 +25,7 @@ const mockQueueList = vi.fn().mockResolvedValue({ queued: [], running: [], stats
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        queue: { enqueueTask: mockEnqueueTask, list: mockQueueList },
+        queue: { enqueue: mockEnqueueTask, list: mockQueueList },
         templates: {
             list: vi.fn().mockResolvedValue([]),
             detail: vi.fn().mockResolvedValue({}),

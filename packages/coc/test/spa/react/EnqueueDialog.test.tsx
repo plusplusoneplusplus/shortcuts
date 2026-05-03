@@ -240,7 +240,7 @@ describe('EnqueueDialog', () => {
         let postBody: any = null;
         let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -296,7 +296,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postUrl).toContain('/queue/tasks');
+        expect(postUrl).toContain('/queue');
         expect(postBody.type).toBe('chat');
         expect(postBody.payload.prompt).toBe('Test prompt');
         expect(postBody.payload.workingDirectory).toBe('/home/user/project');
@@ -306,7 +306,7 @@ describe('EnqueueDialog', () => {
         let postBody: any = null;
         let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -335,7 +335,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postUrl).toContain('/queue/tasks');
+        expect(postUrl).toContain('/queue');
         expect(postBody.type).toBe('chat');
         expect(postBody.payload.prompt).toBe('Test prompt');
         expect(postBody.payload.workingDirectory).toBeUndefined();
@@ -396,11 +396,11 @@ describe('EnqueueDialog', () => {
         expect(screen.getByTestId('skill-picker-item-go-deep')).toBeTruthy();
     });
 
-    it('submits skill-based task to /queue/tasks when skill is selected', async () => {
+    it('submits skill-based task to /queue when skill is selected', async () => {
         let postBody: any = null;
         let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+            if (typeof url === 'string' && url.includes('/queue')) {
                 postBody = JSON.parse(opts?.body || '{}');
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -455,7 +455,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postUrl).toContain('/queue/tasks');
+        expect(postUrl).toContain('/queue');
         expect(postBody.type).toBe('chat');
         expect(postBody.displayName).toBe('Skill: impl');
         expect(postBody.payload.context.skills).toEqual(['impl']);
@@ -466,7 +466,7 @@ describe('EnqueueDialog', () => {
     it('uses custom prompt content when skill is selected with prompt', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+            if (typeof url === 'string' && url.includes('/queue')) {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -665,7 +665,7 @@ describe('EnqueueDialog', () => {
     it('includes images in freeform POST body when present', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -723,7 +723,7 @@ describe('EnqueueDialog', () => {
     it('includes images in skill-based POST body when present', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+            if (typeof url === 'string' && url.includes('/queue')) {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -777,7 +777,7 @@ describe('EnqueueDialog', () => {
     it('includes model in config when skill task is submitted with model', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+            if (typeof url === 'string' && url.includes('/queue')) {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -836,7 +836,7 @@ describe('EnqueueDialog', () => {
         let postBody: any = null;
         let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -865,8 +865,9 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
 
-        // Must use /queue/tasks endpoint, NOT /queue/enqueue
-        expect(postUrl).toContain('/queue/tasks');
+        // Must use the canonical /queue endpoint, not removed task aliases.
+        expect(postUrl).toContain('/queue');
+        expect(postUrl).not.toContain('/queue/tasks');
         expect(postUrl).not.toContain('/queue/enqueue');
         // Must be chat with autopilot mode
         expect(postBody.type).toBe('chat');
@@ -878,7 +879,7 @@ describe('EnqueueDialog', () => {
     it('freeform submit includes model in config when set', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -917,7 +918,7 @@ describe('EnqueueDialog', () => {
     it('freeform submit uses workspace rootPath as workingDirectory', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -987,7 +988,7 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1228,7 +1229,7 @@ describe('EnqueueDialog', () => {
 
         await waitFor(() => {
             expect(global.fetch).toHaveBeenCalledWith(
-                expect.stringContaining('/queue/tasks'),
+                expect.stringContaining('/queue'),
                 expect.objectContaining({ method: 'POST' }),
             );
         });
@@ -1249,9 +1250,9 @@ describe('EnqueueDialog', () => {
         fireEvent.input(textarea);
         fireEvent.keyDown(textarea, { key: 'Enter' });
 
-        // fetch should not have been called for /queue/tasks
+        // fetch should not have been called for /queue
         expect(global.fetch).not.toHaveBeenCalledWith(
-            expect.stringContaining('/queue/tasks'),
+            expect.stringContaining('/queue'),
             expect.anything(),
         );
     });
@@ -1705,7 +1706,7 @@ describe('EnqueueDialog slash commands', () => {
 
     function setupFetchWithSkills(skills: Array<{ name: string; description?: string }>, capturePosts?: { body: any; url: string }[]) {
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 capturePosts?.push({ body: JSON.parse(opts.body || '{}'), url });
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2296,7 +2297,7 @@ describe('EnqueueDialog ask mode', () => {
     it('submits a chat task with mode:ask in ask mode', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2382,10 +2383,10 @@ describe('EnqueueDialog ask mode', () => {
         });
     });
 
-    it('clicking a task template card selects it, then submitting POSTs to /queue/tasks with template settings', async () => {
+    it('clicking a task template card selects it, then submitting POSTs to /queue with template settings', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2451,7 +2452,7 @@ describe('EnqueueDialog ask mode', () => {
     it('clicking an ask-mode template card then submitting POSTs with mode:ask', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2545,9 +2546,9 @@ describe('EnqueueDialog ask mode', () => {
         const card = await screen.findByTestId('template-card-tmpl-prefill-1');
         fireEvent.click(card);
 
-        // Should NOT have posted to /queue/tasks
+        // Should NOT have posted to /queue
         const postCalls = fetchSpy.mock.calls.filter((c: any[]) =>
-            typeof c[0] === 'string' && c[0].includes('/queue/tasks') && c[1]?.method === 'POST'
+            typeof c[0] === 'string' && c[0].includes('/queue') && c[1]?.method === 'POST'
         );
         expect(postCalls).toHaveLength(0);
 
@@ -2560,7 +2561,7 @@ describe('EnqueueDialog ask mode', () => {
     it('selecting a template then submitting uses the typed prompt instead of the fallback', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2620,7 +2621,7 @@ describe('EnqueueDialog ask mode', () => {
     it('selecting a template with no skills clears previously selected skills', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2683,7 +2684,7 @@ describe('EnqueueDialog ask mode', () => {
     it('selecting a template with empty model sets model to default', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2743,7 +2744,7 @@ describe('EnqueueDialog ask mode', () => {
         // The preference-restore effect should NOT re-apply saved skills.
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -2863,7 +2864,7 @@ describe('EnqueueDialog onboarding hasRunWorkflow', () => {
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             if (typeof url === 'string' && url.includes('/api/models')) {
@@ -2907,7 +2908,7 @@ describe('EnqueueDialog onboarding hasRunWorkflow', () => {
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
             const taskPost = fetchSpy.mock.calls.find(
-                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/tasks')
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue')
             );
             expect(taskPost).toBeTruthy();
         });
@@ -2944,7 +2945,7 @@ describe('EnqueueDialog onboarding hasRunWorkflow', () => {
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
             const taskPost = fetchSpy.mock.calls.find(
-                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/tasks')
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue')
             );
             expect(taskPost).toBeTruthy();
         });

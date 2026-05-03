@@ -881,7 +881,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     ? `${pendingSkillRun.commits.length} commits`
                     : branchName || 'branch';
 
-        await getSpaCocClient().queue.enqueueTask({
+        await getSpaCocClient().queue.enqueue({
             type: 'chat',
             priority: 'normal',
             displayName: `Skill: ${pendingSkillRun.skillName} — ${shortId}`,
@@ -955,7 +955,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
         try {
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await getSpaCocClient().queue.enqueueTask({
+            await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 displayName: `Squash ${selectedCommits.length} commits`,
@@ -987,7 +987,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         const promptContent = `The repository has a ${repoState.operation} in progress with conflicts in the following files:\n<files>\n${files}\n</files>\n\nFor each conflicted file, resolve the conflict markers (<<<<<<< / ======= / >>>>>>>) by choosing the best resolution that preserves both sides' intent. Then stage the resolved files with \`git add\`. After staging all resolved files, run \`${continueCmd}\`. If new conflicts arise, repeat the resolution and continue cycle until the entire operation completes successfully.`;
         try {
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await getSpaCocClient().queue.enqueueTask({
+            await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 displayName: `Resolve ${repoState.operation} conflicts`,

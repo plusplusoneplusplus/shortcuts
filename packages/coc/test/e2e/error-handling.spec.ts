@@ -112,7 +112,7 @@ test.describe('Error Handling (008)', () => {
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             // Mock only the enqueue endpoint to return error (avoid breaking /api/models)
-            await page.route('**/api/queue/tasks', (route, req) => {
+            await page.route('**/api/queue', (route, req) => {
                 if (req.method() === 'POST') {
                     return route.fulfill({
                         status: 500,

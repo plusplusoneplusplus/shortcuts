@@ -205,7 +205,7 @@ export class NotesClient {
   }
 
   createChat(workspaceId: string, request: CreateNoteChatRequest): Promise<CreateNoteChatResponse> {
-    return this.transport.request<CreateNoteChatResponse>('/queue/tasks', {
+    return this.transport.request<CreateNoteChatResponse>('/queue', {
       method: 'POST',
       body: {
         type: 'chat',

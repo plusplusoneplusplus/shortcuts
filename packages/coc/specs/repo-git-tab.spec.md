@@ -738,7 +738,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 | Endpoint | Used by | Critical for |
 |---|---|---|
 | `GET /api/workspaces/:id/skills` | Skill list for context menu | US-19 |
-| `POST /api/queue/tasks` | Task enqueue (AI, chat, skill, squash) | US-19, US-22, US-23 |
+| `POST /api/queue` | Task enqueue (AI, chat, skill, squash) | US-19, US-22, US-23 |
 
 ---
 

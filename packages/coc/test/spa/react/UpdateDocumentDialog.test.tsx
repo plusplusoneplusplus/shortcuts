@@ -104,7 +104,7 @@ describe('UpdateDocumentDialog', () => {
         });
     });
 
-    it('submits to /api/queue/tasks on Submit click', async () => {
+    it('submits to /api/queue on Submit click', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
@@ -114,7 +114,7 @@ describe('UpdateDocumentDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -130,7 +130,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -163,7 +163,7 @@ describe('UpdateDocumentDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -179,7 +179,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -201,7 +201,7 @@ describe('UpdateDocumentDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -217,7 +217,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -232,7 +232,7 @@ describe('UpdateDocumentDialog', () => {
         const absTaskPath = 'C:\\Users\\TestUser\\.copilot\\session-state\\abc-123\\plan.md';
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -248,7 +248,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -265,7 +265,7 @@ describe('UpdateDocumentDialog', () => {
         const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -281,7 +281,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);

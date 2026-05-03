@@ -213,7 +213,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -233,7 +233,7 @@ describe('BulkFollowPromptDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue')
             );
             expect(postCalls.length).toBe(2);
 
@@ -271,7 +271,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 postCount++;
                 if (postCount === 1) {
                     return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
@@ -362,7 +362,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ lastModel: 'gpt-4' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -397,7 +397,7 @@ describe('BulkFollowPromptDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -537,7 +537,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -557,7 +557,7 @@ describe('BulkFollowPromptDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -599,7 +599,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -630,7 +630,7 @@ describe('BulkFollowPromptDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
@@ -655,7 +655,7 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+            if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -681,7 +681,7 @@ describe('BulkFollowPromptDialog', () => {
 
         await waitFor(() => {
             const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue')
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);

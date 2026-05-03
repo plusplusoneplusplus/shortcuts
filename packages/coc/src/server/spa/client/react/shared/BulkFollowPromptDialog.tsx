@@ -157,7 +157,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                 if (model) body.config = { model };
 
                 try {
-                    await getSpaCocClient().queue.enqueueTask(body);
+                    await getSpaCocClient().queue.enqueue(body);
                     succeeded++;
                 } catch {
                     failed++;

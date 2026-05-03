@@ -58,7 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        queue: { enqueueTask: mockEnqueueTask },
+        queue: { enqueue: mockEnqueueTask },
         preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>

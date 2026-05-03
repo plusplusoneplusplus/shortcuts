@@ -50,7 +50,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         if (!commitHash) return null;
         try {
             // Create queue task
-            const res = await getSpaCocClient().queue.enqueueTask({
+            const res = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {

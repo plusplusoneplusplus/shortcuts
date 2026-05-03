@@ -970,11 +970,11 @@ describe('Per-Repo Queue Integration', () => {
             // Pause to prevent execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
 
-            // Enqueue via legacy /api/queue/enqueue with workspaceId (no workingDirectory)
-            const enqueueRes = await postJSON(`${baseUrl}/api/queue/enqueue`, {
-                prompt: 'test prompt via workspaceId',
-                workspaceId,
-            });
+            // Enqueue with workspaceId (no workingDirectory) through the canonical task route.
+            const enqueueRes = await postJSON(`${baseUrl}/api/queue`, makeTask('', {
+                displayName: 'workspaceId route task',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test prompt via workspaceId', workspaceId },
+            }));
             expect(enqueueRes.status).toBe(201);
             const taskId = JSON.parse(enqueueRes.body).task.id;
 

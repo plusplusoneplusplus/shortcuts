@@ -1,8 +1,7 @@
 /**
  * Queue enqueue routes.
  *
- * POST /api/queue/enqueue — Legacy enqueue
- * POST /api/queue / POST /api/queue/tasks — Enqueue new task
+ * POST /api/queue — Enqueue new task
  * POST /api/queue/bulk — Bulk enqueue
  * POST /api/queue/summarize — Summarize conversations
  * GET  /api/queue/models — List available AI models
@@ -41,78 +40,9 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
     });
 
     // ------------------------------------------------------------------
-    // POST /api/queue/enqueue — Legacy React enqueue endpoint
-    // ------------------------------------------------------------------
-    routes.push({
-        method: 'POST',
-        pattern: '/api/queue/enqueue',
-        handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
-
-            const hasTaskEnvelope = typeof body?.type === 'string';
-            if (!hasTaskEnvelope) {
-                if (!body || typeof body.prompt !== 'string' || !body.prompt.trim()) {
-                    return sendError(res, 400, 'Missing required field: prompt');
-                }
-            }
-
-            const taskSpec = hasTaskEnvelope
-                ? body
-                : {
-                    type: 'chat',
-                    priority: typeof body?.priority === 'string' ? body.priority : 'normal',
-                    payload: {
-                        kind: 'chat' as const,
-                        prompt: body.prompt.trim(),
-                        ...(typeof body?.workspaceId === 'string' && body.workspaceId.trim()
-                            ? { workspaceId: body.workspaceId.trim() }
-                            : {}),
-                        ...(typeof body?.folderPath === 'string' && body.folderPath.trim()
-                            ? { folderPath: body.folderPath.trim() }
-                            : {}),
-                    },
-                    config: {
-                        ...(typeof body?.model === 'string' && body.model.trim()
-                            ? { model: body.model.trim() }
-                            : {}),
-                        retryOnFailure: false,
-                    },
-                    ...(typeof body?.displayName === 'string' && body.displayName.trim()
-                        ? { displayName: body.displayName.trim() }
-                        : {}),
-                    ...(Array.isArray(body?.images) && body.images.length > 0
-                        ? { images: body.images }
-                        : {}),
-                };
-
-            const validation = validateAndParseTask(taskSpec);
-            if (!validation.valid) {
-                return sendError(res, 400, validation.error!);
-            }
-
-            try {
-                const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
-                const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
-                const inp = validation.input!;
-                process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
-                sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
-            } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to enqueue task';
-                return sendError(res, 400, message);
-            }
-        },
-    });
-
-    // ------------------------------------------------------------------
     // POST /api/queue — Enqueue a new task
-    // POST /api/queue/tasks — Alias used by React components
     // ------------------------------------------------------------------
-    const enqueueTaskHandler: Route['handler'] = async (req, res) => {
+    const enqueueHandler: Route['handler'] = async (req, res) => {
         let body: any;
         try {
             body = await parseBody(req);
@@ -136,8 +66,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             return sendError(res, 400, message);
         }
     };
-    routes.push({ method: 'POST', pattern: '/api/queue', handler: enqueueTaskHandler });
-    routes.push({ method: 'POST', pattern: '/api/queue/tasks', handler: enqueueTaskHandler });
+    routes.push({ method: 'POST', pattern: '/api/queue', handler: enqueueHandler });
 
     // ------------------------------------------------------------------
     // POST /api/queue/bulk — Enqueue multiple tasks atomically

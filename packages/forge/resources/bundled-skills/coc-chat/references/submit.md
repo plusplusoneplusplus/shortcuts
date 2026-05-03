@@ -56,7 +56,7 @@ Default base URL: `http://localhost:4000`. All endpoints under `/api`.
 
 ### Enqueue a Task
 
-**`POST /api/queue`** (alias: `POST /api/queue/tasks`)
+**`POST /api/queue`**
 
 ```json
 {
