@@ -1304,6 +1304,147 @@ describe('NoteEditor', () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // Generic YAML front matter display
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('front matter metadata', () => {
+        const frontMatterContent = [
+            '---',
+            'title: Batch selection notes',
+            'tags:',
+            '  - pull-requests',
+            '  - ui',
+            'reviewed: true',
+            'related:',
+            '  issue: 123',
+            '  area: notes',
+            'empty:',
+            '---',
+            '',
+            '# Body',
+        ].join('\n');
+
+        it('loads only the Markdown body into rich mode and displays metadata', async () => {
+            mockLoadContent.mockResolvedValue({ content: frontMatterContent, path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            await waitFor(() => {
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Body</p>', { emitUpdate: false });
+                expect(screen.getByTestId('note-metadata-panel')).toBeDefined();
+            });
+            expect(screen.getByText('Metadata')).toBeDefined();
+            expect(screen.getByText('· 5 fields')).toBeDefined();
+        });
+
+        it('shows arbitrary metadata fields with generic value formatting when expanded', async () => {
+            mockLoadContent.mockResolvedValue({ content: frontMatterContent, path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(screen.getByTestId('note-metadata-toggle')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-metadata-toggle'));
+            });
+
+            expect(screen.getByText('Title')).toBeDefined();
+            expect(screen.getByTestId('note-metadata-value-title').textContent).toBe('Batch selection notes');
+            expect(screen.getByText('Tags')).toBeDefined();
+            expect(screen.getByTestId('note-metadata-value-tags').textContent).toBe('pull-requests, ui');
+            expect(screen.getByText('Reviewed')).toBeDefined();
+            expect(screen.getByTestId('note-metadata-value-reviewed').textContent).toBe('Yes');
+            expect(screen.getByText('Related')).toBeDefined();
+            expect(screen.getByTestId('note-metadata-value-related').textContent).toBe('{"issue":123,"area":"notes"}');
+            expect(screen.getByTestId('note-metadata-value-empty').textContent).toBe('Empty');
+        });
+
+        it('keeps source mode raw Markdown unchanged', async () => {
+            mockLoadContent.mockResolvedValue({ content: frontMatterContent, path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Body</p>', { emitUpdate: false }));
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-mode-source'));
+            });
+            await waitFor(() => expect(screen.getByTestId('note-source-container')).toBeDefined());
+
+            const textarea = screen.getByTestId('note-source-container').querySelector('textarea')!;
+            expect(textarea.value).toBe(frontMatterContent);
+        });
+
+        it('preserves original front matter when saving rich-mode body edits', async () => {
+            mockLoadContent.mockResolvedValue({ content: frontMatterContent, path: 'page.md', mtime: 101 });
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 102 });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Body</p>', { emitUpdate: false }));
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledWith(
+                'ws1',
+                'page.md',
+                [
+                    '---',
+                    'title: Batch selection notes',
+                    'tags:',
+                    '  - pull-requests',
+                    '  - ui',
+                    'reviewed: true',
+                    'related:',
+                    '  issue: 123',
+                    '  area: notes',
+                    'empty:',
+                    '---',
+                    '',
+                    'content',
+                ].join('\n'),
+                101,
+            );
+        });
+
+        it('warns and leaves invalid front matter visible in rich mode', async () => {
+            const invalidContent = '---\ntitle: [broken\n---\n# Body';
+            mockLoadContent.mockResolvedValue({ content: invalidContent, path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('note-metadata-warning')).toBeDefined();
+                expect(mockSetContent).toHaveBeenCalledWith(`<p>${invalidContent}</p>`, { emitUpdate: false });
+            });
+            expect(screen.getByText('Metadata could not be parsed. Open MD mode to fix YAML.')).toBeDefined();
+            expect(screen.queryByTestId('note-metadata-panel')).toBeNull();
+        });
+
+        it('keeps notes without front matter on the existing rich-mode path', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Plain', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Plain</p>', { emitUpdate: false }));
+            expect(screen.queryByTestId('note-metadata-panel')).toBeNull();
+            expect(screen.queryByTestId('note-metadata-warning')).toBeNull();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
     // Run Skill button
     // ══════════════════════════════════════════════════════════════════════
 

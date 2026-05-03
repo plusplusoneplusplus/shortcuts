@@ -24,6 +24,9 @@ import './noteEditor.css';
 import { NoteConflictBanner } from './NoteConflictBanner';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
+import { NoteMetadataPanel } from './NoteMetadataPanel';
+import type { NoteFrontMatterParseResult } from './noteFrontMatter';
+import { composeMarkdownWithFrontMatter, parseNoteFrontMatter } from './noteFrontMatter';
 import { notesApi } from '../notesApi';
 import { useQueue } from '../../../contexts/QueueContext';
 
@@ -172,6 +175,7 @@ export function NoteEditor({
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
+    const [frontMatterResult, setFrontMatterResult] = useState<NoteFrontMatterParseResult>({ kind: 'none' });
 
     const canRunSkill = Boolean(notePath);
     const { dispatch: queueDispatch } = useQueue();
@@ -220,12 +224,14 @@ export function NoteEditor({
     const workspaceIdRef = useRef(workspaceId);
     const ioRef = useRef(io);
     const commentBackendRef = useRef(commentBackend);
+    const frontMatterResultRef = useRef<NoteFrontMatterParseResult>(frontMatterResult);
 
     // Keep refs in sync
     notePathRef.current = notePath;
     workspaceIdRef.current = workspaceId;
     ioRef.current = io;
     commentBackendRef.current = commentBackend;
+    frontMatterResultRef.current = frontMatterResult;
 
     // View mode setter that also notifies parent
     const setViewMode = useCallback((mode: NoteViewMode) => {
@@ -357,6 +363,10 @@ export function NoteEditor({
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         let md = htmlToMarkdown(ed.getHTML());
         md = rewriteImageSrcToRelative(md);
+        const currentFrontMatter = frontMatterResultRef.current;
+        if (currentFrontMatter.kind === 'valid') {
+            md = composeMarkdownWithFrontMatter(currentFrontMatter.frontMatter, md);
+        }
         pendingContentRef.current = md;
         saveTimerRef.current = setTimeout(() => flushSave(), 1500);
     }
@@ -504,7 +514,12 @@ export function NoteEditor({
         // Convert raw markdown to HTML and load into Tiptap
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
-            let html = markdownToHtml(rawMarkdown);
+            const parsedFrontMatter = parseNoteFrontMatter(rawMarkdown);
+            setFrontMatterResult(parsedFrontMatter);
+            const richMarkdown = parsedFrontMatter.kind === 'valid'
+                ? parsedFrontMatter.frontMatter.body
+                : rawMarkdown;
+            let html = markdownToHtml(richMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
 
@@ -550,7 +565,12 @@ export function NoteEditor({
         if (!conflictContent) return;
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
-            let html = markdownToHtml(conflictContent);
+            const parsedFrontMatter = parseNoteFrontMatter(conflictContent);
+            setFrontMatterResult(parsedFrontMatter);
+            const richMarkdown = parsedFrontMatter.kind === 'valid'
+                ? parsedFrontMatter.frontMatter.body
+                : conflictContent;
+            let html = markdownToHtml(richMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
         }
@@ -601,6 +621,7 @@ export function NoteEditor({
         // Reset to rich mode when switching notes
         setViewModeRaw('rich');
         setRawMarkdown('');
+        setFrontMatterResult({ kind: 'none' });
         setSourceDirty(false);
         contentLoadedRef.current = false;
         // Reset optimistic locking state
@@ -632,7 +653,12 @@ export function NoteEditor({
             .then(({ content, mtime }) => {
                 if (cancelled) return;
                 mtimeRef.current = mtime;
-                let html = markdownToHtml(content);
+                const parsedFrontMatter = parseNoteFrontMatter(content);
+                setFrontMatterResult(parsedFrontMatter);
+                const richMarkdown = parsedFrontMatter.kind === 'valid'
+                    ? parsedFrontMatter.frontMatter.body
+                    : content;
+                let html = markdownToHtml(richMarkdown);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
 
                 const ed = editorRef.current;
@@ -886,13 +912,19 @@ export function NoteEditor({
                 const ed = editorRef.current;
                 if (!ed || ed.isDestroyed) {
                     setRawMarkdown(content);
+                    setFrontMatterResult(parseNoteFrontMatter(content));
                     return;
                 }
 
                 // Capture previous doc text before updating content
                 const previousDocText = ed.state.doc.textContent;
 
-                let html = markdownToHtml(content);
+                const parsedFrontMatter = parseNoteFrontMatter(content);
+                setFrontMatterResult(parsedFrontMatter);
+                const richMarkdown = parsedFrontMatter.kind === 'valid'
+                    ? parsedFrontMatter.frontMatter.body
+                    : content;
+                let html = markdownToHtml(richMarkdown);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
                 ed.commands.setContent(html, { emitUpdate: false });
                 setDirty(false);
@@ -1193,6 +1225,21 @@ export function NoteEditor({
                             }
                         }}
                     >
+                        {!editorHidden && viewMode === 'rich' && frontMatterResult.kind === 'valid' && (
+                            <NoteMetadataPanel frontMatter={frontMatterResult.frontMatter} />
+                        )}
+
+                        {!editorHidden && viewMode === 'rich' && frontMatterResult.kind === 'invalid' && (
+                            <div
+                                className="mx-4 mt-4 mb-1 rounded-md border border-[#d8a100] bg-[#fff8d6] px-3 py-2 text-xs text-[#6f5200] dark:border-[#8a6a00] dark:bg-[#332b00] dark:text-[#f0d66b]"
+                                role="status"
+                                title={frontMatterResult.message}
+                                data-testid="note-metadata-warning"
+                            >
+                                Metadata could not be parsed. Open MD mode to fix YAML.
+                            </div>
+                        )}
+
                         <div style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : undefined}>
                             <RichEditorCore
                                 commentsEnabled={commentsEnabled}
