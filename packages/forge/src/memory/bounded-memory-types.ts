@@ -35,6 +35,8 @@ export interface MemoryMutationResult {
     message: string;
     /** Current entries after mutation (or before, on failure) */
     entries: string[];
+    /** Entries appended by append-only promotion calls. */
+    appendedEntries?: string[];
     /** Current usage stats */
     usage: MemoryUsage;
     /** On ambiguous match: preview strings of matching entries */

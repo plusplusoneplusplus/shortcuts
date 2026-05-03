@@ -40,8 +40,8 @@ Bounded, file-backed memory lets AI chat sessions learn from past interactions. 
 | File | Export | Role |
 |------|--------|------|
 | `types.ts` | `MemoryStore`, `MemoryConfig`, `RepoInfo`, `GitRemoteInfo`, `MemoryLevel` | Core type definitions and store interface |
-| `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `MemoryUsage`, `MemoryScanResult`, `ThreatPatternId`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for the bounded memory system |
-| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
+| `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `MemoryUsage`, `MemoryScanResult`, `ThreatPatternId`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for the bounded memory system, including append-only mutation metadata |
+| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, append-only promotion (`appendEntries` returns the entries actually appended), substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |

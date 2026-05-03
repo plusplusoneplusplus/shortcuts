@@ -15,15 +15,38 @@ import {
     BoundedMemoryStore,
     MemoryCandidateStore,
     rankMemoryCandidates,
+    scanMemoryContent,
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/forge';
+import type { RankedMemoryCandidate } from '@plusplusoneplusplus/forge';
 import type { MemoryAggregatePayload } from '../tasks/task-types';
 import {
     DEFAULT_AGGREGATE_CONFIG,
 } from './memory-aggregate';
 import type { MemoryAggregateConfig } from './memory-aggregate';
 import { getRepoDataPath } from '../paths';
+
+interface MemoryAggregateCounts {
+    ranked: number;
+    promoted: number;
+    dropped: number;
+    ignored: number;
+    pending: number;
+}
+
+interface MemoryAggregateResult {
+    message: string;
+    counts: MemoryAggregateCounts;
+    appended: number;
+    droppedReasons: Record<string, string>;
+    ignoredReasons: Record<string, string>;
+}
+
+interface CandidatePromotion {
+    id: string;
+    entry: string;
+}
 
 export class MemoryAggregateExecutor {
     constructor(
@@ -47,7 +70,17 @@ export class MemoryAggregateExecutor {
             const candidates = await candidateStore.listPendingCandidates(this.config.batchSize);
             if (candidates.length === 0) {
                 logger.debug(LogCategory.AI, `[MemoryAggregate] No pending candidates for ${target}@${workspaceId}`);
-                return { success: true, result: 'No pending candidates', durationMs: Date.now() - startTime };
+                return {
+                    success: true,
+                    result: createAggregateResult('No pending candidates', {
+                        ranked: 0,
+                        promoted: 0,
+                        dropped: 0,
+                        ignored: 0,
+                        pending: 0,
+                    }),
+                    durationMs: Date.now() - startTime,
+                };
             }
 
             logger.debug(LogCategory.AI, `[MemoryAggregate] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
@@ -56,30 +89,75 @@ export class MemoryAggregateExecutor {
             if (selected.length === 0) {
                 return {
                     success: true,
-                    result: `Memory promotion pending; ranked ${ranked.length} candidate(s), selected 0`,
+                    result: createAggregateResult(
+                        `Memory promotion pending; ranked ${ranked.length} candidate(s), selected 0`,
+                        {
+                            ranked: ranked.length,
+                            promoted: 0,
+                            dropped: 0,
+                            ignored: 0,
+                            pending: ranked.length,
+                        },
+                    ),
                     durationMs: Date.now() - startTime,
                 };
             }
 
             const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
             await memoryStore.load();
-            const existingEntries = new Set(memoryStore.read());
-            const uniqueSelectedEntries = [...new Set(selected.map(candidate => candidate.content.trim()).filter(Boolean))];
-            const newEntryCount = uniqueSelectedEntries.filter(entry => !existingEntries.has(entry)).length;
-            const appendResult = await memoryStore.appendEntries(uniqueSelectedEntries);
-            if (!appendResult.success) {
-                return {
-                    success: false,
-                    error: new Error(appendResult.message),
-                    durationMs: Date.now() - startTime,
-                };
+            const existingEntries = new Set(memoryStore.read().map(entry => entry.trim()).filter(Boolean));
+            const plan = planCandidateFinalization(selected, existingEntries);
+
+            let appendedEntries: string[] = [];
+            if (plan.promotions.length > 0) {
+                const appendResult = await memoryStore.appendEntries(plan.promotions.map(promotion => promotion.entry));
+                if (!appendResult.success) {
+                    logger.debug(
+                        LogCategory.AI,
+                        `[MemoryAggregate] Promotion append failed for ${target}@${workspaceId}: ${appendResult.message}`,
+                    );
+                    return {
+                        success: false,
+                        error: new Error(appendResult.message),
+                        durationMs: Date.now() - startTime,
+                    };
+                }
+                appendedEntries = appendResult.appendedEntries ?? plan.promotions.map(promotion => promotion.entry);
             }
 
-            await candidateStore.markPromoted(selected.map(candidate => candidate.id));
+            const appendedSet = new Set(appendedEntries.map(entry => entry.trim()).filter(Boolean));
+            const promotedIds = plan.promotions
+                .filter(promotion => appendedSet.has(promotion.entry))
+                .map(promotion => promotion.id);
+            for (const promotion of plan.promotions) {
+                if (!appendedSet.has(promotion.entry)) {
+                    plan.droppedReasons[promotion.id] = 'already covered by bounded memory';
+                }
+            }
+
+            const promoted = await candidateStore.markPromoted(promotedIds);
+            const dropped = await markDroppedByReason(candidateStore, plan.droppedReasons);
+            const ignored = await markIgnoredByReason(candidateStore, plan.ignoredReasons);
+            const counts: MemoryAggregateCounts = {
+                ranked: ranked.length,
+                promoted,
+                dropped,
+                ignored,
+                pending: Math.max(0, ranked.length - promoted - dropped - ignored),
+            };
+            const result = createAggregateResult(
+                `Memory promotion completed; ranked ${ranked.length} candidate(s), promoted ${promoted}, dropped ${dropped}, ignored ${ignored}, pending ${counts.pending}, appended ${appendedEntries.length}`,
+                counts,
+                appendedEntries.length,
+                plan.droppedReasons,
+                plan.ignoredReasons,
+            );
+
+            logger.debug(LogCategory.AI, `[MemoryAggregate] Finalized ${target}@${workspaceId}: ${JSON.stringify(counts)}`);
 
             return {
                 success: true,
-                result: `Memory promotion completed; ranked ${ranked.length} candidate(s), promoted ${selected.length}, appended ${newEntryCount}`,
+                result,
                 durationMs: Date.now() - startTime,
             };
         } catch (error) {
@@ -104,4 +182,98 @@ export class MemoryAggregateExecutor {
         }
         return getRepoDataPath(this.dataDir, workspaceId, 'memory/MEMORY.md');
     }
+}
+
+function planCandidateFinalization(
+    selected: RankedMemoryCandidate[],
+    existingEntries: Set<string>,
+): {
+    promotions: CandidatePromotion[];
+    droppedReasons: Record<string, string>;
+    ignoredReasons: Record<string, string>;
+} {
+    const promotions: CandidatePromotion[] = [];
+    const droppedReasons: Record<string, string> = {};
+    const ignoredReasons: Record<string, string> = {};
+    const plannedEntries = new Set<string>();
+
+    for (const candidate of selected) {
+        const entry = candidate.content.trim();
+        if (!entry) {
+            droppedReasons[candidate.id] = 'empty candidate content';
+            continue;
+        }
+
+        const scan = scanMemoryContent(entry);
+        if (scan.blocked) {
+            droppedReasons[candidate.id] = `blocked by security scanner: ${scan.reason ?? scan.patternId ?? 'unknown reason'}`;
+            continue;
+        }
+
+        if (existingEntries.has(entry)) {
+            droppedReasons[candidate.id] = 'already covered by bounded memory';
+            continue;
+        }
+
+        if (plannedEntries.has(entry)) {
+            ignoredReasons[candidate.id] = 'duplicate selected candidate';
+            continue;
+        }
+
+        plannedEntries.add(entry);
+        promotions.push({ id: candidate.id, entry });
+    }
+
+    return { promotions, droppedReasons, ignoredReasons };
+}
+
+async function markDroppedByReason(
+    candidateStore: MemoryCandidateStore,
+    droppedReasons: Record<string, string>,
+): Promise<number> {
+    let count = 0;
+    for (const [reason, ids] of groupIdsByReason(droppedReasons)) {
+        count += await candidateStore.markDropped(ids, reason);
+    }
+    return count;
+}
+
+async function markIgnoredByReason(
+    candidateStore: MemoryCandidateStore,
+    ignoredReasons: Record<string, string>,
+): Promise<number> {
+    let count = 0;
+    for (const [reason, ids] of groupIdsByReason(ignoredReasons)) {
+        count += await candidateStore.markIgnored(ids, reason);
+    }
+    return count;
+}
+
+function groupIdsByReason(reasonsById: Record<string, string>): Map<string, string[]> {
+    const grouped = new Map<string, string[]>();
+    for (const [id, reason] of Object.entries(reasonsById)) {
+        const ids = grouped.get(reason);
+        if (ids) {
+            ids.push(id);
+        } else {
+            grouped.set(reason, [id]);
+        }
+    }
+    return grouped;
+}
+
+function createAggregateResult(
+    message: string,
+    counts: MemoryAggregateCounts,
+    appended = 0,
+    droppedReasons: Record<string, string> = {},
+    ignoredReasons: Record<string, string> = {},
+): MemoryAggregateResult {
+    return {
+        message,
+        counts,
+        appended,
+        droppedReasons,
+        ignoredReasons,
+    };
 }

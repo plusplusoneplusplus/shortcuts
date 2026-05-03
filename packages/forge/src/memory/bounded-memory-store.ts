@@ -259,7 +259,10 @@ export class BoundedMemoryStore extends BaseFileStore {
 
                 if (cleaned.length === 0) {
                     this.entries = this.deduplicate(await this.readFromDisk());
-                    return this.successResult('No new entries to append.');
+                    return {
+                        ...this.successResult('No new entries to append.'),
+                        appendedEntries: [],
+                    };
                 }
 
                 const appendedContent = cleaned.join(ENTRY_DELIMITER);
@@ -277,9 +280,12 @@ export class BoundedMemoryStore extends BaseFileStore {
 
                 await this.atomicWrite(this.filePath, serialized);
                 this.entries = this.deduplicate(await this.readFromDisk());
-                return this.successResult(
-                    `Memory appended with ${cleaned.length} entr${cleaned.length === 1 ? 'y' : 'ies'}.`,
-                );
+                return {
+                    ...this.successResult(
+                        `Memory appended with ${cleaned.length} entr${cleaned.length === 1 ? 'y' : 'ies'}.`,
+                    ),
+                    appendedEntries: cleaned,
+                };
             } finally {
                 await this.releaseLock();
             }
