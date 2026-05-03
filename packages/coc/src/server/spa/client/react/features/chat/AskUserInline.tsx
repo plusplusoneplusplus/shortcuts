@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 import type { AskUserQuestion } from './hooks/useChatSSE';
 
 export interface AskUserInlineProps {
@@ -27,11 +27,9 @@ export function AskUserInline({ question, processId, onAnswered }: AskUserInline
     const submit = useCallback(async (answer: string | string[] | boolean, skipped = false) => {
         setSubmitting(true);
         try {
-            await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/ask-user-response`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(skipped ? { questionId: question.questionId, skipped: true } : { questionId: question.questionId, answer }),
-            });
+            await getSpaCocClient().processes.askUserResponse(processId,
+                skipped ? { questionId: question.questionId, skipped: true } : { questionId: question.questionId, answer },
+            );
             onAnswered();
         } catch {
             // Silently handle failure — the AI session timeout will clean up

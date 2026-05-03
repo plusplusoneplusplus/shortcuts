@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { memoryApi } from './memoryApi';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useModels } from '../../hooks/useModels';
 
 interface AggregatePanelProps {
@@ -89,7 +89,7 @@ export function AggregatePanel({
         esRef.current?.close();
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
-        const url = `${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`;
+        const url = getSpaCocClient().processes.streamUrl(pid);
         const es = new EventSource(url);
         esRef.current = es;
 
@@ -140,21 +140,20 @@ export function AggregatePanel({
 
     const fetchProcessResult = async (pid: string) => {
         try {
-            const res = await fetch(`${getApiBase()}/processes/${encodeURIComponent(pid)}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const proc = await res.json();
+            const detail = await getSpaCocClient().processes.get(pid);
+            const proc = detail.process ?? detail;
             if (proc.status === 'completed') {
                 setPhase('done');
                 onDone();
             } else if (proc.status === 'failed') {
-                setError(proc.error ?? 'Aggregation failed');
+                setError((proc as any).error ?? 'Aggregation failed');
                 setPhase('idle');
             } else {
                 // Still running — reconnect SSE
                 setPhase('streaming');
             }
-        } catch (e: any) {
-            setError(e?.message ?? 'Failed to fetch result');
+        } catch (e: unknown) {
+            setError(getSpaCocClientErrorMessage(e, 'Failed to fetch result'));
             setPhase('idle');
         }
     };
@@ -184,7 +183,7 @@ export function AggregatePanel({
     const handleCancel = async () => {
         if (!taskId) return;
         try {
-            await fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+            await getSpaCocClient().queue.cancel(taskId);
         } catch { /* ignore */ }
         esRef.current?.close();
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
