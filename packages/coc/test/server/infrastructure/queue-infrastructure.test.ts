@@ -21,7 +21,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { createQueueInfrastructure } from '../../../src/server/infrastructure/queue-infrastructure';
-import { MultiRepoQueueExecutorBridge } from '../../../src/server/queue/multi-repo-executor-bridge';
+import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import * as os from 'os';
@@ -62,7 +62,7 @@ describe('createQueueInfrastructure', () => {
         );
 
         expect(result.registry).toBeInstanceOf(RepoQueueRegistry);
-        expect(result.bridge).toBeInstanceOf(MultiRepoQueueExecutorBridge);
+        expect(result.bridge).toBeInstanceOf(MultiRepoQueueRouter);
         expect(result.queuePersistence).toBeInstanceOf(SqliteQueuePersistence);
         expect(result.queueFacade).toBeDefined();
         expect(typeof result.queueFacade.enqueue).toBe('function');
@@ -132,7 +132,7 @@ describe('createQueueInfrastructure', () => {
             getWsServer,
         );
 
-        expect(result.bridge).toBeInstanceOf(MultiRepoQueueExecutorBridge);
+        expect(result.bridge).toBeInstanceOf(MultiRepoQueueRouter);
     });
 
     it('clears initialDelay after restore so lazy bridges get 0 delay', () => {

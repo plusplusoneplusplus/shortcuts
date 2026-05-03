@@ -17,7 +17,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../tasks/task-types';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
 
@@ -55,7 +55,7 @@ export interface QueueGlobalState {
  * Context object threaded through every queue route module.
  */
 export interface QueueRouteContext {
-    bridge: MultiRepoQueueExecutorBridge;
+    bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
@@ -322,7 +322,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
 /**
  * Aggregate stats across all per-repo TaskQueueManagers.
  */
-export function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
+export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
     let queued = 0, running = 0, completed = 0, failed = 0, cancelled = 0, total = 0;
     let allPaused = true, allAutopilotPaused = true, any = false, anyDraining = false;
     for (const m of bridge.registry.getAllQueues().values()) {
@@ -345,7 +345,7 @@ export function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats
  * Get aggregate stats, incorporating global pause state for the edge case
  * where no bridges exist yet but pause was called.
  */
-export function getAggregateStats(bridge: MultiRepoQueueExecutorBridge, state: QueueGlobalState): QueueStats {
+export function getAggregateStats(bridge: MultiRepoQueueRouter, state: QueueGlobalState): QueueStats {
     const stats = aggregateStats(bridge);
     if (state.globalPaused && bridge.registry.getAllQueues().size === 0) {
         stats.isPaused = true;
@@ -383,7 +383,7 @@ export async function resolveRootPath(
  */
 export async function enqueueViaBridge(
     input: CreateTaskInput,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
     state: QueueGlobalState,
     globalWorkspaceRootPath: string | undefined,
     store: ProcessStore | undefined
@@ -409,7 +409,7 @@ export async function enqueueViaBridge(
  */
 export async function getManagerByRepoIdentifier(
     repoId: string,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
     store: ProcessStore | undefined
 ): Promise<TaskQueueManager | undefined> {
     const managerByQueueRepoId = bridge.getManagerByRepoId(repoId);

@@ -45,7 +45,7 @@ function makeBridge(): any {
     return {
         enqueue: vi.fn(),
         getRepoExecutor: vi.fn(),
-        createAggregateFacade: vi.fn(),
+        createAggregateQueueFacade: vi.fn(),
         registerRepoId: vi.fn(),
         dispatchToRepo: vi.fn(),
         on: vi.fn(),

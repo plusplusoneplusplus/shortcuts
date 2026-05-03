@@ -28,7 +28,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-executor-bridge';
+import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 
 // ============================================================================
 // Helpers
@@ -37,7 +37,7 @@ import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-
 function createBridge() {
     const registry = new RepoQueueRegistry();
     const store = createMockProcessStore();
-    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+    const bridge = new MultiRepoQueueRouter(registry, store, {
         autoStart: false,
     });
     return { registry, store, bridge };

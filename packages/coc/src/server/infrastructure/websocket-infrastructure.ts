@@ -15,7 +15,7 @@ import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler
 import { gitInfoCache } from '../git/git-info-cache';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { ScheduleManager } from '../schedule/schedule-manager';
 import type { TerminalWebSocketServer } from '../terminal/index';
 
@@ -37,7 +37,7 @@ import type { TerminalWebSocketServer } from '../terminal/index';
 export function createWebSocketInfrastructure(
     server: http.Server,
     store: ProcessStore,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
     registry: RepoQueueRegistry,
     scheduleManager: ScheduleManager,
     terminalWsServer?: TerminalWebSocketServer,

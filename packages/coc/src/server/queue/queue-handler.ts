@@ -7,7 +7,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
-import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 import type { QueueGlobalState } from '../routes/queue-shared';
 import { registerQueueEnqueueRoutes } from '../routes/queue-enqueue';
 import { registerQueueStatsRoutes } from '../routes/queue-stats';
@@ -20,7 +20,7 @@ export type { SummarizeConversation } from '../routes/queue-shared';
 
 export function registerQueueRoutes(
     routes: Route[],
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
     store?: ProcessStore,
     globalWorkspaceRootPath?: string
 ): void {

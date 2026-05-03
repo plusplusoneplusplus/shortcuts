@@ -15,7 +15,7 @@ import { TaskDefs } from '../tasks/task-types';
 import { denyAllPermissions, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import {
     DEFAULT_WORKFLOWS_FOLDER,
     TEMPLATES,
@@ -36,7 +36,7 @@ export function registerWorkflowWriteRoutes(
     routes: Route[],
     store: ProcessStore,
     onPipelinesChanged?: (workspaceId: string) => void,
-    bridge?: MultiRepoQueueExecutorBridge,
+    bridge?: MultiRepoQueueRouter,
     aiService?: CopilotSDKService,
 ): void {
 

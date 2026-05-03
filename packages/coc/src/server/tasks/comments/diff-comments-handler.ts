@@ -19,7 +19,7 @@ import * as path from 'path';
 import type { Route } from '../../types';
 import type { ProcessWebSocketServer } from '../../streaming/websocket';
 import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from '../../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../../queue/multi-repo-queue-router';
 import { isValidWorkspaceId } from './base-comments-manager';
 import { DiffCommentsManager, isValidStorageKey, isValidContext } from './diff-comments-manager';
 import { buildDiffEnrichedPrompt, buildDiffAIPrompt, buildMultiFileBatchResolvePrompt, DEFAULT_AI_COMMANDS } from './diff-comments-ai';
@@ -86,7 +86,7 @@ const resolveWithAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/resolve-w
 export function registerDiffCommentsRoutes(
     routes: Route[],
     dataDir: string,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
     store?: ProcessStore,
     getWsServer?: () => ProcessWebSocketServer | undefined
 ): void {

@@ -23,7 +23,7 @@ import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
-import { MultiRepoQueueExecutorBridge } from './queue/multi-repo-executor-bridge';
+import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
 import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
@@ -61,7 +61,7 @@ interface CloseHandlerDeps {
     scheduleManager: { dispose(): void };
     scheduleInfraDispose: () => void;
     notesGitTimerManager: NotesGitTimerManager;
-    bridge: MultiRepoQueueExecutorBridge;
+    bridge: MultiRepoQueueRouter;
     queuePersistence: { dispose(): void };
     wsServer: ProcessWebSocketServer;
     terminalWsServer?: { closeAll(): void };
@@ -312,7 +312,7 @@ export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/qu
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export type { ITaskExecutor } from './executors/executor-types';
-export { MultiRepoQueueExecutorBridge } from './queue/multi-repo-executor-bridge';
+export { MultiRepoQueueRouter, MultiRepoQueueExecutorBridge } from './queue/multi-repo-queue-router';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';
 export type { RestartPolicy } from './queue/sqlite-queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';

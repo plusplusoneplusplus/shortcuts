@@ -36,7 +36,7 @@ import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plu
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { resolveTaskRoot } from './task-root-resolver';
 import { isValidTaskFolder } from '../executors/auto-folder-utils';
 
@@ -68,7 +68,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge, aiService: CopilotSDKService, dataDir: string): void {
+export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueRouter, aiService: CopilotSDKService, dataDir: string): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation

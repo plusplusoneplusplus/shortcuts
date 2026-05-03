@@ -2,7 +2,7 @@
  * Queue Infrastructure Builder
  *
  * Creates the three queue-related objects (RepoQueueRegistry,
- * MultiRepoQueueExecutorBridge, SqliteQueuePersistence) used by the
+ * MultiRepoQueueRouter, SqliteQueuePersistence) used by the
  * execution server and returns them as a plain object.
  *
  * Queue state is persisted via SqliteQueuePersistence — incremental,
@@ -16,7 +16,7 @@ import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forg
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
-import { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import { defaultIsExclusive } from '../queue/queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -28,9 +28,9 @@ import type { ExecutionServerOptions } from '../types';
 
 export interface QueueInfrastructure {
     registry: RepoQueueRegistry;
-    bridge: MultiRepoQueueExecutorBridge;
+    bridge: MultiRepoQueueRouter;
     queuePersistence: SqliteQueuePersistence;
-    queueFacade: ReturnType<MultiRepoQueueExecutorBridge['createAggregateFacade']>;
+    queueFacade: ReturnType<MultiRepoQueueRouter['createAggregateQueueFacade']>;
 }
 
 // ============================================================================
@@ -76,7 +76,7 @@ export function createQueueInfrastructure(
         isExclusive: defaultIsExclusive,
     });
 
-    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+    const bridge = new MultiRepoQueueRouter(registry, store, {
         autoStart: options.queue?.autoStart !== false,
         approvePermissions: true,
         dataDir,
@@ -96,7 +96,7 @@ export function createQueueInfrastructure(
     // Clear the startup delay so lazily-created bridges after this point get no delay
     bridge.clearInitialDelay();
 
-    const queueFacade = bridge.createAggregateFacade();
+    const queueFacade = bridge.createAggregateQueueFacade();
 
     return { registry, bridge, queuePersistence, queueFacade };
 }

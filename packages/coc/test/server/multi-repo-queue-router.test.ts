@@ -1,7 +1,7 @@
 /**
- * MultiRepoQueueExecutorBridge Tests
+ * MultiRepoQueueRouter Tests
  *
- * Tests for MultiRepoQueueExecutorBridge:
+ * Tests for MultiRepoQueueRouter:
  * - Lazy creation of per-repo bridges
  * - Path normalization (dedup)
  * - Independent bridges per repo
@@ -34,6 +34,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
+import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-executor-bridge';
 import * as queueExecutorBridgeMod from '../../src/server/queue/queue-executor-bridge';
 
@@ -44,7 +45,7 @@ import * as queueExecutorBridgeMod from '../../src/server/queue/queue-executor-b
 function createBridge(options?: { maxConcurrency?: number; autoStart?: boolean }) {
     const registry = new RepoQueueRegistry();
     const store = createMockProcessStore();
-    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+    const bridge = new MultiRepoQueueRouter(registry, store, {
         autoStart: false,
         ...options,
     });
@@ -59,7 +60,7 @@ function repoId(id: string): string {
 // Tests
 // ============================================================================
 
-describe('MultiRepoQueueExecutorBridge', () => {
+describe('MultiRepoQueueRouter', () => {
     beforeEach(() => {
         sdkMocks.resetAll();
     });
@@ -151,7 +152,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('per-repo workingDirectory overrides global defaultOptions', () => {
             const registry = new (require('@plusplusoneplusplus/forge').RepoQueueRegistry)();
             const store = createMockProcessStore();
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+            const bridge = new MultiRepoQueueRouter(registry, store, {
                 autoStart: false,
                 workingDirectory: '/global/default',
             });
@@ -171,7 +172,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('preserves other defaultOptions when injecting workingDirectory', () => {
             const registry = new (require('@plusplusoneplusplus/forge').RepoQueueRegistry)();
             const store = createMockProcessStore();
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+            const bridge = new MultiRepoQueueRouter(registry, store, {
                 autoStart: false,
                 sharedConcurrency: 3,
             });
@@ -288,7 +289,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             });
 
             // Enqueue a task on the registry's queue — this triggers 'change' on the queue,
-            // which the registry forwards as 'queueChange', which MultiRepoQueueExecutorBridge
+            // which the registry forwards as 'queueChange', which MultiRepoQueueRouter
             // intercepts and re-emits with augmented payload.
             const queue = registry.getQueueForRepo(resolvedPath);
             queue.enqueue({
@@ -332,10 +333,25 @@ describe('MultiRepoQueueExecutorBridge', () => {
     });
 
     // --------------------------------------------------------------------
-    // createAggregateFacade — resolveManager repoId-to-path lookup
+    // createAggregateQueueFacade — resolveManager repoId-to-path lookup
     // --------------------------------------------------------------------
 
-    describe('createAggregateFacade resolveManager', () => {
+    describe('createAggregateQueueFacade resolveManager', () => {
+        it('keeps deprecated class and facade aliases compatible', () => {
+            expect(MultiRepoQueueExecutorBridge).toBe(MultiRepoQueueRouter);
+
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const newFacade = bridge.createAggregateQueueFacade();
+            const oldFacade = bridge.createAggregateFacade();
+
+            expect(newFacade.enqueue).toEqual(expect.any(Function));
+            expect(oldFacade.enqueue).toEqual(expect.any(Function));
+
+            bridge.dispose();
+        });
+
         it('enqueues into the correct repo queue when input carries a repoId (not a path)', () => {
             const { bridge, registry } = createBridge();
             const rootPath = '/repo/schedule-test';
@@ -346,7 +362,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             bridge.registerRepoId(workspaceId, rootPath);
             bridge.getOrCreateBridge(rootPath);
 
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
 
             // Enqueue with only repoId set (simulating a schedule-triggered task)
             const taskId = facade.enqueue({
@@ -374,7 +390,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             const resolvedPath = require('path').resolve(rootPath);
 
             bridge.getOrCreateBridge(rootPath);
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
 
             // Use an unknown repoId but provide workingDirectory as fallback
             const taskId = facade.enqueue({
@@ -413,15 +429,15 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('allows creating new bridges after dispose', () => {
             const registry = new RepoQueueRegistry();
             const store = createMockProcessStore();
-            const mrBridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const mrBridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
             mrBridge.getOrCreateBridge('/repo/a');
             mrBridge.dispose();
 
             // After dispose, the registry is also disposed. Creating a fresh bridge
-            // requires a new instance of MultiRepoQueueExecutorBridge.
+            // requires a new instance of MultiRepoQueueRouter.
             const registry2 = new RepoQueueRegistry();
-            const mrBridge2 = new MultiRepoQueueExecutorBridge(registry2, store, { autoStart: false });
+            const mrBridge2 = new MultiRepoQueueRouter(registry2, store, { autoStart: false });
             const b = mrBridge2.getOrCreateBridge('/repo/c');
 
             expect(b).toBeDefined();
@@ -681,7 +697,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('bridges created after clearInitialDelay get 0 delay', () => {
             const registry = new RepoQueueRegistry();
             const store = createMockProcessStore();
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+            const bridge = new MultiRepoQueueRouter(registry, store, {
                 autoStart: false,
                 initialDelayMs: 30000,
             });
@@ -749,7 +765,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
                 config: {},
             });
 
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
 
             // Cancel via the facade
             const result = facade.cancelTask(taskId);
@@ -767,7 +783,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('falls back to manager.cancelTask when no executor bridge exists', () => {
             const registry = new RepoQueueRegistry();
             const store = createMockProcessStore();
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
             // Create a queue directly without going through getOrCreateBridge
             const manager = registry.getQueueForRepo('/repo/no-bridge');
@@ -778,7 +794,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
                 config: {},
             });
 
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
             const result = facade.cancelTask(taskId);
             expect(result).toBe(true);
             expect(manager.getTask(taskId)?.status).toBe('cancelled');
@@ -803,7 +819,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             mgrA.enqueue({ type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'ask', prompt: 'a' }, config: {} });
             mgrB.enqueue({ type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'ask', prompt: 'b' }, config: {} });
 
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
             const all = facade.getAll();
             expect(all).toHaveLength(2);
 
@@ -812,7 +828,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
 
         it('returns empty array when no managers exist', () => {
             const { bridge } = createBridge();
-            const facade = bridge.createAggregateFacade();
+            const facade = bridge.createAggregateQueueFacade();
             expect(facade.getAll()).toEqual([]);
             bridge.dispose();
         });
@@ -830,7 +846,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
                 { id: 'ws-wi-test', rootPath: wsRootPath, name: 'WI Workspace' },
             ]);
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
             const resolvedPath = require('path').resolve(wsRootPath);
             bridge.getOrCreateBridge(wsRootPath);
@@ -862,7 +878,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
                 { id: 'ws-wi-dir', rootPath: wsRootPath, name: 'WI Dir' },
             ]);
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
             bridge.getOrCreateBridge(wsRootPath);
 
             const input: any = {
@@ -886,7 +902,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('falls back to process.cwd() when workspaceId is unknown', async () => {
             const registry = new RepoQueueRegistry();
             const store = createMockProcessStore(); // getWorkspaces returns []
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
             const taskId = await bridge.enqueue({
                 type: 'run-workflow',
@@ -906,7 +922,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
                 { id: 'ws-prefer-wd', rootPath: '/repo/from-ws', name: 'From WS' },
             ]);
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
             const explicitPath = require('path').resolve('/repo/explicit-wd');
             bridge.getOrCreateBridge(explicitPath);
@@ -935,7 +951,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
             (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
                 { id: 'ws-serial', rootPath: wsRootPath, name: 'Serial WS' },
             ]);
-            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
             bridge.getOrCreateBridge(wsRootPath);
 
             const id1 = await bridge.enqueue({

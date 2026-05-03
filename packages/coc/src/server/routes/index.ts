@@ -9,7 +9,7 @@ import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, CopilotSDKService, AIInvoker } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import type { ScheduleManager } from '../schedule/schedule-manager';
 import type { WikiServerOptions } from '../types';
@@ -89,7 +89,7 @@ function collectWorkItemCommits(
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
-    bridge: MultiRepoQueueExecutorBridge;
+    bridge: MultiRepoQueueRouter;
     queueFacade: TaskQueueManager;
     scheduleManager: ScheduleManager;
     notesGitTimerManager: NotesGitTimerManager;

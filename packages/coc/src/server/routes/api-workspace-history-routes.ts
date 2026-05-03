@@ -14,7 +14,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 
 type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
 
@@ -26,7 +26,7 @@ type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
 async function tryDeleteHistoryEntry(
     processId: string,
     store: ProcessStore,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
 ): Promise<DeleteOutcome> {
     let removedAnything = false;
 
@@ -69,7 +69,7 @@ async function tryDeleteHistoryEntry(
 export function registerWorkspaceHistoryRoutes(
     routes: Route[],
     store: ProcessStore,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
 ): void {
     // ------------------------------------------------------------------
     // DELETE /api/workspaces/:id/history/:processId — Single delete

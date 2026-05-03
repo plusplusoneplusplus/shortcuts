@@ -19,7 +19,7 @@ import { isValidWorkspaceId } from './base-comments-manager';
 import type { Route } from '../../types';
 import type { ProcessWebSocketServer } from '../../streaming/websocket';
 import { type CreateTaskInput } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from '../../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../../queue/multi-repo-queue-router';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { TaskCommentsManager } from './task-comments-manager';
@@ -74,7 +74,7 @@ function findMissingField(body: any): string | null {
  * @param bridge - Multi-repo queue bridge for async AI execution
  * @param store - Optional process store for workspace resolution
  */
-export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore, getWsServer?: () => ProcessWebSocketServer | undefined): void {
+export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge: MultiRepoQueueRouter, store?: ProcessStore, getWsServer?: () => ProcessWebSocketServer | undefined): void {
     const manager = new TaskCommentsManager(dataDir);
 
     /**

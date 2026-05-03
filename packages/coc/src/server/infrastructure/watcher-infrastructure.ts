@@ -22,7 +22,7 @@ import { taskCache } from '../tasks/task-cache';
 import { getRepoDataPath } from '../paths';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 
 // ============================================================================
 // Types
@@ -53,7 +53,7 @@ export async function createWatcherInfrastructure(
     store: ProcessStore,
     dataDir: string,
     wsServer: ProcessWebSocketServer,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
 ): Promise<WatcherInfrastructure> {
     const taskWatcher = new TaskWatcher((workspaceId) => {
         taskCache.invalidateWorkspace(workspaceId);

@@ -21,7 +21,7 @@ import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { getRepoDataPath } from '../paths';
 import type { NoteSidecar, CommentThread, Comment } from './notes-comments-types';
 import { createEmptySidecar } from './notes-comments-types';
@@ -82,7 +82,7 @@ export function registerNotesCommentsRoutes(
     routes: Route[],
     store: ProcessStore,
     dataDir: string,
-    bridge?: MultiRepoQueueExecutorBridge,
+    bridge?: MultiRepoQueueRouter,
 ): void {
 
     // GET /api/workspaces/:id/notes/comments?path=...

@@ -143,7 +143,8 @@ src/
 │   ├── queue/                        # Queue layer (handler, bridges, blob store, partitioner)
 │   │   ├── queue-handler.ts                # /api/queue/* CRUD + validation
 │   │   ├── queue-executor-bridge.ts        # Bridges queue tasks to AI/workflow/script executors
-│   │   ├── multi-repo-executor-bridge.ts   # Multi-repo workflow execution + repoId↔rootPath maps
+│   │   ├── multi-repo-queue-router.ts      # Routes queue operations across per-repo queues + repoId↔rootPath maps
+│   │   ├── multi-repo-executor-bridge.ts   # Deprecated compatibility re-export for MultiRepoQueueRouter
 │   │   ├── image-blob-store.ts             # Externalizes base64 images from persistence to JSON
 │   │   ├── queue-partitioner.ts            # Per-repo queue partitioning rules
 │   │   └── shared/                         # Queue shared utilities (queue-utils, process-history-mapper, ...)

@@ -18,7 +18,7 @@
 
 import type Database from 'better-sqlite3';
 import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask } from '@plusplusoneplusplus/forge';
-import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 
 /**
  * What to do with tasks that were running when the server last stopped.
@@ -53,7 +53,7 @@ interface BridgeQueueChangeEvent extends QueueChangeEvent {
 // ============================================================================
 
 export class SqliteQueuePersistence {
-    private readonly bridge: MultiRepoQueueExecutorBridge;
+    private readonly bridge: MultiRepoQueueRouter;
     private readonly store: SqliteQueueStore;
     private readonly db: Database.Database;
     private readonly restartPolicy: RestartPolicy;
@@ -64,7 +64,7 @@ export class SqliteQueuePersistence {
     private readonly bridgeChangeListener: (event: BridgeQueueChangeEvent) => void;
 
     constructor(
-        bridge: MultiRepoQueueExecutorBridge,
+        bridge: MultiRepoQueueRouter,
         db: Database.Database,
         options?: SqliteQueuePersistenceOptions,
     ) {

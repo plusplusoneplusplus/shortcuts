@@ -20,7 +20,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
 
-// SDK mock — needed because MultiRepoQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
+// SDK mock — needed because MultiRepoQueueRouter → CLITaskExecutor → getCopilotSDKService
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
@@ -34,7 +34,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-import { MultiRepoQueueExecutorBridge } from '../../src/server/queue/multi-repo-executor-bridge';
+import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../src/server/queue/sqlite-queue-persistence';
 
 // ============================================================================
@@ -44,7 +44,7 @@ import { SqliteQueuePersistence } from '../../src/server/queue/sqlite-queue-pers
 let db: Database.Database;
 let store: SqliteQueueStore;
 let registry: RepoQueueRegistry;
-let bridge: MultiRepoQueueExecutorBridge;
+let bridge: MultiRepoQueueRouter;
 let persistence: SqliteQueuePersistence;
 
 function createBridgeAndDb() {
@@ -58,7 +58,7 @@ function createBridgeAndDb() {
         maxHistorySize: 100,
     });
     const mockStore = createMockProcessStore();
-    bridge = new MultiRepoQueueExecutorBridge(registry, mockStore, { autoStart: false });
+    bridge = new MultiRepoQueueRouter(registry, mockStore, { autoStart: false });
     return { db, store, registry, bridge };
 }
 
@@ -465,7 +465,7 @@ describe('SqliteQueuePersistence', () => {
             // Create fresh bridge without pre-registered IDs
             const freshStore = createMockProcessStore();
             const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
-            const freshBridge = new MultiRepoQueueExecutorBridge(freshRegistry, freshStore, { autoStart: false });
+            const freshBridge = new MultiRepoQueueRouter(freshRegistry, freshStore, { autoStart: false });
 
             persistence = new SqliteQueuePersistence(freshBridge, db);
 
@@ -552,7 +552,7 @@ describe('SqliteQueuePersistence', () => {
             // Create new persistence + bridge to simulate restart
             const freshMockStore = createMockProcessStore();
             const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
-            const freshBridge = new MultiRepoQueueExecutorBridge(freshRegistry, freshMockStore, { autoStart: false });
+            const freshBridge = new MultiRepoQueueRouter(freshRegistry, freshMockStore, { autoStart: false });
 
             const freshPersistence = new SqliteQueuePersistence(freshBridge, db);
             freshPersistence.restore();
@@ -593,7 +593,7 @@ describe('SqliteQueuePersistence', () => {
             // Simulate restart
             const freshMockStore = createMockProcessStore();
             const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
-            const freshBridge = new MultiRepoQueueExecutorBridge(freshRegistry, freshMockStore, { autoStart: false });
+            const freshBridge = new MultiRepoQueueRouter(freshRegistry, freshMockStore, { autoStart: false });
 
             const freshPersistence = new SqliteQueuePersistence(freshBridge, db);
             freshPersistence.restore();
@@ -629,7 +629,7 @@ describe('SqliteQueuePersistence', () => {
             // Simulate restart
             const freshMockStore = createMockProcessStore();
             const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
-            const freshBridge = new MultiRepoQueueExecutorBridge(freshRegistry, freshMockStore, { autoStart: false });
+            const freshBridge = new MultiRepoQueueRouter(freshRegistry, freshMockStore, { autoStart: false });
 
             const freshPersistence = new SqliteQueuePersistence(freshBridge, db);
             freshPersistence.restore();

@@ -13,7 +13,7 @@ import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import type { MultiRepoQueueExecutorBridge } from '../queue/multi-repo-executor-bridge';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 
 // ============================================================================
 // Route registration
@@ -23,7 +23,7 @@ export function registerNotesAICreateRoutes(
     routes: Route[],
     store: ProcessStore,
     dataDir: string,
-    bridge: MultiRepoQueueExecutorBridge,
+    bridge: MultiRepoQueueRouter,
 ): void {
 
     // ------------------------------------------------------------------
