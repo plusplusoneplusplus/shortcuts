@@ -406,3 +406,95 @@ describe('split-panel layout', () => {
         expect(screen.getByTestId('pr-list')).toBeInTheDocument();
     });
 });
+
+// ── Flat list mode (≤5 PRs) ────────────────────────────────────────────────────
+
+describe('flat list mode', () => {
+    it('renders flat rows without group sections when PR count is at the threshold (5)', async () => {
+        const prs = Array.from({ length: 5 }, (_, i) => makePr({ id: i + 1, title: `PR ${i + 1}` }));
+        mockFetchOk(prs);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(5));
+
+        expect(screen.queryByTestId('attention-group-section')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('attention-summary-bar')).not.toBeInTheDocument();
+    });
+
+    it('renders grouped view when PR count exceeds threshold (6)', async () => {
+        const prs = Array.from({ length: 6 }, (_, i) => makePr({ id: i + 1, title: `PR ${i + 1}` }));
+        mockFetchOk(prs);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(6));
+
+        expect(screen.getAllByTestId('attention-group-section').length).toBeGreaterThan(0);
+    });
+
+    it('flat rows show no checkboxes by default', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Solo PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        expect(screen.queryByTestId('pr-row-checkbox')).not.toBeInTheDocument();
+    });
+});
+
+// ── Batch mode toggle (Select button) ─────────────────────────────────────────
+
+describe('batch mode toggle', () => {
+    it('shows "Select" button in toolbar', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('select-mode-button')).toBeInTheDocument();
+        expect(screen.getByTestId('select-mode-button').textContent).toBe('Select');
+    });
+
+    it('reveals row checkboxes when Select is clicked in flat mode', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Solo PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        expect(screen.queryByTestId('pr-row-checkbox')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('select-mode-button'));
+        expect(screen.getByTestId('pr-row-checkbox')).toBeInTheDocument();
+    });
+
+    it('changes button label to "Cancel" when batch mode is active', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        fireEvent.click(screen.getByTestId('select-mode-button'));
+        expect(screen.getByTestId('select-mode-button').textContent).toBe('Cancel');
+    });
+
+    it('clicking Cancel clears selection and hides checkboxes', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Solo PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        // Activate batch mode and select the PR
+        fireEvent.click(screen.getByTestId('select-mode-button'));
+        fireEvent.click(screen.getByTestId('pr-row-checkbox'));
+        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toBeInTheDocument());
+
+        // Cancel batch mode
+        fireEvent.click(screen.getByTestId('select-mode-button'));
+
+        await waitFor(() => expect(screen.queryByTestId('pr-row-checkbox')).not.toBeInTheDocument());
+        expect(screen.queryByTestId('selection-count-bar')).not.toBeInTheDocument();
+        expect(screen.getByTestId('select-mode-button').textContent).toBe('Select');
+    });
+
+    it('selection-count-bar only shows in batch mode', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Solo PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        // Before batch mode: no count bar
+        expect(screen.queryByTestId('selection-count-bar')).not.toBeInTheDocument();
+
+        // Enable batch mode and select
+        fireEvent.click(screen.getByTestId('select-mode-button'));
+        fireEvent.click(screen.getByTestId('pr-row-checkbox'));
+        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'));
+    });
+});
+

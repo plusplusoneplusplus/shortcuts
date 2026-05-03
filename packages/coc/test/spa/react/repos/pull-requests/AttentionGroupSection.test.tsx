@@ -37,7 +37,7 @@ function makePr(overrides: Partial<PullRequest> = {}): PullRequest {
 }
 
 describe('AttentionGroupSection', () => {
-    it('passes operational group badge and reason props to each PR row', () => {
+    it('shows the group reason on each PR row without a redundant group badge', () => {
         render(
             <AttentionGroupSection
                 config={makeConfig(AttentionGroup.ReviewerNudge)}
@@ -47,15 +47,15 @@ describe('AttentionGroupSection', () => {
             />,
         );
 
-        const badge = screen.getByTestId('pr-group-badge');
-        expect(badge.textContent).toContain('Nudge reviewer');
-        expect(badge.textContent).toContain('💬');
-        expect(badge.className).toContain('bg-blue-100');
+        // The section header carries the group label; rows should not repeat it as a badge
+        expect(screen.queryByTestId('pr-group-badge')).toBeNull();
+        // The status badge is shown instead on the row
+        expect(document.querySelector('.pr-status-badge')).not.toBeNull();
+        // The contextual reason is still shown beneath the title
         expect(screen.getByTestId('pr-group-reason').textContent).toBe('No reviewer response in 2+ days');
-        expect(document.querySelector('.pr-status-badge')).toBeNull();
     });
 
-    it('uses reviewer-requested-change reason for manual update rows when reviewer votes require author action', () => {
+    it('uses reviewer-requested-change reason for manual update rows', () => {
         render(
             <AttentionGroupSection
                 config={makeConfig(AttentionGroup.ManualUpdateNeeded)}
@@ -65,8 +65,38 @@ describe('AttentionGroupSection', () => {
             />,
         );
 
-        expect(screen.getByTestId('pr-group-badge').textContent).toContain('Update needed');
+        // No redundant group badge on the row
+        expect(screen.queryByTestId('pr-group-badge')).toBeNull();
         expect(screen.getByTestId('pr-group-reason').textContent).toBe('Requested changes from reviewer');
         expect(screen.getByTestId('pr-row').className).toContain('bg-blue-50');
+    });
+
+    it('hides group select-all and row checkboxes by default (no batchMode)', () => {
+        render(
+            <AttentionGroupSection
+                config={makeConfig(AttentionGroup.ReviewerNudge)}
+                prs={[makePr()]}
+                selectedPrId={null}
+                onRowClick={vi.fn()}
+            />,
+        );
+
+        expect(screen.queryByTestId('group-select-all')).toBeNull();
+        expect(screen.queryByTestId('pr-row-checkbox')).toBeNull();
+    });
+
+    it('shows group select-all and row checkboxes when batchMode is true', () => {
+        render(
+            <AttentionGroupSection
+                config={makeConfig(AttentionGroup.ReviewerNudge)}
+                prs={[makePr()]}
+                selectedPrId={null}
+                onRowClick={vi.fn()}
+                batchMode={true}
+            />,
+        );
+
+        expect(screen.getByTestId('group-select-all')).toBeTruthy();
+        expect(screen.getByTestId('pr-row-checkbox')).toBeTruthy();
     });
 });

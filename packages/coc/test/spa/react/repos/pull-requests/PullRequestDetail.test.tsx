@@ -113,6 +113,23 @@ describe('successful render', () => {
         await waitFor(() => expect(screen.getByTestId('pr-description')).toBeInTheDocument());
     });
 
+    it('shows actionable empty-description card when description is absent', async () => {
+        mockFetchBoth(makePr({ description: undefined, url: 'https://example.com/pr/142' }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-description-empty').textContent).toContain('No description');
+        const openLink = screen.getByTestId('pr-description-open-link');
+        expect(openLink).toBeInTheDocument();
+        expect(openLink).toHaveAttribute('href', 'https://example.com/pr/142');
+    });
+
+    it('does not render open-link in empty-description card when no url', async () => {
+        mockFetchBoth(makePr({ description: undefined, url: undefined }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
+        expect(screen.queryByTestId('pr-description-open-link')).not.toBeInTheDocument();
+    });
+
     it('renders reviewer list with correct vote icons', async () => {
         const pr = makePr({
             reviewers: [

@@ -60,6 +60,8 @@ function groupedPrs() {
         makePr({ id: 2, number: 2, title: 'Needs changes', reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'waitingForAuthor' }] }),
         makePr({ id: 3, number: 3, title: 'Waiting on review', updatedAt: stale, reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'noVote' }] }),
         makePr({ id: 4, number: 4, title: 'Ready to merge', reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'approved' }] }),
+        makePr({ id: 95, number: 95, title: 'Rerun extra', labels: ['ci-failed'] }),
+        makePr({ id: 96, number: 96, title: 'Ready to merge extra', reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'approved' }] }),
     ];
 }
 
@@ -71,7 +73,7 @@ beforeEach(() => {
 });
 
 describe('attention groups layout', () => {
-    it('renders four attention group sections in config order', async () => {
+    it('renders attention group sections only for non-empty groups, in config order', async () => {
         mockFetchOk(groupedPrs());
 
         await act(async () => { await renderTab(); });
@@ -85,19 +87,20 @@ describe('attention groups layout', () => {
         ]);
     });
 
-    it('shows accurate summary chip counts', async () => {
+    it('shows accurate summary chip counts (zero-count groups hidden)', async () => {
         mockFetchOk([
             ...groupedPrs(),
-            makePr({ id: 5, number: 5, title: 'Another rerun', description: 'Build failure in CI' }),
+            makePr({ id: 7, number: 7, title: 'Another rerun', description: 'Build failure in CI' }),
         ]);
 
         await act(async () => { await renderTab(); });
 
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(5));
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.RerunNeeded}`)).toHaveTextContent('2');
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(7));
+        // groupedPrs() has: 2 rerun + 1 manual + 1 nudge + 2 merge; plus 1 extra rerun = 3 rerun total
+        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.RerunNeeded}`)).toHaveTextContent('3');
         expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.ManualUpdateNeeded}`)).toHaveTextContent('1');
         expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.ReviewerNudge}`)).toHaveTextContent('1');
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.MergeValidation}`)).toHaveTextContent('1');
+        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.MergeValidation}`)).toHaveTextContent('2');
     });
 
     it('scrolls to the matching group when a summary chip is clicked', async () => {
@@ -128,18 +131,17 @@ describe('attention groups layout', () => {
         expect(screen.getByText('Needs changes')).toBeInTheDocument();
     });
 
-    it('updates group counts after client-side search filtering', async () => {
+    it('hides attention summary bar and switches to flat list when search narrows to few PRs', async () => {
         mockFetchOk(groupedPrs());
 
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(4));
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(6));
 
-        fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'review' } });
+        // Filter to a single result — flat list mode kicks in, no attention bar
+        fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'Waiting on review' } });
 
         expect(screen.getAllByTestId('pr-row')).toHaveLength(1);
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.RerunNeeded}`)).toHaveTextContent('0');
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.ManualUpdateNeeded}`)).toHaveTextContent('0');
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.ReviewerNudge}`)).toHaveTextContent('1');
-        expect(screen.getByTestId(`attention-summary-chip-${AttentionGroup.MergeValidation}`)).toHaveTextContent('0');
+        expect(screen.queryByTestId('attention-summary-bar')).toBeNull();
+        expect(screen.queryByTestId('attention-group-section')).toBeNull();
     });
 });

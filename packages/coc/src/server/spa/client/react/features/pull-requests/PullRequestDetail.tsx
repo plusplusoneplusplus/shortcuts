@@ -235,9 +235,29 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 </pre>
                             )
                         ) : (
-                            <p className="text-sm text-gray-400 italic" data-testid="pr-description-empty">
-                                No description provided.
-                            </p>
+                            <div
+                                className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 flex flex-col gap-2"
+                                data-testid="pr-description-empty"
+                            >
+                                <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                    <span aria-hidden="true">📝</span>
+                                    <span className="text-sm font-medium">No description</span>
+                                </div>
+                                <p className="text-xs text-gray-400 dark:text-gray-500">
+                                    This pull request has no description yet.
+                                </p>
+                                {pr.url && (
+                                    <a
+                                        href={pr.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="self-start inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                        data-testid="pr-description-open-link"
+                                    >
+                                        Open in browser to add one 🔗
+                                    </a>
+                                )}
+                            </div>
                         )}
 
                         {/* Reviewers */}

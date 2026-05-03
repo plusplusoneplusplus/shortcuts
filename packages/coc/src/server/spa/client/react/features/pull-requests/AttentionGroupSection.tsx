@@ -1,7 +1,6 @@
 import { forwardRef, useState } from 'react';
 import { cn } from '../../ui';
 import { PullRequestRow } from './PullRequestRow';
-import { getGroupBadgeStyle } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 import { AttentionGroup, type AttentionGroupConfig } from './pr-attention-groups';
 
@@ -16,6 +15,8 @@ interface AttentionGroupSectionProps {
     selectedPrIds?: Set<string>;
     onPrSelect?: (id: string, checked: boolean, shiftKey: boolean) => void;
     anchorPrId?: string | null;
+    /** When true, selection checkboxes are visible on rows and the group header. */
+    batchMode?: boolean;
 }
 
 function normalizeVote(vote: string | undefined): string {
@@ -41,9 +42,8 @@ function getGroupReason(pr: PullRequest, group: AttentionGroup): string {
 }
 
 export const AttentionGroupSection = forwardRef<HTMLDivElement, AttentionGroupSectionProps>(
-    function AttentionGroupSection({ config, prs, selectedPrId, onRowClick, onSelectAll, allSelected, someSelected, selectedPrIds, onPrSelect }, ref) {
+    function AttentionGroupSection({ config, prs, selectedPrId, onRowClick, onSelectAll, allSelected, someSelected, selectedPrIds, onPrSelect, batchMode }, ref) {
         const [isExpanded, setIsExpanded] = useState(true);
-        const badge = getGroupBadgeStyle(config.group);
 
         return (
             <section
@@ -53,19 +53,21 @@ export const AttentionGroupSection = forwardRef<HTMLDivElement, AttentionGroupSe
                 data-testid="attention-group-section"
             >
                 <div className="sticky top-[41px] z-10 flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2 text-sm dark:border-gray-800 dark:bg-gray-900">
-                    <input
-                        type="checkbox"
-                        data-testid="group-select-all"
-                        checked={allSelected ?? false}
-                        ref={el => {
-                            if (el) {
-                                el.indeterminate = !!(someSelected && !allSelected);
-                            }
-                        }}
-                        onChange={e => onSelectAll?.(e.target.checked)}
-                        onClick={e => e.stopPropagation()}
-                        className="shrink-0 cursor-pointer accent-blue-500"
-                    />
+                    {batchMode && (
+                        <input
+                            type="checkbox"
+                            data-testid="group-select-all"
+                            checked={allSelected ?? false}
+                            ref={el => {
+                                if (el) {
+                                    el.indeterminate = !!(someSelected && !allSelected);
+                                }
+                            }}
+                            onChange={e => onSelectAll?.(e.target.checked)}
+                            onClick={e => e.stopPropagation()}
+                            className="shrink-0 cursor-pointer accent-blue-500"
+                        />
+                    )}
                     <button
                         type="button"
                         className="flex flex-1 items-center gap-2 text-left"
@@ -96,10 +98,8 @@ export const AttentionGroupSection = forwardRef<HTMLDivElement, AttentionGroupSe
                                 isSelected={(pr.number ?? pr.id) === selectedPrId}
                                 isChecked={selectedPrIds?.has(String(pr.number ?? pr.id)) ?? false}
                                 onSelect={onPrSelect}
-                                groupLabel={badge.label}
-                                groupColor={badge.color}
-                                groupEmoji={badge.emoji}
                                 groupReason={getGroupReason(pr, config.group)}
+                                batchMode={batchMode}
                             />
                         ))}
                     </div>

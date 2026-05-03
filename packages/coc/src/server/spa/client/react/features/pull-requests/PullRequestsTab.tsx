@@ -18,6 +18,7 @@ import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { PullRequestDetail } from './PullRequestDetail';
+import { PullRequestRow } from './PullRequestRow';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { ProviderConfigPanel } from './ProviderConfigPanel';
 import { AttentionGroupSection } from './AttentionGroupSection';
@@ -36,6 +37,8 @@ type ScopeMode = 'mine' | 'all' | 'author';
 
 const PAGE_SIZE = 25;
 const AUTHOR_DEBOUNCE_MS = 300;
+/** Below this count, skip groups and render a flat PR list. */
+const FLAT_LIST_THRESHOLD = 5;
 
 interface PrListCacheEntry {
     prs: PullRequest[];
@@ -84,6 +87,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const [selectedPrIds, setSelectedPrIds] = useState<Set<string>>(new Set());
     const [anchorPrId, setAnchorPrId] = useState<string | null>(null);
+    const [batchMode, setBatchMode] = useState(false);
 
     const skipRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
@@ -309,6 +313,16 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         setCommittedAuthor('');
     }
 
+    function handleToggleBatchMode() {
+        setBatchMode(prev => {
+            if (prev) {
+                setSelectedPrIds(new Set());
+                setAnchorPrId(null);
+            }
+            return !prev;
+        });
+    }
+
     function handleRowClick(pr: PullRequest) {
         const prNumber = pr.number ?? pr.id;
         dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
@@ -503,9 +517,23 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                         <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
                     </svg>
                 </button>
+                <button
+                    type="button"
+                    onClick={handleToggleBatchMode}
+                    aria-pressed={batchMode}
+                    data-testid="select-mode-button"
+                    className={cn(
+                        'text-sm px-2 py-1 rounded border whitespace-nowrap',
+                        batchMode
+                            ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700',
+                    )}
+                >
+                    {batchMode ? 'Cancel' : 'Select'}
+                </button>
             </div>
 
-            {selectedPrIds.size > 0 && (
+            {batchMode && selectedPrIds.size > 0 && (
                 <div className="px-4 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 flex items-center justify-between" data-testid="selection-count-bar">
                     <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
                     <button
@@ -564,31 +592,47 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             {/* PR list */}
             <div className="flex-1 overflow-y-auto" data-testid="pr-list">
                 {!error && !unconfigured && !(loading && prs.length === 0) && (
-                    <>
-                        <AttentionSummaryBar groups={groupCounts} onChipClick={scrollToGroup} />
-                        {groupedPrs.map(({ config, prs: groupPrs }) => {
-                            const groupIds = groupPrs.map(getPrSelectionId);
-                            const allSelected = groupIds.length > 0 && groupIds.every(id => selectedPrIds.has(id));
-                            const someSelected = groupIds.some(id => selectedPrIds.has(id));
+                    filtered.length > 0 && filtered.length <= FLAT_LIST_THRESHOLD ? (
+                        /* Flat list for a small number of PRs — no grouping overhead */
+                        filtered.map(pr => (
+                            <PullRequestRow
+                                key={pr.id}
+                                pr={pr}
+                                onClick={() => handleRowClick(pr)}
+                                isSelected={(pr.number ?? pr.id) === state.selectedPrId}
+                                isChecked={selectedPrIds.has(getPrSelectionId(pr))}
+                                onSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, filtered)}
+                                batchMode={batchMode}
+                            />
+                        ))
+                    ) : (
+                        <>
+                            <AttentionSummaryBar groups={groupCounts} onChipClick={scrollToGroup} />
+                            {groupedPrs.filter(({ prs: groupPrs }) => groupPrs.length > 0).map(({ config, prs: groupPrs }) => {
+                                const groupIds = groupPrs.map(getPrSelectionId);
+                                const allSelected = groupIds.length > 0 && groupIds.every(id => selectedPrIds.has(id));
+                                const someSelected = groupIds.some(id => selectedPrIds.has(id));
 
-                            return (
-                                <AttentionGroupSection
-                                    key={config.group}
-                                    ref={element => setGroupSectionRef(config.group, element)}
-                                    config={config}
-                                    prs={groupPrs}
-                                    selectedPrId={state.selectedPrId}
-                                    onRowClick={handleRowClick}
-                                    onSelectAll={checked => handleGroupSelectAll(config.group, checked)}
-                                    allSelected={allSelected}
-                                    someSelected={someSelected}
-                                    selectedPrIds={selectedPrIds}
-                                    onPrSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, groupPrs)}
-                                    anchorPrId={anchorPrId}
-                                />
-                            );
-                        })}
-                    </>
+                                return (
+                                    <AttentionGroupSection
+                                        key={config.group}
+                                        ref={element => setGroupSectionRef(config.group, element)}
+                                        config={config}
+                                        prs={groupPrs}
+                                        selectedPrId={state.selectedPrId}
+                                        onRowClick={handleRowClick}
+                                        onSelectAll={checked => handleGroupSelectAll(config.group, checked)}
+                                        allSelected={allSelected}
+                                        someSelected={someSelected}
+                                        selectedPrIds={selectedPrIds}
+                                        onPrSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, groupPrs)}
+                                        anchorPrId={anchorPrId}
+                                        batchMode={batchMode}
+                                    />
+                                );
+                            })}
+                        </>
+                    )
                 )}
                 {!loading && !error && !unconfigured && prs.length > 0 && filtered.length === 0 && (
                     <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
@@ -624,7 +668,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         </>
     );
 
-    const detailContent = selectedPrIds.size > 0 ? (
+    const detailContent = batchMode && selectedPrIds.size > 0 ? (
         <BatchCommandPanel
             selectedPrIds={selectedPrIds}
             selectedPrs={selectedPrs}

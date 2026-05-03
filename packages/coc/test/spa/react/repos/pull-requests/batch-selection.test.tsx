@@ -57,10 +57,16 @@ async function renderBatchSelection() {
         makePr(1, 'First merge-ready PR'),
         makePr(2, 'Second merge-ready PR'),
         makePr(3, 'Third merge-ready PR'),
+        makePr(4, 'Fourth merge-ready PR'),
+        makePr(5, 'Fifth merge-ready PR'),
+        makePr(6, 'Sixth merge-ready PR'),
     ]);
 
     await act(async () => { await renderTab(); });
-    await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(6));
+
+    // Enable batch mode so checkboxes are visible
+    fireEvent.click(screen.getByTestId('select-mode-button'));
 
     const section = document.querySelector(`[data-group-id="${AttentionGroup.MergeValidation}"]`) as HTMLElement;
     return {
@@ -101,7 +107,7 @@ describe('pull request batch selection', () => {
 
         fireEvent.click(groupCheckbox);
 
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('3 PRs selected'));
+        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('6 PRs selected'));
         expect(groupCheckbox.checked).toBe(true);
         expect(rowCheckboxes.every(checkbox => checkbox.checked)).toBe(true);
 
@@ -120,7 +126,7 @@ describe('pull request batch selection', () => {
 
         fireEvent.click(rowCheckboxes[1]);
 
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('2 PRs selected'));
+        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('5 PRs selected'));
         expect(groupCheckbox.checked).toBe(false);
         expect(groupCheckbox.indeterminate).toBe(true);
     });
@@ -134,7 +140,8 @@ describe('pull request batch selection', () => {
         fireEvent.click(rowCheckboxes[2], { shiftKey: true });
 
         await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('3 PRs selected'));
-        expect(rowCheckboxes.every(checkbox => checkbox.checked)).toBe(true);
+        expect(rowCheckboxes.slice(0, 3).every(checkbox => checkbox.checked)).toBe(true);
+        expect(rowCheckboxes.slice(3).every(checkbox => !checkbox.checked)).toBe(true);
     });
 
     it('clears selected PRs from the selection count bar', async () => {

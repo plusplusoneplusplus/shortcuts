@@ -88,6 +88,8 @@ describe('PullRequestsTab batch panel switching', () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
 
+        // Enable batch mode first, then select the row
+        fireEvent.click(screen.getByTestId('select-mode-button'));
         fireEvent.click(screen.getByTestId('pr-row-checkbox'));
 
         await waitFor(() => expect(screen.getByTestId('batch-command-panel')).toBeInTheDocument());
@@ -101,6 +103,8 @@ describe('PullRequestsTab batch panel switching', () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByTestId('mock-pr-detail')).toHaveTextContent('PR detail 1'));
 
+        // Enable batch mode, select the PR
+        fireEvent.click(screen.getByTestId('select-mode-button'));
         fireEvent.click(screen.getByTestId('pr-row-checkbox'));
         await waitFor(() => expect(screen.getByTestId('batch-command-panel')).toBeInTheDocument());
 

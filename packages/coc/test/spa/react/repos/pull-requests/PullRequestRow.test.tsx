@@ -239,3 +239,30 @@ describe('PullRequestRow — title truncation', () => {
         expect(title?.className).toContain('truncate');
     });
 });
+
+describe('PullRequestRow — checkbox visibility', () => {
+    it('hides checkbox by default (no batchMode prop)', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
+        expect(screen.queryByTestId('pr-row-checkbox')).toBeNull();
+    });
+
+    it('hides checkbox when batchMode is explicitly false', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={false} />);
+        expect(screen.queryByTestId('pr-row-checkbox')).toBeNull();
+    });
+
+    it('shows checkbox when batchMode is true', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} />);
+        expect(screen.getByTestId('pr-row-checkbox')).toBeTruthy();
+    });
+
+    it('checkbox reflects isChecked state in batch mode', () => {
+        const { rerender } = render(
+            <PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} isChecked={false} />,
+        );
+        expect((screen.getByTestId('pr-row-checkbox') as HTMLInputElement).checked).toBe(false);
+
+        rerender(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} isChecked={true} />);
+        expect((screen.getByTestId('pr-row-checkbox') as HTMLInputElement).checked).toBe(true);
+    });
+});
