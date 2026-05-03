@@ -55,6 +55,10 @@ function formatFetchedAt(ts: number): string {
     return `Updated ${diffHr} hr ago`;
 }
 
+function getPrSelectionId(pr: PullRequest): string {
+    return String(pr.number ?? pr.id);
+}
+
 export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     const [prs, setPrs] = useState<PullRequest[]>([]);
@@ -77,6 +81,8 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         storageKey: 'pr-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    const [selectedPrIds, setSelectedPrIds] = useState<Set<string>>(new Set());
+    const [anchorPrId, setAnchorPrId] = useState<string | null>(null);
 
     const skipRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
@@ -284,6 +290,52 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }
 
+    function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, groupPrs: PullRequest[]) {
+        const groupIds = groupPrs.map(getPrSelectionId);
+        const anchorIndex = anchorPrId === null ? -1 : groupIds.indexOf(anchorPrId);
+        const targetIndex = groupIds.indexOf(id);
+        const shouldSelectRange = shiftKey && anchorIndex !== -1 && targetIndex !== -1;
+
+        setSelectedPrIds(prev => {
+            const next = new Set(prev);
+            if (shouldSelectRange) {
+                const start = Math.min(anchorIndex, targetIndex);
+                const end = Math.max(anchorIndex, targetIndex);
+                for (const rangeId of groupIds.slice(start, end + 1)) {
+                    next.add(rangeId);
+                }
+            } else if (checked) {
+                next.add(id);
+            } else {
+                next.delete(id);
+            }
+            return next;
+        });
+
+        if (!shouldSelectRange) {
+            setAnchorPrId(id);
+        }
+    }
+
+    function handleGroupSelectAll(group: AttentionGroup, checked: boolean) {
+        const groupPrs = groupedPrs.find(item => item.config.group === group)?.prs ?? [];
+        const groupIds = groupPrs.map(getPrSelectionId);
+        setSelectedPrIds(prev => {
+            const next = new Set(prev);
+            for (const id of groupIds) {
+                if (checked) {
+                    next.add(id);
+                } else {
+                    next.delete(id);
+                }
+            }
+            return next;
+        });
+        if (!checked && anchorPrId !== null && groupIds.includes(anchorPrId)) {
+            setAnchorPrId(null);
+        }
+    }
+
     // Summary line
     function getSummaryText(): string {
         const count = filtered.length;
@@ -426,6 +478,22 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 </button>
             </div>
 
+            {selectedPrIds.size > 0 && (
+                <div className="px-4 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 flex items-center justify-between" data-testid="selection-count-bar">
+                    <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
+                    <button
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        onClick={() => {
+                            setSelectedPrIds(new Set());
+                            setAnchorPrId(null);
+                        }}
+                        data-testid="clear-selection"
+                    >
+                        Clear
+                    </button>
+                </div>
+            )}
+
             {/* Summary line */}
             {!loading && !error && !unconfigured && (
                 <div className="px-4 py-1 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800" data-testid="summary-line">
@@ -471,16 +539,28 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 {!error && !unconfigured && !(loading && prs.length === 0) && (
                     <>
                         <AttentionSummaryBar groups={groupCounts} onChipClick={scrollToGroup} />
-                        {groupedPrs.map(({ config, prs: groupPrs }) => (
-                            <AttentionGroupSection
-                                key={config.group}
-                                ref={element => setGroupSectionRef(config.group, element)}
-                                config={config}
-                                prs={groupPrs}
-                                selectedPrId={state.selectedPrId}
-                                onRowClick={handleRowClick}
-                            />
-                        ))}
+                        {groupedPrs.map(({ config, prs: groupPrs }) => {
+                            const groupIds = groupPrs.map(getPrSelectionId);
+                            const allSelected = groupIds.length > 0 && groupIds.every(id => selectedPrIds.has(id));
+                            const someSelected = groupIds.some(id => selectedPrIds.has(id));
+
+                            return (
+                                <AttentionGroupSection
+                                    key={config.group}
+                                    ref={element => setGroupSectionRef(config.group, element)}
+                                    config={config}
+                                    prs={groupPrs}
+                                    selectedPrId={state.selectedPrId}
+                                    onRowClick={handleRowClick}
+                                    onSelectAll={checked => handleGroupSelectAll(config.group, checked)}
+                                    allSelected={allSelected}
+                                    someSelected={someSelected}
+                                    selectedPrIds={selectedPrIds}
+                                    onPrSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, groupPrs)}
+                                    anchorPrId={anchorPrId}
+                                />
+                            );
+                        })}
                     </>
                 )}
                 {!loading && !error && !unconfigured && prs.length > 0 && filtered.length === 0 && (

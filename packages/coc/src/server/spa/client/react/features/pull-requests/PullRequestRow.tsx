@@ -6,13 +6,15 @@ interface PullRequestRowProps {
     pr: PullRequest;
     onClick: () => void;
     isSelected?: boolean;
+    onSelect?: (id: string, checked: boolean, shiftKey: boolean) => void;
+    isChecked?: boolean;
     groupLabel?: string;
     groupColor?: string;
     groupEmoji?: string;
     groupReason?: string;
 }
 
-export function PullRequestRow({ pr, onClick, isSelected, groupLabel, groupColor, groupEmoji, groupReason }: PullRequestRowProps) {
+export function PullRequestRow({ pr, onClick, isSelected, onSelect, isChecked, groupLabel, groupColor, groupEmoji, groupReason }: PullRequestRowProps) {
     const badge = prStatusBadge(pr.status);
     const reviewerCount = pr.reviewers?.length ?? 0;
 
@@ -27,6 +29,18 @@ export function PullRequestRow({ pr, onClick, isSelected, groupLabel, groupColor
             onClick={onClick}
             data-testid="pr-row"
         >
+            <input
+                type="checkbox"
+                data-testid="pr-row-checkbox"
+                checked={isChecked ?? false}
+                onChange={e => {
+                    e.stopPropagation();
+                    const shiftKey = e.nativeEvent instanceof MouseEvent ? e.nativeEvent.shiftKey : false;
+                    onSelect?.(String(pr.number ?? pr.id), e.target.checked, shiftKey);
+                }}
+                onClick={e => e.stopPropagation()}
+                className="shrink-0 mt-1 mr-1 cursor-pointer accent-blue-500"
+            />
             {groupLabel ? (
                 <span
                     className={cn('pr-group-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 mt-0.5', groupColor)}
