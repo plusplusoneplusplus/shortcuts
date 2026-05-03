@@ -21,6 +21,7 @@ import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import { defaultIsExclusive } from '../queue/queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
+import type { MemoryPromoteConfig } from '../memory/memory-promote';
 
 // ============================================================================
 // Types
@@ -59,6 +60,7 @@ export function createQueueInfrastructure(
     followUpSuggestions: { enabled: boolean; count: number } | undefined,
     askUser: { enabled: boolean } | undefined,
     getWsServer: () => ProcessWebSocketServer,
+    memoryPromotion: MemoryPromoteConfig | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -85,6 +87,7 @@ export function createQueueInfrastructure(
         followUpSuggestions,
         askUser,
         getWsServer,
+        memoryPromotion,
         initialDelayMs: options.queue?.restartPickupDelayMs,
     });
 

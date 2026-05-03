@@ -486,6 +486,25 @@ timeout: 300
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.store.backend).toBe('sqlite');
         });
+
+        it('should default memory promotion AI normalization to disabled', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.memoryPromotion.aiNormalization.enabled).toBe(false);
+            expect(result.memoryPromotion.batchSize).toBe(50);
+            expect(result.memoryPromotion.aiNormalization.timeoutMs).toBe(60000);
+        });
+
+        it('should merge memory promotion AI normalization independently', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {
+                memoryPromotion: {
+                    aiNormalization: { enabled: true, model: 'gpt-test' },
+                },
+            });
+            expect(result.memoryPromotion.aiNormalization.enabled).toBe(true);
+            expect(result.memoryPromotion.aiNormalization.model).toBe('gpt-test');
+            expect(result.memoryPromotion.aiNormalization.timeoutMs).toBe(60000);
+            expect(result.memoryPromotion.batchSize).toBe(50);
+        });
     });
 
     // ========================================================================
@@ -718,6 +737,14 @@ timeout: 300
                 '  enabled: true',
                 'pullRequests:',
                 '  enabled: true',
+                'memoryPromotion:',
+                '  batchSize: 25',
+                '  timeoutMs: 80000',
+                '  model: gpt-test',
+                '  aiNormalization:',
+                '    enabled: true',
+                '    timeoutMs: 30000',
+                '    model: gpt-normalize',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 

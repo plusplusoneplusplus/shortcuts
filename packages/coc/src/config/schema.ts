@@ -91,6 +91,16 @@ export const CLIConfigSchema = z.object({
     pullRequests: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    memoryPromotion: z.object({
+        batchSize: z.number().int().positive().optional(),
+        timeoutMs: z.number().int().positive().optional(),
+        model: z.string().optional(),
+        aiNormalization: z.object({
+            enabled: z.boolean().optional(),
+            timeoutMs: z.number().int().positive().optional(),
+            model: z.string().optional(),
+        }).passthrough().optional(),
+    }).passthrough().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
     }).passthrough().optional(),

@@ -11,6 +11,7 @@ import {
     ENTRY_DELIMITER,
 } from '@plusplusoneplusplus/forge';
 import { MemoryPromoteExecutor } from '../../../src/server/memory/memory-promote-executor';
+import { DEFAULT_PROMOTE_CONFIG } from '../../../src/server/memory/memory-promote';
 import type { MemoryPromotePayload } from '../../../src/server/tasks/task-types';
 
 function makeTmpDir(): string {
@@ -109,6 +110,16 @@ describe('MemoryPromoteExecutor', () => {
         const candidate = await candidateStore.getCandidate(candidateId);
         candidateStore.close();
         return candidate;
+    }
+
+    function aiNormalizationConfig(enabled = true) {
+        return {
+            ...DEFAULT_PROMOTE_CONFIG,
+            aiNormalization: {
+                ...DEFAULT_PROMOTE_CONFIG.aiNormalization,
+                enabled,
+            },
+        };
     }
 
     it('retains pending candidates without invoking AI or rewriting bounded MEMORY.md', async () => {
@@ -306,6 +317,191 @@ describe('MemoryPromoteExecutor', () => {
             maxScore: 1,
             totalScore: 1,
         });
+    });
+
+    it('uses deterministic candidate content directly when AI normalization is disabled', async () => {
+        const wsId = 'ws-ai-disabled';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers the original wording',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+        mockAiService.sendMessage.mockResolvedValue({
+            success: true,
+            response: JSON.stringify([{ candidateIds: ['unused'], content: 'AI wording', durable: true }]),
+        });
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, aiNormalizationConfig(false));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(mockAiService.sendMessage).not.toHaveBeenCalled();
+        expect(readBoundedMemoryRaw(wsId)).toBe('User explicitly prefers the original wording');
+    });
+
+    it('uses AI normalization to merge selected duplicate candidate facts', async () => {
+        const wsId = 'ws-ai-merge';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const first = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers concise responses',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        const second = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'The user wants concise replies',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:01:00.000Z',
+        });
+        candidateStore.close();
+        mockAiService.sendMessage.mockResolvedValue({
+            success: true,
+            response: JSON.stringify([{
+                candidateIds: [first.id, second.id],
+                content: 'User prefers concise responses.',
+                kind: 'preference',
+                durable: true,
+            }]),
+        });
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, aiNormalizationConfig(true));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(mockAiService.sendMessage).toHaveBeenCalledOnce();
+        expect(result.result).toMatchObject({
+            promoted: 2,
+            dropped: 0,
+            ignored: 0,
+            pending: 0,
+            promotedCandidateIds: [first.id, second.id],
+        });
+        expect(readBoundedMemoryRaw(wsId)).toBe('User prefers concise responses.');
+        await expect(readRepoCandidate(wsId, first.id)).resolves.toMatchObject({ status: 'promoted' });
+        await expect(readRepoCandidate(wsId, second.id)).resolves.toMatchObject({ status: 'promoted' });
+    });
+
+    it('ignores AI normalization objects that reference unknown candidate IDs', async () => {
+        const wsId = 'ws-ai-unknown-id';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const candidate = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers local deterministic fallback',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+        mockAiService.sendMessage.mockResolvedValue({
+            success: true,
+            response: JSON.stringify([{
+                candidateIds: [candidate.id, 'missing-candidate'],
+                content: 'AI should not be trusted here',
+                durable: true,
+            }]),
+        });
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, aiNormalizationConfig(true));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(readBoundedMemoryRaw(wsId)).toBe('User explicitly prefers local deterministic fallback');
+        expect(readBoundedMemoryRaw(wsId)).not.toContain('AI should not be trusted here');
+        await expect(readRepoCandidate(wsId, candidate.id)).resolves.toMatchObject({ status: 'promoted' });
+    });
+
+    it('lets AI mark selected candidates non-durable without deleting existing memory', async () => {
+        const wsId = 'ws-ai-no-delete';
+        const memDir = setupRepoDir(wsId);
+        seedBoundedMemory(wsId, 'Existing memory must survive');
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const candidate = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'temporary observation',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+        const setEntriesSpy = vi.spyOn(BoundedMemoryStore.prototype, 'setEntries');
+        const replaceSpy = vi.spyOn(BoundedMemoryStore.prototype, 'replace');
+        const removeSpy = vi.spyOn(BoundedMemoryStore.prototype, 'remove');
+        mockAiService.sendMessage.mockResolvedValue({
+            success: true,
+            response: JSON.stringify([{
+                candidateIds: [candidate.id],
+                content: '',
+                durable: false,
+                reason: 'not durable',
+            }]),
+        });
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, aiNormalizationConfig(true));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({
+            promoted: 0,
+            dropped: 1,
+            ignored: 0,
+            pending: 0,
+            droppedReasons: { [candidate.id]: 'not durable' },
+        });
+        expect(readBoundedMemoryRaw(wsId)).toBe('Existing memory must survive');
+        expect(setEntriesSpy).not.toHaveBeenCalled();
+        expect(replaceSpy).not.toHaveBeenCalled();
+        expect(removeSpy).not.toHaveBeenCalled();
+        await expect(readRepoCandidate(wsId, candidate.id)).resolves.toMatchObject({
+            status: 'dropped',
+            droppedReason: 'not durable',
+        });
+    });
+
+    it('falls back to deterministic promotion when AI normalization returns malformed output', async () => {
+        const wsId = 'ws-ai-malformed';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const candidate = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers safe fallback behavior',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+        mockAiService.sendMessage.mockResolvedValue({
+            success: true,
+            response: 'not json',
+        });
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, aiNormalizationConfig(true));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(readBoundedMemoryRaw(wsId)).toBe('User explicitly prefers safe fallback behavior');
+        await expect(readRepoCandidate(wsId, candidate.id)).resolves.toMatchObject({ status: 'promoted' });
     });
 
     it('ignores selected candidates already covered by normalized bounded memory', async () => {

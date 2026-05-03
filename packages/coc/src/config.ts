@@ -104,6 +104,17 @@ export interface CLIConfig {
     pullRequests?: {
         enabled?: boolean;
     };
+    /** Memory promotion configuration */
+    memoryPromotion?: {
+        batchSize?: number;
+        timeoutMs?: number;
+        model?: string;
+        aiNormalization?: {
+            enabled?: boolean;
+            timeoutMs?: number;
+            model?: string;
+        };
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -233,6 +244,17 @@ export interface ResolvedCLIConfig {
     pullRequests: {
         enabled: boolean;
     };
+    /** Memory promotion configuration */
+    memoryPromotion: {
+        batchSize: number;
+        timeoutMs: number;
+        model?: string;
+        aiNormalization: {
+            enabled: boolean;
+            timeoutMs: number;
+            model?: string;
+        };
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -323,6 +345,16 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     pullRequests: {
         enabled: false,
     },
+    memoryPromotion: {
+        batchSize: 50,
+        timeoutMs: 90_000,
+        model: undefined,
+        aiNormalization: {
+            enabled: false,
+            timeoutMs: 60_000,
+            model: undefined,
+        },
+    },
     store: {
         backend: 'sqlite',
     },
@@ -362,6 +394,12 @@ export const CONFIG_SOURCE_KEYS = [
     'scratchpad.layout',
     'workflows.enabled',
     'pullRequests.enabled',
+    'memoryPromotion.batchSize',
+    'memoryPromotion.timeoutMs',
+    'memoryPromotion.model',
+    'memoryPromotion.aiNormalization.enabled',
+    'memoryPromotion.aiNormalization.timeoutMs',
+    'memoryPromotion.aiNormalization.model',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -462,6 +500,8 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         return { ...base };
     }
 
+    const baseMemoryPromotion = base.memoryPromotion ?? DEFAULT_CONFIG.memoryPromotion;
+
     return {
         model: override.model ?? base.model,
         parallel: override.parallel ?? base.parallel,
@@ -520,6 +560,16 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         pullRequests: {
             enabled: override.pullRequests?.enabled ?? base.pullRequests.enabled,
+        },
+        memoryPromotion: {
+            batchSize: override.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
+            timeoutMs: override.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
+            model: override.memoryPromotion?.model ?? baseMemoryPromotion.model,
+            aiNormalization: {
+                enabled: override.memoryPromotion?.aiNormalization?.enabled ?? baseMemoryPromotion.aiNormalization.enabled,
+                timeoutMs: override.memoryPromotion?.aiNormalization?.timeoutMs ?? baseMemoryPromotion.aiNormalization.timeoutMs,
+                model: override.memoryPromotion?.aiNormalization?.model ?? baseMemoryPromotion.aiNormalization.model,
+            },
         },
         store: {
             backend: override.store?.backend ?? base.store.backend,
@@ -615,6 +665,16 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('pullRequests.')) {
         const subKey = key.slice('pullRequests.'.length) as keyof NonNullable<CLIConfig['pullRequests']>;
         return fileConfig.pullRequests?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('memoryPromotion.aiNormalization.')) {
+        const subKey = key.slice('memoryPromotion.aiNormalization.'.length) as keyof NonNullable<NonNullable<CLIConfig['memoryPromotion']>['aiNormalization']>;
+        return fileConfig.memoryPromotion?.aiNormalization?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('memoryPromotion.')) {
+        const subKey = key.slice('memoryPromotion.'.length) as keyof NonNullable<CLIConfig['memoryPromotion']>;
+        return fileConfig.memoryPromotion?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

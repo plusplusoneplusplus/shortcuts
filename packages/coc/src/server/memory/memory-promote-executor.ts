@@ -46,14 +46,24 @@ interface MemoryPromoteResult extends MemoryPromoteCounts {
 }
 
 interface CandidatePromotion {
-    id: string;
+    ids: string[];
     entry: string;
     contentHash: string;
 }
 
+interface CandidateNormalizationGroup {
+    candidateIds: string[];
+    entry: string;
+}
+
+interface CandidateNormalizationResult {
+    groups: CandidateNormalizationGroup[];
+    droppedReasons: Record<string, string>;
+}
+
 export class MemoryPromoteExecutor {
     constructor(
-        _aiService: CopilotSDKService,
+        private readonly aiService: CopilotSDKService,
         private readonly dataDir: string,
         private readonly config: MemoryPromoteConfig = DEFAULT_PROMOTE_CONFIG,
     ) {}
@@ -114,7 +124,19 @@ export class MemoryPromoteExecutor {
             await memoryStore.load();
             const existingEntries = memoryStore.read();
             const existingContentHashes = toContentHashSet(existingEntries);
-            const plan = planCandidateFinalization(selected, existingContentHashes);
+            const normalization = await normalizeSelectedCandidates(
+                selected,
+                this.aiService,
+                this.config,
+                task.config?.model,
+                logger,
+                { workspaceId, target },
+            );
+            const plan = planCandidateFinalization(
+                selected,
+                existingContentHashes,
+                normalization,
+            );
 
             let appendedEntries: string[] = [];
             if (plan.promotions.length > 0) {
@@ -136,10 +158,10 @@ export class MemoryPromoteExecutor {
             const appendedSet = toContentHashSet(appendedEntries);
             const promotedIds = plan.promotions
                 .filter(promotion => appendedSet.has(promotion.contentHash))
-                .map(promotion => promotion.id);
+                .flatMap(promotion => promotion.ids);
             for (const promotion of plan.promotions) {
                 if (!appendedSet.has(promotion.contentHash)) {
-                    plan.ignoredReasons[promotion.id] = 'already covered by bounded memory';
+                    setReasonForIds(plan.ignoredReasons, promotion.ids, 'already covered by bounded memory');
                 }
             }
 
@@ -202,47 +224,255 @@ export class MemoryPromoteExecutor {
 function planCandidateFinalization(
     selected: RankedMemoryCandidate[],
     existingContentHashes: Set<string>,
+    normalization: CandidateNormalizationResult,
 ): {
     promotions: CandidatePromotion[];
     droppedReasons: Record<string, string>;
     ignoredReasons: Record<string, string>;
 } {
     const promotions: CandidatePromotion[] = [];
-    const droppedReasons: Record<string, string> = {};
+    const droppedReasons: Record<string, string> = { ...normalization.droppedReasons };
     const ignoredReasons: Record<string, string> = {};
     const plannedEntries = new Set<string>();
     const plannedContentHashes = new Set<string>();
+    const selectedIds = new Set(selected.map(candidate => candidate.id));
+    const plannedCandidateIds = new Set<string>();
 
-    for (const candidate of selected) {
-        const entry = normalizeMemoryCandidateContent(candidate.content);
-        if (!entry) {
-            droppedReasons[candidate.id] = 'empty candidate content';
+    for (const group of normalization.groups) {
+        const candidateIds = group.candidateIds.filter(id => selectedIds.has(id) && !droppedReasons[id]);
+        if (candidateIds.length === 0) {
             continue;
         }
-        const contentHash = candidate.candidate.contentHash || hashMemoryCandidateContent(entry);
+        const entry = normalizeMemoryCandidateContent(group.entry);
+        if (!entry) {
+            setReasonForIds(droppedReasons, candidateIds, 'empty candidate content');
+            continue;
+        }
+        const contentHash = hashMemoryCandidateContent(entry);
 
         const scan = scanMemoryContent(entry);
         if (scan.blocked) {
-            droppedReasons[candidate.id] = `blocked by security scanner: ${scan.reason ?? scan.patternId ?? 'unknown reason'}`;
+            setReasonForIds(
+                droppedReasons,
+                candidateIds,
+                `blocked by security scanner: ${scan.reason ?? scan.patternId ?? 'unknown reason'}`,
+            );
             continue;
         }
 
         if (existingContentHashes.has(contentHash)) {
-            ignoredReasons[candidate.id] = 'already covered by bounded memory';
+            setReasonForIds(ignoredReasons, candidateIds, 'already covered by bounded memory');
             continue;
         }
 
         if (plannedEntries.has(entry) || plannedContentHashes.has(contentHash)) {
-            ignoredReasons[candidate.id] = 'duplicate selected candidate';
+            setReasonForIds(ignoredReasons, candidateIds, 'duplicate selected candidate');
             continue;
         }
 
         plannedEntries.add(entry);
         plannedContentHashes.add(contentHash);
-        promotions.push({ id: candidate.id, entry, contentHash });
+        for (const id of candidateIds) {
+            plannedCandidateIds.add(id);
+        }
+        promotions.push({ ids: candidateIds, entry, contentHash });
+    }
+
+    for (const candidate of selected) {
+        if (!plannedCandidateIds.has(candidate.id) && !droppedReasons[candidate.id] && !ignoredReasons[candidate.id]) {
+            droppedReasons[candidate.id] = 'candidate was not covered by normalization output';
+        }
     }
 
     return { promotions, droppedReasons, ignoredReasons };
+}
+
+async function normalizeSelectedCandidates(
+    selected: RankedMemoryCandidate[],
+    aiService: CopilotSDKService,
+    config: MemoryPromoteConfig,
+    taskModel: string | undefined,
+    logger: ReturnType<typeof getLogger>,
+    context: { workspaceId: string; target: string },
+): Promise<CandidateNormalizationResult> {
+    const deterministic = createDeterministicNormalization(selected);
+    if (!config.aiNormalization.enabled) {
+        return deterministic;
+    }
+
+    try {
+        const result = await aiService.sendMessage({
+            prompt: buildNormalizationPrompt(selected),
+            model: taskModel ?? config.aiNormalization.model ?? config.model,
+            systemMessage: { mode: 'replace', content: NORMALIZATION_SYSTEM_PROMPT },
+            workingDirectory: undefined,
+            timeoutMs: config.aiNormalization.timeoutMs,
+        });
+        if (!result.success || !result.response) {
+            logger.debug(
+                LogCategory.AI,
+                `[MemoryPromote] AI normalization produced no response for ${context.target}@${context.workspaceId}; using deterministic candidates`,
+            );
+            return deterministic;
+        }
+
+        return validateAiNormalizationOutput(parseJsonFromResponse(result.response), selected);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.debug(
+            LogCategory.AI,
+            `[MemoryPromote] AI normalization failed for ${context.target}@${context.workspaceId}: ${message}; using deterministic candidates`,
+        );
+        return deterministic;
+    }
+}
+
+function createDeterministicNormalization(selected: RankedMemoryCandidate[]): CandidateNormalizationResult {
+    return {
+        groups: selected.map(candidate => ({
+            candidateIds: [candidate.id],
+            entry: normalizeMemoryCandidateContent(candidate.content),
+        })),
+        droppedReasons: {},
+    };
+}
+
+const NORMALIZATION_SYSTEM_PROMPT = [
+    'You are normalizing candidate memory entries.',
+    'Return a JSON array of normalized candidate objects.',
+    'Operate only on the provided candidate set.',
+    'Do not include existing memory entries unless they are exact duplicate context.',
+    'Do not propose deletes or replacements.',
+    'Each object must have candidateIds, content, durable, and optional kind/reason fields.',
+].join('\n');
+
+function buildNormalizationPrompt(selected: RankedMemoryCandidate[]): string {
+    const candidates = selected.map(candidate => ({
+        id: candidate.id,
+        content: candidate.content,
+        score: candidate.score,
+        signalCount: candidate.candidate.signalCount,
+        explicitMemoryIntent: candidate.explicitMemoryIntent,
+        conceptTags: candidate.candidate.conceptTags,
+    }));
+    return [
+        'Normalize these candidate memory entries.',
+        '',
+        'Safe actions:',
+        '1. Merge near-duplicate candidate facts.',
+        '2. Rewrite candidate facts as concise self-contained memory entries.',
+        '3. Classify candidate kind.',
+        '4. Flag trivial or non-durable candidates with durable=false.',
+        '',
+        'Output JSON shape:',
+        '[{"candidateIds":["candidate-id"],"content":"normalized memory entry","kind":"preference","durable":true,"reason":"optional"}]',
+        '',
+        '<candidates>',
+        JSON.stringify(candidates, null, 2),
+        '</candidates>',
+    ].join('\n');
+}
+
+function parseJsonFromResponse(response: string): unknown {
+    const fenceMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const candidate = fenceMatch ? fenceMatch[1].trim() : response.trim();
+    try {
+        return JSON.parse(candidate);
+    } catch {
+        const arrayMatch = candidate.match(/(\[[\s\S]*\])/);
+        if (arrayMatch) {
+            return JSON.parse(arrayMatch[1]);
+        }
+        throw new Error(`Cannot extract JSON array from AI normalization response: ${candidate.slice(0, 120)}`);
+    }
+}
+
+function validateAiNormalizationOutput(
+    raw: unknown,
+    selected: RankedMemoryCandidate[],
+): CandidateNormalizationResult {
+    if (!Array.isArray(raw)) {
+        throw new Error('AI normalization output must be a JSON array.');
+    }
+
+    const selectedById = new Map(selected.map(candidate => [candidate.id, candidate]));
+    const claimedIds = new Set<string>();
+    const groups: CandidateNormalizationGroup[] = [];
+    const droppedReasons: Record<string, string> = {};
+
+    for (const item of raw) {
+        if (!isRecord(item) || !Array.isArray(item.candidateIds)) {
+            continue;
+        }
+        const candidateIds = item.candidateIds.filter((id): id is string => typeof id === 'string');
+        if (
+            candidateIds.length === 0
+            || candidateIds.length !== item.candidateIds.length
+            || new Set(candidateIds).size !== candidateIds.length
+            || candidateIds.some(id => !selectedById.has(id) || claimedIds.has(id))
+        ) {
+            continue;
+        }
+
+        if (item.durable === false) {
+            const reason = typeof item.reason === 'string' && item.reason.trim()
+                ? item.reason.trim()
+                : 'AI normalization marked candidate non-durable';
+            setReasonForIds(droppedReasons, candidateIds, reason);
+            for (const id of candidateIds) {
+                claimedIds.add(id);
+            }
+            continue;
+        }
+
+        if (item.durable !== true || typeof item.content !== 'string') {
+            continue;
+        }
+
+        const entry = normalizeMemoryCandidateContent(item.content);
+        if (!entry) {
+            continue;
+        }
+
+        const scan = scanMemoryContent(entry);
+        if (scan.blocked) {
+            setReasonForIds(
+                droppedReasons,
+                candidateIds,
+                `blocked by security scanner: ${scan.reason ?? scan.patternId ?? 'unknown reason'}`,
+            );
+            for (const id of candidateIds) {
+                claimedIds.add(id);
+            }
+            continue;
+        }
+
+        groups.push({ candidateIds, entry });
+        for (const id of candidateIds) {
+            claimedIds.add(id);
+        }
+    }
+
+    for (const candidate of selected) {
+        if (!claimedIds.has(candidate.id)) {
+            groups.push({
+                candidateIds: [candidate.id],
+                entry: normalizeMemoryCandidateContent(candidate.content),
+            });
+        }
+    }
+
+    return { groups, droppedReasons };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function setReasonForIds(target: Record<string, string>, ids: string[], reason: string): void {
+    for (const id of ids) {
+        target[id] = reason;
+    }
 }
 
 function toContentHashSet(entries: string[]): Set<string> {

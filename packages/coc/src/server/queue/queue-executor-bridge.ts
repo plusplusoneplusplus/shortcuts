@@ -10,6 +10,7 @@ import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
+import type { MemoryPromoteConfig } from '../memory/memory-promote';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -18,6 +19,7 @@ export interface CLITaskExecutorOptions {
     aiService?: CopilotSDKService; defaultTimeoutMs?: number;
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
+    memoryPromotion?: MemoryPromoteConfig;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
@@ -78,6 +80,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
             followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
             askUser: options.askUser,
+            memoryPromotion: options.memoryPromotion,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),

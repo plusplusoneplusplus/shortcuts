@@ -22,6 +22,7 @@ import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 import { BackgroundReviewExecutor } from '../memory/background-review-executor';
 import { MemoryPromoteExecutor } from '../memory/memory-promote-executor';
+import type { MemoryPromoteConfig } from '../memory/memory-promote';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -31,6 +32,7 @@ export interface ExecutorRegistryOptions {
     defaultTimeoutMs: number;
     followUpSuggestions: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
+    memoryPromotion?: MemoryPromoteConfig;
     toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
@@ -106,7 +108,7 @@ export class ExecutorRegistry {
             options.getMemoryStore ?? (() => undefined),
         );
         this.memoryPromoteExecutor = options.dataDir
-            ? new MemoryPromoteExecutor(options.aiService, options.dataDir)
+            ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion)
             : undefined;
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview);
     }

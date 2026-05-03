@@ -370,6 +370,35 @@ describe('queue.restartPickupDelayMs schema validation', () => {
     });
 });
 
+describe('memoryPromotion schema validation', () => {
+    it('accepts AI normalization config', () => {
+        const result = CLIConfigSchema.parse({
+            memoryPromotion: {
+                batchSize: 25,
+                timeoutMs: 90000,
+                aiNormalization: {
+                    enabled: true,
+                    timeoutMs: 30000,
+                    model: 'gpt-test',
+                },
+            },
+        });
+        expect(result.memoryPromotion?.batchSize).toBe(25);
+        expect(result.memoryPromotion?.aiNormalization?.enabled).toBe(true);
+        expect(result.memoryPromotion?.aiNormalization?.timeoutMs).toBe(30000);
+    });
+
+    it('rejects non-boolean AI normalization enabled', () => {
+        expect(() => CLIConfigSchema.parse({ memoryPromotion: { aiNormalization: { enabled: 'yes' } } }))
+            .toThrow();
+    });
+
+    it('rejects non-positive AI normalization timeout', () => {
+        expect(() => CLIConfigSchema.parse({ memoryPromotion: { aiNormalization: { timeoutMs: 0 } } }))
+            .toThrow();
+    });
+});
+
 describe('logging schema validation', () => {
     it('accepts empty logging section', () => {
         const result = CLIConfigSchema.parse({ logging: {} });
