@@ -840,7 +840,7 @@ export function ChatListPane({
 
     return (
         <>
-            <div ref={containerRef} className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+            <div ref={containerRef} className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1">
                 {/* ── Chats tab: flat time-sorted list ── */}
                 {activeTab === 'chats' && (
                     <>
@@ -1109,7 +1109,7 @@ export function ChatListPane({
                         </Button>
                     </div>
                 )}
-                <div className={cn('flex items-center gap-2 mb-3')}>
+                <div className={cn('flex items-center gap-2 mb-1.5 md:mb-3')}>
                     {availableFilters.length >= 1 && (
                         <FilterDropdown
                             items={availableFilters}
@@ -1144,7 +1144,7 @@ export function ChatListPane({
                             title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
                             data-testid="repo-pause-resume-btn"
                             className={cn(
-                                'flex items-center gap-1 px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                                 isPaused
                                     ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
                                     : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
@@ -1161,7 +1161,7 @@ export function ChatListPane({
                                     title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
                                     data-testid="autopilot-pause-resume-btn"
                                     className={cn(
-                                        'flex items-center gap-1 px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                        'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                                         isAutopilotPaused
                                             ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
                                             : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
