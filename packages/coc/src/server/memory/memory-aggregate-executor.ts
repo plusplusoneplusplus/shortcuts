@@ -14,6 +14,8 @@ import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@pluspl
 import {
     BoundedMemoryStore,
     MemoryCandidateStore,
+    hashMemoryCandidateContent,
+    normalizeMemoryCandidateContent,
     rankMemoryCandidates,
     scanMemoryContent,
     getLogger,
@@ -46,6 +48,7 @@ interface MemoryAggregateResult {
 interface CandidatePromotion {
     id: string;
     entry: string;
+    contentHash: string;
 }
 
 export class MemoryAggregateExecutor {
@@ -105,8 +108,8 @@ export class MemoryAggregateExecutor {
 
             const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
             await memoryStore.load();
-            const existingEntries = new Set(memoryStore.read().map(entry => entry.trim()).filter(Boolean));
-            const plan = planCandidateFinalization(selected, existingEntries);
+            const existingContentHashes = toContentHashSet(memoryStore.read());
+            const plan = planCandidateFinalization(selected, existingContentHashes);
 
             let appendedEntries: string[] = [];
             if (plan.promotions.length > 0) {
@@ -125,13 +128,13 @@ export class MemoryAggregateExecutor {
                 appendedEntries = appendResult.appendedEntries ?? plan.promotions.map(promotion => promotion.entry);
             }
 
-            const appendedSet = new Set(appendedEntries.map(entry => entry.trim()).filter(Boolean));
+            const appendedSet = toContentHashSet(appendedEntries);
             const promotedIds = plan.promotions
-                .filter(promotion => appendedSet.has(promotion.entry))
+                .filter(promotion => appendedSet.has(promotion.contentHash))
                 .map(promotion => promotion.id);
             for (const promotion of plan.promotions) {
-                if (!appendedSet.has(promotion.entry)) {
-                    plan.droppedReasons[promotion.id] = 'already covered by bounded memory';
+                if (!appendedSet.has(promotion.contentHash)) {
+                    plan.ignoredReasons[promotion.id] = 'already covered by bounded memory';
                 }
             }
 
@@ -186,7 +189,7 @@ export class MemoryAggregateExecutor {
 
 function planCandidateFinalization(
     selected: RankedMemoryCandidate[],
-    existingEntries: Set<string>,
+    existingContentHashes: Set<string>,
 ): {
     promotions: CandidatePromotion[];
     droppedReasons: Record<string, string>;
@@ -196,13 +199,15 @@ function planCandidateFinalization(
     const droppedReasons: Record<string, string> = {};
     const ignoredReasons: Record<string, string> = {};
     const plannedEntries = new Set<string>();
+    const plannedContentHashes = new Set<string>();
 
     for (const candidate of selected) {
-        const entry = candidate.content.trim();
+        const entry = normalizeMemoryCandidateContent(candidate.content);
         if (!entry) {
             droppedReasons[candidate.id] = 'empty candidate content';
             continue;
         }
+        const contentHash = candidate.candidate.contentHash || hashMemoryCandidateContent(entry);
 
         const scan = scanMemoryContent(entry);
         if (scan.blocked) {
@@ -210,21 +215,33 @@ function planCandidateFinalization(
             continue;
         }
 
-        if (existingEntries.has(entry)) {
-            droppedReasons[candidate.id] = 'already covered by bounded memory';
+        if (existingContentHashes.has(contentHash)) {
+            ignoredReasons[candidate.id] = 'already covered by bounded memory';
             continue;
         }
 
-        if (plannedEntries.has(entry)) {
+        if (plannedEntries.has(entry) || plannedContentHashes.has(contentHash)) {
             ignoredReasons[candidate.id] = 'duplicate selected candidate';
             continue;
         }
 
         plannedEntries.add(entry);
-        promotions.push({ id: candidate.id, entry });
+        plannedContentHashes.add(contentHash);
+        promotions.push({ id: candidate.id, entry, contentHash });
     }
 
     return { promotions, droppedReasons, ignoredReasons };
+}
+
+function toContentHashSet(entries: string[]): Set<string> {
+    const hashes = new Set<string>();
+    for (const entry of entries) {
+        const normalized = normalizeMemoryCandidateContent(entry);
+        if (normalized) {
+            hashes.add(hashMemoryCandidateContent(normalized));
+        }
+    }
+    return hashes;
 }
 
 async function markDroppedByReason(

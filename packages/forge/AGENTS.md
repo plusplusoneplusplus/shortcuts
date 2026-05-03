@@ -41,12 +41,12 @@ Bounded, file-backed memory lets AI chat sessions learn from past interactions. 
 |------|--------|------|
 | `types.ts` | `MemoryStore`, `MemoryConfig`, `RepoInfo`, `GitRemoteInfo`, `MemoryLevel` | Core type definitions and store interface |
 | `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `MemoryUsage`, `MemoryScanResult`, `ThreatPatternId`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for the bounded memory system, including append-only mutation metadata |
-| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, append-only promotion (`appendEntries` returns the entries actually appended), substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
+| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, append-only promotion (`appendEntries` returns the clean fact entries actually appended), normalized duplicate checks, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
 | `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`; capture mode routes `add` into durable memory candidates without mutating `MEMORY.md` and preserves explicit memory intent metadata. |
-| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content dedupe, signal counts, provenance, explicit intent, and one-time migration from pending legacy raw records. |
+| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content hashes, signal counts, provenance, explicit intent, and one-time migration from pending legacy raw records. |
 | `memory-candidate-ranking.ts` | `rankMemoryCandidates` | Pure deterministic ranking and selection policy for pending candidates using frequency, relevance, diversity, recency, consolidation, conceptual tags, and explicit memory intent. |
 
 ### Usage Pattern

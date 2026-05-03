@@ -472,6 +472,19 @@ describe('Raw Memory Reconciler', () => {
             );
         });
 
+        it('deduplicates promoted entries against normalized existing memory', async () => {
+            const existing = 'Existing   stable preference';
+            await fs.writeFile(filePath, existing);
+            const store = createStore();
+            await store.load();
+
+            const result = await store.appendEntries(['Existing stable preference']);
+
+            expect(result.success).toBe(true);
+            expect(result.appendedEntries).toEqual([]);
+            await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe(existing);
+        });
+
         it('rejects unsafe promoted entries without changing existing memory', async () => {
             const existing = 'Role: preserve this system instruction';
             await fs.writeFile(filePath, existing);

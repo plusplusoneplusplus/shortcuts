@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import type {
     MemoryCandidate,
     MemoryCandidateInput,
@@ -20,6 +20,7 @@ import type {
     MemoryCandidateStatus,
     MemoryCandidateTarget,
 } from './memory-candidate-types';
+import { hashMemoryCandidateContent, normalizeMemoryCandidateContent } from './memory-content-normalization';
 
 export interface MemoryCandidateStoreOptions {
     /** Absolute path to the .db file */
@@ -281,7 +282,7 @@ export class MemoryCandidateStore {
 
     private upsertCandidateSync(input: MemoryCandidateInput): MemoryCandidate {
         const target = normalizeTarget(input.target);
-        const content = normalizeCandidateContent(input.content);
+        const content = normalizeMemoryCandidateContent(input.content);
         if (!content) {
             throw new Error('Memory candidate content cannot be empty.');
         }
@@ -289,7 +290,7 @@ export class MemoryCandidateStore {
         const workspaceId = input.workspaceId;
         const seenAt = input.seenAt ?? new Date().toISOString();
         const score = normalizeScore(input.score);
-        const contentHash = hashContent(content);
+        const contentHash = hashMemoryCandidateContent(content);
         const recallDay = seenAt.slice(0, 10);
         const conceptTags = normalizeConceptTags(input.conceptTags);
         const explicitMemoryIntent = input.explicitMemoryIntent ? 1 : 0;
@@ -409,14 +410,6 @@ export class MemoryCandidateStore {
             droppedReason: row.dropped_reason,
         };
     }
-}
-
-function normalizeCandidateContent(content: string): string {
-    return content.trim().replace(/\s+/g, ' ');
-}
-
-function hashContent(content: string): string {
-    return createHash('sha256').update(content).digest('hex');
 }
 
 function normalizeScore(score: number | undefined): number {

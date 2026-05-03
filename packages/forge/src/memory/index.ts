@@ -77,6 +77,10 @@ export type {
 
 // Memory candidate store
 export { MemoryCandidateStore } from './memory-candidate-store';
+export {
+    hashMemoryCandidateContent,
+    normalizeMemoryCandidateContent,
+} from './memory-content-normalization';
 export type { MemoryCandidateStoreOptions } from './memory-candidate-store';
 export type {
     MemoryCandidate,

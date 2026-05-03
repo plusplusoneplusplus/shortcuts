@@ -3,7 +3,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { RawMemoryRecordStore, MemoryCandidateStore, BoundedMemoryStore, ENTRY_DELIMITER } from '@plusplusoneplusplus/forge';
+import {
+    RawMemoryRecordStore,
+    MemoryCandidateStore,
+    BoundedMemoryStore,
+    MemoryPromptBuilder,
+    ENTRY_DELIMITER,
+} from '@plusplusoneplusplus/forge';
 import { MemoryAggregateExecutor } from '../../../src/server/memory/memory-aggregate-executor';
 import type { MemoryAggregatePayload } from '../../../src/server/tasks/task-types';
 
@@ -236,12 +242,13 @@ describe('MemoryAggregateExecutor', () => {
         ].join(ENTRY_DELIMITER);
         seedBoundedMemory(wsId, existingMemory);
         const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
-        await candidateStore.upsertCandidate({
+        const candidate = await candidateStore.upsertCandidate({
             target: 'repo',
             content: 'User explicitly prefers concise responses',
-            source: 'test',
+            source: 'test-source',
             workspaceId: wsId,
             processId: 'proc-1',
+            turnIndex: 3,
             score: 1,
             explicitMemoryIntent: true,
             seenAt: '2026-05-01T00:00:00.000Z',
@@ -261,10 +268,68 @@ describe('MemoryAggregateExecutor', () => {
         expect(readBoundedMemoryRaw(wsId)).toBe(
             `${existingMemory}${ENTRY_DELIMITER}User explicitly prefers concise responses`,
         );
+        expect(readBoundedMemoryRaw(wsId)).not.toContain('[score=');
+        expect(readBoundedMemoryRaw(wsId)).not.toContain('source=');
+        expect(readBoundedMemoryRaw(wsId)).not.toContain('<!-- coc-memory-promotion:');
+
+        const promptStore = new BoundedMemoryStore({ filePath: repoMemoryFile(wsId) });
+        await promptStore.load();
+        const promptBlock = new MemoryPromptBuilder({ store: promptStore }).getSystemPromptBlock()!;
+        expect(promptBlock).toContain('User explicitly prefers concise responses');
+        expect(promptBlock).not.toContain('[score=');
+        expect(promptBlock).not.toContain('source=');
+        expect(promptBlock).not.toContain('<!-- coc-memory-promotion:');
 
         const stats = await readRepoStats(wsId);
         expect(stats.pending).toBe(0);
         expect(stats.promoted).toBe(1);
+        await expect(readRepoCandidate(wsId, candidate.id)).resolves.toMatchObject({
+            status: 'promoted',
+            source: 'test-source',
+            processId: 'proc-1',
+            turnIndex: 3,
+            maxScore: 1,
+            totalScore: 1,
+        });
+    });
+
+    it('ignores selected candidates already covered by normalized bounded memory', async () => {
+        const wsId = 'ws-normalized-covered';
+        const memDir = setupRepoDir(wsId);
+        const existingMemory = 'User   explicitly prefers concise responses';
+        seedBoundedMemory(wsId, existingMemory);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        const coveredCandidate = await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers concise responses',
+            source: 'test-source',
+            workspaceId: wsId,
+            processId: 'proc-covered',
+            score: 1,
+            explicitMemoryIntent: true,
+            seenAt: '2026-05-01T00:00:00.000Z',
+        });
+        candidateStore.close();
+
+        const executor = new MemoryAggregateExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({
+            counts: { ranked: 1, promoted: 0, dropped: 0, ignored: 1, pending: 0 },
+            appended: 0,
+            ignoredReasons: {
+                [coveredCandidate.id]: 'already covered by bounded memory',
+            },
+        });
+        expect(readBoundedMemoryRaw(wsId)).toBe(existingMemory);
+        await expect(readRepoCandidate(wsId, coveredCandidate.id)).resolves.toMatchObject({
+            status: 'ignored',
+            droppedReason: 'already covered by bounded memory',
+            source: 'test-source',
+            processId: 'proc-covered',
+            maxScore: 1,
+        });
     });
 
     it('does not touch system memory during repo-level promotion', async () => {
@@ -330,9 +395,9 @@ describe('MemoryAggregateExecutor', () => {
 
         expect(result.success).toBe(true);
         expect(result.result).toMatchObject({
-            counts: { ranked: 2, promoted: 1, dropped: 1, ignored: 0, pending: 0 },
+            counts: { ranked: 2, promoted: 1, dropped: 0, ignored: 1, pending: 0 },
             appended: 1,
-            droppedReasons: {
+            ignoredReasons: {
                 [droppedCandidate.id]: 'already covered by bounded memory',
             },
         });
@@ -343,7 +408,7 @@ describe('MemoryAggregateExecutor', () => {
             status: 'promoted',
         });
         await expect(readRepoCandidate(wsId, droppedCandidate.id)).resolves.toMatchObject({
-            status: 'dropped',
+            status: 'ignored',
             droppedReason: 'already covered by bounded memory',
         });
     });

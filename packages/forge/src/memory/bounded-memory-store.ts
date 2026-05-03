@@ -13,6 +13,7 @@ import { BaseFileStore } from './base-file-store';
 import { scanMemoryContent } from './memory-security-scanner';
 import type { BoundedMemoryStoreOptions, MemoryMutationResult, MemoryUsage } from './bounded-memory-types';
 import { ENTRY_DELIMITER, DEFAULT_CHAR_LIMIT } from './bounded-memory-types';
+import { normalizeMemoryCandidateContent } from './memory-content-normalization';
 
 export class BoundedMemoryStore extends BaseFileStore {
     private entries: string[] = [];
@@ -236,14 +237,17 @@ export class BoundedMemoryStore extends BaseFileStore {
             try {
                 const existingContent = await this.readSerializedFromDisk();
                 const existingEntries = this.parseSerializedEntries(existingContent);
-                const existingComparable = new Set(existingEntries.map(entry => entry.trim()).filter(Boolean));
+                const existingComparable = new Set(
+                    existingEntries.map(entry => normalizeMemoryCandidateContent(entry)).filter(Boolean),
+                );
                 const cleaned: string[] = [];
                 const seenNew = new Set<string>();
 
                 for (const entry of entriesToAppend) {
                     const trimmed = entry.trim();
                     if (!trimmed) continue;
-                    if (existingComparable.has(trimmed) || seenNew.has(trimmed)) continue;
+                    const comparable = normalizeMemoryCandidateContent(trimmed);
+                    if (existingComparable.has(comparable) || seenNew.has(comparable)) continue;
 
                     const scan = scanMemoryContent(trimmed);
                     if (scan.blocked) {
@@ -253,7 +257,7 @@ export class BoundedMemoryStore extends BaseFileStore {
                         );
                     }
 
-                    seenNew.add(trimmed);
+                    seenNew.add(comparable);
                     cleaned.push(trimmed);
                 }
 
