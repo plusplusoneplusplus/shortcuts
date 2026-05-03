@@ -11,7 +11,8 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { getApiBase } from '../../utils/config';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -126,23 +127,20 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             skipRef.current = 0;
         }
 
-        let fetchUrl = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&scope=${effectiveScope}&top=${PAGE_SIZE}&skip=${offset}`;
-        if (force) fetchUrl += '&force=true';
-        if (effectiveAuthor) fetchUrl += `&author=${encodeURIComponent(effectiveAuthor)}`;
-
-        fetch(fetchUrl, { signal: controller.signal })
-            .then(async res => {
-                const body = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    const err: any = new Error(body?.message ?? `API error: ${res.status}`);
-                    err.status = res.status;
-                    err.body = body;
-                    throw err;
-                }
-                return body as { pullRequests?: PullRequest[]; fetchedAt?: number };
-            })
+        getSpaCocClient().pullRequests.list(
+            repoId,
+            {
+                status: statusFilter,
+                scope: effectiveScope,
+                top: PAGE_SIZE,
+                skip: offset,
+                force: force || undefined,
+                author: effectiveAuthor || undefined,
+            },
+            { signal: controller.signal },
+        )
             .then(data => {
-                const newPrs = data.pullRequests ?? [];
+                const newPrs = (data.pullRequests ?? []) as PullRequest[];
                 const nextSkip = offset + newPrs.length;
                 const nextHasMore = newPrs.length === PAGE_SIZE;
                 const ts = data.fetchedAt ?? null;
@@ -163,10 +161,15 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             })
             .catch(err => {
                 if (err.name === 'AbortError') return;
-                if (err.status === 401 && err.body?.error === 'unconfigured') {
-                    setUnconfigured({ detected: err.body.detected ?? null, remoteUrl: err.body.remoteUrl });
-                } else if (err.status === 401 && err.body?.error === 'no-ado-credentials') {
-                    setUnconfigured({ detected: 'ADO', noCredentials: true });
+                if (err instanceof CocApiError && err.status === 401) {
+                    const body = err.body as Record<string, unknown> | undefined;
+                    if (body?.error === 'unconfigured') {
+                        setUnconfigured({ detected: (body.detected as string) ?? null, remoteUrl: body.remoteUrl as string | undefined });
+                    } else if (body?.error === 'no-ado-credentials') {
+                        setUnconfigured({ detected: 'ADO', noCredentials: true });
+                    } else {
+                        setError(err.message ?? 'Failed to load pull requests');
+                    }
                 } else {
                     setError(err.message ?? 'Failed to load pull requests');
                 }

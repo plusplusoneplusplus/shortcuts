@@ -39,28 +39,36 @@ export class PullRequestsClient {
     });
   }
 
-  list(repoId: string, query?: PullRequestListQuery): Promise<PullRequestListResponse> {
+  list(repoId: string, query?: PullRequestListQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestListResponse> {
     return this.transport.request<PullRequestListResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests`, {
       query: serializePrListQuery(query),
+      signal: options?.signal,
     });
   }
 
-  get(repoId: string, prId: string): Promise<unknown> {
-    return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`);
+  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<unknown> {
+    return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
+      signal: options?.signal,
+    });
   }
 
-  getThreads(repoId: string, prId: string): Promise<PullRequestThreadsResponse> {
-    return this.transport.request<PullRequestThreadsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/threads`);
+  getThreads(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestThreadsResponse> {
+    return this.transport.request<PullRequestThreadsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/threads`, {
+      signal: options?.signal,
+    });
   }
 
-  getReviewers(repoId: string, prId: string): Promise<PullRequestReviewersResponse> {
-    return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`);
+  getReviewers(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestReviewersResponse> {
+    return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`, {
+      signal: options?.signal,
+    });
   }
 
-  getDiff(repoId: string, prId: string): Promise<string> {
+  getDiff(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<string> {
+    const reqOptions: CocRequestOptions = { signal: options?.signal };
     if (this.transport.requestText) {
-      return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`);
+      return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
     }
-    return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`);
+    return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
   }
 }

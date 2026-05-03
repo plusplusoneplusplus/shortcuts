@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Marked } from 'marked';
 import { useApp } from '../../contexts/AppContext';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { prStatusBadge, formatTimestamp } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
@@ -54,29 +54,22 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const base = getApiBase();
-        const repoEnc = encodeURIComponent(String(repoId));
-        const prEnc = encodeURIComponent(String(prId));
-        const prUrl = `${base}/repos/${repoEnc}/pull-requests/${prEnc}`;
-        const threadsUrl = `${base}/repos/${repoEnc}/pull-requests/${prEnc}/threads`;
+        const client = getSpaCocClient();
+        const prIdStr = String(prId);
+        const repoIdStr = String(repoId);
 
         Promise.all([
-            fetch(prUrl).then(async r => {
-                const body = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(body?.message ?? `API error: ${r.status}`);
-                return body as PullRequest;
-            }),
-            fetch(threadsUrl).then(async r => {
-                const body = await r.json().catch(() => ({ threads: [] }));
-                if (!r.ok) return { threads: [] as CommentThread[] };
-                return body as { threads: CommentThread[] };
-            }),
+            client.pullRequests.get(repoIdStr, prIdStr)
+                .then(body => body as PullRequest),
+            client.pullRequests.getThreads(repoIdStr, prIdStr)
+                .then(body => body.threads ?? [])
+                .catch(() => [] as CommentThread[]),
         ])
             .then(([prData, threadsData]) => {
                 setPr(prData);
-                setThreads(threadsData.threads ?? []);
+                setThreads(threadsData);
             })
-            .catch(err => setError(err.message ?? 'Failed to load pull request'))
+            .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
             .finally(() => setLoading(false));
     }, [repoId, prId]);
 
@@ -90,14 +83,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     useEffect(() => {
         if (detailTab !== 'files' || diff !== null) return;
         setDiffLoading(true);
-        const base = getApiBase();
-        const repoEnc = encodeURIComponent(String(repoId));
-        const prEnc = encodeURIComponent(String(prId));
-        fetch(`${base}/repos/${repoEnc}/pull-requests/${prEnc}/diff`)
-            .then(async r => {
-                const text = await r.text();
-                setDiff(r.ok ? text : '');
-            })
+        getSpaCocClient().pullRequests.getDiff(String(repoId), String(prId))
+            .then(text => setDiff(text))
             .catch(() => setDiff(''))
             .finally(() => setDiffLoading(false));
     }, [detailTab, repoId, prId, diff]);

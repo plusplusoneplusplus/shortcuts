@@ -74,4 +74,35 @@ describe('PullRequestsClient', () => {
     expect(adapter.calls[0].options?.query?.force).toBeUndefined();
     expect(adapter.calls[1].options).toMatchObject({ query: undefined });
   });
+
+  it('forwards abort signal to all data methods', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.list('r1', { status: 'open' }, { signal: controller.signal });
+    await client.get('r1', '10', { signal: controller.signal });
+    await client.getThreads('r1', '10', { signal: controller.signal });
+    await client.getReviewers('r1', '10', { signal: controller.signal });
+    await client.getDiff('r1', '10', { signal: controller.signal });
+
+    for (const call of adapter.calls) {
+      expect(call.options?.signal).toBe(controller.signal);
+    }
+  });
+
+  it('does not pass signal when options are omitted', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    await client.list('r1');
+    await client.get('r1', '1');
+    await client.getThreads('r1', '1');
+    await client.getReviewers('r1', '1');
+    await client.getDiff('r1', '1');
+
+    for (const call of adapter.calls) {
+      expect(call.options?.signal).toBeUndefined();
+    }
+  });
 });

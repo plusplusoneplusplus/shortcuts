@@ -163,6 +163,33 @@ describe('PullRequestsClient mock coverage', () => {
       status: 404,
     } satisfies Partial<CocApiError>);
   });
+
+  it('aborts an in-flight list request when the signal is triggered', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/repos/r1/pull-requests', {
+      body: { pullRequests: [], total: 0 },
+      delayMs: 200,
+    });
+    const client = createClient(mock);
+    const controller = new AbortController();
+
+    const promise = client.pullRequests.list('r1', { status: 'open' }, { signal: controller.signal });
+    controller.abort();
+
+    await expect(promise).rejects.toThrow();
+  });
+
+  it('includes fetchedAt when present in list response', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/repos/r1/pull-requests', {
+      body: { pullRequests: [{ id: 1 }], total: 1, fetchedAt: 1700000000000 },
+    });
+    const client = createClient(mock);
+
+    const result = await client.pullRequests.list('r1');
+    expect(result.fetchedAt).toBe(1700000000000);
+    expect(result.pullRequests).toEqual([{ id: 1 }]);
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

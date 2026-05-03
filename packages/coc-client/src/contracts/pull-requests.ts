@@ -40,6 +40,7 @@ export interface PullRequestListQuery {
 export interface PullRequestListResponse {
   pullRequests: unknown[];
   total: number;
+  fetchedAt?: number;
 }
 
 export interface PullRequestThreadsResponse {
