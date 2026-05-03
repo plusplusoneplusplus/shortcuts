@@ -306,10 +306,10 @@ export class GitLogService {
 
             return output;
         } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
             getLogger().debug(
                 LogCategory.GIT,
-                `Failed to get file content for ${filePath} at commit ${commitHash}`,
-                error instanceof Error ? error : undefined,
+                `Failed to get file content for ${filePath} at commit ${commitHash}: ${message}`,
             );
             return undefined;
         }
@@ -360,10 +360,10 @@ export class GitLogService {
             }
             return undefined;
         } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
             getLogger().debug(
                 LogCategory.GIT,
-                `validateRef failed for ref "${ref}" in ${repoRoot}`,
-                error instanceof Error ? error : undefined,
+                `validateRef failed for ref "${ref}" in ${repoRoot}: ${message}`,
             );
             return undefined;
         }

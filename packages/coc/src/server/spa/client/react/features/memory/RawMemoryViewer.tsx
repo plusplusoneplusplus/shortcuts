@@ -271,7 +271,7 @@ export function RawMemoryViewer({ repoId }: RawMemoryViewerProps) {
                             <button
                                 className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
                                     selectedTable === t.name
-                                        ? 'bg-[var(--accent)] text-white'
+                                        ? 'bg-[#0078d4] dark:bg-[#3794ff] text-white'
                                         : 'hover:bg-[var(--bg-secondary)] text-[var(--text-primary)]'
                                 }`}
                                 onClick={() => handleTableSelect(t.name)}
@@ -280,7 +280,7 @@ export function RawMemoryViewer({ repoId }: RawMemoryViewerProps) {
                             >
                                 <div className="flex items-center justify-between gap-1">
                                     <span className="font-medium truncate">{t.name}</span>
-                                    <span className={`shrink-0 text-[10px] tabular-nums ${selectedTable === t.name ? 'text-white/70' : 'text-[var(--text-tertiary)]'}`}>
+                                    <span className={`shrink-0 text-[10px] tabular-nums ${selectedTable === t.name ? 'text-white/70' : 'text-gray-400'}`}>
                                         {t.rowCount.toLocaleString()}
                                     </span>
                                 </div>

@@ -525,6 +525,23 @@ describe('DbBrowserSection — UI enhancements', () => {
         });
     });
 
+    it('uses concrete colors for the selected table so its label and row count stay visible', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-table-users'));
+
+        const selectedButton = screen.getByTestId('db-table-users');
+        const selectedCount = selectedButton.querySelector('.tabular-nums');
+        expect(selectedButton.className).toContain('bg-[#0078d4]');
+        expect(selectedButton.className).toContain('dark:bg-[#3794ff]');
+        expect(selectedButton.className).toContain('text-white');
+        expect(selectedButton.className).not.toContain('bg-[var(--accent)]');
+        expect(selectedCount?.getAttribute('class')).toContain('text-white/70');
+
+        const unselectedCount = screen.getByTestId('db-table-logs').querySelector('.tabular-nums');
+        expect(unselectedCount?.getAttribute('class')).toContain('text-gray-400');
+        expect(unselectedCount?.getAttribute('class')).not.toContain('text-[var(--text-tertiary)]');
+    });
+
     it('filters table list when typing in search', async () => {
         renderSection();
         await waitFor(() => screen.getByTestId('db-table-search'));

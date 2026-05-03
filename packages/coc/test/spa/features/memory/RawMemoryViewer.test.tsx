@@ -20,6 +20,7 @@ const mockFetch = vi.fn();
 const TABLES_RESPONSE = {
     tables: [
         { name: 'raw_memory_records', rowCount: 5 },
+        { name: 'memory_reconciliation_batches', rowCount: 2 },
     ],
 };
 
@@ -132,6 +133,24 @@ describe('RawMemoryViewer', () => {
             await waitFor(() => {
                 expect(screen.getByTestId('raw-sort-id')).toBeDefined();
             });
+        });
+
+        it('uses concrete colors for the selected table so its label and row count stay visible', async () => {
+            mockDefaultFetch();
+            await renderViewer();
+            await waitFor(() => screen.getByTestId('raw-table-raw_memory_records'));
+
+            const selectedButton = screen.getByTestId('raw-table-raw_memory_records');
+            const selectedCount = selectedButton.querySelector('.tabular-nums');
+            expect(selectedButton.className).toContain('bg-[#0078d4]');
+            expect(selectedButton.className).toContain('dark:bg-[#3794ff]');
+            expect(selectedButton.className).toContain('text-white');
+            expect(selectedButton.className).not.toContain('bg-[var(--accent)]');
+            expect(selectedCount?.getAttribute('class')).toContain('text-white/70');
+
+            const unselectedCount = screen.getByTestId('raw-table-memory_reconciliation_batches').querySelector('.tabular-nums');
+            expect(unselectedCount?.getAttribute('class')).toContain('text-gray-400');
+            expect(unselectedCount?.getAttribute('class')).not.toContain('text-[var(--text-tertiary)]');
         });
     });
 
