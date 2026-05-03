@@ -330,6 +330,8 @@ async function handleCaptureMode(
 
     // args.target is already 'repo' or 'system' — pass through directly
     const rawTarget = args.target;
+    const explicitIntent = args.explicitMemoryIntent === true;
+    const captureScore = getCaptureScore(explicitIntent, options.writeFrequency);
 
     const candidateStore = captureConfig.candidateStores?.[args.target];
     if (candidateStore) {
@@ -340,7 +342,8 @@ async function handleCaptureMode(
             workspaceId: captureConfig.context.workspaceId ?? '',
             processId: captureConfig.context.processId ?? null,
             turnIndex: captureConfig.context.turnIndex ?? null,
-            explicitMemoryIntent: args.explicitMemoryIntent === true,
+            explicitMemoryIntent: explicitIntent,
+            score: captureScore,
         });
 
         writtenFacts.push(trimmed);
@@ -365,7 +368,7 @@ async function handleCaptureMode(
         workspaceId: captureConfig.context.workspaceId ?? '',
         processId: captureConfig.context.processId ?? null,
         turnIndex: captureConfig.context.turnIndex ?? null,
-        metadataJson: JSON.stringify({ explicitMemoryIntent: args.explicitMemoryIntent === true }),
+        metadataJson: JSON.stringify({ explicitMemoryIntent: explicitIntent }),
     });
 
     writtenFacts.push(trimmed);
@@ -375,4 +378,13 @@ async function handleCaptureMode(
         message: 'Memory candidate captured; memory will update after promotion.',
         recordId: record.id,
     };
+}
+
+function getCaptureScore(explicitIntent: boolean, frequency: MemoryWriteFrequency | undefined): number {
+    if (explicitIntent) return 1.0;
+    switch (frequency) {
+        case 'high': return 0.8;
+        case 'low': return 0.5;
+        default: return 0.7;
+    }
 }

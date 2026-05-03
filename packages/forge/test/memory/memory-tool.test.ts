@@ -3,6 +3,8 @@ import { createMemoryTool, MemoryToolOptions, MemoryToolStores, getMemorySchema,
 import type { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
 import type { MemoryMutationResult, MemoryUsage } from '../../src/memory/bounded-memory-types';
 import { ToolInvocation } from '../../src/copilot-sdk-wrapper/types';
+import type { MemoryCandidateStore } from '../../src/memory/memory-candidate-store';
+import type { MemoryCandidate, MemoryCandidateInput } from '../../src/memory/memory-candidate-types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,6 +32,39 @@ function createMockBoundedStore(): BoundedMemoryStore {
         getUsage: vi.fn().mockReturnValue(makeUsage()),
         load: vi.fn().mockResolvedValue(undefined),
     } as unknown as BoundedMemoryStore;
+}
+
+function createMockCandidateStore(): MemoryCandidateStore {
+    return {
+        upsertCandidate: vi.fn(async (input: MemoryCandidateInput) => makeCandidate(input)),
+    } as unknown as MemoryCandidateStore;
+}
+
+function makeCandidate(input: MemoryCandidateInput): MemoryCandidate {
+    const score = input.score ?? 0;
+    return {
+        id: 'candidate-1',
+        target: input.target,
+        content: input.content,
+        contentHash: 'hash-1',
+        source: input.source,
+        workspaceId: input.workspaceId,
+        processId: input.processId ?? null,
+        turnIndex: input.turnIndex ?? null,
+        createdAt: input.seenAt ?? '2026-05-01T00:00:00.000Z',
+        lastSeenAt: input.seenAt ?? '2026-05-01T00:00:00.000Z',
+        signalCount: 1,
+        totalScore: score,
+        maxScore: score,
+        uniqueProcessCount: input.processId ? 1 : 0,
+        recallDays: ['2026-05-01'],
+        conceptTags: input.conceptTags ?? [],
+        explicitMemoryIntent: input.explicitMemoryIntent ?? false,
+        status: 'pending',
+        promotedAt: null,
+        droppedAt: null,
+        droppedReason: null,
+    };
 }
 
 const mockInvocation: ToolInvocation = {
@@ -402,6 +437,48 @@ describe('createMemoryTool', () => {
             const { tool } = createMemoryTool(stores, { ...baseOptions, writeFrequency: 'high' });
             expect(tool.description).toContain('err on the side of saving');
             expect(tool.description).toContain('Workflow patterns');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Capture mode scoring
+    // -----------------------------------------------------------------------
+
+    describe('capture mode scoring', () => {
+        it.each([
+            { name: 'explicit memory intent', options: { writeFrequency: 'low' as const }, explicitMemoryIntent: true, expectedScore: 1.0 },
+            { name: 'default write frequency', options: {}, explicitMemoryIntent: false, expectedScore: 0.7 },
+            { name: 'low write frequency', options: { writeFrequency: 'low' as const }, explicitMemoryIntent: false, expectedScore: 0.5 },
+            { name: 'high write frequency', options: { writeFrequency: 'high' as const }, explicitMemoryIntent: false, expectedScore: 0.8 },
+        ])('passes score $expectedScore for $name', async ({ options, explicitMemoryIntent, expectedScore }) => {
+            const candidateStore = createMockCandidateStore();
+            const { tool } = createMemoryTool(
+                stores,
+                { ...baseOptions, ...options, mode: 'capture' },
+                {
+                    candidateStores: { repo: candidateStore },
+                    context: { workspaceId: 'ws-test', processId: 'proc-1', turnIndex: 2 },
+                },
+            );
+
+            const result = await tool.handler({
+                action: 'add',
+                target: 'repo',
+                content: '  Project uses Vitest  ',
+                explicitMemoryIntent,
+            }, mockInvocation);
+
+            expect((result as any).success).toBe(true);
+            expect(candidateStore.upsertCandidate).toHaveBeenCalledWith(expect.objectContaining({
+                target: 'repo',
+                content: 'Project uses Vitest',
+                source: 'test',
+                workspaceId: 'ws-test',
+                processId: 'proc-1',
+                turnIndex: 2,
+                explicitMemoryIntent,
+                score: expectedScore,
+            }));
         });
     });
 });

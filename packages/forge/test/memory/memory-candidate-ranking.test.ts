@@ -134,11 +134,12 @@ describe('rankMemoryCandidates', () => {
         });
     });
 
-    it('lets explicit memory intent pass lower repeated-signal requirements', () => {
+    it('selects explicit memory intent even when relevance is zero', () => {
         const explicit = makeCandidate({
             explicitMemoryIntent: true,
             signalCount: 1,
-            totalScore: 1,
+            totalScore: 0,
+            maxScore: 0,
         });
 
         const [ranked] = rankMemoryCandidates([explicit], {
@@ -146,6 +147,7 @@ describe('rankMemoryCandidates', () => {
             policy: DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY,
         });
 
+        expect(ranked.components.relevance).toBe(0);
         expect(ranked.score).toBeLessThan(DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY.minScore);
         expect(ranked.selected).toBe(true);
     });

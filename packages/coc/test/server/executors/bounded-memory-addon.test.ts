@@ -8,7 +8,7 @@ import * as path from 'path';
 import Database from 'better-sqlite3';
 import { buildBoundedMemoryAddon } from '../../../src/server/executors/bounded-memory-addon';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
-import { ENTRY_DELIMITER, MEMORY_SCHEMA, getMemorySchema } from '@plusplusoneplusplus/forge';
+import { ENTRY_DELIMITER, MEMORY_SCHEMA, MemoryCandidateStore, getMemorySchema } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -207,6 +207,66 @@ describe('buildBoundedMemoryAddon', () => {
         const tool = addon.tools[0] as any;
         const result = await tool.handler({ action: 'add', target: 'repo', content: 'test repo fact' });
         expect(result.success).toBe(true);
+    });
+
+    it('captures scored candidates when capture mode is enabled', async () => {
+        writeRepoPreferences(tmpDir, WORKSPACE_ID, { boundedMemory: { enabled: true, writeFrequency: 'low' } });
+
+        const addon = await buildBoundedMemoryAddon(
+            tmpDir,
+            WORKSPACE_ID,
+            { processId: 'proc-score', turnIndex: 3 },
+        );
+
+        try {
+            const tool = addon.tools[0] as any;
+            const defaultResult = await tool.handler({
+                action: 'add',
+                target: 'repo',
+                content: 'Project uses Vitest',
+            });
+            const explicitResult = await tool.handler({
+                action: 'add',
+                target: 'repo',
+                content: 'Remember package tests',
+                explicitMemoryIntent: true,
+            });
+
+            expect(defaultResult.success).toBe(true);
+            expect(explicitResult.success).toBe(true);
+        } finally {
+            addon.dispose();
+        }
+
+        const candidateStore = new MemoryCandidateStore({
+            dbPath: path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory', 'raw-memory.db'),
+        });
+        try {
+            const candidates = await candidateStore.listPendingCandidates();
+            const defaultCandidate = candidates.find(candidate => candidate.content === 'Project uses Vitest');
+            const explicitCandidate = candidates.find(candidate => candidate.content === 'Remember package tests');
+
+            expect(defaultCandidate).toMatchObject({
+                totalScore: 0.5,
+                maxScore: 0.5,
+                explicitMemoryIntent: false,
+                source: 'coc-chat',
+                workspaceId: WORKSPACE_ID,
+                processId: 'proc-score',
+                turnIndex: 3,
+            });
+            expect(explicitCandidate).toMatchObject({
+                totalScore: 1,
+                maxScore: 1,
+                explicitMemoryIntent: true,
+                source: 'coc-chat',
+                workspaceId: WORKSPACE_ID,
+                processId: 'proc-score',
+                turnIndex: 3,
+            });
+        } finally {
+            candidateStore.close();
+        }
     });
 
     // -----------------------------------------------------------------------

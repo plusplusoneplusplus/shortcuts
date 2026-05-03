@@ -109,7 +109,6 @@ function rankMemoryCandidate(
         && candidate.signalCount >= policy.minSignalCount
         && diversitySignalCount >= policy.minDiversity;
     const explicitSelected = candidate.explicitMemoryIntent
-        && relevance >= policy.minExplicitRelevance
         && diversitySignalCount >= Math.min(policy.minDiversity, 1);
 
     return {
