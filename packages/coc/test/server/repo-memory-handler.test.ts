@@ -20,7 +20,7 @@ import {
 } from '../../src/server/memory/repo-memory-handler';
 import type { Route } from '../../src/server/types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { DEFAULT_CHAR_LIMIT } from '@plusplusoneplusplus/forge';
+import { DEFAULT_CHAR_LIMIT, MemoryCandidateStore } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../../src/server/paths';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -94,6 +94,12 @@ async function apiPut(url: string, data: unknown): Promise<{ status: number; bod
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
     });
+    const body = await res.json();
+    return { status: res.status, body };
+}
+
+async function apiDelete(url: string): Promise<{ status: number; body: any }> {
+    const res = await fetch(url, { method: 'DELETE' });
     const body = await res.json();
     return { status: res.status, body };
 }
@@ -275,6 +281,43 @@ describe('PUT /api/repos/:repoId/memory/bounded', () => {
         );
         expect(status).toBe(413);
         expect(body.error).toBe('Content exceeds character limit');
+    });
+});
+
+// ── DELETE /api/repos/:repoId/memory ──────────────────────────────────────────
+
+describe('DELETE /api/repos/:repoId/memory', () => {
+    it('wipes bounded memory, raw candidates, and recall index', async () => {
+        const memoryDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const memoryPath = path.join(memoryDir, 'MEMORY.md');
+        const rawDbPath = path.join(memoryDir, 'raw-memory.db');
+        const recallIndexPath = path.join(memoryDir, 'recall-index.db');
+        fs.mkdirSync(memoryDir, { recursive: true });
+        fs.writeFileSync(memoryPath, 'stored repo fact', 'utf-8');
+        fs.writeFileSync(recallIndexPath, 'stale index', 'utf-8');
+
+        const candidateStore = new MemoryCandidateStore({ dbPath: rawDbPath });
+        await candidateStore.upsertCandidate({ target: 'repo', content: 'Fact A', source: 'test', workspaceId: WORKSPACE_ID });
+        await candidateStore.upsertCandidate({ target: 'repo', content: 'Fact B', source: 'test', workspaceId: WORKSPACE_ID });
+        candidateStore.close();
+
+        const { status, body } = await apiDelete(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory`);
+        expect({ status, body }).toMatchObject({ status: 200, body: { success: true } });
+        expect(fs.existsSync(memoryPath)).toBe(false);
+        expect(fs.existsSync(recallIndexPath)).toBe(false);
+
+        const reopened = new MemoryCandidateStore({ dbPath: rawDbPath });
+        try {
+            expect(await reopened.getStats()).toMatchObject({ total: 0, pending: 0 });
+        } finally {
+            reopened.close();
+        }
+    });
+
+    it('is idempotent when memory files do not exist', async () => {
+        const { status, body } = await apiDelete(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory`);
+        expect(status).toBe(200);
+        expect(body).toEqual({ success: true });
     });
 });
 

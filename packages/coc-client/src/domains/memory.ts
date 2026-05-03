@@ -14,6 +14,7 @@ import type {
   MemoryConfig,
   MemoryLevel,
   MemoryOverviewResponse,
+  RepoMemoryDeleteResponse,
   ToolCallCacheStats,
   ToolCallQAEntry,
 } from '../contracts';
@@ -168,6 +169,10 @@ export class MemoryClient {
       method: 'PUT',
       body: { content },
     });
+  }
+
+  deleteRepoMemory(repoId: string): Promise<RepoMemoryDeleteResponse> {
+    return this.transport.request<RepoMemoryDeleteResponse>(repoMemoryPath(repoId), { method: 'DELETE' });
   }
 
 }

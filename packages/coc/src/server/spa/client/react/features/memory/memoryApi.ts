@@ -17,6 +17,7 @@ import {
     type MemoryLevel,
     type MemoryOverviewResponse,
     type MemoryStats,
+    type RepoMemoryDeleteResponse,
     type DbBrowserColumn,
     type DbBrowserTableDataResponse,
     type DbBrowserTable,
@@ -55,6 +56,7 @@ export type {
     MemoryLevel,
     MemoryOverviewResponse,
     MemoryStats,
+    RepoMemoryDeleteResponse,
     DbBrowserColumn as RawDbColumnInfo,
     DbBrowserTableDataResponse as RawDbTableData,
     DbBrowserTable as RawDbTableInfo,
@@ -162,6 +164,10 @@ export const memoryApi = {
         } catch (error) {
             remapBoundedSaveError(error);
         }
+    },
+
+    wipeRepoBounded(repoId: string): Promise<RepoMemoryDeleteResponse> {
+        return getSpaCocClient().memory.deleteRepoMemory(repoId);
     },
 
     // ── Raw DB browser ───────────────────────────────────────────────────────

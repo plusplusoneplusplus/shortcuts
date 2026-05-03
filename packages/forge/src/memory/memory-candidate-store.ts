@@ -209,6 +209,12 @@ export class MemoryCandidateStore {
         return stats;
     }
 
+    async clearAll(): Promise<void> {
+        this.db.transaction(() => {
+            this.db.prepare(`DELETE FROM memory_candidates`).run();
+        })();
+    }
+
     close(): void {
         this.db.close();
     }

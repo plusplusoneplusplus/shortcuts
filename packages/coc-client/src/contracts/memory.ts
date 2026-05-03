@@ -67,6 +67,10 @@ export interface BoundedMemoryDeleteResponse {
   success: true;
 }
 
+export interface RepoMemoryDeleteResponse {
+  success: boolean;
+}
+
 export interface MemoryPromoteResponse {
   taskId: string;
   processId: string | null;

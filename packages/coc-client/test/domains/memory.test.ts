@@ -15,6 +15,7 @@ describe('MemoryClient', () => {
     await client.getRepoOverview('repo/a');
     await client.getRepoBounded('repo/a');
     await client.saveRepoBounded('repo/a', 'Remember this');
+    await client.deleteRepoMemory('repo/a');
     await client.promoteRepo('repo/a', { model: 'gpt-test', target: 'system' });
     expect(adapter.calls).toEqual([
       { path: '/repos/repo%2Fa/memory/overview', options: undefined },
@@ -22,6 +23,10 @@ describe('MemoryClient', () => {
       {
         path: '/repos/repo%2Fa/memory/bounded',
         options: { method: 'PUT', body: { content: 'Remember this' } },
+      },
+      {
+        path: '/repos/repo%2Fa/memory',
+        options: { method: 'DELETE' },
       },
       {
         path: '/repos/repo%2Fa/memory/aggregate',
@@ -58,6 +63,16 @@ describe('MemoryClient', () => {
           body: { content: 'Remote memory' },
         },
       },
+    ]);
+  });
+
+  it('resolves repo memory delete responses', async () => {
+    const adapter = createMockAdapter({ success: true });
+    const client = new MemoryClient(adapter);
+
+    await expect(client.deleteRepoMemory('repo/a')).resolves.toEqual({ success: true });
+    expect(adapter.calls).toEqual([
+      { path: '/repos/repo%2Fa/memory', options: { method: 'DELETE' } },
     ]);
   });
 

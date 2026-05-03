@@ -13,6 +13,7 @@ vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
 const mockGetBounded = vi.fn();
 const mockGetOverview = vi.fn();
+const mockWipeRepoBounded = vi.fn();
 
 vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi', () => ({
     memoryApi: {
@@ -20,6 +21,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/memory/memoryApi
         getOverview: (...a: any[]) => mockGetOverview(...a),
         saveBounded: vi.fn(async () => ({ charCount: 0, charLimit: 2200, lastModified: new Date().toISOString() })),
         promote: vi.fn(async () => ({ taskId: 't1', processId: 'p1', operation: 'promotion', status: 'queued' })),
+        wipeRepoBounded: (...a: any[]) => mockWipeRepoBounded(...a),
     },
 }));
 
@@ -86,8 +88,10 @@ function defaultOverviewResponse() {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+    vi.clearAllMocks();
     mockGetBounded.mockResolvedValue(defaultBoundedResponse());
     mockGetOverview.mockResolvedValue(defaultOverviewResponse());
+    mockWipeRepoBounded.mockResolvedValue({ success: true });
 });
 
 afterEach(() => {
@@ -147,6 +151,81 @@ describe('BoundedMemoryTab — Promote Memory button', () => {
 
         expect(screen.getByTestId('dialog')).toBeTruthy();
         expect(screen.getByTestId('aggregate-panel')).toBeTruthy();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Wipe Memory button
+// ---------------------------------------------------------------------------
+
+describe('BoundedMemoryTab — Wipe Memory button', () => {
+    it('shows confirmation before wiping memory', async () => {
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('bounded-wipe-btn')).toBeTruthy();
+        });
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('bounded-wipe-btn'));
+        });
+
+        expect(screen.getByTestId('bounded-wipe-confirm')).toBeTruthy();
+        expect(screen.getByText('Confirm Wipe')).toBeTruthy();
+        expect(screen.getByText('Cancel')).toBeTruthy();
+        expect(mockWipeRepoBounded).not.toHaveBeenCalled();
+    });
+
+    it('wipes memory and refreshes the empty state on confirmation', async () => {
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('bounded-content')).toBeTruthy();
+        });
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('bounded-wipe-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('bounded-wipe-confirm-btn')).toBeTruthy();
+        });
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('bounded-wipe-confirm-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockWipeRepoBounded).toHaveBeenCalledWith('repo-1');
+            expect(screen.getByTestId('bounded-empty')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('bounded-wipe-confirm')).toBeNull();
+        expect(mockGetOverview).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows wipe button for disabled repos with raw candidates', async () => {
+        const { getWorkspacePreferences } = await import(
+            '../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi'
+        );
+        (getWorkspacePreferences as any).mockResolvedValue({ boundedMemory: { enabled: false } });
+        mockGetBounded.mockResolvedValue({
+            content: '',
+            charCount: 0,
+            charLimit: 2200,
+            lastModified: null,
+        });
+        mockGetOverview.mockResolvedValue({
+            ...defaultOverviewResponse(),
+            charCount: 0,
+            pendingRawCount: 2,
+        });
+
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('bounded-wipe-btn')).toBeTruthy();
+        });
+        expect(screen.getByTestId('memory-enabled-toggle').getAttribute('aria-checked')).toBe('false');
     });
 });
 

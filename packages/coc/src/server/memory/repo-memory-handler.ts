@@ -57,6 +57,16 @@ async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promis
     return workspaces.find(w => w.id === workspaceId)?.rootPath;
 }
 
+function deleteFileIfExists(filePath: string): void {
+    try {
+        fs.unlinkSync(filePath);
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw err;
+        }
+    }
+}
+
 /**
  * Compute a line-by-line diff using LCS (Myers-style traceback).
  * For large inputs the diff is truncated to avoid memory pressure.
@@ -328,6 +338,40 @@ export function registerRepoMemoryRoutes(
                     charLimit: DEFAULT_CHAR_LIMIT,
                     lastModified,
                 });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- DELETE /api/repos/:repoId/memory -------------------------------------
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/repos\/([^/]+)\/memory$/,
+        handler: async (_req, res, match) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const memoryDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+                const memoryPath = path.join(memoryDir, 'MEMORY.md');
+                const candidateDbPath = path.join(memoryDir, 'raw-memory.db');
+                const recallIndexPath = path.join(memoryDir, 'recall-index.db');
+
+                deleteFileIfExists(memoryPath);
+
+                if (fs.existsSync(candidateDbPath)) {
+                    let candidateStore: MemoryCandidateStore | undefined;
+                    try {
+                        candidateStore = new MemoryCandidateStore({ dbPath: candidateDbPath });
+                        await candidateStore.clearAll();
+                    } finally {
+                        candidateStore?.close();
+                    }
+                }
+
+                deleteFileIfExists(recallIndexPath);
+
+                sendJson(res, { success: true });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

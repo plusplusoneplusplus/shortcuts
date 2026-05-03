@@ -193,6 +193,34 @@ describe('MemoryCandidateStore', () => {
         }
     });
 
+    it('clears all candidates and provenance rows', async () => {
+        const store = createStore();
+        try {
+            const candidate = await store.upsertCandidate(makeInput({ processId: 'proc-clear' }));
+            await store.clearAll();
+
+            expect(await store.getCandidate(candidate.id)).toBeNull();
+            expect(await store.listPendingCandidates()).toEqual([]);
+            expect(await store.getStats()).toEqual({
+                pending: 0,
+                promoted: 0,
+                dropped: 0,
+                ignored: 0,
+                total: 0,
+            });
+
+            const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+            try {
+                const row = db.prepare(`SELECT COUNT(*) as cnt FROM memory_candidate_processes`).get() as { cnt: number };
+                expect(row.cnt).toBe(0);
+            } finally {
+                db.close();
+            }
+        } finally {
+            store.close();
+        }
+    });
+
     it('migrates pending legacy raw records once', async () => {
         const rawStore = new RawMemoryRecordStore({ dbPath });
         await rawStore.append({

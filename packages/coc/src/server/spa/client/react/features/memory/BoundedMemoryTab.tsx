@@ -39,6 +39,9 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [wiping, setWiping] = useState(false);
+    const [wipeConfirmOpen, setWipeConfirmOpen] = useState(false);
+    const [wipeError, setWipeError] = useState<string | null>(null);
 
     // Pipeline overview state
     const [overviewStats, setOverviewStats] = useState<MemoryStats | null>(null);
@@ -81,7 +84,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     }, [repoId]);
 
     useEffect(() => { fetchContent(); }, [fetchContent]);
-    useEffect(() => { if (enabled) fetchOverview(); }, [enabled, fetchOverview]);
+    useEffect(() => { fetchOverview(); }, [fetchOverview]);
 
     const handlePromoteClose = () => setPromotePanelOpen(false);
     const handlePromoteDone = () => {
@@ -183,6 +186,44 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     };
 
     const editCharCount = editContent.length;
+    const hasMemoryData = charCount > 0
+        || content.length > 0
+        || (overviewStats?.pendingRawCount ?? 0) > 0
+        || (overviewStats?.claimedRawCount ?? 0) > 0;
+    const showWipeButton = enabled || hasMemoryData;
+
+    const handleCancelWipe = () => {
+        setWipeConfirmOpen(false);
+        setWipeError(null);
+    };
+
+    const handleWipe = async () => {
+        setWiping(true);
+        setWipeError(null);
+        try {
+            await memoryApi.wipeRepoBounded(repoId);
+            setContent('');
+            setEditContent('');
+            setCharCount(0);
+            setLastModified(null);
+            setEditing(false);
+            setSaveError(null);
+            setCopied(false);
+            setWipeConfirmOpen(false);
+            setOverviewStats(prev => prev
+                ? { ...prev, charCount: 0, lastModified: null, pendingRawCount: 0, claimedRawCount: 0 }
+                : prev
+            );
+            toastCtx?.addToast('Memory wiped', 'success');
+            await fetchOverview();
+        } catch (e: any) {
+            const message = e?.message ?? 'Failed to wipe memory';
+            setWipeError(message);
+            toastCtx?.addToast(message, 'error');
+        } finally {
+            setWiping(false);
+        }
+    };
 
     return (
         <div data-testid="bounded-memory-tab" className="pt-3">
@@ -299,6 +340,16 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                         Promote Memory ▶
                     </button>
                 )}
+                {showWipeButton && !editing && (
+                    <button
+                        onClick={() => setWipeConfirmOpen(true)}
+                        disabled={wiping}
+                        className="text-xs px-2.5 py-1 rounded border border-red-400 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+                        data-testid="bounded-wipe-btn"
+                    >
+                        {wiping ? 'Wiping…' : 'Wipe Memory'}
+                    </button>
+                )}
                 {!editing ? (
                     <button
                         onClick={handleStartEdit}
@@ -327,6 +378,46 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                     </>
                 )}
             </div>
+
+            {wipeConfirmOpen && (
+                <div
+                    className="mb-3 rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/20 p-3"
+                    data-testid="bounded-wipe-confirm"
+                >
+                    <h4 className="text-sm font-semibold text-red-700 dark:text-red-300">
+                        Wipe all memory for this repo?
+                    </h4>
+                    <p className="mt-1 text-xs text-red-700 dark:text-red-200">
+                        This will permanently delete all stored memory entries and raw candidates for this repo.
+                        This action cannot be undone.
+                    </p>
+                    {wipeError && (
+                        <p className="mt-2 text-xs text-red-700 dark:text-red-200" data-testid="bounded-wipe-error">
+                            {wipeError}
+                        </p>
+                    )}
+                    <div className="mt-3 flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={handleCancelWipe}
+                            disabled={wiping}
+                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors disabled:opacity-50"
+                            data-testid="bounded-wipe-cancel-btn"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleWipe}
+                            disabled={wiping}
+                            className="text-xs px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                            data-testid="bounded-wipe-confirm-btn"
+                        >
+                            {wiping ? 'Wiping…' : 'Confirm Wipe'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Capacity bar */}
             {charLimit > 0 && (

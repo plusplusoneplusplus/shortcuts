@@ -46,7 +46,7 @@ Bounded, file-backed memory lets AI chat sessions learn from past interactions. 
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
 | `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`; capture mode routes `add` into durable memory candidates without mutating `MEMORY.md`, preserves explicit memory intent metadata, and derives candidate scores from write frequency or explicit user intent. |
-| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content hashes, signal counts, provenance, explicit intent, and one-time migration from pending legacy raw records. |
+| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle store with `pending/promoted/dropped/ignored` statuses, normalized-content hashes, signal counts, provenance, explicit intent, full-store clearing for repo wipe operations, and one-time migration from pending legacy raw records. |
 | `memory-candidate-ranking.ts` | `rankMemoryCandidates` | Pure deterministic ranking and selection policy for pending candidates using frequency, relevance, diversity, recency, consolidation, conceptual tags, and explicit memory intent. |
 
 ### Usage Pattern
