@@ -132,7 +132,7 @@ export interface CLIConfig {
     skills?: {
         /** Auto-update globally-installed bundled skills on serve startup (default: true) */
         autoUpdate?: boolean;
-        /** Bundled skills to auto-install on first serve startup if not already present (default: ['rethink']) */
+        /** Bundled skills to auto-install on first serve startup if not already present */
         defaultSkills?: string[];
     };
 }
@@ -296,6 +296,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'rethink',
     'kb-refresh',
     'fresh-written',
+    'terse-replies',
 ];
 
 /** Default configuration values */
