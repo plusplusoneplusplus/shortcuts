@@ -13,6 +13,18 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
 
+/**
+ * Set toolCompactness to 1 so tool-call cards render as visible `.tool-call-card`
+ * elements rather than being collapsed into the whisper group (which is the
+ * default behaviour at toolCompactness=3).
+ */
+async function setToolCompactness(serverUrl: string, value: 0 | 1 | 2 | 3 = 1): Promise<void> {
+    await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ toolCompactness: value }),
+    });
+}
+
 async function waitForTaskStatus(
     serverUrl: string,
     taskId: string,
@@ -94,6 +106,7 @@ test.describe('read_agent content nesting', () => {
         page,
     }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ra1');
+        await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
                 const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
@@ -164,6 +177,7 @@ test.describe('read_agent content nesting', () => {
         page,
     }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ra2');
+        await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
                 const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
@@ -210,6 +224,7 @@ test.describe('read_agent content nesting', () => {
         page,
     }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ra3');
+        await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
                 const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
@@ -311,6 +326,7 @@ test.describe('read_agent content nesting', () => {
         page,
     }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ra4');
+        await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
                 const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;

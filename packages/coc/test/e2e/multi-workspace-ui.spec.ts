@@ -105,11 +105,11 @@ test.describe('Multi-Workspace UI Isolation', () => {
         await page.goto(ctx.server.url);
         await page.waitForLoadState('networkidle');
 
-        // Explicitly navigate to the Repos tab where workspaces are listed
-        await page.click('[data-tab="repos"]');
-
+        // Repos is the default landing tab — no explicit click is required.
         // Both workspace names render in `[data-testid="repo-tab"]` entries on
-        // the persistent rail. Scope assertion to the rail.
+        // the persistent rail. Scope the assertion to the rail so the strict
+        // mode duplicate-element guard doesn't trip on the same name showing
+        // up inside per-workspace detail panels.
         const repoTabs = page.locator('[data-testid="repo-tab"]');
         await expect(repoTabs).toHaveCount(2, { timeout: 10_000 });
         await expect(repoTabs.filter({ hasText: 'Repo A' })).toHaveCount(1);

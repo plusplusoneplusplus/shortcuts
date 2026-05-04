@@ -472,8 +472,9 @@ test.describe('Slash Command Menu', () => {
             // Press Enter to select the first skill
             await textarea.press('Enter');
 
-            // Textarea should now contain the skill name with a space
-            const value = await textarea.inputValue();
+            // Textarea should now contain the skill name with a space.
+            // RichTextInput is a contenteditable div, so use innerText.
+            const value = (await textarea.evaluate((el: HTMLElement) => el.innerText)) || '';
             expect(value).toMatch(/\/impl\s/);
         } finally {
             cleanup();
@@ -925,8 +926,9 @@ test.describe('Draft Restoration', () => {
             await gotoQueueTask(page, serverUrl, wsId, task1.id as string);
             await waitForConversation(page, 2);
 
-            // Draft text should be restored
-            await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveValue('This is my draft text', { timeout: 3_000 });
+            // Draft text should be restored. The chat input is a RichTextInput
+            // contenteditable div, so use .toContainText() instead of .toHaveValue().
+            await expect(page.locator('[data-testid="activity-chat-input"]')).toContainText('This is my draft text', { timeout: 3_000 });
         } finally {
             cleanup();
         }

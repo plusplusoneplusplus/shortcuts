@@ -28,6 +28,17 @@ async function makeWorkspace(
     return { wsId, rootPath, cleanup: () => safeRmSync(rootPath) };
 }
 
+/**
+ * Set toolCompactness=0 via the admin API so tool calls render as individual
+ * .tool-call-card elements instead of being whisper-collapsed (default=3).
+ */
+async function setToolCompactnessZero(serverUrl: string): Promise<void> {
+    await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ toolCompactness: 0 }),
+    });
+}
+
 /** Poll GET /api/queue/:id until status matches or timeout expires. */
 async function waitForTaskStatus(
     serverUrl: string,
@@ -177,57 +188,53 @@ test.describe('Mock AI: Basic Conversation Rendering', () => {
 });
 
 // ── Group 2: Tool Call Rendering ──────────────────────────────────────────────
+//
+// Strategy: fire tool events immediately (no gating), let the task complete,
+// then navigate to the *completed* task. The persisted conversation timeline
+// includes the tool events, so the SPA renders tool-call cards without needing
+// live SSE delivery — avoiding all SSE timing races.
 
 test.describe('Mock AI: Tool Call Rendering', () => {
     test('renders a single tool call card', async ({ serverUrl, mockAI, page }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-tool-1');
-        // Gate releases only after the SSE connection is confirmed
-        let releaseToolEvents!: () => void;
-        const toolEventsGate = new Promise<void>((r) => { releaseToolEvents = r; });
-
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                // Block until SSE is confirmed connected (gate released in test body)
-                await toolEventsGate;
-                if (opts && opts.onToolEvent) {
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-1',
-                        toolName: 'view',
-                        parameters: { path: 'src/app.ts' },
-                    });
-                    await new Promise((r) => setTimeout(r, 100));
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-1',
-                        toolName: 'view',
-                        result: 'file content here',
-                    });
-                }
-                return { success: true, response: 'Done.', sessionId: 'session-123' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        {
+                            type: 'tool-start',
+                            toolCallId: 'tc-1',
+                            toolName: 'view',
+                            parameters: { path: 'src/app.ts' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-1',
+                            toolName: 'view',
+                            result: 'file content here',
+                        },
+                    ],
+                    { finalResponse: 'Done.' },
+                ),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Show me src/app.ts' },
             });
 
-            await gotoConversation(page, serverUrl, wsId, task.id as string);
-
-            // Wait for the SSE conversation-snapshot to be processed by the SPA.
-            // The user message only appears after the snapshot arrives, and by then
-            // the server has already subscribed to its EventEmitter — so tool events
-            // emitted after this point will reach the live SSE stream.
-            await expect(page.locator('.chat-message.user')).toBeVisible({ timeout: 10_000 });
-
-            // Now release tool events — server EventEmitter subscription is active
-            releaseToolEvents();
-
-            // Wait for task completion and bubbles
+            // Let the task complete before navigating — tool events are persisted
+            // in the conversation timeline and rendered without live SSE.
             await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
+
+            // Set toolCompactness=0 so tool calls render as individual cards
+            // (default=3 whisper-collapses them, hiding .tool-call-card).
+            await setToolCompactnessZero(serverUrl);
+
+            await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 2);
 
-            // One tool call card rendered
+            // One tool call card rendered from the persisted timeline
             await expect(page.locator('.tool-call-card')).toHaveCount(1, { timeout: 8000 });
             await expect(page.locator('.tool-call-card .tool-call-name')).toContainText('view');
 
@@ -238,83 +245,76 @@ test.describe('Mock AI: Tool Call Rendering', () => {
             await page.locator('.tool-call-header').first().click();
             await expect(page.locator('.tool-call-body.collapsed')).toHaveCount(0);
         } finally {
-            releaseToolEvents(); // ensure server is unblocked on failure
             cleanup();
         }
     });
 
     test('renders nested explore sub-task with child tools', async ({ serverUrl, mockAI, page }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-tool-2');
-        let releaseToolEvents!: () => void;
-        const toolEventsGate = new Promise<void>((r) => { releaseToolEvents = r; });
-
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                await toolEventsGate;
-                if (opts && opts.onToolEvent) {
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-explore',
-                        toolName: 'task',
-                        parameters: { agent_type: 'explore', prompt: 'find components' },
-                    });
-                    await new Promise((r) => setTimeout(r, 50));
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-view',
-                        toolName: 'view',
-                        parameters: { path: 'src/' },
-                        parentToolCallId: 'tc-explore',
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-view',
-                        toolName: 'view',
-                        result: 'src contents',
-                        parentToolCallId: 'tc-explore',
-                    });
-                    await new Promise((r) => setTimeout(r, 50));
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-grep',
-                        toolName: 'grep',
-                        parameters: { pattern: 'Component', path: 'src/' },
-                        parentToolCallId: 'tc-explore',
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-grep',
-                        toolName: 'grep',
-                        result: 'matches',
-                        parentToolCallId: 'tc-explore',
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-explore',
-                        toolName: 'task',
-                        result: 'found 2 components',
-                    });
-                }
-                return { success: true, response: 'Exploration complete.', sessionId: 'session-123' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        {
+                            type: 'tool-start',
+                            toolCallId: 'tc-explore',
+                            toolName: 'task',
+                            parameters: { agent_type: 'explore', prompt: 'find components' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCallId: 'tc-view',
+                            toolName: 'view',
+                            parameters: { path: 'src/' },
+                            parentToolCallId: 'tc-explore',
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-view',
+                            toolName: 'view',
+                            result: 'src contents',
+                            parentToolCallId: 'tc-explore',
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCallId: 'tc-grep',
+                            toolName: 'grep',
+                            parameters: { pattern: 'Component', path: 'src/' },
+                            parentToolCallId: 'tc-explore',
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-grep',
+                            toolName: 'grep',
+                            result: 'matches',
+                            parentToolCallId: 'tc-explore',
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-explore',
+                            toolName: 'task',
+                            result: 'found 2 components',
+                        },
+                    ],
+                    { finalResponse: 'Exploration complete.' },
+                ),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Explore and find components' },
             });
 
-            await gotoConversation(page, serverUrl, wsId, task.id as string);
-
-            // Wait for SSE conversation-snapshot to arrive (server subscription is active)
-            await expect(page.locator('.chat-message.user')).toBeVisible({ timeout: 10_000 });
-
-            // Release tool events now that SSE subscription is active
-            releaseToolEvents();
-
+            // Wait for task to complete before navigating
             await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
+
+            // Set toolCompactness=0 so tool calls render as individual cards
+            await setToolCompactnessZero(serverUrl);
+
+            await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 2);
 
-            // One top-level explore card
+            // One top-level explore card from the persisted timeline
             const exploreCard = page.locator('.tool-call-card[data-tool-id="tc-explore"]');
             await expect(exploreCard).toHaveCount(1, { timeout: 8000 });
 
@@ -335,7 +335,6 @@ test.describe('Mock AI: Tool Call Rendering', () => {
             await subtoolToggle.click();
             await expect(exploreCard.locator('.subtree-collapsed')).toHaveCount(1);
         } finally {
-            releaseToolEvents(); // ensure server is unblocked on failure
             cleanup();
         }
     });

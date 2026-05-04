@@ -621,8 +621,10 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
             await expect(page.locator('[data-testid="activity-chat-input"]')).not.toBeDisabled();
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).not.toBeDisabled();
 
-            // Placeholder text
-            await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveAttribute('placeholder', /[Cc]ontinue|message/i);
+            // Placeholder text (RichTextInput stores it on data-placeholder, not
+            // the standard placeholder attribute, because the underlying
+            // contenteditable div has no native placeholder support).
+            await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveAttribute('data-placeholder', /[Cc]ontinue|message|Send a message/i);
         } finally {
             cleanup();
         }
@@ -641,7 +643,9 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
             const textarea = page.locator('[data-testid="activity-chat-input"]');
             await textarea.fill('This is a follow-up message');
 
-            await expect(textarea).toHaveValue('This is a follow-up message');
+            // RichTextInput is a contenteditable div, so .toHaveValue() doesn't
+            // apply — assert on the rendered text instead.
+            await expect(textarea).toContainText('This is a follow-up message');
         } finally {
             cleanup();
         }
@@ -733,8 +737,9 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
             await textarea.press('Shift+Enter');
             await textarea.type('Line 2');
 
-            // Textarea contains newline, message not sent
-            const value = await textarea.inputValue();
+            // RichTextInput is a contenteditable div, so .inputValue() doesn't apply.
+            // Read .innerText/.textContent instead to assert the visible content.
+            const value = (await textarea.evaluate((el: HTMLElement) => el.innerText)) || '';
             expect(value).toContain('Line 1');
             expect(value).toContain('Line 2');
 

@@ -113,9 +113,13 @@ async function seedCompletedChat(
 }
 
 /**
- * Hard-reload the page after applying a layout-mode preference so the cached
- * client snapshot is refreshed. This guarantees the in-page `useUiLayoutMode`
- * store reflects the server value before the deep-link runs.
+ * Hard-reload the page to `/#` so the SPA mounts fresh and picks up the
+ * server-side uiLayoutMode preference.
+ *
+ * IMPORTANT: Workspaces must be seeded BEFORE calling this function so that
+ * the repos list is populated when `fetchRepos()` fires on mount. A hash
+ * change away from `/#` later (same origin) does NOT trigger a new page load
+ * and will not re-fetch repos — the list must already contain the workspace.
  */
 async function reloadWithMode(page: Page, serverUrl: string, mode: 'classic' | 'dev-workflow'): Promise<void> {
     await setUiLayoutMode(serverUrl, mode);
@@ -135,6 +139,9 @@ async function assertDeepLinkRendersDetail(
     processId: string,
     urlSegment: 'activity' | 'chats',
 ): Promise<void> {
+    // Hash change to the deep link.  The repos list is already populated
+    // (workspace was seeded before page.goto(/#)), so selectedRepo resolves
+    // immediately and RepoChatTab mounts with the correct selectedTaskId.
     await page.goto(`${serverUrl}/#repos/${wsId}/${urlSegment}/${encodeURIComponent(processId)}`);
 
     const detail = page.locator('[data-testid="activity-chat-detail"]');
@@ -160,46 +167,49 @@ test.describe('Mobile Activity Deep Link', () => {
     });
 
     test('mobile (classic mode): /activity/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'classic');
+        // Seed workspace BEFORE reloadWithMode so fetchRepos() on page load
+        // returns the workspace and the subsequent hash-change navigation finds it.
         const wsId = 'ws-mob-act-classic';
         await seedWorkspace(serverUrl, wsId, 'mob-act-classic-repo', makeTmpRoot('act-classic'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Activity Classic');
 
+        await reloadWithMode(page, serverUrl, 'classic');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'activity');
     });
 
     test('mobile (classic mode): /chats/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'classic');
         const wsId = 'ws-mob-chat-classic';
         await seedWorkspace(serverUrl, wsId, 'mob-chat-classic-repo', makeTmpRoot('chat-classic'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Chats Classic');
 
+        await reloadWithMode(page, serverUrl, 'classic');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'chats');
     });
 
     test('mobile (dev-workflow mode): /activity/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
         const wsId = 'ws-mob-act-dev';
         await seedWorkspace(serverUrl, wsId, 'mob-act-dev-repo', makeTmpRoot('act-dev'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Activity Dev');
 
+        await reloadWithMode(page, serverUrl, 'dev-workflow');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'activity');
     });
 
     test('mobile (dev-workflow mode): /chats/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
         const wsId = 'ws-mob-chat-dev';
         await seedWorkspace(serverUrl, wsId, 'mob-chat-dev-repo', makeTmpRoot('chat-dev'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Chats Dev');
 
+        await reloadWithMode(page, serverUrl, 'dev-workflow');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'chats');
     });
 
     test('mobile (classic mode): tap a just-completed chat in the activity list opens the detail pane full-width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'classic');
         const wsId = 'ws-mob-tap-classic';
         await seedWorkspace(serverUrl, wsId, 'mob-tap-classic-repo', makeTmpRoot('tap-classic'));
         await seedCompletedChat(serverUrl, wsId, 'Just Finished Chat (Classic)');
+
+        await reloadWithMode(page, serverUrl, 'classic');
 
         await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
@@ -222,10 +232,11 @@ test.describe('Mobile Activity Deep Link', () => {
     });
 
     test('mobile (dev-workflow mode): tap a just-completed chat in the chats list opens the detail pane full-width', async ({ page, serverUrl }) => {
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
         const wsId = 'ws-mob-tap-dev';
         await seedWorkspace(serverUrl, wsId, 'mob-tap-dev-repo', makeTmpRoot('tap-dev'));
         await seedCompletedChat(serverUrl, wsId, 'Just Finished Chat (Dev)');
+
+        await reloadWithMode(page, serverUrl, 'dev-workflow');
 
         await page.goto(`${serverUrl}/#repos/${wsId}/chats`);
 
