@@ -174,17 +174,21 @@ test.describe('Models View', () => {
 
         const wasEnabled = (await cards.first().locator('[data-testid="toggle-on"]').count()) > 0;
 
-        // Click the toggle — PUT /api/models/enabled is called
-        const putPromise = page.waitForRequest(req =>
+        // Click the toggle — PUT /api/models/enabled is called.
+        // Both listeners must be set up BEFORE clicking. Otherwise the request
+        // can complete before `waitForResponse` is awaited, deadlocking the
+        // test (we observed a 30s timeout in CI on the response wait alone).
+        const putRequestPromise = page.waitForRequest(req =>
             req.url().includes('/api/models/enabled') && req.method() === 'PUT',
         );
-        await firstToggle.click();
-        await putPromise;
-
-        // Wait for the API call to complete
-        await page.waitForResponse(
-            res => res.url().includes('/api/models/enabled') && res.status() === 200,
+        const putResponsePromise = page.waitForResponse(
+            res => res.url().includes('/api/models/enabled')
+                && res.request().method() === 'PUT'
+                && res.status() === 200,
         );
+        await firstToggle.click();
+        await putRequestPromise;
+        await putResponsePromise;
 
         // Reload the page and navigate back to models
         await page.goto(`${serverUrl}/#models`);
