@@ -4,37 +4,37 @@
  */
 import { test, expect } from '../fixtures/server-fixture';
 import { seedWorkspace, seedQueueTask, seedQueueTasks } from '../fixtures/seed';
-import { createWikiFixture } from '../fixtures/wiki-fixtures';
 import { DESKTOP } from './viewports';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 
 test.use({ viewport: DESKTOP });
 
 test.describe('Desktop Regression', () => {
-    test('desktop: ProcessesView shows sidebar and detail side-by-side', async ({ page, serverUrl }) => {
+    test('desktop: per-repo activity shows sidebar and detail side-by-side', async ({ page, serverUrl }) => {
+        const wsId = 'ws-desk-act-1';
+        await seedWorkspace(serverUrl, wsId, 'desk-act-repo-1');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'T1' },
-            { type: 'chat', displayName: 'T2' },
-            { type: 'chat', displayName: 'T3' },
+            { type: 'chat', displayName: 'T1', repoId: wsId },
+            { type: 'chat', displayName: 'T2', repoId: wsId },
+            { type: 'chat', displayName: 'T3', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
         // ChatListPane (left panel) should be visible
-        const listPane = page.locator('[data-testid="activity-split-panel"]');
-        await expect(listPane).toBeVisible();
+        const splitPanel = page.locator('[data-testid="activity-split-panel"]');
+        await expect(splitPanel).toBeVisible();
 
         // Detail pane should also be visible
         const detail = page.locator('[data-testid="activity-detail-panel"]');
         await expect(detail.first()).toBeVisible();
     });
 
-    test('desktop: ProcessesView sidebar + detail are both visible', async ({ page, serverUrl }) => {
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Desktop Detail' });
-        await page.goto(`${serverUrl}/#processes`);
+    test('desktop: per-repo activity sidebar + detail are both visible', async ({ page, serverUrl }) => {
+        const wsId = 'ws-desk-act-2';
+        await seedWorkspace(serverUrl, wsId, 'desk-act-repo-2');
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Desktop Detail', repoId: wsId });
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         await page.locator('[data-task-id]').first().click();
@@ -79,7 +79,8 @@ test.describe('Desktop Regression', () => {
     test('desktop: TopBar shows text tab labels', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        for (const tab of ['processes', 'memory']) {
+        // The global processes tab was removed; verify remaining top-level tabs.
+        for (const tab of ['memory']) {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible();
         }
@@ -125,28 +126,30 @@ test.describe('Desktop Regression', () => {
         expect(panelBox!.width).toBeLessThan(1280);
     });
 
-    test('desktop: tab navigation works across all tabs', async ({ page, serverUrl }) => {
+    test('desktop: tab navigation works across available tabs', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
 
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible();
-
+        // The global `processes` tab was removed; navigate to memory and skills instead.
         await page.click('[data-tab="memory"]');
         await expect(page.locator('#view-memory')).toBeVisible();
+
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible();
     });
 
     test('desktop: deep links resolve correctly', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
 
-        await page.goto(`${serverUrl}/#processes`);
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
-
+        // The global `#processes` route was removed; verify other routes still resolve.
         await page.goto(`${serverUrl}/#memory`);
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
+
+        await page.goto(`${serverUrl}/#skills`);
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
     test('desktop: admin panel renders', async ({ page, serverUrl }) => {

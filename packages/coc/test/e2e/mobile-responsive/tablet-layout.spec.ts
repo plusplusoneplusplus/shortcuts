@@ -26,8 +26,9 @@ test.describe('Tablet Layout', () => {
     test('tablet: TopBar tab buttons are visible', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // At tablet width (768px), TopBar tab buttons should be visible
-        for (const tab of ['repos', 'processes', 'memory']) {
+        // At tablet width (768px), TopBar icon-buttons should be visible.
+        // The global `processes` tab no longer exists; check memory and repos instead.
+        for (const tab of ['repos', 'memory']) {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible({ timeout: 10000 });
         }
@@ -42,16 +43,18 @@ test.describe('Tablet Layout', () => {
         }
     });
 
-    test('tablet: ProcessesView renders two-pane layout', async ({ page, serverUrl }) => {
+    test('tablet: activity split-panel renders two-pane layout', async ({ page, serverUrl }) => {
+        const wsId = 'ws-tab-act';
+        await seedWorkspace(serverUrl, wsId, 'tab-act-repo');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'T1' },
-            { type: 'chat', displayName: 'T2' },
+            { type: 'chat', displayName: 'T1', repoId: wsId },
+            { type: 'chat', displayName: 'T2', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
-        // Both list panel and detail panel should be visible
+        // Both list panel and detail panel should be visible at tablet width
         const splitPanel = page.locator('[data-testid="activity-split-panel"]');
         await expect(splitPanel).toBeVisible();
     });
@@ -68,8 +71,8 @@ test.describe('Tablet Layout', () => {
     });
 
     test('tablet: dialog renders as centered modal', async ({ page, serverUrl }) => {
-        await page.goto(`${serverUrl}/#processes`);
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
+        await page.goto(`${serverUrl}/#repos`);
+        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
         // Open AddRepoDialog via the RepoTabStrip add button (mini sidebar was removed)
         await page.click('[data-testid="repo-tab-add-btn"]');
         await page.click('[data-testid="repo-tab-add-repo-option"]');
@@ -121,5 +124,3 @@ test.describe('Tablet Layout', () => {
         }
     });
 });
-
-

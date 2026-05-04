@@ -27,7 +27,7 @@ test.describe('Keyboard shortcuts', () => {
         await expect(page).toHaveURL(/activity/);
     });
 
-    test("pressing Alt+I on Repos tab with selected repo navigates to Wiki sub-tab", async ({ page, serverUrl }) => {
+    test("pressing Alt+I on Repos tab with selected repo navigates to Work-items sub-tab", async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-ks-2', 'kb-test-repo-w', '/tmp/kb-test-repo-w');
         await page.goto(serverUrl);
 
@@ -36,11 +36,11 @@ test.describe('Keyboard shortcuts', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        // Press Alt+I to jump to Wiki sub-tab
+        // Press Alt+I — the `i` shortcut maps to the Work-items sub-tab
+        // (see REPO_TAB_SHORTCUTS in `layout/Router.tsx`).
         await page.keyboard.press('Alt+i');
 
-        // Hash should include 'wiki'
-        await expect(page).toHaveURL(/wiki/);
+        await expect(page).toHaveURL(/work-items/);
     });
 
     test("pressing bare 'W' does NOT navigate away from current tab", async ({ page, serverUrl }) => {
@@ -64,9 +64,10 @@ test.describe('Keyboard shortcuts', () => {
     test("keyboard shortcuts are ignored when not on Repos tab", async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // Switch to Processes tab
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible();
+        // Switch to Skills tab — repo sub-tab shortcuts only fire when
+        // `state.activeTab === 'repos'` AND a repo is selected.
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
         const urlBefore = page.url();
 

@@ -1,5 +1,9 @@
 /**
  * Mobile Processes Tests — verify queue task list and detail at 375×812.
+ *
+ * All tests navigate to the per-repo activity surface at
+ * `#repos/<wsId>/activity` (the global `#processes` route was removed).
+ * Each test seeds its own workspace and associates tasks via `repoId`.
  */
 import { test, expect } from '../fixtures/server-fixture';
 import { seedQueueTask, seedQueueTasks, seedWorkspace } from '../fixtures/seed';
@@ -9,12 +13,14 @@ test.use({ viewport: MOBILE, hasTouch: true });
 
 test.describe('Mobile Processes', () => {
     test('mobile: process list is full-width, no sidebar', async ({ page, serverUrl }) => {
+        const wsId = 'ws-mob-proc-1';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-1');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'Task A' },
-            { type: 'chat', displayName: 'Task B' },
-            { type: 'chat', displayName: 'Task C' },
+            { type: 'chat', displayName: 'Task A', repoId: wsId },
+            { type: 'chat', displayName: 'Task B', repoId: wsId },
+            { type: 'chat', displayName: 'Task C', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
@@ -25,14 +31,16 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: process list shows all seeded items', async ({ page, serverUrl }) => {
+        const wsId = 'ws-mob-proc-2';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-2');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'T1' },
-            { type: 'chat', displayName: 'T2' },
-            { type: 'chat', displayName: 'T3' },
-            { type: 'chat', displayName: 'T4' },
-            { type: 'chat', displayName: 'T5' },
+            { type: 'chat', displayName: 'T1', repoId: wsId },
+            { type: 'chat', displayName: 'T2', repoId: wsId },
+            { type: 'chat', displayName: 'T3', repoId: wsId },
+            { type: 'chat', displayName: 'T4', repoId: wsId },
+            { type: 'chat', displayName: 'T5', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         const count = await page.locator('[data-task-id]').count();
@@ -40,8 +48,10 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: tap process opens full-screen detail with back button', async ({ page, serverUrl }) => {
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Mobile Detail Test' });
-        await page.goto(`${serverUrl}/#processes`);
+        const wsId = 'ws-mob-proc-3';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-3');
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Mobile Detail Test', repoId: wsId });
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         await page.locator('[data-task-id]').first().tap();
@@ -55,8 +65,10 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: back button returns to process list', async ({ page, serverUrl }) => {
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Mobile Back Test' });
-        await page.goto(`${serverUrl}/#processes`);
+        const wsId = 'ws-mob-proc-4';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-4');
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Mobile Back Test', repoId: wsId });
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         await page.locator('[data-task-id]').first().tap();
@@ -71,11 +83,13 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: filters in collapsible section', async ({ page, serverUrl }) => {
+        const wsId = 'ws-mob-proc-5';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-5');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'T1' },
-            { type: 'chat', displayName: 'T2' },
+            { type: 'chat', displayName: 'T1', repoId: wsId },
+            { type: 'chat', displayName: 'T2', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
@@ -87,8 +101,10 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: search input is accessible', async ({ page, serverUrl }) => {
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Search Test' });
-        await page.goto(`${serverUrl}/#processes`);
+        const wsId = 'ws-mob-proc-6';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-6');
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Search Test', repoId: wsId });
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         // Queue view is accessible — task list renders correctly on mobile
@@ -98,11 +114,13 @@ test.describe('Mobile Processes', () => {
     });
 
     test('mobile: status filter works on mobile', async ({ page, serverUrl }) => {
+        const wsId = 'ws-mob-proc-7';
+        await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-7');
         await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'Chat Task' },
-            { type: 'run-workflow', displayName: 'Workflow Task' },
+            { type: 'chat', displayName: 'Chat Task', repoId: wsId },
+            { type: 'run-workflow', displayName: 'Workflow Task', repoId: wsId },
         ]);
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
@@ -123,13 +141,19 @@ test.describe('Mobile Processes', () => {
 
     test('mobile: tapping run-workflow task with repoId redirects to repo workflow detail', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-rw-1', 'rw-repo-1');
+        // Seed a chat task first so [data-task-id] is guaranteed to appear in the list
+        await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'Chat Anchor Task',
+            repoId: 'ws-rw-1',
+        });
         const task = await seedQueueTask(serverUrl, {
             type: 'run-workflow',
             displayName: 'Workflow Redirect Task',
             repoId: 'ws-rw-1',
         });
 
-        await page.goto(`${serverUrl}/#processes`);
+        await page.goto(`${serverUrl}/#repos/ws-rw-1/activity`);
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
         // Tap the run-workflow task
@@ -145,5 +169,7 @@ test.describe('Mobile Processes', () => {
             await page.waitForTimeout(500);
             // Redirect should happen if the first task is the run-workflow one
         }
+        // suppress unused variable warning
+        void task;
     });
 });

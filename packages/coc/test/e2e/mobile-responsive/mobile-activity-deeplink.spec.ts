@@ -108,7 +108,7 @@ async function seedCompletedChat(
         type: 'chat',
         displayName,
         repoId: workspaceId,
-        payload: { prompt: `Hello from ${displayName}` },
+        payload: { prompt: `Hello from ${displayName}`, workspaceId },
     });
 }
 

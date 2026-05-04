@@ -35,19 +35,23 @@ function createTempRepo(tmpDir: string, name: string): string {
 // ---------------------------------------------------------------------------
 
 test.describe('MiniReposSidebar – Absent from persistent rail', () => {
-    test('MRS.1 mini-repos-sidebar is not rendered on processes tab', async ({ page, serverUrl }) => {
+    // The standalone Processes tab and `[data-tab="processes"]` button were
+    // removed; tests that previously exercised the Processes view now navigate
+    // to the Skills tab to verify the mini sidebar / tab-strip behaviour on a
+    // non-Repos top-level page.
+    test('MRS.1 mini-repos-sidebar is not rendered on a non-repos tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10_000 });
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="mini-repos-sidebar"]')).toHaveCount(0);
         await expect(page.locator('[data-testid="persistent-mini-sidebar"]')).toHaveCount(0);
     });
 
-    test('MRS.2 repo-tab-strip add button is visible on processes tab', async ({ page, serverUrl }) => {
+    test('MRS.2 repo-tab-strip add button is visible on a non-repos tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10_000 });
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="repo-tab-add-btn"]')).toBeVisible({ timeout: 5_000 });
     });
@@ -80,8 +84,8 @@ test.describe('MiniReposSidebar – Repos in RepoTabStrip', () => {
             await seedWorkspace(serverUrl, 'ws-mrs-alpha', 'repo-a', repoA);
 
             await page.goto(serverUrl);
-            await page.click('[data-tab="processes"]');
-            await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10_000 });
+            await page.click('[data-tab="skills"]');
+            await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
             // Repo should appear in the tab strip, not in a mini sidebar
             await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 8_000 });

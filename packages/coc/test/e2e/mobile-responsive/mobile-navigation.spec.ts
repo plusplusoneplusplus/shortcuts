@@ -8,14 +8,14 @@ import { MOBILE } from './viewports';
 test.use({ viewport: MOBILE, hasTouch: true });
 
 test.describe('Mobile Navigation', () => {
-    test('mobile: bottom nav visible with 5 tabs', async ({ page, serverUrl }) => {
+    test('mobile: bottom nav visible with 4 tabs', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
         const tabs = bottomNav.locator('button');
-        await expect(tabs).toHaveCount(5);
+        await expect(tabs).toHaveCount(4);
     });
 
     test('mobile: bottom nav tabs have correct labels', async ({ page, serverUrl }) => {
@@ -24,7 +24,7 @@ test.describe('Mobile Navigation', () => {
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
-        for (const label of ['Processes', 'Skills', 'Memory', 'Logs', 'Usage']) {
+        for (const label of ['Skills', 'Memory', 'Logs', 'Usage']) {
             await expect(bottomNav.locator('button', { hasText: new RegExp(label, 'i') })).toBeVisible();
         }
     });
@@ -40,15 +40,15 @@ test.describe('Mobile Navigation', () => {
         }
     });
 
-    test('mobile: tapping bottom nav Processes switches view', async ({ page, serverUrl }) => {
+    test('mobile: tapping bottom nav Skills switches view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
-        await bottomNav.locator('button', { hasText: /Processes/i }).tap();
+        await bottomNav.locator('button', { hasText: /Skills/i }).tap();
 
-        await expect(page.locator('#view-processes')).toBeVisible();
-        expect(page.url()).toContain('#processes');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
+        expect(page.url()).toContain('#skills');
     });
 
     test('mobile: tapping bottom nav Memory switches view', async ({ page, serverUrl }) => {
@@ -67,9 +67,9 @@ test.describe('Mobile Navigation', () => {
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
-        // First go to processes
-        await bottomNav.locator('button', { hasText: /Processes/i }).tap();
-        await expect(page.locator('#view-processes')).toBeVisible();
+        // First go to memory via bottom nav
+        await bottomNav.locator('button', { hasText: /Memory/i }).tap();
+        await expect(page.locator('#view-memory')).toBeVisible();
 
         // Navigate to repos via hash — BottomNav does not have a Repos button
         // since repos is the default/home view accessed via the CoC header link
@@ -83,13 +83,16 @@ test.describe('Mobile Navigation', () => {
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
-        // Navigate to Processes
-        await bottomNav.locator('button', { hasText: /Processes/i }).tap();
-        await expect(page.locator('#view-processes')).toBeVisible();
+        // Navigate to Skills
+        await bottomNav.locator('button', { hasText: /Skills/i }).tap();
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
         // The active button should have distinct styling (aria-current or active class)
-        const processesBtn = bottomNav.locator('button[data-tab="processes"]');
+        const skillsBtn = bottomNav.locator('button[data-tab="skills"]');
         const memoryBtn = bottomNav.locator('button[data-tab="memory"]');
+
+        // skills button should exist (suppress unused-var lint)
+        await expect(skillsBtn).toBeVisible();
 
         // Tap Memory
         await memoryBtn.tap();

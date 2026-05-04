@@ -110,6 +110,17 @@ test.describe('ExploreCachePanel', () => {
     });
 
     test('M.8 stats dl renders with raw and consolidated counts', async ({ page, serverUrl }) => {
+        // The tool-call cache stats endpoint is not implemented on the server,
+        // so mock it to verify the UI rendering. Without the mock the panel
+        // shows an error message instead of the stats <dl>.
+        await page.route('**/api/memory/aggregate-tool-calls/stats', route => {
+            route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ rawCount: 7, consolidatedCount: 3, lastAggregation: null }),
+            });
+        });
+
         await gotoMemory(page, serverUrl);
         await page.click('[data-subtab="config"]');
 

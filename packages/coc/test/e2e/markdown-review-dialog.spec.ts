@@ -36,8 +36,16 @@ async function waitForTaskStatus(
     throw new Error(`Task ${taskId} did not reach ${targetStatuses.join('|')} within ${timeoutMs}ms`);
 }
 
-async function gotoConversation(page: Page, serverUrl: string, taskId: string): Promise<void> {
-    await page.goto(`${serverUrl}/#process/queue_${taskId}`);
+async function gotoConversation(
+    page: Page,
+    serverUrl: string,
+    wsId: string,
+    taskId: string,
+): Promise<void> {
+    const processId = `queue_${taskId}`;
+    await page.goto(
+        `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity/${encodeURIComponent(processId)}`,
+    );
     await page.waitForSelector('[data-testid="activity-chat-detail"]', { timeout: 8_000 });
 }
 
@@ -65,7 +73,8 @@ async function setupAndNavigate(
     });
 
     const task = await seedQueueTask(serverUrl, {
-        payload: { prompt: 'Review the docs' },
+        repoId: wsId,
+        payload: { workspaceId: wsId, prompt: 'Review the docs' },
     });
     const taskId = task.id as string;
 
@@ -89,7 +98,7 @@ async function setupAndNavigate(
         }),
     );
 
-    await gotoConversation(page, serverUrl, taskId);
+    await gotoConversation(page, serverUrl, wsId, taskId);
     await waitForBubbles(page, 2);
 
     return taskId;

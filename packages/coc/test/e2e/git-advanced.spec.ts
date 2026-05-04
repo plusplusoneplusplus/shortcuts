@@ -52,6 +52,29 @@ test.describe('Git advanced — Branch inline diff', () => {
         const wsId = 'ws-bid-1';
         await seedWorkspace(serverUrl, wsId, 'bid-repo');
 
+        // The Git sub-tab is filtered out unless `gitInfo.isGitRepo` is true.
+        // Mock the per-workspace and batch git-info endpoints so the SPA
+        // renders the Git tab even though the seeded workspace isn't backed
+        // by a real git repo on disk.
+        await page.route(
+            (url: string) => new URL(url).pathname === '/api/git-info/batch',
+            (route) => route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    results: { [wsId]: { isGitRepo: true, branch: 'feature/test', dirty: false } },
+                }),
+            }),
+        );
+        await page.route(
+            (url: string) => new URL(url).pathname.endsWith(`/workspaces/${wsId}/git-info`),
+            (route) => route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ isGitRepo: true, branch: 'feature/test', dirty: false }),
+            }),
+        );
+
         // Mock all git API endpoints
         await page.route(
             (url: string) => new URL(url).pathname.includes(`/workspaces/${wsId}/git/commits`) &&
@@ -260,6 +283,29 @@ test.describe('Git advanced — Branch large diff Show All', () => {
     test('large diff shows truncated content and Show All button', async ({ page, serverUrl }) => {
         const wsId = 'ws-showall-1';
         await seedWorkspace(serverUrl, wsId, 'showall-repo');
+
+        // The Git sub-tab is filtered out unless `gitInfo.isGitRepo` is true.
+        // Mock the per-workspace and batch git-info endpoints so the SPA
+        // renders the Git tab even though the seeded workspace isn't backed
+        // by a real git repo on disk.
+        await page.route(
+            (url: string) => new URL(url).pathname === '/api/git-info/batch',
+            (route) => route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    results: { [wsId]: { isGitRepo: true, branch: 'feature/big', dirty: false } },
+                }),
+            }),
+        );
+        await page.route(
+            (url: string) => new URL(url).pathname.endsWith(`/workspaces/${wsId}/git-info`),
+            (route) => route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ isGitRepo: true, branch: 'feature/big', dirty: false }),
+            }),
+        );
 
         // Build a diff with > 500 lines
         const diffLines = [

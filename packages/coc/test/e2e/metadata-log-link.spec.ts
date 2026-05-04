@@ -11,8 +11,11 @@
  * ConversationMetadataPopover but has no standalone logs button.
  */
 
-import { test, expect } from './fixtures/server-fixture';
-import { seedQueueTask, request } from './fixtures/seed';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
 
 /** Poll GET /api/queue/:id until status matches or timeout expires. */
@@ -40,9 +43,34 @@ async function waitForTaskStatus(
     );
 }
 
-async function gotoConversation(page: Page, serverUrl: string, taskId: string): Promise<void> {
-    await page.goto(`${serverUrl}/#process/queue_${taskId}`);
+async function gotoConversation(
+    page: Page,
+    serverUrl: string,
+    wsId: string,
+    taskId: string,
+): Promise<void> {
+    const processId = `queue_${taskId}`;
+    await page.goto(
+        `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity/${encodeURIComponent(processId)}`,
+    );
     await page.waitForSelector('[data-testid="activity-chat-detail"]', { timeout: 8_000 });
+}
+
+/** Provision a workspace + queue task scoped to it. */
+async function setup(
+    serverUrl: string,
+    idPrefix: string,
+    payload: Record<string, unknown>,
+): Promise<{ wsId: string; taskId: string; cleanup: () => void }> {
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), `e2e-meta-${idPrefix}-`));
+    const wsId = `${idPrefix}-${Date.now().toString(36)}`;
+    await seedWorkspace(serverUrl, wsId, idPrefix, rootPath);
+    const task = await seedQueueTask(serverUrl, {
+        type: 'chat',
+        repoId: wsId,
+        payload: { workspaceId: wsId, ...payload },
+    });
+    return { wsId, taskId: task.id as string, cleanup: () => safeRmSync(rootPath) };
 }
 
 async function openMetadataPopover(page: Page): Promise<void> {
@@ -66,21 +94,21 @@ test.describe('Metadata popover — log link', () => {
             sessionId: 'e2e-session-42',
         });
 
-        const task = await seedQueueTask(serverUrl, {
-            type: 'chat',
-            payload: { prompt: 'Hello world' },
-        });
+        const { wsId, taskId, cleanup } = await setup(serverUrl, 'meta1', { prompt: 'Hello world' });
+        try {
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            await gotoConversation(page, serverUrl, wsId, taskId);
+            await openMetadataPopover(page);
 
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
-        await gotoConversation(page, serverUrl, task.id as string);
-        await openMetadataPopover(page);
-
-        // The "🔍 logs" link should be present and have the correct href
-        const logLink = page.locator('a[title="View logs for this session"]');
-        await expect(logLink).toBeVisible();
-        const href = await logLink.getAttribute('href');
-        expect(href).toContain('#logs?sessionId=');
-        expect(href).toContain('e2e-session-42');
+            // The "🔍 logs" link should be present and have the correct href
+            const logLink = page.locator('a[title="View logs for this session"]');
+            await expect(logLink).toBeVisible();
+            const href = await logLink.getAttribute('href');
+            expect(href).toContain('#logs?sessionId=');
+            expect(href).toContain('e2e-session-42');
+        } finally {
+            cleanup();
+        }
     });
 
     test('grid rows are properly aligned with 2 children per row (no overflow)', async ({
@@ -94,21 +122,28 @@ test.describe('Metadata popover — log link', () => {
             sessionId: 'alignment-sess',
         });
 
-        const task = await seedQueueTask(serverUrl, {
-            type: 'chat',
-            payload: { prompt: 'Test alignment' },
-        });
-
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
-        await gotoConversation(page, serverUrl, task.id as string);
+        const { wsId, taskId, cleanup } = await setup(serverUrl, 'meta2', { prompt: 'Test alignment' });
+        try {
+        await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+        await gotoConversation(page, serverUrl, wsId, taskId);
         await openMetadataPopover(page);
 
-        // Every .contents row in the grid should have exactly 2 direct children
-        // (label in col 1, value/wrapper in col 2). The bug caused 3 children
-        // when a link was present, breaking subsequent rows.
+        // Every .contents row inside the metadata popover grid should have
+        // exactly 2 direct children (label in col 1, value/wrapper in col 2).
+        // The bug caused 3 children when a link was present, breaking
+        // subsequent rows. Scope the query to the popover grid (children of
+        // the `.grid.grid-cols-...` container) so unrelated `display:contents`
+        // wrappers elsewhere in the DOM don't pollute the assertion.
         const childCounts = await page.evaluate(() => {
-            const rows = document.querySelectorAll('.contents');
-            return Array.from(rows).map((row) => row.children.length);
+            const grids = Array.from(document.querySelectorAll('div.grid'))
+                .filter(grid => /grid-cols-\[130px/.test(grid.className));
+            const rows: Element[] = [];
+            for (const grid of grids) {
+                for (const child of Array.from(grid.children)) {
+                    if (child.classList.contains('contents')) rows.push(child);
+                }
+            }
+            return rows.map((row) => row.children.length);
         });
 
         expect(childCounts.length).toBeGreaterThan(0);
@@ -125,6 +160,9 @@ test.describe('Metadata popover — log link', () => {
             return parent?.tagName === 'DIV' && parent?.classList.contains('flex');
         });
         expect(sessionLinkInsideWrapper).toBe(true);
+        } finally {
+            cleanup();
+        }
     });
 
     test('clicking the "🔍 logs" link navigates to logs view with session filter', async ({
@@ -138,30 +176,30 @@ test.describe('Metadata popover — log link', () => {
             sessionId: 'nav-session-99',
         });
 
-        const task = await seedQueueTask(serverUrl, {
-            type: 'chat',
-            payload: { prompt: 'Navigate test' },
-        });
+        const { wsId, taskId, cleanup } = await setup(serverUrl, 'meta3', { prompt: 'Navigate test' });
+        try {
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            await gotoConversation(page, serverUrl, wsId, taskId);
+            await openMetadataPopover(page);
 
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
-        await gotoConversation(page, serverUrl, task.id as string);
-        await openMetadataPopover(page);
+            // Click the log link
+            const logLink = page.locator('a[title="View logs for this session"]');
+            await logLink.click();
 
-        // Click the log link
-        const logLink = page.locator('a[title="View logs for this session"]');
-        await logLink.click();
+            // URL should contain the session ID hash
+            await page.waitForFunction(
+                () => location.hash.includes('logs?sessionId='),
+                null,
+                { timeout: 5_000 },
+            );
+            expect(page.url()).toContain('#logs?sessionId=nav-session-99');
 
-        // URL should contain the session ID hash
-        await page.waitForFunction(
-            () => location.hash.includes('logs?sessionId='),
-            null,
-            { timeout: 5_000 },
-        );
-        expect(page.url()).toContain('#logs?sessionId=nav-session-99');
-
-        // The Logs view should be visible with the session filter chip
-        await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8_000 });
-        await expect(page.locator('[data-testid="session-filter-chip"]')).toBeVisible({ timeout: 5_000 });
+            // The Logs view should be visible with the session filter chip
+            await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('[data-testid="session-filter-chip"]')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            cleanup();
+        }
     });
 
     test('no log link appears when process has no session ID', async ({
@@ -175,21 +213,21 @@ test.describe('Metadata popover — log link', () => {
             response: 'No session test',
         });
 
-        const task = await seedQueueTask(serverUrl, {
-            type: 'chat',
-            payload: { prompt: 'No session' },
-        });
+        const { wsId, taskId, cleanup } = await setup(serverUrl, 'meta4', { prompt: 'No session' });
+        try {
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            await gotoConversation(page, serverUrl, wsId, taskId);
+            await openMetadataPopover(page);
 
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
-        await gotoConversation(page, serverUrl, task.id as string);
-        await openMetadataPopover(page);
+            // No log link should be present
+            const logLink = page.locator('a[title="View logs for this session"]');
+            await expect(logLink).toHaveCount(0);
 
-        // No log link should be present
-        const logLink = page.locator('a[title="View logs for this session"]');
-        await expect(logLink).toHaveCount(0);
-
-        // Session ID row should not appear at all
-        const sessionRow = page.locator('text=Session ID');
-        await expect(sessionRow).toHaveCount(0);
+            // Session ID row should not appear at all
+            const sessionRow = page.locator('text=Session ID');
+            await expect(sessionRow).toHaveCount(0);
+        } finally {
+            cleanup();
+        }
     });
 });

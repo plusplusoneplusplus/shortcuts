@@ -13,11 +13,16 @@ test.describe('Cross-Viewport Deep Links', () => {
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
     });
 
-    test('deeplinks: #processes/:id resolves at mobile viewport', async ({ page, serverUrl }) => {
+    test('deeplinks: #repos/:wsId/activity/:id resolves at mobile viewport', async ({ page, serverUrl }) => {
         await page.setViewportSize(MOBILE);
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'DeepLink Mobile' });
+        await seedWorkspace(serverUrl, 'dl-mob-act-ws', 'dl-mob-act-repo');
+        const task = await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'DeepLink Mobile',
+            repoId: 'dl-mob-act-ws',
+        });
         const taskId = task.id as string;
-        await page.goto(`${serverUrl}/#process/queue_${encodeURIComponent(taskId)}`);
+        await page.goto(`${serverUrl}/#repos/dl-mob-act-ws/activity/queue_${encodeURIComponent(taskId)}`);
 
         // Detail should render on mobile (full-screen)
         await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 10000 });
@@ -75,11 +80,16 @@ test.describe('Cross-Viewport Deep Links', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
     });
 
-    test('deeplinks: #processes/:id resolves at tablet viewport', async ({ page, serverUrl }) => {
+    test('deeplinks: #repos/:wsId/activity/:id resolves at tablet viewport', async ({ page, serverUrl }) => {
         await page.setViewportSize(TABLET);
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Tablet DeepLink' });
+        await seedWorkspace(serverUrl, 'dl-tab-act-ws', 'dl-tab-act-repo');
+        const task = await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'Tablet DeepLink',
+            repoId: 'dl-tab-act-ws',
+        });
         const taskId = task.id as string;
-        await page.goto(`${serverUrl}/#process/queue_${encodeURIComponent(taskId)}`);
+        await page.goto(`${serverUrl}/#repos/dl-tab-act-ws/activity/queue_${encodeURIComponent(taskId)}`);
 
         // At tablet width, two-pane with detail visible
         await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 10000 });
