@@ -71,6 +71,9 @@ export interface CLIConfig {
     pullRequests?: {
         enabled?: boolean;
     };
+    servers?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

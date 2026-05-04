@@ -15,6 +15,7 @@ interface DashboardConfig {
     scratchpadLayout?: 'horizontal' | 'vertical';
     workflowsEnabled?: boolean;
     pullRequestsEnabled?: boolean;
+    serversEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -67,4 +68,8 @@ export function isWorkflowsEnabled(): boolean {
 
 export function isPullRequestsEnabled(): boolean {
     return getConfig().pullRequestsEnabled === true;
+}
+
+export function isServersEnabled(): boolean {
+    return getConfig().serversEnabled === true;
 }

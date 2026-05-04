@@ -1457,6 +1457,61 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // PUT /api/admin/config — servers.enabled
+    // ========================================================================
+
+    describe('servers.enabled', () => {
+        it('should return servers.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.servers.enabled).toBe(false);
+            expect(body.sources['servers.enabled']).toBe('default');
+        });
+
+        it('should accept servers.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'servers.enabled': true }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.servers.enabled).toBe(true);
+            expect(body.sources['servers.enabled']).toBe('file');
+        });
+
+        it('should accept servers.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'servers.enabled': false }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.servers.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean servers.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'servers.enabled': 'yes' }),
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('servers.enabled');
+        });
+    });
+
+    // ========================================================================
 
     describe('serve.serverName', () => {
         it('should accept a valid serverName string', async () => {

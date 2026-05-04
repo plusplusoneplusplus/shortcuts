@@ -64,6 +64,7 @@ export interface AdminResolvedConfig {
   };
   workflows?: { enabled?: boolean };
   pullRequests?: { enabled?: boolean };
+  servers?: { enabled?: boolean };
   [key: string]: unknown;
 }
 
@@ -96,6 +97,7 @@ export interface AdminConfigUpdate {
   'scratchpad.layout'?: 'horizontal' | 'vertical';
   'workflows.enabled'?: boolean;
   'pullRequests.enabled'?: boolean;
+  'servers.enabled'?: boolean;
   [key: string]: unknown;
 }
 

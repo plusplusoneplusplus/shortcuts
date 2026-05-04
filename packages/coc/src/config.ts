@@ -104,6 +104,10 @@ export interface CLIConfig {
     pullRequests?: {
         enabled?: boolean;
     };
+    /** Servers configuration (multi-server connection manager). */
+    servers?: {
+        enabled?: boolean;
+    };
     /** Memory promotion configuration */
     memoryPromotion?: {
         batchSize?: number;
@@ -244,6 +248,10 @@ export interface ResolvedCLIConfig {
     pullRequests: {
         enabled: boolean;
     };
+    /** Servers configuration (multi-server connection manager). */
+    servers: {
+        enabled: boolean;
+    };
     /** Memory promotion configuration */
     memoryPromotion: {
         batchSize: number;
@@ -346,6 +354,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     pullRequests: {
         enabled: false,
     },
+    servers: {
+        enabled: false,
+    },
     memoryPromotion: {
         batchSize: 50,
         timeoutMs: 90_000,
@@ -395,6 +406,7 @@ export const CONFIG_SOURCE_KEYS = [
     'scratchpad.layout',
     'workflows.enabled',
     'pullRequests.enabled',
+    'servers.enabled',
     'memoryPromotion.batchSize',
     'memoryPromotion.timeoutMs',
     'memoryPromotion.model',
@@ -562,6 +574,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         pullRequests: {
             enabled: override.pullRequests?.enabled ?? base.pullRequests.enabled,
         },
+        servers: {
+            enabled: override.servers?.enabled ?? base.servers.enabled,
+        },
         memoryPromotion: {
             batchSize: override.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
             timeoutMs: override.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
@@ -666,6 +681,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('pullRequests.')) {
         const subKey = key.slice('pullRequests.'.length) as keyof NonNullable<CLIConfig['pullRequests']>;
         return fileConfig.pullRequests?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('servers.')) {
+        const subKey = key.slice('servers.'.length) as keyof NonNullable<CLIConfig['servers']>;
+        return fileConfig.servers?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     if (key.startsWith('memoryPromotion.aiNormalization.')) {

@@ -143,6 +143,16 @@ describe('generateDashboardHtml', () => {
         expect(html).not.toContain("host'<script>");
         expect(html).toContain('&lt;script&gt;');
     });
+
+    it('defaults serversEnabled to false in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('serversEnabled: false');
+    });
+
+    it('reflects serversEnabled=true in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml({ serversEnabled: true });
+        expect(html).toContain('serversEnabled: true');
+    });
 });
 
 describe('generateDashboardHtml bundle hot-reload', () => {

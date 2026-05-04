@@ -927,6 +927,47 @@ describe('AdminPanel', () => {
             expect(capturedBody['notes.enabled']).toBe(false);
         });
 
+        it('renders Servers toggle unchecked by default and includes servers.enabled in PUT', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                terminal: { enabled: false }, notes: { enabled: false },
+                                myWork: { enabled: false }, myLife: { enabled: false },
+                                servers: { enabled: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-servers-enabled')).toBeDefined());
+
+            const toggle = screen.getByTestId('toggle-servers-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(toggle);
+            });
+            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-features-save'));
+            });
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody['servers.enabled']).toBe(true);
+        });
+
         it('Advanced card shows read-only diagnostics without Save button', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });

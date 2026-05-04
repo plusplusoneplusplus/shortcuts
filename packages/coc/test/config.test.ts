@@ -343,6 +343,7 @@ timeout: 300
                 scratchpad: { enabled: false, layout: 'vertical' },
                 workflows: { enabled: false },
                 pullRequests: { enabled: false },
+                servers: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -470,6 +471,16 @@ timeout: 300
         it('should override workflows.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { workflows: { enabled: true } });
             expect(result.workflows.enabled).toBe(true);
+        });
+
+        it('should preserve servers.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.servers.enabled).toBe(false);
+        });
+
+        it('should override servers.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { servers: { enabled: true } });
+            expect(result.servers.enabled).toBe(true);
         });
 
         it('should override store.backend from file', () => {
@@ -680,6 +691,22 @@ timeout: 300
             expect(result.sources['workflows.enabled']).toBe('default');
         });
 
+        it('should report file source for servers.enabled when set', () => {
+            const configPath = path.join(tmpDir, 'servers.yaml');
+            fs.writeFileSync(configPath, 'servers:\n  enabled: true\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.servers.enabled).toBe(true);
+            expect(result.sources['servers.enabled']).toBe('file');
+        });
+
+        it('should report default source for servers.enabled when not set', () => {
+            const configPath = path.join(tmpDir, 'no-servers.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.servers.enabled).toBe(false);
+            expect(result.sources['servers.enabled']).toBe('default');
+        });
+
         it('should return resolved config with defaults applied', () => {
             const configPath = path.join(tmpDir, 'config.yaml');
             fs.writeFileSync(configPath, 'model: claude\n');
@@ -736,6 +763,8 @@ timeout: 300
                 'workflows:',
                 '  enabled: true',
                 'pullRequests:',
+                '  enabled: true',
+                'servers:',
                 '  enabled: true',
                 'memoryPromotion:',
                 '  batchSize: 25',

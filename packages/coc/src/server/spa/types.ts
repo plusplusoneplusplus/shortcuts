@@ -27,6 +27,8 @@ export interface DashboardOptions {
     workflowsEnabled?: boolean;
     /** Whether the pull requests feature is enabled in server config. */
     pullRequestsEnabled?: boolean;
+    /** Whether the servers feature is enabled in server config. */
+    serversEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

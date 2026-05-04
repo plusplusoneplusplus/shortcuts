@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled', 'servers.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -322,6 +322,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('pullRequests.enabled' in body) {
                 if (typeof body['pullRequests.enabled'] !== 'boolean') {
                     errors.push('pullRequests.enabled must be a boolean');
+                }
+            }
+            if ('servers.enabled' in body) {
+                if (typeof body['servers.enabled'] !== 'boolean') {
+                    errors.push('servers.enabled must be a boolean');
                 }
             }
 
@@ -442,6 +447,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('pullRequests.enabled' in body) {
                 if (!existing.pullRequests) { existing.pullRequests = {}; }
                 existing.pullRequests.enabled = body['pullRequests.enabled'] as boolean;
+            }
+
+            // Handle nested servers.enabled field
+            if ('servers.enabled' in body) {
+                if (!existing.servers) { existing.servers = {}; }
+                existing.servers.enabled = body['servers.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
