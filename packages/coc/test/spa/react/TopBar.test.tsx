@@ -649,6 +649,124 @@ describe('TopBar — My Life icon button', () => {
     });
 });
 
+// ─── TopBar servers icon button ──────────────────────────────────
+
+describe('TopBar — servers icon button', () => {
+    afterEach(() => {
+        delete (window as any).__DASHBOARD_CONFIG__;
+    });
+
+    it('does not render servers-toggle when serversEnabled is absent', () => {
+        delete (window as any).__DASHBOARD_CONFIG__;
+        renderTopBar();
+        expect(document.getElementById('servers-toggle')).toBeNull();
+    });
+
+    it('does not render servers-toggle when serversEnabled is false', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: false,
+        };
+        renderTopBar();
+        expect(document.getElementById('servers-toggle')).toBeNull();
+    });
+
+    it('renders servers-toggle when serversEnabled is true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        const btn = document.getElementById('servers-toggle');
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('aria-label')).toBe('Servers');
+        expect(btn!.getAttribute('title')).toBe('Servers');
+        expect(btn!.getAttribute('data-tab')).toBe('servers');
+    });
+
+    it('servers-toggle has touch-target class', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        const btn = document.getElementById('servers-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('servers-toggle is hidden on mobile (hidden md:inline-flex)', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        const btn = document.getElementById('servers-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
+    it('clicking servers-toggle sets hash to #servers', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('servers-toggle')!);
+        });
+        expect(location.hash).toBe('#servers');
+    });
+
+    it('servers-toggle shows active style after being clicked', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('servers-toggle')!);
+        });
+        const btn = document.getElementById('servers-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('servers-toggle does not show active style by default', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        const btn = document.getElementById('servers-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(btn.className).not.toContain('text-white');
+    });
+
+    it('servers-toggle is rendered between models-toggle and admin-toggle', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        renderTopBar();
+        const models = document.getElementById('models-toggle')!;
+        const servers = document.getElementById('servers-toggle')!;
+        const admin = document.getElementById('admin-toggle')!;
+        const order = models.compareDocumentPosition(servers);
+        const order2 = servers.compareDocumentPosition(admin);
+        // Node.DOCUMENT_POSITION_FOLLOWING === 4
+        expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(order2 & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+});
+
 // ─── TopBar brand label behavior ─────────────────────────────────
 
 describe('TopBar — brand label navigates to repos (not My Work)', () => {

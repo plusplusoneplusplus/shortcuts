@@ -64,6 +64,10 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#reports')).toBe('reports');
     });
 
+    it('returns "servers" for #servers', () => {
+        expect(tabFromHash('#servers')).toBe('servers');
+    });
+
     it('returns null for unknown hash', () => {
         expect(tabFromHash('#unknown')).toBeNull();
     });

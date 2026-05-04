@@ -16,7 +16,7 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { getHostname } from '../utils/config';
+import { getHostname, isServersEnabled } from '../utils/config';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -63,6 +63,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
+    const serversEnabled = isServersEnabled();
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -292,6 +293,23 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 >
                     ⚛
                 </button>
+                {serversEnabled && (
+                    <button
+                        id="servers-toggle"
+                        data-tab="servers"
+                        className={
+                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
+                            (state.activeTab === 'servers'
+                                ? 'bg-[#0078d4] text-white'
+                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                        }
+                        aria-label="Servers"
+                        title="Servers"
+                        onClick={() => switchTab('servers')}
+                    >
+                        &#128421;
+                    </button>
+                )}
                 <button
                     id="admin-toggle"
                     data-tab="admin"
