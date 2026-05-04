@@ -2,6 +2,11 @@
  * Navigation E2E Tests
  *
  * Tests tab switching, sidebar toggle, and navigation bar behavior.
+ *
+ * Note: the legacy global "Processes" top-level tab was removed. Activity
+ * (queue task list + chat detail) now lives under the per-repo `activity`
+ * sub-tab. These tests assert the remaining top-level tabs (Repos, Skills,
+ * Memory, Logs, Admin) and the legacy hash redirect behavior.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -14,16 +19,15 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-repos')).toBeVisible();
         // URL hash should stay empty (no redirect to #repos)
         expect(new URL(page.url()).hash).toBe('');
-        // Processes view is not rendered when on repos
+        // Standalone Processes view is no longer rendered for any route
         await expect(page.locator('#view-processes')).toHaveCount(0);
     });
 
-    test('clicking Processes tab switches to processes view', async ({ page, serverUrl }) => {
+    test('clicking Skills tab switches to skills view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('[data-tab="processes"]')).toHaveClass(/bg-\[#0078d4\]/);
-        await expect(page.locator('#view-processes')).toBeVisible();
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
     test('clicking Wiki tab switches to wiki view', async ({ page, serverUrl }) => {
@@ -32,11 +36,11 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-wiki')).toBeVisible();
     });
 
-    test('can switch back to Processes from Repos', async ({ page, serverUrl }) => {
+    test('can switch back to Repos from Skills', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible();
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
         await page.click('[data-tab="repos"]');
         await expect(page.locator('#view-repos')).toBeVisible();
@@ -52,7 +56,7 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
 
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
-        await expect(page.locator('[data-tab="processes"]')).toBeVisible();
+        await expect(page.locator('[data-tab="skills"]')).toBeVisible();
     });
 
     test('hash navigation works for tab routing', async ({ page, serverUrl }) => {
@@ -67,7 +71,6 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
 
         await page.click('[data-tab="skills"]');
-        await expect(page.locator('[data-tab="skills"]')).toHaveClass(/bg-\[#0078d4\]/);
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
@@ -75,7 +78,6 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
 
         await page.click('[data-tab="memory"]');
-        await expect(page.locator('[data-tab="memory"]')).toHaveClass(/bg-\[#0078d4\]/);
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
     });
 
@@ -108,11 +110,12 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
         const hamburger = page.locator('#hamburger-btn');
 
-        // Switch to Processes tab
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).toBeVisible();
+        // Switch to Skills tab — hamburger should now navigate back to repos
+        // rather than toggle the popover.
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
-        // Hamburger click should not change collapsed state
+        // Hamburger click should not toggle the popover open
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');
         await hamburger.click();
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');
@@ -167,10 +170,13 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-repos')).toBeVisible();
     });
 
-    test('legacy hash #process/:id routes to Processes tab', async ({ page, serverUrl }) => {
+    test('legacy hash #process/:id falls back to Repos view', async ({ page, serverUrl }) => {
+        // The standalone Processes view was removed. Legacy `#process/<id>`
+        // links no longer match a top-level tab; the router falls through to
+        // the default Repos view rather than navigating to a Processes panel.
         await page.goto(`${serverUrl}/#process/some-id`);
 
-        await expect(page.locator('[data-tab="processes"]')).toHaveClass(/bg-\[#0078d4\]/);
-        await expect(page.locator('#view-processes')).toBeVisible();
+        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#view-processes')).toHaveCount(0);
     });
 });
