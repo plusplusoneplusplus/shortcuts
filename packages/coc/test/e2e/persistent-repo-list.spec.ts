@@ -15,6 +15,7 @@
  */
 
 import { test, expect } from './fixtures/server-fixture';
+import { seedWorkspace } from './fixtures/seed';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,10 +45,12 @@ test.describe('PRL.1 — No persistent mini sidebar on any tab', () => {
         await expect(page.locator('[data-testid="persistent-mini-sidebar"]')).toHaveCount(0);
     });
 
-    test('PRL.1.3 mini-sidebar-layout is not present on processes tab', async ({ page, serverUrl }) => {
+    test('PRL.1.3 mini-sidebar-layout is not present on skills tab', async ({ page, serverUrl }) => {
+        // The standalone Processes tab was removed; use Skills as a non-Repos
+        // top-level view to verify the persistent mini-sidebar stays absent.
         await page.goto(serverUrl);
-        await page.click('#processes-toggle');
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10_000 });
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="mini-sidebar-layout"]')).toHaveCount(0);
         await expect(page.locator('[data-testid="persistent-mini-sidebar"]')).toHaveCount(0);
@@ -55,7 +58,7 @@ test.describe('PRL.1 — No persistent mini sidebar on any tab', () => {
 
     test('PRL.1.4 mini-sidebar-layout is not present on admin tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('#admin-toggle');
+        await page.click('[data-tab="admin"]');
         await expect(page.locator('[data-testid="admin-scroll-container"]')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="mini-sidebar-layout"]')).toHaveCount(0);
@@ -75,17 +78,19 @@ test.describe('PRL.2 — RepoTabStrip always visible in TopBar (desktop)', () =>
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 5_000 });
     });
 
-    test('PRL.2.2 repo-tab-strip is visible on processes tab', async ({ page, serverUrl }) => {
+    test('PRL.2.2 repo-tab-strip is visible on skills tab', async ({ page, serverUrl }) => {
+        // Standalone Processes tab was removed; verify rail stays mounted on
+        // another non-Repos top-level view (Skills).
         await page.goto(serverUrl);
-        await page.click('#processes-toggle');
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10_000 });
+        await page.click('[data-tab="skills"]');
+        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 5_000 });
     });
 
     test('PRL.2.3 repo-tab-strip is visible on admin tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('#admin-toggle');
+        await page.click('[data-tab="admin"]');
         await expect(page.locator('[data-testid="admin-scroll-container"]')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 5_000 });
@@ -93,7 +98,7 @@ test.describe('PRL.2 — RepoTabStrip always visible in TopBar (desktop)', () =>
 
     test('PRL.2.4 repo-tab-strip is visible on memory tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('#memory-toggle');
+        await page.click('[data-tab="memory"]');
         await page.waitForTimeout(500);
 
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 8_000 });

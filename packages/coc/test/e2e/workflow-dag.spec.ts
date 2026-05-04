@@ -10,7 +10,22 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace } from './fixtures/seed';
+import { seedWorkspace, request } from './fixtures/seed';
+
+/**
+ * Enable the Workflows tab feature flag on the running server. The Workflows
+ * sub-tab is gated by `workflows.enabled` and is off by default; tests that
+ * exercise that sub-tab must opt into it before navigating.
+ */
+async function enableWorkflowsFeature(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'workflows.enabled': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable workflows feature: ${res.status} ${res.body}`);
+    }
+}
 
 // ── Workflow YAML fixture with 4 nodes forming a DAG ─────────────────────────
 
@@ -55,14 +70,17 @@ async function navigateToPipeline(
     page: import('@playwright/test').Page,
     serverUrl: string,
 ): Promise<void> {
+    // The Workflows sub-tab is feature-flag-gated; opt in before navigating.
+    await enableWorkflowsFeature(serverUrl);
+
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
     await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
     await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('button[data-subtab="templates"]');
-    await expect(page.locator('button[data-subtab="templates"]')).toHaveClass(/active/);
+    await page.click('button[data-subtab="workflows"]');
+    await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
     const pipelineItems = page.locator('.repo-workflow-item');
     await expect(pipelineItems).toHaveCount(1, { timeout: 10_000 });

@@ -55,12 +55,12 @@ async function setupRepoForPrefs(
     return repoDir;
 }
 
-/** Helper: open the Run Skill submenu for the first file row. Closes it first if already open. */
+/** Helper: open the Run Skill EnqueueDialog for the first file row. Closes it first if already open. */
 async function openFollowPromptDialog(page: import('@playwright/test').Page): Promise<void> {
-    // Close dialog if already open (e.g. from previous call)
-    const existing = page.locator('#follow-prompt-submenu');
+    // Close the EnqueueDialog if already open
+    const existing = page.locator('[data-testid="floating-dialog-panel"]');
     if (await existing.isVisible().catch(() => false)) {
-        await page.locator('#fp-close').click();
+        await page.locator('[data-testid="dialog-close-btn"]').first().click();
         await existing.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
     }
     const fileRow = page.locator('.miller-file-row').first();
@@ -69,15 +69,15 @@ async function openFollowPromptDialog(page: import('@playwright/test').Page): Pr
     const contextMenu = page.locator('[data-testid="context-menu"]');
     await expect(contextMenu).toBeVisible({ timeout: 5000 });
     await contextMenu.getByRole('menuitem', { name: /Run Skill/ }).click();
-    await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
+    await expect(page.locator('[data-testid="floating-dialog-panel"]')).toBeVisible({ timeout: 5000 });
 }
 
-/** Helper: open the Update Document modal for the first file row. Closes overlays first if open. */
+/** Helper: open the Update Document modal for the first file row. Closes EnqueueDialog first if open. */
 async function openUpdateDocumentDialog(page: import('@playwright/test').Page): Promise<void> {
-    // Close Run Skill dialog if open
-    const fp = page.locator('#follow-prompt-submenu');
+    // Close EnqueueDialog if open
+    const fp = page.locator('[data-testid="floating-dialog-panel"]');
     if (await fp.isVisible().catch(() => false)) {
-        await page.locator('#fp-close').click();
+        await page.locator('[data-testid="dialog-close-btn"]').first().click();
         await fp.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
     }
     const fileRow = page.locator('.miller-file-row').first();
@@ -86,19 +86,31 @@ async function openUpdateDocumentDialog(page: import('@playwright/test').Page): 
     const contextMenu = page.locator('[data-testid="context-menu"]');
     await expect(contextMenu).toBeVisible({ timeout: 5000 });
     await contextMenu.getByRole('menuitem', { name: /Update Document/ }).click();
-    await expect(page.locator('#update-doc-overlay')).toBeVisible();
+    await expect(page.locator('#update-doc-overlay')).toBeVisible({ timeout: 5000 });
 }
 
-/** Helper: get a valid non-default model value from the fp-model select (Run Skill dialog must be open). */
+/**
+ * Get the model select locator within the EnqueueDialog floating panel.
+ * The model select is the first <select> within the panel (Model comes before Workspace/Folder).
+ */
+function getDialogModelSelect(page: import('@playwright/test').Page) {
+    return page.locator('[data-testid="floating-dialog-panel"] select').first();
+}
+
+/** Helper: get a valid non-default model value from the dialog model select (Run Skill dialog must be open). */
 async function getFirstModelValue(page: import('@playwright/test').Page): Promise<string> {
     // Wait for model options to be populated (async fetch may still be in-flight)
     await page.waitForFunction(() => {
-        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
-        return sel && Array.from(sel.options).some(o => o.value !== '');
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
+        if (!panel) return false;
+        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
+        return sel && Array.from(sel.options).some((o) => o.value !== '');
     }, { timeout: 5000 });
 
     return page.evaluate(() => {
-        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
+        if (!panel) return '';
+        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
         if (!sel) return '';
         for (const opt of Array.from(sel.options)) {
             if (opt.value) return opt.value;
@@ -107,10 +119,12 @@ async function getFirstModelValue(page: import('@playwright/test').Page): Promis
     });
 }
 
-/** Helper: get a second non-default model value from the fp-model select (Run Skill dialog must be open). */
+/** Helper: get a second non-default model value from the dialog model select (Run Skill dialog must be open). */
 async function getSecondModelValue(page: import('@playwright/test').Page): Promise<string> {
     return page.evaluate(() => {
-        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
+        if (!panel) return '';
+        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
         if (!sel) return '';
         let found = 0;
         for (const opt of Array.from(sel.options)) {
@@ -140,8 +154,7 @@ test.describe('Preferences (007)', () => {
             await openFollowPromptDialog(page);
 
             // Model select should have empty value (Default)
-            const fpModel = page.locator('#fp-model');
-            await expect(fpModel).toHaveValue('');
+            await expect(getDialogModelSelect(page)).toHaveValue('');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -159,7 +172,7 @@ test.describe('Preferences (007)', () => {
             await openFollowPromptDialog(page);
 
             // Change model
-            await page.selectOption('#fp-model', modelValue);
+            await getDialogModelSelect(page).selectOption(modelValue);
 
             // Wait for the fire-and-forget PATCH to complete
             await page.waitForTimeout(500);
@@ -223,7 +236,7 @@ test.describe('Preferences (007)', () => {
             await openFollowPromptDialog(page);
 
             // Model select should have the persisted value
-            await expect(page.locator('#fp-model')).toHaveValue(modelValue);
+            await expect(getDialogModelSelect(page)).toHaveValue(modelValue);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -270,9 +283,10 @@ test.describe('Preferences (007)', () => {
 
             // Open Run Skill and change model
             await openFollowPromptDialog(page);
-            await page.selectOption('#fp-model', modelValue);
+            await getDialogModelSelect(page).selectOption(modelValue);
             await page.waitForTimeout(300);
-            await page.click('#fp-close');
+            await page.locator('[data-testid="dialog-close-btn"]').first().click();
+            await page.locator('[data-testid="floating-dialog-panel"]').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
 
             // Open Update Document — should have the same model selected
             await openUpdateDocumentDialog(page);
@@ -293,9 +307,10 @@ test.describe('Preferences (007)', () => {
 
             // Set model via Run Skill dialog
             await openFollowPromptDialog(page);
-            await page.selectOption('#fp-model', modelValue);
+            await getDialogModelSelect(page).selectOption(modelValue);
             await page.waitForTimeout(500);
-            await page.click('#fp-close');
+            await page.locator('[data-testid="dialog-close-btn"]').first().click();
+            await page.locator('[data-testid="floating-dialog-panel"]').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
 
             // Reload
             await page.reload();
@@ -307,7 +322,7 @@ test.describe('Preferences (007)', () => {
 
             // Open dialog again — model should be preserved
             await openFollowPromptDialog(page);
-            await expect(page.locator('#fp-model')).toHaveValue(modelValue);
+            await expect(getDialogModelSelect(page)).toHaveValue(modelValue);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -328,10 +343,10 @@ test.describe('Preferences (007)', () => {
             await openFollowPromptDialog(page);
 
             // Rapidly change model multiple times
-            await page.selectOption('#fp-model', model1);
-            await page.selectOption('#fp-model', model2);
-            await page.selectOption('#fp-model', '');   // Default
-            await page.selectOption('#fp-model', model1);
+            await getDialogModelSelect(page).selectOption(model1);
+            await getDialogModelSelect(page).selectOption(model2);
+            await getDialogModelSelect(page).selectOption('');   // Default
+            await getDialogModelSelect(page).selectOption(model1);
 
             // Wait for all fire-and-forget PATCH requests to settle
             await page.waitForTimeout(1000);
@@ -404,21 +419,28 @@ test.describe('Preferences (007)', () => {
 
             await openFollowPromptDialog(page);
 
-            // First workspace should have 'impl' skill
-            await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible({ timeout: 10000 });
+            // Wait for SkillPicker trigger to appear (skills loaded for first workspace)
+            await expect(page.locator('[data-testid="skill-picker-trigger"]')).toBeVisible({ timeout: 10000 });
 
-            // Change workspace selector to second workspace
-            const wsSelect = page.locator('#follow-prompt-submenu select').first();
-            // The workspace select is the second select (after model)
-            const allSelects = page.locator('#follow-prompt-submenu select');
-            const wsSelectEl = allSelects.nth(1);
-            await wsSelectEl.selectOption('ws-prefs-2');
+            // Open SkillPicker to verify first workspace has 'impl' skill
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-item-impl"]')).toBeVisible({ timeout: 10000 });
+            // Close SkillPicker by clicking the trigger again (Escape would close the
+            // parent FloatingDialog as well because it listens to Escape globally).
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-popover"]')).toBeHidden({ timeout: 3000 });
 
-            // Wait for skills to reload
+            // Change workspace selector to second workspace (2nd select in dialog)
+            const wsSelect = page.locator('[data-testid="floating-dialog-panel"] select').nth(1);
+            await wsSelect.selectOption('ws-prefs-2');
+
+            // Wait for skills to reload for new workspace
             await page.waitForTimeout(1000);
+            await expect(page.locator('[data-testid="skill-picker-trigger"]')).toBeVisible({ timeout: 10000 });
 
-            // Should now show 'review' skill from second workspace
-            await expect(page.locator('.fp-item[data-name="review"]')).toBeVisible({ timeout: 10000 });
+            // Open SkillPicker — should now show 'review' skill from second workspace
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-item-review"]')).toBeVisible({ timeout: 10000 });
         } finally {
             safeRmSync(tmpDir);
         }

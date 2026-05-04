@@ -29,6 +29,33 @@ async function gotoSkills(page: Page, serverUrl: string): Promise<void> {
     await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 }
 
+/**
+ * Force the global skills directory to a clean empty state.
+ *
+ * The CoC server auto-installs `DEFAULT_BUNDLED_SKILLS` (rethink, kb-refresh,
+ * fresh-written) asynchronously on startup, which races with tests that need
+ * to verify the empty state. We poll briefly for that install to settle, then
+ * delete every installed skill via the REST API. Subsequent calls are no-ops
+ * because deletion happens after the auto-install promise has resolved.
+ */
+async function clearAllInstalledSkills(page: Page, serverUrl: string): Promise<void> {
+    // Give the server's async auto-install of bundled defaults a chance to
+    // finish writing to disk before we delete. Without this short wait the
+    // installer can complete after our deletion and re-create the skill dirs.
+    await page.waitForTimeout(500);
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const res = await page.request.get(`${serverUrl}/api/skills`);
+        if (!res.ok()) break;
+        const data = await res.json();
+        const skills: Array<{ name: string }> = Array.isArray(data) ? data : (data.skills ?? []);
+        if (skills.length === 0) return;
+        for (const s of skills) {
+            await page.request.delete(`${serverUrl}/api/skills/${encodeURIComponent(s.name)}`).catch(() => {});
+        }
+        await page.waitForTimeout(150);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 1. Tab navigation
 // ---------------------------------------------------------------------------
@@ -75,6 +102,10 @@ test.describe('SkillsView – Tab navigation', () => {
 
 test.describe('SkillsInstalledPanel', () => {
     test('S.6 shows empty state when no skills are installed', async ({ page, serverUrl }) => {
+        // Auto-installed default bundled skills race with the page load. Force a
+        // clean empty state via the REST API before navigating.
+        await clearAllInstalledSkills(page, serverUrl);
+
         await gotoSkills(page, serverUrl);
 
         // The default fresh server has no global skills installed
@@ -94,7 +125,7 @@ test.describe('SkillsInstalledPanel', () => {
         await expect(page.locator('[data-testid="skills-installed-item-pipeline-generator"]')).toBeVisible({ timeout: 10_000 });
     });
 
-    test('S.8 delete button removes skill with confirmation', async ({ page, serverUrl }) => {
+    test('S.8 delete button removes skill with inline confirmation', async ({ page, serverUrl }) => {
         // Install a bundled skill first
         await page.request.post(`${serverUrl}/api/skills/install`, {
             data: { source: 'bundled', skills: ['pipeline-generator'], replace: true },
@@ -103,9 +134,13 @@ test.describe('SkillsInstalledPanel', () => {
         await gotoSkills(page, serverUrl);
         await expect(page.locator('[data-testid="skills-installed-item-pipeline-generator"]')).toBeVisible({ timeout: 10_000 });
 
-        // Handle the browser confirm() dialog
-        page.on('dialog', dialog => dialog.accept());
-        await page.locator('[data-testid="skills-delete-btn-pipeline-generator"]').click();
+        // The skill list item delete button uses the `skills-installed` testid prefix
+        // because SkillListItem inherits its prefix from SkillsInstalledPanel. The
+        // delete flow uses inline Yes/No buttons rather than a window.confirm dialog.
+        // Hover the row first to reveal the delete affordance (opacity-0 until group-hover).
+        await page.locator('[data-testid="skills-installed-item-pipeline-generator"]').hover();
+        await page.locator('[data-testid="skills-installed-delete-btn-pipeline-generator"]').click();
+        await page.locator('[data-testid="skills-installed-delete-confirm-pipeline-generator"]').click();
 
         // Skill should be removed
         await expect(page.locator('[data-testid="skills-installed-item-pipeline-generator"]')).toHaveCount(0, { timeout: 8_000 });

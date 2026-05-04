@@ -181,30 +181,32 @@ test.describe('Mock AI: Basic Conversation Rendering', () => {
 test.describe('Mock AI: Tool Call Rendering', () => {
     test('renders a single tool call card', async ({ serverUrl, mockAI, page }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-tool-1');
-        try {
-            // Delay first event so SSE has time to connect after navigation
-            mockAI.mockSendMessage.mockImplementation(
-                mockAI.createToolCallResponse(
-                    [
-                        {
-                            type: 'tool-start',
-                            toolCallId: 'tc-1',
-                            toolName: 'view',
-                            parameters: { path: 'src/app.ts' },
-                            delayMsBefore: 2500,
-                        },
-                        {
-                            type: 'tool-complete',
-                            toolCallId: 'tc-1',
-                            toolName: 'view',
-                            result: 'file content here',
-                        },
-                    ],
-                    { finalResponse: 'Done.' },
-                ),
-            );
+        // Gate releases only after the SSE connection is confirmed
+        let releaseToolEvents!: () => void;
+        const toolEventsGate = new Promise<void>((r) => { releaseToolEvents = r; });
 
-            // Seed without waiting — navigate while task is in-flight so SSE delivers tool events
+        try {
+            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
+                // Block until SSE is confirmed connected (gate released in test body)
+                await toolEventsGate;
+                if (opts && opts.onToolEvent) {
+                    opts.onToolEvent({
+                        type: 'tool-start',
+                        toolCallId: 'tc-1',
+                        toolName: 'view',
+                        parameters: { path: 'src/app.ts' },
+                    });
+                    await new Promise((r) => setTimeout(r, 100));
+                    opts.onToolEvent({
+                        type: 'tool-complete',
+                        toolCallId: 'tc-1',
+                        toolName: 'view',
+                        result: 'file content here',
+                    });
+                }
+                return { success: true, response: 'Done.', sessionId: 'session-123' };
+            });
+
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Show me src/app.ts' },
@@ -212,12 +214,21 @@ test.describe('Mock AI: Tool Call Rendering', () => {
 
             await gotoConversation(page, serverUrl, wsId, task.id as string);
 
-            // Wait for the task to complete (tool events arrive via SSE during this wait)
-            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+            // Wait for the SSE conversation-snapshot to be processed by the SPA.
+            // The user message only appears after the snapshot arrives, and by then
+            // the server has already subscribed to its EventEmitter — so tool events
+            // emitted after this point will reach the live SSE stream.
+            await expect(page.locator('.chat-message.user')).toBeVisible({ timeout: 10_000 });
+
+            // Now release tool events — server EventEmitter subscription is active
+            releaseToolEvents();
+
+            // Wait for task completion and bubbles
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
             await waitForBubbles(page, 2);
 
             // One tool call card rendered
-            await expect(page.locator('.tool-call-card')).toHaveCount(1, { timeout: 5000 });
+            await expect(page.locator('.tool-call-card')).toHaveCount(1, { timeout: 8000 });
             await expect(page.locator('.tool-call-card .tool-call-name')).toContainText('view');
 
             // Body starts collapsed
@@ -227,66 +238,66 @@ test.describe('Mock AI: Tool Call Rendering', () => {
             await page.locator('.tool-call-header').first().click();
             await expect(page.locator('.tool-call-body.collapsed')).toHaveCount(0);
         } finally {
+            releaseToolEvents(); // ensure server is unblocked on failure
             cleanup();
         }
     });
 
     test('renders nested explore sub-task with child tools', async ({ serverUrl, mockAI, page }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-tool-2');
-        try {
-            // Delay first event so SSE has time to connect after navigation
-            mockAI.mockSendMessage.mockImplementation(
-                mockAI.createToolCallResponse(
-                    [
-                        {
-                            type: 'tool-start',
-                            toolCallId: 'tc-explore',
-                            toolName: 'task',
-                            parameters: { agent_type: 'explore', prompt: 'find components' },
-                            delayMsBefore: 2500,
-                        },
-                        {
-                            type: 'tool-start',
-                            toolCallId: 'tc-view',
-                            toolName: 'view',
-                            parameters: { path: 'src/' },
-                            parentToolCallId: 'tc-explore',
-                            delayMsBefore: 50,
-                        },
-                        {
-                            type: 'tool-complete',
-                            toolCallId: 'tc-view',
-                            toolName: 'view',
-                            result: 'src contents',
-                            parentToolCallId: 'tc-explore',
-                        },
-                        {
-                            type: 'tool-start',
-                            toolCallId: 'tc-grep',
-                            toolName: 'grep',
-                            parameters: { pattern: 'Component', path: 'src/' },
-                            parentToolCallId: 'tc-explore',
-                            delayMsBefore: 50,
-                        },
-                        {
-                            type: 'tool-complete',
-                            toolCallId: 'tc-grep',
-                            toolName: 'grep',
-                            result: 'matches',
-                            parentToolCallId: 'tc-explore',
-                        },
-                        {
-                            type: 'tool-complete',
-                            toolCallId: 'tc-explore',
-                            toolName: 'task',
-                            result: 'found 2 components',
-                        },
-                    ],
-                    { finalResponse: 'Exploration complete.' },
-                ),
-            );
+        let releaseToolEvents!: () => void;
+        const toolEventsGate = new Promise<void>((r) => { releaseToolEvents = r; });
 
-            // Seed without waiting — navigate while task is in-flight so SSE delivers tool events
+        try {
+            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
+                await toolEventsGate;
+                if (opts && opts.onToolEvent) {
+                    opts.onToolEvent({
+                        type: 'tool-start',
+                        toolCallId: 'tc-explore',
+                        toolName: 'task',
+                        parameters: { agent_type: 'explore', prompt: 'find components' },
+                    });
+                    await new Promise((r) => setTimeout(r, 50));
+                    opts.onToolEvent({
+                        type: 'tool-start',
+                        toolCallId: 'tc-view',
+                        toolName: 'view',
+                        parameters: { path: 'src/' },
+                        parentToolCallId: 'tc-explore',
+                    });
+                    opts.onToolEvent({
+                        type: 'tool-complete',
+                        toolCallId: 'tc-view',
+                        toolName: 'view',
+                        result: 'src contents',
+                        parentToolCallId: 'tc-explore',
+                    });
+                    await new Promise((r) => setTimeout(r, 50));
+                    opts.onToolEvent({
+                        type: 'tool-start',
+                        toolCallId: 'tc-grep',
+                        toolName: 'grep',
+                        parameters: { pattern: 'Component', path: 'src/' },
+                        parentToolCallId: 'tc-explore',
+                    });
+                    opts.onToolEvent({
+                        type: 'tool-complete',
+                        toolCallId: 'tc-grep',
+                        toolName: 'grep',
+                        result: 'matches',
+                        parentToolCallId: 'tc-explore',
+                    });
+                    opts.onToolEvent({
+                        type: 'tool-complete',
+                        toolCallId: 'tc-explore',
+                        toolName: 'task',
+                        result: 'found 2 components',
+                    });
+                }
+                return { success: true, response: 'Exploration complete.', sessionId: 'session-123' };
+            });
+
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Explore and find components' },
@@ -294,13 +305,18 @@ test.describe('Mock AI: Tool Call Rendering', () => {
 
             await gotoConversation(page, serverUrl, wsId, task.id as string);
 
-            // Wait for the task to complete (tool events arrive via SSE during this wait)
-            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+            // Wait for SSE conversation-snapshot to arrive (server subscription is active)
+            await expect(page.locator('.chat-message.user')).toBeVisible({ timeout: 10_000 });
+
+            // Release tool events now that SSE subscription is active
+            releaseToolEvents();
+
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
             await waitForBubbles(page, 2);
 
             // One top-level explore card
             const exploreCard = page.locator('.tool-call-card[data-tool-id="tc-explore"]');
-            await expect(exploreCard).toHaveCount(1, { timeout: 5000 });
+            await expect(exploreCard).toHaveCount(1, { timeout: 8000 });
 
             // Two child tool cards nested within
             const childCards = exploreCard.locator('.tool-call-children .tool-call-card');
@@ -319,6 +335,7 @@ test.describe('Mock AI: Tool Call Rendering', () => {
             await subtoolToggle.click();
             await expect(exploreCard.locator('.subtree-collapsed')).toHaveCount(1);
         } finally {
+            releaseToolEvents(); // ensure server is unblocked on failure
             cleanup();
         }
     });

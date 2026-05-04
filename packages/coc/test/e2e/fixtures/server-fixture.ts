@@ -141,12 +141,19 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
         const store = new FileProcessStore({ dataDir: tmpDir });
         const mockAI = createE2EMockSDKService();
 
+        // Isolate admin-config writes per-test: point `configPath` at a unique
+        // file inside tmpDir so concurrent tests don't clobber each other's
+        // ~/.coc/config.yaml (PUT /api/admin/config is otherwise global and
+        // racy across parallel workers).
+        const configPath = path.join(tmpDir, 'config.yaml');
+
         const server = await createExecutionServer({
             store,
             port: 0,
             host: '127.0.0.1',
             dataDir: tmpDir,
             aiService: mockAI.service,
+            configPath,
         });
 
         await use({ server, mockAI, tmpDir });

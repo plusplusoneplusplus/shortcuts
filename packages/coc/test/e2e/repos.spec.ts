@@ -22,6 +22,21 @@ function testWorkspacePath(name: string): string {
     return path.join(os.tmpdir(), name);
 }
 
+/**
+ * Enable the Workflows tab feature flag on the running server. The Workflows
+ * sub-tab is gated by `workflows.enabled` and is off by default; tests that
+ * exercise that sub-tab must opt into it before navigating.
+ */
+async function enableWorkflowsFeature(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'workflows.enabled': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable workflows feature: ${res.status} ${res.body}`);
+    }
+}
+
 async function openRepoTabContextMenu(page: Page, index = 0): Promise<void> {
     const repoTab = page.locator('[data-testid="repo-tab"]').nth(index);
     await repoTab.click();
@@ -89,10 +104,11 @@ test.describe('Repos tab', () => {
         await seedWorkspace(serverUrl, 'ws-sel', 'selector-repo', '/tmp/selector');
 
         await page.goto(serverUrl);
-        await page.click('[data-tab="processes"]');
+        await page.click('[data-tab="repos"]');
 
-        // The global processes view renders the queue activity panel
-        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
+        // Seeded repo should appear in the repos sidebar
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toContainText('selector-repo');
     });
 });
 
@@ -256,9 +272,11 @@ test.describe('Add Repo workflow', () => {
             await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
 
 
-            // Click repo and verify detail color dot
+            // Click repo and navigate to settings sub-tab to verify detail color dot
             await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('button[data-subtab="settings"]');
+            await expect(page.locator('button[data-subtab="settings"]')).toHaveClass(/active/);
             const detailDot = page.locator('#repo-detail-content .repo-color-dot');
             await expect(detailDot.first()).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
         } finally {
@@ -273,7 +291,7 @@ test.describe('Add Repo workflow', () => {
 
 test.describe('Edit Repo workflow', () => {
     test('edit button opens dialog pre-filled', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-edit-1', 'original-name', '/tmp/original', '#107c10');
+        await seedWorkspace(serverUrl, 'ws-edit-1', 'original-name', testWorkspacePath('original'), '#107c10');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -394,12 +412,15 @@ test.describe('Sub-tab Navigation', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
+        // Navigate to Settings sub-tab and verify meta-grid is visible
+        await page.click('button[data-subtab="settings"]');
         await expect(page.locator('button[data-subtab="settings"]')).toHaveClass(/active/);
         await expect(page.locator('.meta-grid')).toBeVisible();
     });
 
     test('switch to Workflows tab', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-2', 'pipe-repo', '/tmp/pipe-repo');
+        await enableWorkflowsFeature(serverUrl);
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -453,6 +474,7 @@ test.describe('Sub-tab Navigation', () => {
     test('sub-tab state persists on re-select', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-4a', 'repo-alpha', '/tmp/repo-alpha');
         await seedWorkspace(serverUrl, 'ws-sub-4b', 'repo-beta', '/tmp/repo-beta');
+        await enableWorkflowsFeature(serverUrl);
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -474,6 +496,7 @@ test.describe('Sub-tab Navigation', () => {
 
     test('hash navigation works for sub-tab', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-5', 'hash-repo', '/tmp/hash-repo');
+        await enableWorkflowsFeature(serverUrl);
 
         await page.goto(`${serverUrl}/#repos/ws-sub-5/workflows`);
 
@@ -504,15 +527,16 @@ test.describe('Sub-tab Navigation', () => {
 
 test.describe('Info Tab Content', () => {
     test('meta grid shows path and color', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', '/tmp/info-repo', '#107c10');
+        await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', testWorkspacePath('info-repo'), '#107c10');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Click repo to show detail — Info is the default sub-tab
+        // Click repo to show detail, then navigate to Settings sub-tab to see meta-grid
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('button[data-subtab="settings"]');
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Verify path is displayed
@@ -527,7 +551,8 @@ test.describe('Info Tab Content', () => {
 
         // Verify pipeline and task count cells exist
         await expect(page.locator('.meta-item', { hasText: 'Workflows' })).toBeVisible();
-        await expect(page.locator('.meta-item', { hasText: 'Plans' })).toBeVisible();
+        // 'Plans' label — filter out 'Plans Folder' row which may also appear
+        await expect(page.locator('.meta-item', { hasText: 'Plans' }).filter({ hasNotText: 'Folder' })).toBeVisible();
     });
 
     test('git info displays branch', async ({ page, serverUrl }) => {
@@ -543,6 +568,8 @@ test.describe('Info Tab Content', () => {
             await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
             await page.locator('[data-testid="repo-tab"]').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('button[data-subtab="settings"]');
             await expect(page.locator('.meta-grid')).toBeVisible();
 
             // Branch cell should show a real branch name (main or master)
@@ -568,8 +595,10 @@ test.describe('Info Tab Content', () => {
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
 
-        // Click repo to verify in Info tab meta grid
+        // Click repo then navigate to Settings sub-tab to see meta grid
         await page.locator('[data-testid="repo-tab"]').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('button[data-subtab="settings"]');
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
@@ -597,6 +626,8 @@ test.describe('Info Tab Content', () => {
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         await page.locator('[data-testid="repo-tab"]').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('button[data-subtab="settings"]');
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Wait for recent processes to load
@@ -625,6 +656,7 @@ test.describe('Workflows Tab Content', () => {
 
         try {
             await seedWorkspace(serverUrl, 'ws-pipe-1', 'pipe-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
@@ -652,6 +684,7 @@ test.describe('Workflows Tab Content', () => {
 
     test('empty state when no workflows exist', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-pipe-empty', 'empty-pipe-repo', '/tmp/no-such-repo');
+        await enableWorkflowsFeature(serverUrl);
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -1070,6 +1103,7 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
 
         try {
             await seedWorkspace(serverUrl, 'ws-addwf-1', 'addwf-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
@@ -1084,8 +1118,8 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
             // Click the + New button in the Workflows section
             await page.locator('[data-testid="workflows-section"]').getByRole('button', { name: '+ New' }).click();
 
-            // The AddWorkflowDialog should appear with a name input
-            await expect(page.locator('input[placeholder*="name"]').or(page.locator('input[type="text"]')).first()).toBeVisible({ timeout: 5000 });
+            // The AddWorkflowDialog should appear
+            await expect(page.getByTestId('dialog-overlay')).toBeVisible({ timeout: 5000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -1097,6 +1131,7 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
 
         try {
             await seedWorkspace(serverUrl, 'ws-addwf-2', 'addwf-val-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
@@ -1140,6 +1175,7 @@ test.describe('Workflows Tab — WorkflowDetail', () => {
 
         try {
             await seedWorkspace(serverUrl, 'ws-wfdetail-1', 'wfdetail-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
@@ -1174,12 +1210,12 @@ test.describe('Activity Tab — Task List', () => {
     test('completed task appears in ChatListPane history', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-activity-task-1', 'activity-task-repo');
 
-        // Seed a queue task for this workspace (mock AI completes it quickly).
-        // workspaceId routes the task to the workspace-specific queue so history returns it.
+        // Seed a queue task scoped to this workspace so it appears in the repo's activity tab.
         await seedQueueTask(serverUrl, {
             type: 'chat',
             displayName: 'Activity List Task',
-            workspaceId: 'ws-activity-task-1',
+            repoId: 'ws-activity-task-1',
+            payload: { workspaceId: 'ws-activity-task-1', prompt: 'Activity List Task' },
         });
 
         await page.goto(serverUrl);
@@ -1200,12 +1236,12 @@ test.describe('Activity Tab — Task List', () => {
     test('clicking a task in the list shows detail in the right pane', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-activity-task-2', 'activity-detail-repo');
 
-        // Seed a queue task.
-        // workspaceId routes the task to the workspace-specific queue so history returns it.
+        // Seed a queue task scoped to this workspace so it appears in the repo's activity tab.
         await seedQueueTask(serverUrl, {
             type: 'chat',
             displayName: 'Detail Pane Task',
-            workspaceId: 'ws-activity-task-2',
+            repoId: 'ws-activity-task-2',
+            payload: { workspaceId: 'ws-activity-task-2', prompt: 'Detail Pane Task' },
         });
 
         await page.goto(serverUrl);

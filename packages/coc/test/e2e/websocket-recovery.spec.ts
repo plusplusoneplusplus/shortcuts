@@ -120,6 +120,25 @@ async function seedProcess(baseUrl: string, id: string, workspaceId?: string): P
     });
 }
 
+/** Provision a workspace so per-repo activity routes have a real target. */
+async function seedWorkspace(baseUrl: string, id: string, name = id): Promise<void> {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `coc-e2e-ws-recovery-${id}-`));
+    await postJson(baseUrl, '/api/workspaces', { id, name, rootPath: tmp });
+}
+
+/** Seed a queue task scoped to a workspace; returns the created task id. */
+async function seedScopedQueueTask(baseUrl: string, wsId: string, displayName: string): Promise<string> {
+    const res = await postJson(baseUrl, '/api/queue', {
+        type: 'chat',
+        priority: 'normal',
+        displayName,
+        repoId: wsId,
+        payload: { workspaceId: wsId, prompt: `Test prompt for ${displayName}` },
+    });
+    const json = JSON.parse(res.body);
+    return (json.task ?? json).id as string;
+}
+
 async function setupPage(page: Page): Promise<void> {
     await patchApiResponses(page);
     await stubCdnScripts(page);
@@ -246,8 +265,13 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await setupPage(page1);
             await setupPage(page2);
 
-            await page1.goto(`${server.url}/#processes`);
-            await page2.goto(`${server.url}/#processes`);
+            // Provision a workspace and navigate both tabs to its activity sub-tab.
+            const wsId = `ws-9-1-${Date.now()}`;
+            await seedWorkspace(server.url, wsId);
+
+            const activityUrl = `${server.url}/#repos/${encodeURIComponent(wsId)}/activity`;
+            await page1.goto(activityUrl);
+            await page2.goto(activityUrl);
 
             // Wait for WS connections on both tabs
             await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
@@ -257,19 +281,12 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
-            // Create a queue task via REST API (triggers queue-updated WS broadcast)
-            const taskName = `Multi-tab task ${Date.now()}`;
-            const res = await postJson(server.url, '/api/queue', {
-                type: 'chat',
-                priority: 'normal',
-                displayName: taskName,
-                payload: { prompt: 'Test multi-tab sync' },
-            });
-            const taskId: string = (JSON.parse(res.body).task ?? JSON.parse(res.body)).id;
+            // Create a workspace-scoped queue task (triggers queue-updated WS broadcast)
+            const taskId = await seedScopedQueueTask(server.url, wsId, `Multi-tab task ${Date.now()}`);
 
-            // Both tabs should reflect the new queue task via WS event (within 15s)
-            await expect(page1.locator(`[data-task-id="${taskId}"]`)).toBeVisible({ timeout: 15000 });
-            await expect(page2.locator(`[data-task-id="${taskId}"]`)).toBeVisible({ timeout: 15000 });
+            // Completed queue tasks land in the activity feed with `queue_<taskId>` ids.
+            await expect(page1.locator(`[data-task-id="queue_${taskId}"]`)).toBeVisible({ timeout: 15000 });
+            await expect(page2.locator(`[data-task-id="queue_${taskId}"]`)).toBeVisible({ timeout: 15000 });
         } finally {
             await page1.close();
             await page2.close();
@@ -285,18 +302,15 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await setupPage(page1);
             await setupPage(page2);
 
-            // Seed a queue task before opening tabs
-            const taskName = `Sync task ${Date.now()}`;
-            const res = await postJson(server.url, '/api/queue', {
-                type: 'chat',
-                priority: 'normal',
-                displayName: taskName,
-                payload: { prompt: 'Test sync' },
-            });
-            const taskId: string = (JSON.parse(res.body).task ?? JSON.parse(res.body)).id;
+            // Provision the workspace, then seed a queue task scoped to it before
+            // opening tabs so both tabs see the task on initial render.
+            const wsId = `ws-9-2-${Date.now()}`;
+            await seedWorkspace(server.url, wsId);
+            const taskId = await seedScopedQueueTask(server.url, wsId, `Sync task ${Date.now()}`);
 
-            await page1.goto(`${server.url}/#processes`);
-            await page2.goto(`${server.url}/#processes`);
+            const activityUrl = `${server.url}/#repos/${encodeURIComponent(wsId)}/activity`;
+            await page1.goto(activityUrl);
+            await page2.goto(activityUrl);
 
             await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
@@ -306,8 +320,8 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             );
 
             // Both tabs should see the existing queue task (loaded on initial render)
-            await expect(page1.locator(`[data-task-id="${taskId}"]`)).toBeVisible({ timeout: 10000 });
-            await expect(page2.locator(`[data-task-id="${taskId}"]`)).toBeVisible({ timeout: 10000 });
+            await expect(page1.locator(`[data-task-id="queue_${taskId}"]`)).toBeVisible({ timeout: 10000 });
+            await expect(page2.locator(`[data-task-id="queue_${taskId}"]`)).toBeVisible({ timeout: 10000 });
         } finally {
             await page1.close();
             await page2.close();
@@ -323,8 +337,12 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await setupPage(page1);
             await setupPage(page2);
 
-            await page1.goto(`${server.url}/#processes`);
-            await page2.goto(`${server.url}/#processes`);
+            const wsId = `ws-9-3-${Date.now()}`;
+            await seedWorkspace(server.url, wsId);
+
+            const activityUrl = `${server.url}/#repos/${encodeURIComponent(wsId)}/activity`;
+            await page1.goto(activityUrl);
+            await page2.goto(activityUrl);
 
             // Both tabs should be stably connected
             await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
@@ -334,11 +352,11 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
-            // Create 3 processes in rapid succession
+            // Create 3 workspace-scoped processes in rapid succession
             await Promise.all([
-                seedProcess(server.url, 'rapid-proc-1'),
-                seedProcess(server.url, 'rapid-proc-2'),
-                seedProcess(server.url, 'rapid-proc-3'),
+                seedProcess(server.url, 'rapid-proc-1', wsId),
+                seedProcess(server.url, 'rapid-proc-2', wsId),
+                seedProcess(server.url, 'rapid-proc-3', wsId),
             ]);
 
             // Both tabs should not crash or disconnect

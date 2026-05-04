@@ -103,14 +103,17 @@ test.describe('Multi-Workspace UI Isolation', () => {
 
     test('repos list shows both workspaces after registration', async ({ page }) => {
         await page.goto(ctx.server.url);
-
-        // Wait for the repos grid / repos list to load
-        // The actual selector depends on the SPA structure
         await page.waitForLoadState('networkidle');
 
-        // Both workspace names should appear somewhere on the page
-        await expect(page.getByText('Repo A')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByText('Repo B')).toBeVisible({ timeout: 10_000 });
+        // Explicitly navigate to the Repos tab where workspaces are listed
+        await page.click('[data-tab="repos"]');
+
+        // Both workspace names render in `[data-testid="repo-tab"]` entries on
+        // the persistent rail. Scope assertion to the rail.
+        const repoTabs = page.locator('[data-testid="repo-tab"]');
+        await expect(repoTabs).toHaveCount(2, { timeout: 10_000 });
+        await expect(repoTabs.filter({ hasText: 'Repo A' })).toHaveCount(1);
+        await expect(repoTabs.filter({ hasText: 'Repo B' })).toHaveCount(1);
     });
 
     test('queue badge for Repo A and Repo B shown independently in repos grid', async ({ page }) => {

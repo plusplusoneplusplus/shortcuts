@@ -1,12 +1,49 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 import { expect, test } from './fixtures/server-fixture';
 import { safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace } from './fixtures/seed';
+import { seedWorkspace, request } from './fixtures/seed';
 import { MOCK_PR_OPEN, MOCK_PR_THREADS } from './fixtures/pr-fixtures';
 import { setupPrRoutes } from './fixtures/pr-mock';
+
+/** Enable the Pull Requests feature flag on the running server. */
+async function enablePullRequestsFeature(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'pullRequests.enabled': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable PR feature: ${res.status} ${res.body}`);
+    }
+}
+
+/**
+ * Mock the `git-info` endpoints so the SPA treats the seeded workspace as a
+ * real git repo (required for the Pull Requests sub-tab to render).
+ */
+async function mockGitInfo(page: any, wsId: string): Promise<void> {
+    await page.route(
+        (url: string) => new URL(url).pathname === '/api/git-info/batch',
+        (route: any) => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                results: { [wsId]: { isGitRepo: true, branch: 'main', dirty: false } },
+            }),
+        }),
+    );
+    await page.route(
+        (url: string) => new URL(url).pathname.endsWith(`/workspaces/${wsId}/git-info`),
+        (route: any) => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ isGitRepo: true, branch: 'main', dirty: false }),
+        }),
+    );
+}
 
 test.describe('Pull Requests — detail view', () => {
     let tmpDir: string;
@@ -14,7 +51,11 @@ test.describe('Pull Requests — detail view', () => {
 
     test.beforeEach(async ({ page, serverUrl }) => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-pr-detail-'));
+        // git init so the server reports isGitRepo=true for the seeded workspace.
+        execSync('git init', { cwd: tmpDir, stdio: 'ignore' });
         await seedWorkspace(serverUrl, repoId, 'pr-detail-project', tmpDir);
+        await enablePullRequestsFeature(serverUrl);
+        await mockGitInfo(page, repoId);
         await setupPrRoutes(page, serverUrl, repoId, {
             prDetail: MOCK_PR_OPEN,
             threads: MOCK_PR_THREADS,

@@ -26,12 +26,16 @@ test.describe('Repo real-time: stats badge', () => {
             workspaceId: 'ws-rt-stats',
         });
 
-        // Navigate to repos tab and select the repo (info tab is default)
+        // Navigate to repos tab and select the repo. Stats badges live in the
+        // Settings sub-tab now (the legacy info sub-tab was removed); navigate
+        // there explicitly to reach the .meta-grid.
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
         await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="settings"]');
+        await expect(page.locator('.meta-grid').first()).toBeVisible();
 
         // Verify initial stats: 1 completed
         const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
@@ -109,12 +113,14 @@ test.describe('Repo real-time: process status change', () => {
             workspaceId: 'ws-rt-status',
         });
 
-        // Navigate to repos tab and select the repo
+        // Navigate to repos tab → select repo → switch to Settings (stats grid).
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
         await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="settings"]');
+        await expect(page.locator('.meta-grid').first()).toBeVisible();
 
         // Verify running=1 in stats
         const runningItem = page.locator('.meta-item', { hasText: 'Running' });

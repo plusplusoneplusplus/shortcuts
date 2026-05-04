@@ -139,6 +139,9 @@ test.describe('Repo add — generic server error handling', () => {
 // ============================================================================
 
 test.describe('Repo remove — confirm dialog', () => {
+    // Remove flow moved from a dedicated #repo-remove-btn to the right-click
+    // context menu on the repo tab. Tests now open the context menu and click
+    // the "Remove" item ([data-testid="repo-tab-context-remove"]).
     test('remove button triggers browser confirm dialog', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-remove-edge', 'edge-repo', '/tmp/edge-repo');
 
@@ -146,22 +149,20 @@ test.describe('Repo remove — confirm dialog', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-        // Set up a dialog handler BEFORE clicking the button — track that it fires
+        // Set up a dialog handler BEFORE triggering the remove — track that it fires
         let dialogFired = false;
         page.on('dialog', async dialog => {
             dialogFired = true;
             await dialog.dismiss(); // Cancel — do not actually remove
         });
 
-        await page.click('#repo-remove-btn');
+        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
+        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
+        await page.click('[data-testid="repo-tab-context-remove"]');
 
         // Allow time for dialog to appear
         await page.waitForTimeout(500);
 
-        // A browser confirm dialog must have appeared
         expect(dialogFired).toBe(true);
 
         // After cancel, repo should still be in the list
@@ -175,15 +176,14 @@ test.describe('Repo remove — confirm dialog', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
         page.on('dialog', dialog => dialog.accept());
-        await page.click('#repo-remove-btn');
+
+        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
+        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
+        await page.click('[data-testid="repo-tab-context-remove"]');
 
         // After accept, repo should be gone
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
-        await expect(page.locator('#repo-detail-empty')).toBeVisible();
     });
 });
 
@@ -209,12 +209,12 @@ test.describe('Repo remove — with in-progress tasks (current behavior)', () =>
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
         // Accept the default confirm dialog (no special in-progress-tasks warning expected)
         page.on('dialog', dialog => dialog.accept());
-        await page.click('#repo-remove-btn');
+
+        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
+        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
+        await page.click('[data-testid="repo-tab-context-remove"]');
 
         // Repo is removed despite having in-progress tasks
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
