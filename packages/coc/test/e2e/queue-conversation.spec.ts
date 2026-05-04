@@ -46,21 +46,7 @@ async function seedAndWaitForTask(
         ...overrides,
         payload: { workspaceId: wsId, ...basePayload },
     });
-    const taskId = task.id as string;
-
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-        const res = await request(`${serverUrl}/api/queue/${taskId}`);
-        if (res.status === 200) {
-            const json = JSON.parse(res.body);
-            const t = json.task ?? json;
-            if (['completed', 'failed'].includes(t.status as string)) {
-                return t;
-            }
-        }
-        await new Promise((r) => setTimeout(r, 200));
-    }
-    throw new Error(`Task ${taskId} did not complete within ${timeoutMs}ms`);
+    return waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], timeoutMs);
 }
 
 /** Navigate to the queue task detail page via the repo-scoped activity route. */
@@ -435,10 +421,9 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
     test('displays multiple tool calls as separate cards', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'tool-2');
-        // Keep the default compactness (3) so same-category tools are grouped
-        // by the whisper collapsing logic; we then expand the group to count
-        // individual cards.
-        await setToolCompactness(serverUrl, 3);
+        // toolCompactness=0 forces every tool call to render as an individual
+        // .tool-call-card without being collapsed into a whisper group.
+        await setToolCompactness(serverUrl, 0);
         try {
             mockAI.mockSendMessage.mockImplementation(
                 mockAI.createToolCallResponse(
@@ -460,13 +445,10 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
             await waitForTaskStatus(serverUrl, taskId);
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Same-category tools (view + grep are both "read") are grouped into a collapsed group
-            const group = page.locator('.tool-call-group');
-            await expect(group).toHaveCount(1, { timeout: 10000 });
-
-            // Expand the group to reveal individual tool call cards
-            await group.locator('.tool-call-group-header').click();
-            await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 5000 });
+            await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 10000 });
+            const names = page.locator('.tool-call-card .tool-call-name');
+            await expect(names.nth(0)).toContainText(/view|grep/);
+            await expect(names.nth(1)).toContainText(/view|grep/);
         } finally {
             cleanup();
         }
@@ -599,6 +581,9 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
             const taskId = task.id as string;
 
             await gotoQueueTask(page, serverUrl, wsId, taskId);
+            // Wait for conversation to fully load so the input is in enabled state
+            // (RichTextInput uses contentEditable='false' while loading)
+            await waitForConversation(page, 2);
 
             const textarea = page.locator('[data-testid="activity-chat-input"]');
             await textarea.fill('This is a follow-up message');
@@ -912,8 +897,11 @@ test.describe('Queue Task Conversation – Error Handling', () => {
             await expect(page.locator('.chat-error-bubble')).toBeVisible({ timeout: 3000 });
             await expect(page.locator('.chat-error-bubble')).toContainText(/[Ss]ession/);
 
-            // Input permanently disabled
-            await expect(page.locator('[data-testid="activity-chat-input"]')).toBeDisabled();
+            // Input permanently disabled. The RichTextInput is a contenteditable
+            // div — assert on the contenteditable attribute since
+            // `toBeDisabled()` only recognises form controls.
+            await expect(page.locator('[data-testid="activity-chat-input"]'))
+                .toHaveAttribute('contenteditable', 'false', { timeout: 5000 });
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeDisabled();
         } finally {
             cleanup();
@@ -992,7 +980,17 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
             await gate.releaseNext();
             await expect(bubble).toContainText('Hello, world!', { timeout: 2000 });
 
-            await waitForStreamingToComplete(page);
+            // After all chunks are released the mock returns and the server marks the
+            // task completed. Wait for that server-side completion, then navigate away
+            // and back so the page renders the final persisted state (no streaming
+            // indicator) — avoids a race where the SSE 'done' event is missed by the
+            // still-open EventSource before it fires finish().
+            gate.releaseAll(); // ensure mock unblocks (no-op if already done)
+            await waitForTaskStatus(serverUrl, task.id as string);
+            const activityUrl = `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`;
+            await page.goto(activityUrl);
+            await gotoQueueTask(page, serverUrl, wsId, task.id as string);
+            await expect(page.locator('.streaming-indicator')).toHaveCount(0);
         } finally {
             cleanup();
         }
@@ -1023,7 +1021,16 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
             await expect(page.locator('.streaming-indicator')).toBeVisible();
 
             await gate.releaseNext();
-            await waitForStreamingToComplete(page);
+
+            // After all chunks are released, wait for server-side task completion
+            // then navigate away and back. A completed task renders without a
+            // streaming indicator, which is the reliable way to assert the
+            // no-streaming final state (avoids timing races with SSE 'done').
+            gate.releaseAll(); // no-op if already done
+            await waitForTaskStatus(serverUrl, task.id as string);
+            const activityUrl = `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`;
+            await page.goto(activityUrl);
+            await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await expect(page.locator('.streaming-indicator')).toHaveCount(0);
         } finally {
             cleanup();

@@ -544,31 +544,43 @@ test.describe('Suggestion Chips', () => {
     test('suggestion chips appear after AI emits suggestions and click sends message', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'chips-1');
         try {
-            // Fire suggest_follow_ups immediately and let the task complete BEFORE
-            // navigating; the persisted timeline holds the suggestions and the
-            // SPA renders them on mount (no SSE timing dance required).
-            mockAI.mockSendMessage.mockImplementation(
-                mockAI.createToolCallResponse(
-                    [
-                        {
-                            type: 'tool-complete',
-                            toolCallId: 'tc-suggest',
-                            toolName: 'suggest_follow_ups',
-                            result: JSON.stringify({ suggestions: ['Tell me more', 'Show an example'] }),
-                        },
-                    ],
-                    { finalResponse: 'AI response with suggestions', sessionId: 'sess-chips' },
-                ),
-            );
+            // Suggestions are NOT persisted on the timeline — they're a live
+            // SSE-only signal driven by the suggest_follow_ups tool. Gate the
+            // mock until the page's `/stream` SSE request is observed so the
+            // emitted suggestions event isn't dropped before the SPA connects.
+            let releaseEvents!: () => void;
+            const sseConnected = new Promise<void>((r) => { releaseEvents = r; });
+
+            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
+                await sseConnected;
+                if (opts && opts.onToolEvent) {
+                    opts.onToolEvent({
+                        type: 'tool-complete',
+                        toolCallId: 'tc-suggest',
+                        toolName: 'suggest_follow_ups',
+                        result: JSON.stringify({ suggestions: ['Tell me more', 'Show an example'] }),
+                    });
+                }
+                await new Promise((r) => setTimeout(r, 300));
+                return { success: true, response: 'AI response with suggestions', sessionId: 'sess-chips' };
+            });
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Suggestions test' },
             });
-            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
-            await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
-            await expect(page.locator('[data-testid="suggestion-chips"]')).toBeVisible({ timeout: 5_000 });
+            const ssePromise = page.waitForRequest((req) => req.url().includes('/stream'), { timeout: 15_000 });
+            await gotoQueueTask(page, serverUrl, wsId, task.id as string);
+            await ssePromise;
+            // Add a small delay so the SSE handler is fully registered before
+            // we release the suggest_follow_ups event into the executor.
+            await page.waitForTimeout(250);
+            releaseEvents();
+
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
+
+            await expect(page.locator('[data-testid="suggestion-chips"]')).toBeVisible({ timeout: 8_000 });
             await expect(page.locator('[data-testid="suggestion-chip"]')).toHaveCount(2, { timeout: 3_000 });
             await expect(page.locator('[data-testid="suggestion-chip"]').first()).toContainText('Tell me more');
         } finally {
@@ -896,8 +908,13 @@ test.describe('Cancelled Task', () => {
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            // Input should be disabled because task.status === 'cancelled'
-            await expect(page.locator('[data-testid="activity-chat-input"]')).toBeDisabled({ timeout: 5_000 });
+            // Input should be disabled because task.status === 'cancelled'.
+            // The follow-up input is a RichTextInput contenteditable div, so
+            // assert on the contenteditable attribute (Playwright's
+            // toBeDisabled() doesn't recognise aria-disabled on a non-form-
+            // control element).
+            await expect(page.locator('[data-testid="activity-chat-input"]'))
+                .toHaveAttribute('contenteditable', 'false', { timeout: 5_000 });
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeDisabled();
         } finally {
             cleanup();
@@ -1189,7 +1206,7 @@ test.describe('Empty Conversation Fallback', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Shift+Tab Mode Cycling', () => {
-    test('Shift+Tab cycles between autopilot and ask modes', async ({ page, serverUrl, mockAI }) => {
+    test('Shift+Tab cycles between autopilot, ask, and plan modes', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'shifttab-1');
         try {
             const task = await seedAndWaitForTask(serverUrl, wsId, {
@@ -1202,21 +1219,20 @@ test.describe('Shift+Tab Mode Cycling', () => {
             const dropdown = page.locator('[data-testid="mode-dropdown"]');
             const textarea = page.locator('[data-testid="activity-chat-input"]');
 
-            // Default mode is 'autopilot'
+            // Default mode is 'autopilot'.  Cycle order: ask → plan → autopilot.
+            // Pressing Shift+Tab from `autopilot` therefore lands on `ask`,
+            // then `plan`, then back to `autopilot`.
             await expect(dropdown).toHaveValue('autopilot');
 
-            // Focus textarea and press Shift+Tab → should cycle to 'ask'
             await textarea.click();
             await textarea.press('Shift+Tab');
             await expect(dropdown).toHaveValue('ask', { timeout: 1_000 });
 
-            // Press Shift+Tab again → back to 'autopilot'
+            await textarea.press('Shift+Tab');
+            await expect(dropdown).toHaveValue('plan', { timeout: 1_000 });
+
             await textarea.press('Shift+Tab');
             await expect(dropdown).toHaveValue('autopilot', { timeout: 1_000 });
-
-            // Press Shift+Tab once more → 'ask' again (verify cycle)
-            await textarea.press('Shift+Tab');
-            await expect(dropdown).toHaveValue('ask', { timeout: 1_000 });
         } finally {
             cleanup();
         }
