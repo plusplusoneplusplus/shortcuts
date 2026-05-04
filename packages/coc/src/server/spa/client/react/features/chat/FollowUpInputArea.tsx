@@ -83,6 +83,13 @@ export interface FollowUpInputAreaProps {
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];
+    /**
+     * When true, the mode selector always renders as the icon-only cycling
+     * button at all viewport sizes (no `<select>` dropdown). Use in narrow
+     * side-by-side contexts (e.g. NoteChatPanel) where horizontal space is
+     * scarce.
+     */
+    compactModeSelector?: boolean;
 }
 
 export function FollowUpInputArea({
@@ -116,6 +123,7 @@ export function FollowUpInputArea({
     sessionModel,
     hideModeSelector = false,
     allowedModes,
+    compactModeSelector = false,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -237,31 +245,48 @@ export function FollowUpInputArea({
                     +
                 </button>
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
-                    {/* Mobile: icon-only button that cycles modes on tap */}
-                    <button
-                        type="button"
-                        onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
-                        className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
-                        data-testid="mode-cycle-btn"
-                        aria-label={`Mode: ${selectedMode}. Tap to switch.`}
-                        title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
-                    >
-                        {MODE_ICONS[selectedMode]}
-                    </button>
-                    {/* Desktop: full select dropdown */}
-                    <select
-                        value={selectedMode}
-                        onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
-                        className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
-                        data-testid="mode-dropdown"
-                        title="Select chat mode (Shift+Tab to cycle)"
-                    >
-                        {(Object.entries(MODE_LABELS) as [string, string][])
-                            .filter(([mode]) => !allowedModes || allowedModes.includes(mode as ChatMode))
-                            .map(([mode, label]) => (
-                            <option key={mode} value={mode}>{label}</option>
-                        ))}
-                    </select>
+                    {compactModeSelector ? (
+                        /* Compact: icon-only cycling button at all viewport sizes */
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
+                            className="h-[34px] px-2 flex items-center gap-0.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
+                            data-testid="mode-cycle-btn"
+                            aria-label={`Mode: ${selectedMode}. Tap to switch.`}
+                            title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
+                        >
+                            <span>{MODE_ICONS[selectedMode]}</span>
+                            <span className="text-[10px] text-[#848484] leading-none" aria-hidden="true">▾</span>
+                        </button>
+                    ) : (
+                        <>
+                            {/* Mobile: icon-only button that cycles modes on tap */}
+                            <button
+                                type="button"
+                                onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
+                                className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
+                                data-testid="mode-cycle-btn"
+                                aria-label={`Mode: ${selectedMode}. Tap to switch.`}
+                                title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
+                            >
+                                {MODE_ICONS[selectedMode]}
+                            </button>
+                            {/* Desktop: full select dropdown */}
+                            <select
+                                value={selectedMode}
+                                onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
+                                className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
+                                data-testid="mode-dropdown"
+                                title="Select chat mode (Shift+Tab to cycle)"
+                            >
+                                {(Object.entries(MODE_LABELS) as [string, string][])
+                                    .filter(([mode]) => !allowedModes || allowedModes.includes(mode as ChatMode))
+                                    .map(([mode, label]) => (
+                                    <option key={mode} value={mode}>{label}</option>
+                                ))}
+                            </select>
+                        </>
+                    )}
                 </div>}
                 <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
                     <RichTextInput

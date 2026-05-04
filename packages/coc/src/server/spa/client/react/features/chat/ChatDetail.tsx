@@ -71,6 +71,12 @@ export interface ChatDetailProps {
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];
+    /**
+     * When true, the mode selector renders as the icon-only cycling button at
+     * all viewport sizes. Use in narrow side-by-side contexts (e.g.
+     * NoteChatPanel) to avoid the wide `<select>` dropdown.
+     */
+    compactModeSelector?: boolean;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
     /**
@@ -88,7 +94,7 @@ export interface ChatDetailProps {
     onClearPendingPrefix?: () => void;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -938,6 +944,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             sessionModel={sessionModel}
                             hideModeSelector={hideModeSelector}
                             allowedModes={allowedModes}
+                            compactModeSelector={compactModeSelector}
                         />
                     )}
                 </div>
@@ -1023,6 +1030,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
                     allowedModes={allowedModes}
+                    compactModeSelector={compactModeSelector}
                 />
             )}
         </div>

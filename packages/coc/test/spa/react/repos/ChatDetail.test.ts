@@ -148,6 +148,27 @@ describe('ChatDetail', () => {
             expect(source).toContain("hideModeSelector = false");
         });
 
+        it('compactModeSelector defaults to false', () => {
+            expect(source).toContain("compactModeSelector = false");
+        });
+
+        it('declares compactModeSelector in ChatDetailProps', () => {
+            const propsBlock = source.substring(
+                source.indexOf('export interface ChatDetailProps'),
+                source.indexOf('export function ChatDetail'),
+            );
+            expect(propsBlock).toContain('compactModeSelector?:');
+        });
+
+        it('forwards compactModeSelector to every FollowUpInputArea instance', () => {
+            const followUpUsages = source.split('<FollowUpInputArea').slice(1);
+            expect(followUpUsages.length).toBeGreaterThanOrEqual(2);
+            for (const usage of followUpUsages) {
+                const block = usage.substring(0, usage.indexOf('/>'));
+                expect(block).toContain('compactModeSelector={compactModeSelector}');
+            }
+        });
+
         it('cycles mode on Shift+Tab keydown', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("e.key === 'Tab' && e.shiftKey");
         });

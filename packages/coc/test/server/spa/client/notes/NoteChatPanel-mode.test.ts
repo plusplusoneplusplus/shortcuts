@@ -42,4 +42,13 @@ describe('NoteChatPanel — mode toggle', () => {
     it('defines NOTE_CHAT_ALLOWED_MODES as ask and autopilot', () => {
         expect(source).toMatch(/NOTE_CHAT_ALLOWED_MODES.*ChatMode\[\].*=.*\['ask',\s*'autopilot'\]/);
     });
+
+    it('passes compactModeSelector to ChatDetail so the side panel uses the icon-only variant', () => {
+        const chatDetailIdx = source.indexOf('<ChatDetail');
+        expect(chatDetailIdx).toBeGreaterThan(-1);
+        const chatDetailEnd = source.indexOf('/>', chatDetailIdx);
+        expect(chatDetailEnd).toBeGreaterThan(-1);
+        const chatDetailBlock = source.slice(chatDetailIdx, chatDetailEnd);
+        expect(chatDetailBlock).toContain('compactModeSelector');
+    });
 });

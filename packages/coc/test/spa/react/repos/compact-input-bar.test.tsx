@@ -245,6 +245,67 @@ describe('FollowUpInputArea — compact input bar layout', () => {
         expect(screen.queryByTestId('mode-dropdown')).toBeNull();
     });
 
+    describe('compactModeSelector — icon-only at all sizes', () => {
+        it('renders only the icon-only cycle button (no dropdown) when compactModeSelector is true', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
+            expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
+            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+        });
+
+        it('compact cycle button does NOT have sm:hidden class (visible at all sizes)', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
+            const btn = screen.getByTestId('mode-cycle-btn');
+            expect(btn.className).not.toContain('sm:hidden');
+        });
+
+        it('compact cycle button shows mode icon plus chevron and uses px-2 padding', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'autopilot' })} />);
+            const btn = screen.getByTestId('mode-cycle-btn');
+            expect(btn.textContent).toContain('🤖');
+            expect(btn.textContent).toContain('▾');
+            expect(btn.className).toContain('px-2');
+            expect(btn.className).toContain('h-[34px]');
+        });
+
+        it('compact cycle button title contains the full mode tooltip', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask' })} />);
+            const btn = screen.getByTestId('mode-cycle-btn');
+            expect(btn.getAttribute('title')).toContain('Ask');
+            expect(btn.getAttribute('title')).toContain('Shift+Tab to cycle');
+        });
+
+        it('clicking compact cycle button advances to the next mode', () => {
+            const setSelectedMode = vi.fn();
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask', setSelectedMode })} />);
+            fireEvent.click(screen.getByTestId('mode-cycle-btn'));
+            expect(setSelectedMode).toHaveBeenCalledWith('plan');
+        });
+
+        it('respects allowedModes when cycling (ask → autopilot for note chat)', () => {
+            const setSelectedMode = vi.fn();
+            render(<FollowUpInputArea {...makeFollowUpProps({
+                compactModeSelector: true,
+                selectedMode: 'ask',
+                allowedModes: ['ask', 'autopilot'],
+                setSelectedMode,
+            })} />);
+            fireEvent.click(screen.getByTestId('mode-cycle-btn'));
+            expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
+        });
+
+        it('hideModeSelector still hides the selector even when compactModeSelector is true', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, hideModeSelector: true })} />);
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+        });
+
+        it('default behavior (compactModeSelector=false) still renders both mobile and desktop variants', () => {
+            render(<FollowUpInputArea {...makeFollowUpProps()} />);
+            expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
+            expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
+        });
+    });
+
     it('all five children (file-input, attach-btn, mode, input, send) are direct children of the flex-row container', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const bar = screen.getByTestId('chat-input-bar');
