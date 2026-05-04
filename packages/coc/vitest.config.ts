@@ -31,5 +31,13 @@ export default defineConfig({
             ['test/spa/**/*.test.tsx', 'jsdom'],
             ['test/spa/**/*.test.ts', 'jsdom'],
         ],
+        // Use child_process forks instead of worker_threads. Worker threads
+        // on macOS Apple Silicon (Node 24 + vitest 1.6) can crash with
+        // SIGSEGV on shutdown when test files load native addons (notably
+        // better-sqlite3 from forge/coc). Forks isolate each test file in
+        // its own OS process so addon teardown happens on process exit
+        // without the worker-thread cleanup race. Slightly slower startup
+        // but eliminates the macOS CI segfault.
+        pool: 'forks',
     }
 });
