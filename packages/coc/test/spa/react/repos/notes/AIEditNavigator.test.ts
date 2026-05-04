@@ -58,4 +58,36 @@ describe('AIEditNavigator (source inspection)', () => {
     it('supports narrow layout for compact display', () => {
         expect(source).toContain('narrow');
     });
+
+    it('renders dismiss button with a "Keep" text label, not a bare \u2715', () => {
+        // Capture the exact dismiss button block so we don't accidentally match
+        // unrelated text elsewhere in the file.
+        const dismissBlockMatch = source.match(
+            /<button[^>]*data-testid="ai-edit-navigator-dismiss"[^>]*>[\s\S]*?<\/button>/,
+        );
+        expect(dismissBlockMatch, 'dismiss <button> block should be present').toBeTruthy();
+
+        const dismissBlock = dismissBlockMatch![0];
+        expect(dismissBlock).toContain('Keep');
+        expect(dismissBlock).not.toContain('\u2715');
+    });
+
+    it('gives the dismiss button a comfortable padded hit target', () => {
+        // The proposed ~28px-tall hit target relies on horizontal + vertical
+        // padding. Without padding the bare character regression returns.
+        const dismissBlockMatch = source.match(
+            /<button[^>]*data-testid="ai-edit-navigator-dismiss"[^>]*>[\s\S]*?<\/button>/,
+        );
+        expect(dismissBlockMatch).toBeTruthy();
+        const dismissBlock = dismissBlockMatch![0];
+        expect(dismissBlock).toMatch(/px-\d/);
+        expect(dismissBlock).toMatch(/py-\d/);
+    });
+
+    it('renders a visual separator between navigation and dismiss actions', () => {
+        // The separator is a non-interactive element that visually divides the
+        // navigation arrow from the new "Keep" button.
+        expect(source).toContain('ai-edit-navigator-separator');
+        expect(source).toContain('aria-hidden="true"');
+    });
 });

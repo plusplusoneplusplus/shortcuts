@@ -1,8 +1,12 @@
 /**
  * AIEditNavigator — floating pill showing pending AI edit count with navigation.
  *
- * Renders a compact "✦ N AI edits ↓" pill that auto-hides when editCount is 0.
- * In narrow (chat-open) mode, shows icon-only "✦ N ↓".
+ * Renders a compact "✦ N AI edits ↓ | Keep" pill that auto-hides when editCount is 0.
+ * In narrow (chat-open) mode, shows icon-only "✦ N ↓ | Keep".
+ *
+ * The dismiss action is labeled "Keep" rather than a bare ✕ so the hit target
+ * matches the rest of the pill (~28px tall) and conveys that the user is
+ * accepting the AI edits as-is.
  */
 
 import type React from 'react';
@@ -42,7 +46,7 @@ export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false }
 
             <button
                 onClick={onNext}
-                className="text-[#0078d4] hover:text-[#005a9e] dark:text-[#4fc3f7] dark:hover:text-[#81d4fa] font-bold leading-none"
+                className="text-[#0078d4] hover:text-[#005a9e] dark:text-[#4fc3f7] dark:hover:text-[#81d4fa] font-bold leading-none px-1 py-0.5 rounded"
                 title="Jump to next AI edit"
                 aria-label="Jump to next AI edit"
                 data-testid="ai-edit-navigator-next"
@@ -50,14 +54,22 @@ export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false }
                 ↓
             </button>
 
+            <span
+                className="opacity-20 select-none mx-0.5"
+                aria-hidden="true"
+                data-testid="ai-edit-navigator-separator"
+            >
+                |
+            </span>
+
             <button
                 onClick={onDismiss}
-                className="text-[#888] hover:text-[#333] dark:hover:text-white leading-none ml-0.5"
+                className="text-[#666] hover:text-[#222] dark:text-[#aaa] dark:hover:text-white leading-none px-1.5 py-0.5 rounded text-xs font-medium"
                 title="Dismiss AI edit highlights"
                 aria-label="Dismiss AI edit highlights"
                 data-testid="ai-edit-navigator-dismiss"
             >
-                ✕
+                Keep
             </button>
         </div>
     );
