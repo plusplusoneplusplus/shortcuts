@@ -11,6 +11,15 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 
 expect.extend(matchers);
 
+// Ensure `git commit` works in tests even when the host machine has no
+// git user.email / user.name configured (e.g. fresh CI runners). These
+// env vars are read by git directly and bypass the need for `git config`,
+// and they are inherited by every child process spawned via execGit.
+if (!process.env.GIT_AUTHOR_NAME) process.env.GIT_AUTHOR_NAME = 'CoC Test';
+if (!process.env.GIT_AUTHOR_EMAIL) process.env.GIT_AUTHOR_EMAIL = 'coc-test@example.com';
+if (!process.env.GIT_COMMITTER_NAME) process.env.GIT_COMMITTER_NAME = process.env.GIT_AUTHOR_NAME;
+if (!process.env.GIT_COMMITTER_EMAIL) process.env.GIT_COMMITTER_EMAIL = process.env.GIT_AUTHOR_EMAIL;
+
 // Node.js ≥ 25 ships a built-in `globalThis.localStorage` (behind --localstorage-file).
 // Vitest's populateGlobal() only overwrites keys that are in its hardcoded KEYS list;
 // `localStorage`/`sessionStorage` are not in that list, so the Node.js stub (a plain
