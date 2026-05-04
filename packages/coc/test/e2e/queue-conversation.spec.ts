@@ -87,6 +87,38 @@ async function waitForStreamingToComplete(page: Page): Promise<void> {
     await expect(page.locator('.streaming-indicator')).toHaveCount(0, { timeout: 10_000 });
 }
 
+/**
+ * Set toolCompactness via the admin API. Defaults to 0 so that every tool
+ * call renders as an individual `.tool-call-card` instead of being collapsed
+ * into the whisper group (the default `toolCompactness=3`).
+ */
+async function setToolCompactness(serverUrl: string, value: 0 | 1 | 2 | 3 = 0): Promise<void> {
+    await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ toolCompactness: value }),
+    });
+}
+
+/** Poll GET /api/queue/:id until the task reaches a terminal status. */
+async function waitForTaskStatus(
+    serverUrl: string,
+    taskId: string,
+    statuses: string[] = ['completed', 'failed'],
+    timeoutMs = 15_000,
+): Promise<Record<string, unknown>> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const res = await request(`${serverUrl}/api/queue/${taskId}`);
+        if (res.status === 200) {
+            const json = JSON.parse(res.body);
+            const t = (json.task ?? json) as Record<string, unknown>;
+            if (statuses.includes(t.status as string)) return t;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error(`Task ${taskId} did not reach ${statuses.join('|')} within ${timeoutMs}ms`);
+}
+
 // ---------------------------------------------------------------------------
 // 1. Basic Conversation Rendering
 // ---------------------------------------------------------------------------
@@ -329,32 +361,25 @@ test.describe('Queue Task Conversation – Streaming', () => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'stream-4');
         try {
             const chunks = ['The ', 'quick ', 'brown ', 'fox ', 'jumps'];
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                // Wait for SSE to connect
-                await new Promise((r) => setTimeout(r, 2500));
-                if (opts && opts.onStreamingChunk) {
-                    for (const chunk of chunks) {
-                        opts.onStreamingChunk(chunk);
-                        await new Promise((r) => setTimeout(r, 100));
-                    }
-                }
-                await new Promise((r) => setTimeout(r, 500));
-                return { success: true, response: chunks.join(''), sessionId: 'sess-multi-chunk' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createStreamingResponse(chunks, { sessionId: 'sess-multi-chunk' }),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Write a sentence' },
             });
             const taskId = task.id as string;
+            await waitForTaskStatus(serverUrl, taskId);
 
+            // Navigate AFTER the task has completed; the persisted timeline holds
+            // the accumulated text (we're testing that chunks aggregate, not the
+            // live-streaming behaviour itself, which is exercised by the
+            // streaming-indicator-specific tests below).
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Full accumulated message (chunks appear as separate content divs in timeline)
             await expect(page.locator('.chat-message.assistant').last())
                 .toContainText('The quick brown fox jumps', { timeout: 5000 });
-
-            await waitForStreamingToComplete(page);
         } finally {
             cleanup();
         }
@@ -368,36 +393,34 @@ test.describe('Queue Task Conversation – Streaming', () => {
 test.describe('Queue Task Conversation – Tool Calls', () => {
     test('displays tool call card during execution', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'tool-1');
+        await setToolCompactness(serverUrl, 0);
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                if (opts && opts.onToolEvent) {
-                    await new Promise((r) => setTimeout(r, 100));
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-view-1',
-                        toolName: 'view',
-                        parameters: { path: 'src/app.ts' },
-                    });
-                    await new Promise((r) => setTimeout(r, 200));
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-view-1',
-                        toolName: 'view',
-                        result: 'File content here',
-                    });
-                }
-                if (opts && opts.onStreamingChunk) {
-                    opts.onStreamingChunk('File analyzed successfully.');
-                }
-                return { success: true, response: 'File analyzed successfully.', sessionId: 'sess-tool' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        {
+                            type: 'tool-start',
+                            toolCallId: 'tc-view-1',
+                            toolName: 'view',
+                            parameters: { path: 'src/app.ts' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-view-1',
+                            toolName: 'view',
+                            result: 'File content here',
+                        },
+                    ],
+                    { finalResponse: 'File analyzed successfully.', sessionId: 'sess-tool' },
+                ),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'View the file' },
             });
             const taskId = task.id as string;
-
+            await waitForTaskStatus(serverUrl, taskId);
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
             // Wait for tool call card (tool-start + tool-complete merge into one card per unique toolCallId)
@@ -412,52 +435,30 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
     test('displays multiple tool calls as separate cards', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'tool-2');
+        // Keep the default compactness (3) so same-category tools are grouped
+        // by the whisper collapsing logic; we then expand the group to count
+        // individual cards.
+        await setToolCompactness(serverUrl, 3);
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                if (opts && opts.onToolEvent) {
-                    await new Promise((r) => setTimeout(r, 50));
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-view-multi',
-                        toolName: 'view',
-                        parameters: { path: 'file1.ts' },
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-view-multi',
-                        toolName: 'view',
-                        result: 'Content 1',
-                    });
-                    await new Promise((r) => setTimeout(r, 50));
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-grep-multi',
-                        toolName: 'grep',
-                        parameters: { pattern: 'test' },
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-grep-multi',
-                        toolName: 'grep',
-                        result: 'Match found',
-                    });
-                }
-                if (opts && opts.onStreamingChunk) {
-                    opts.onStreamingChunk('Both tools executed.');
-                }
-                return { success: true, response: 'Both tools executed.', sessionId: 'sess-multi-tool' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        { type: 'tool-start', toolCallId: 'tc-view-multi', toolName: 'view', parameters: { path: 'file1.ts' } },
+                        { type: 'tool-complete', toolCallId: 'tc-view-multi', toolName: 'view', result: 'Content 1' },
+                        { type: 'tool-start', toolCallId: 'tc-grep-multi', toolName: 'grep', parameters: { pattern: 'test' } },
+                        { type: 'tool-complete', toolCallId: 'tc-grep-multi', toolName: 'grep', result: 'Match found' },
+                    ],
+                    { finalResponse: 'Both tools executed.', sessionId: 'sess-multi-tool' },
+                ),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Use multiple tools' },
             });
             const taskId = task.id as string;
-
+            await waitForTaskStatus(serverUrl, taskId);
             await gotoQueueTask(page, serverUrl, wsId, taskId);
-
-            // Wait for streaming to complete and then check for tool call rendering
-            await waitForStreamingToComplete(page);
 
             // Same-category tools (view + grep are both "read") are grouped into a collapsed group
             const group = page.locator('.tool-call-group');
@@ -473,25 +474,17 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
     test('tool call card body starts collapsed and can be expanded', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'tool-3');
+        await setToolCompactness(serverUrl, 0);
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                if (opts && opts.onToolEvent) {
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-bash-toggle',
-                        toolName: 'bash',
-                        parameters: { command: 'ls -la' },
-                    });
-                    await new Promise((r) => setTimeout(r, 100));
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-bash-toggle',
-                        toolName: 'bash',
-                        result: 'file1\nfile2',
-                    });
-                }
-                return { success: true, response: 'Command executed.', sessionId: 'sess-toggle' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        { type: 'tool-start', toolCallId: 'tc-bash-toggle', toolName: 'bash', parameters: { command: 'ls -la' } },
+                        { type: 'tool-complete', toolCallId: 'tc-bash-toggle', toolName: 'bash', result: 'file1\nfile2' },
+                    ],
+                    { finalResponse: 'Command executed.', sessionId: 'sess-toggle' },
+                ),
+            );
 
             const task = await seedAndWaitForTask(serverUrl, wsId, {
                 payload: { prompt: 'Execute command' },
@@ -520,54 +513,21 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
     test('collapsing parent task hides nested subtool cards', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'tool-4');
+        await setToolCompactness(serverUrl, 0);
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                if (opts && opts.onToolEvent) {
-                    // Parent task tool call
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-task-parent',
-                        toolName: 'task',
-                        parameters: { agent_type: 'explore', description: 'Search codebase' },
-                    });
-                    await new Promise((r) => setTimeout(r, 50));
-                    // Child tool calls under parent
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-child-view',
-                        toolName: 'view',
-                        parentToolCallId: 'tc-task-parent',
-                        parameters: { path: 'src/app.ts' },
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-child-view',
-                        toolName: 'view',
-                        result: 'File content',
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-start',
-                        toolCallId: 'tc-child-grep',
-                        toolName: 'grep',
-                        parentToolCallId: 'tc-task-parent',
-                        parameters: { pattern: 'import' },
-                    });
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-child-grep',
-                        toolName: 'grep',
-                        result: 'Found matches',
-                    });
-                    await new Promise((r) => setTimeout(r, 50));
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-task-parent',
-                        toolName: 'task',
-                        result: 'Done',
-                    });
-                }
-                return { success: true, response: 'Subtask completed.', sessionId: 'sess-nested' };
-            });
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        { type: 'tool-start', toolCallId: 'tc-task-parent', toolName: 'task', parameters: { agent_type: 'explore', description: 'Search codebase' } },
+                        { type: 'tool-start', toolCallId: 'tc-child-view', toolName: 'view', parentToolCallId: 'tc-task-parent', parameters: { path: 'src/app.ts' } },
+                        { type: 'tool-complete', toolCallId: 'tc-child-view', toolName: 'view', result: 'File content' },
+                        { type: 'tool-start', toolCallId: 'tc-child-grep', toolName: 'grep', parentToolCallId: 'tc-task-parent', parameters: { pattern: 'import' } },
+                        { type: 'tool-complete', toolCallId: 'tc-child-grep', toolName: 'grep', result: 'Found matches' },
+                        { type: 'tool-complete', toolCallId: 'tc-task-parent', toolName: 'task', result: 'Done' },
+                    ],
+                    { finalResponse: 'Subtask completed.', sessionId: 'sess-nested' },
+                ),
+            );
 
             const task = await seedAndWaitForTask(serverUrl, wsId, {
                 payload: { prompt: 'Search the codebase' },

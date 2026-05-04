@@ -100,6 +100,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
             <div
                 ref={divRef}
                 contentEditable={props.disabled ? 'false' : 'true'}
+                aria-disabled={props.disabled || undefined}
                 data-placeholder={props.placeholder}
                 data-rich-input=""
                 onInput={handleInput}

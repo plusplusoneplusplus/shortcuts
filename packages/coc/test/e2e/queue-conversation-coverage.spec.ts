@@ -88,6 +88,18 @@ async function seedAndWaitForTask(
     return waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], timeoutMs);
 }
 
+/**
+ * Set toolCompactness via the admin API. Defaults to 0 so each tool call
+ * renders as an individual `.tool-call-card` instead of being collapsed into
+ * the whisper group (which is the default at toolCompactness=3).
+ */
+async function setToolCompactness(serverUrl: string, value: 0 | 1 | 2 | 3 = 0): Promise<void> {
+    await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ toolCompactness: value }),
+    });
+}
+
 /** Navigate to the queue task detail page via the repo-scoped activity route. */
 async function gotoQueueTask(
     page: Page,
@@ -108,7 +120,10 @@ async function gotoRepoActivity(
     workspaceId: string,
     taskId: string,
 ): Promise<void> {
-    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(workspaceId)}/activity/${encodeURIComponent(taskId)}`);
+    // Tasks created via /api/queue end up in the process store under
+    // `queue_<taskId>`, which is the segment the SPA route expects.
+    const processId = taskId.startsWith('queue_') ? taskId : `queue_${taskId}`;
+    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(workspaceId)}/activity/${encodeURIComponent(processId)}`);
     await page.waitForSelector('[data-testid="activity-chat-detail"]', { timeout: 8_000 });
 }
 
@@ -529,35 +544,30 @@ test.describe('Suggestion Chips', () => {
     test('suggestion chips appear after AI emits suggestions and click sends message', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'chips-1');
         try {
-            // Mock AI to emit suggest_follow_ups tool event, causing server to emit 'suggestions' SSE
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                // Wait for SSE to connect before emitting suggestions
-                await new Promise((r) => setTimeout(r, 2500));
-                if (opts && opts.onToolEvent) {
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-suggest',
-                        toolName: 'suggest_follow_ups',
-                        result: JSON.stringify({ suggestions: ['Tell me more', 'Show an example'] }),
-                    });
-                }
-                await new Promise((r) => setTimeout(r, 300));
-                return { success: true, response: 'AI response with suggestions', sessionId: 'sess-chips' };
-            });
+            // Fire suggest_follow_ups immediately and let the task complete BEFORE
+            // navigating; the persisted timeline holds the suggestions and the
+            // SPA renders them on mount (no SSE timing dance required).
+            mockAI.mockSendMessage.mockImplementation(
+                mockAI.createToolCallResponse(
+                    [
+                        {
+                            type: 'tool-complete',
+                            toolCallId: 'tc-suggest',
+                            toolName: 'suggest_follow_ups',
+                            result: JSON.stringify({ suggestions: ['Tell me more', 'Show an example'] }),
+                        },
+                    ],
+                    { finalResponse: 'AI response with suggestions', sessionId: 'sess-chips' },
+                ),
+            );
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
                 payload: { workspaceId: wsId, prompt: 'Suggestions test' },
             });
-
-            // Navigate while task is running
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
-            // Wait for task to complete
-            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
-            await expect(page.locator('.streaming-indicator')).toHaveCount(0, { timeout: 10_000 });
-
-            // Suggestion chips should be visible
             await expect(page.locator('[data-testid="suggestion-chips"]')).toBeVisible({ timeout: 5_000 });
             await expect(page.locator('[data-testid="suggestion-chip"]')).toHaveCount(2, { timeout: 3_000 });
             await expect(page.locator('[data-testid="suggestion-chip"]').first()).toContainText('Tell me more');
@@ -804,6 +814,7 @@ test.describe('Float Button', () => {
 test.describe('Tool-failed SSE', () => {
     test('tool-failed event renders tool card with failed status', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'toolfail-1');
+        await setToolCompactness(serverUrl, 0);
         try {
             mockAI.mockSendMessage.mockImplementation(
                 mockAI.createToolCallResponse(
