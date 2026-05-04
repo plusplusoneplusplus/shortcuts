@@ -55,12 +55,15 @@ test.describe('Admin: Preferences section', () => {
         // Wait for preferences to load
         await expect(page.locator('[data-testid="pref-theme"]')).toBeVisible({ timeout: 5000 });
 
+        // Change theme to 'dark' (Appearance card uses per-card Save model)
+        await page.selectOption('[data-testid="pref-theme"]', 'dark');
+
         const patchPromise = page.waitForRequest(req =>
             req.url().includes('/api/preferences') && req.method() === 'PATCH',
         );
 
-        // Change theme to 'dark'
-        await page.selectOption('[data-testid="pref-theme"]', 'dark');
+        // Click Save on the Appearance & Navigation card
+        await page.click('[data-testid="settings-appearance-save"]');
 
         const patchReq = await patchPromise;
         const body = JSON.parse(patchReq.postData() ?? '{}');
@@ -68,14 +71,14 @@ test.describe('Admin: Preferences section', () => {
 
         // Success toast should appear
         await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('.toast-success')).toContainText('Preference saved');
+        await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
     // ----------------------------------------------------------------
     // TC3: Preferences load failure shows error state
     // ----------------------------------------------------------------
 
-    test('preferences load failure shows error state', async ({ page, serverUrl }) => {
+    test('preferences load failure falls back to default theme without crashing', async ({ page, serverUrl }) => {
         // Abort GET only after the admin panel is open. Aborting every GET breaks App bootstrap
         // (welcome state never loads), which leaves the welcome modal blocking #admin-toggle.
         await page.route('**/api/preferences', async (route, req) => {
@@ -88,10 +91,13 @@ test.describe('Admin: Preferences section', () => {
 
         await navigateToAdmin(page, serverUrl);
 
-        // Wait for the preferences card area to load (heading is always shown)
+        // Admin page content should still render even when preferences load fails
         await expect(page.locator('#admin-page-content')).toBeVisible({ timeout: 5000 });
 
-        // The theme dropdown should not be present — form didn't load
-        await expect(page.locator('[data-testid="pref-theme"]')).toHaveCount(0, { timeout: 5000 });
+        // Theme dropdown should still appear with the default 'auto' value (graceful fallback,
+        // since AdminPanel's appearance card renders unconditionally with local defaults)
+        await expect(page.locator('[data-testid="pref-theme"]')).toBeVisible({ timeout: 5000 });
+        const themeVal = await page.locator('[data-testid="pref-theme"]').inputValue();
+        expect(themeVal).toBe('auto');
     });
 });

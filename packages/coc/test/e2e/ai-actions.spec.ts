@@ -115,18 +115,15 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            // Run Skill overlay should appear
-            const overlay = page.locator('#follow-prompt-submenu');
-            await expect(overlay).toBeVisible();
+            // Run Skill dialog should appear (title === 'Run Skill' when context files present)
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
+            await expect(overlay).toContainText('Run Skill');
 
-            // Should have a model select
-            await expect(page.locator('#fp-model')).toBeVisible();
-
-            // Should load and show skill items
-            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
-
-            // Should have the "impl" skill
-            await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible();
+            // Open the SkillPicker popover and ensure the "impl" skill is available
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-popover"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="skill-picker-item-impl"]')).toBeVisible({ timeout: 10000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -148,12 +145,17 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            // Wait for skills to load
-            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
 
-            // Select the impl skill chip then submit
-            await page.locator('.fp-item[data-name="impl"]').click();
-            await page.locator('[data-testid="fp-submit-skills"]').click();
+            // Open the skill picker, select impl, then close picker
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await page.locator('[data-testid="skill-picker-item-impl"]').click({ timeout: 10000 });
+            // Selected skill renders as a chip
+            await expect(page.locator('[data-testid="skill-chip-impl"]')).toBeVisible({ timeout: 5000 });
+
+            // Submit via primary footer button (label 'Enqueue' for Run Skill mode)
+            await overlay.locator('button:has-text("Enqueue")').click();
 
             // Verify the POST payload
             const queueResponse = await queueResponsePromise;
@@ -161,11 +163,8 @@ test.describe('AI Actions (007)', () => {
             expect(reqBody.type).toBe('chat');
             expect(reqBody.displayName).toContain('impl');
 
-            // Overlay should be removed
-            await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
-
-            // Success toast should appear
-            await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+            // Dialog should close after submit
+            await expect(overlay).toHaveCount(0, { timeout: 5000 });
 
             // --- Mock SDK Validation ---
             // Extract the task ID from the queue response and wait for AI execution
@@ -324,11 +323,11 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            const overlay = page.locator('#follow-prompt-submenu');
-            await expect(overlay).toBeVisible();
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
 
-            // Click the X close button
-            await page.click('#fp-close');
+            // Click the X close button on the dialog header
+            await page.locator('[data-testid="dialog-close-btn"]').click();
 
             await expect(overlay).toHaveCount(0, { timeout: 5000 });
         } finally {
@@ -351,26 +350,29 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
 
-            // Fill additional info textarea
-            await page.fill('#fp-additional-info', 'Focus on the auth module');
+            // Fill the prompt input — EnqueueDialog uses a single rich-text prompt for
+            // additional context (formerly the "Additional Info" field on FollowPromptDialog)
+            await page.locator('[data-testid="prompt-input"]').fill('Focus on the auth module');
 
-            // Select a skill chip and submit
-            await page.locator('.fp-item[data-name="impl"]').click();
-            await page.locator('[data-testid="fp-submit-skills"]').click();
+            // Open SkillPicker, select impl, close popover
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await page.locator('[data-testid="skill-picker-item-impl"]').click({ timeout: 10000 });
+            await expect(page.locator('[data-testid="skill-chip-impl"]')).toBeVisible({ timeout: 5000 });
+
+            // Submit
+            await overlay.locator('button:has-text("Enqueue")').click();
 
             const queueResponse = await queueResponsePromise;
             const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
             expect(reqBody.type).toBe('chat');
-            expect(reqBody.payload.context.blocks).toBeDefined();
-            expect(reqBody.payload.context.blocks.length).toBeGreaterThanOrEqual(1);
-
-            const additionalInfoBlock = reqBody.payload.context.blocks.find(
-                (b: any) => b.label === 'Additional Info',
-            );
-            expect(additionalInfoBlock).toBeDefined();
-            expect(additionalInfoBlock.content).toBe('Focus on the auth module');
+            // Skill is recorded in payload.context.skills
+            expect(reqBody.payload.context).toBeDefined();
+            expect(reqBody.payload.context.skills).toContain('impl');
+            // Additional context now flows through the prompt field
+            expect(reqBody.payload.prompt).toContain('Focus on the auth module');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -412,19 +414,22 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('.fp-item[data-name="review"]')).toBeVisible({ timeout: 10000 });
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
 
-            // Select both skill chips
-            await page.locator('.fp-item[data-name="impl"]').click();
-            await page.locator('.fp-item[data-name="review"]').click();
+            // Open SkillPicker, select two skills (popover stays open for multi-select)
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-item-impl"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="skill-picker-item-review"]')).toBeVisible({ timeout: 10000 });
+            await page.locator('[data-testid="skill-picker-item-impl"]').click();
+            await page.locator('[data-testid="skill-picker-item-review"]').click();
 
-            // Button should say "Submit with 2 skills"
-            const submitBtn = page.locator('[data-testid="fp-submit-skills"]');
-            await expect(submitBtn).toBeVisible();
-            await expect(submitBtn).toContainText('2 skills');
+            // Both chips should be selected
+            await expect(page.locator('[data-testid="skill-chip-impl"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="skill-chip-review"]')).toBeVisible({ timeout: 5000 });
 
-            await submitBtn.click();
+            // Submit
+            await overlay.locator('button:has-text("Enqueue")').click();
 
             const queueResponse = await queueResponsePromise;
             const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
@@ -461,16 +466,19 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
             await page.locator('text=✨ Run Skill').click();
 
-            await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
+            const overlay = page.locator('[data-testid="floating-dialog-panel"]');
+            await expect(overlay).toBeVisible({ timeout: 5000 });
+            await expect(overlay).toContainText('Run Skill');
 
-            // Should show "No skills found" message
-            await expect(page.locator('text=No skills found in this workspace.')).toBeVisible({ timeout: 10000 });
+            // The repo has no .github/skills/, but globally-installed skills
+            // (auto-installed by the server) may still appear in the picker.
+            // Open the picker and verify there are no Repo-section skills.
+            await page.locator('[data-testid="skill-picker-trigger"]').click();
+            await expect(page.locator('[data-testid="skill-picker-popover"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="skill-picker-section-repo"]')).toHaveCount(0);
 
-            // Should show hint about creating skills
-            await expect(page.locator('text=Create skills in .github/skills/')).toBeVisible();
-
-            // No skill chips should be rendered
-            await expect(page.locator('.fp-item')).toHaveCount(0);
+            // Context file chip should still be visible (showing the right-clicked file)
+            await expect(page.locator('[data-testid="context-file-chip"]')).toHaveCount(1);
         } finally {
             safeRmSync(tmpDir);
         }

@@ -15,9 +15,24 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace, seedWiki } from './fixtures/seed';
+import { seedWorkspace, seedWiki, request } from './fixtures/seed';
 import { createWikiComponent } from './fixtures/wiki-fixtures';
 import type { ComponentGraph } from './fixtures/wiki-fixtures';
+
+/**
+ * Enable the Workflows tab feature flag on the running server. The Workflows
+ * sub-tab is gated by `workflows.enabled` and is off by default; the workflow
+ * generate/refine tests exercise that tab and so must opt into it.
+ */
+async function enableWorkflowsFeature(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'workflows.enabled': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable workflows feature: ${res.status} ${res.body}`);
+    }
+}
 
 // ============================================================================
 // Helpers
@@ -45,8 +60,8 @@ async function navigateToTemplatesTab(
     await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
     await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('button[data-subtab="templates"]');
-    await expect(page.locator('button[data-subtab="templates"]')).toHaveClass(/active/);
+    await page.click('button[data-subtab="workflows"]');
+    await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 }
 
 /** Create a minimal wiki directory with component-graph and articles. */
@@ -82,6 +97,7 @@ test.describe('AI service unavailable — workflow generate (503)', () => {
         try {
             const repoDir = createWorkflowFixtureRepo(tmpDir);
             await seedWorkspace(serverUrl, 'ws-ai-503-gen', 'test-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await navigateToTemplatesTab(page, serverUrl);
 
@@ -137,6 +153,7 @@ test.describe('AI service unavailable — workflow refine (503)', () => {
             });
 
             await seedWorkspace(serverUrl, 'ws-ai-503-refine', 'test-repo', repoDir);
+            await enableWorkflowsFeature(serverUrl);
 
             await navigateToTemplatesTab(page, serverUrl);
 

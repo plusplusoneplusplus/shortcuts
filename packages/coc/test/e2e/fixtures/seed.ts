@@ -225,17 +225,22 @@ export async function seedWiki(
 
 /** Seed a workspace via POST /api/workspaces. */
 export function normalizeTestWorkspacePath(rootPath: string): string {
-    if (process.platform !== 'win32') {
-        return rootPath;
+    // On Windows the root paths /tmp and /ws cannot exist literally, so we
+    // remap them under os.tmpdir(). On Linux/macOS CI runners the user
+    // typically lacks permission to create a top-level /ws directory, so we
+    // remap those there as well; only the bare /tmp path is left alone since
+    // it is the system temp directory on POSIX.
+    const normalized = rootPath.replace(/\\/g, '/');
+
+    if (process.platform === 'win32') {
+        if (normalized === '/tmp') {
+            return os.tmpdir();
+        }
+        if (normalized.startsWith('/tmp/')) {
+            return path.join(os.tmpdir(), ...normalized.split('/').slice(2));
+        }
     }
 
-    const normalized = rootPath.replace(/\\/g, '/');
-    if (normalized === '/tmp') {
-        return os.tmpdir();
-    }
-    if (normalized.startsWith('/tmp/')) {
-        return path.join(os.tmpdir(), ...normalized.split('/').slice(2));
-    }
     if (normalized === '/ws') {
         return path.join(os.tmpdir(), 'ws');
     }

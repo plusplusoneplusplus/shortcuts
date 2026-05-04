@@ -176,15 +176,15 @@ test.describe('Inline Comment Creation', () => {
             await navigateToTask(page, serverUrl, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
-            await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();
+            const popup = page.locator('[data-testid="inline-comment-popup"]');
+            await expect(popup).toBeVisible();
 
-            // Click outside the popup — use top-left of preview body
-            const box = await page.locator('#task-preview-body').boundingBox();
-            if (!box) throw new Error('Preview body bounding box not found');
-            await page.mouse.click(box.x + 2, box.y + 2);
+            // The popup is now a draggable floating panel that doesn't auto-dismiss
+            // on outside clicks. The Cancel button is the canonical cancel path.
+            await popup.getByRole('button', { name: 'Cancel' }).click();
 
             // Popup should disappear
-            await expect(page.locator('[data-testid="inline-comment-popup"]')).toHaveCount(0);
+            await expect(popup).toHaveCount(0);
 
             // No comment should be created
             await expect(page.locator('[data-testid="comment-sidebar"]')).toHaveCount(0);

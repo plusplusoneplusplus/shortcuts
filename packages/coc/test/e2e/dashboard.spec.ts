@@ -1,14 +1,38 @@
 /**
  * Dashboard E2E Tests
  *
- * Tests the Processes tab: queue task list rendering, filtering, detail panel,
- * pause/resume, enqueue dialog, deep links, and frozen task visuals.
+ * Tests the per-repo Tasks/Chats tab queue UI: queue task list rendering,
+ * filtering, detail panel, pause/resume, deep links, and frozen task visuals.
  *
- * Data flow: seed queue tasks via REST → page.goto → assert DOM.
+ * The legacy global `#processes` route was removed; queue tasks are now
+ * displayed inside a workspace's Tasks sub-tab. Each test seeds a workspace
+ * (so tasks are visible there), seeds queue tasks scoped to the workspace,
+ * and navigates to `#repos/<wsId>/tasks` (which renders ChatListPane in
+ * `tasks` mode and exposes the filter dropdown / pause-resume controls).
+ *
+ * Data flow: seed workspace + queue tasks via REST → page.goto → assert DOM.
  */
 
-import { test, expect } from './fixtures/server-fixture';
-import { seedQueueTask, seedQueueTasks, request } from './fixtures/seed';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { seedQueueTask, seedQueueTasks, seedWorkspace, request } from './fixtures/seed';
+import type { QueueTaskOverrides } from './fixtures/seed';
+
+/**
+ * Build a queue task spec scoped to the given workspace. Sets both `repoId`
+ * (queue partition key) and `payload.workspaceId` so enqueue resolves rootPath
+ * to the workspace's rootPath and the per-workspace queue manager is created.
+ */
+function wsTask(wsId: string, overrides: QueueTaskOverrides = {}): QueueTaskOverrides {
+    const basePayload = (overrides.payload ?? {}) as Record<string, unknown>;
+    return {
+        repoId: wsId,
+        ...overrides,
+        payload: { workspaceId: wsId, prompt: 'Test task prompt', ...basePayload },
+    };
+}
 
 /** Poll GET /api/queue/:id until status matches or timeout expires. */
 async function waitForTaskStatus(
@@ -30,211 +54,321 @@ async function waitForTaskStatus(
     throw new Error(`Task ${taskId} did not reach ${targetStatuses.join('|')} within ${timeoutMs}ms`);
 }
 
+/**
+ * Create a temp workspace (repo) and return the workspace id, root, and
+ * cleanup callback. Each test gets its own isolated workspace so queue tasks
+ * don't bleed between tests.
+ */
+async function makeWorkspace(serverUrl: string, idPrefix: string): Promise<{
+    wsId: string;
+    rootPath: string;
+    cleanup: () => void;
+}> {
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), `e2e-dash-${idPrefix}-`));
+    const wsId = `${idPrefix}-${Date.now().toString(36)}`;
+    await seedWorkspace(serverUrl, wsId, idPrefix, rootPath);
+    return { wsId, rootPath, cleanup: () => safeRmSync(rootPath) };
+}
+
+/**
+ * Build the per-repo Activity sub-tab URL.
+ *
+ * The Activity tab renders ChatListPane in tasks/queue mode (showing the
+ * filter dropdown, pause/resume, and "No tasks in queue" empty state) in
+ * classic UI mode (the test server's default). The Tasks sub-tab in classic
+ * mode renders TasksPanel (file-based plan tasks) which is a different UI.
+ */
+function tasksTabUrl(serverUrl: string, wsId: string): string {
+    return `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`;
+}
+
 test.describe('Dashboard — Processes tab', () => {
     // ── Existing happy-path tests ───────────────────────────────────────────────
 
     test('shows empty state when no processes exist', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl + '/#processes');
-        await expect(page.locator('[data-testid="queue-empty-state"]')).toBeVisible({ timeout: 8000 });
-        await expect(page.locator('[data-testid="queue-empty-state"]')).toContainText('No tasks in queue');
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'empty');
+        try {
+            await page.goto(tasksTabUrl(serverUrl, wsId));
+            await expect(page.locator('[data-testid="queue-empty-state"]')).toBeVisible({ timeout: 8000 });
+            await expect(page.locator('[data-testid="queue-empty-state"]')).toContainText('No tasks in queue');
+        } finally {
+            cleanup();
+        }
     });
 
     test('displays seeded processes in the sidebar', async ({ page, serverUrl }) => {
-        await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'Task 1' },
-            { type: 'chat', displayName: 'Task 2' },
-            { type: 'chat', displayName: 'Task 3' },
-        ]);
-        await page.goto(serverUrl + '/#processes');
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'seeded');
+        try {
+            await seedQueueTasks(serverUrl, [
+                wsTask(wsId, { type: 'chat', displayName: 'Task 1' }),
+                wsTask(wsId, { type: 'chat', displayName: 'Task 2' }),
+                wsTask(wsId, { type: 'chat', displayName: 'Task 3' }),
+            ]);
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
-        await expect(page.locator('[data-testid="queue-empty-state"]')).toBeHidden();
+            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+            await expect(page.locator('[data-testid="queue-empty-state"]')).toBeHidden();
+        } finally {
+            cleanup();
+        }
     });
 
     test('clicking a process shows its detail', async ({ page, serverUrl }) => {
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Detail Task' });
-        await page.goto(serverUrl + '/#processes');
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'detail');
+        try {
+            await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'Detail Task' }));
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        const taskItem = page.locator('[data-task-id]').first();
-        await expect(taskItem).toBeVisible({ timeout: 8000 });
-        await taskItem.click();
+            const taskItem = page.locator('[data-task-id]').first();
+            await expect(taskItem).toBeVisible({ timeout: 8000 });
+            await taskItem.click();
 
-        await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
+            await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Type filter actually filters the list (replaces search stub) ───────────
 
     test('type filter dropdown shows only matching task type', async ({ page, serverUrl }) => {
-        // Seed two different types and wait for both to complete into history
-        const t1 = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Alpha Chat' });
-        const t2 = await seedQueueTask(serverUrl, { type: 'run-workflow', displayName: 'Beta Workflow' });
-        await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
-        await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'filter1');
+        try {
+            // Seed two chat tasks with different modes and wait for both to complete.
+            // Filter dropdown splits chat tasks by sub-mode (ask, plan, autopilot).
+            const t1 = await seedQueueTask(serverUrl, wsTask(wsId, {
+                type: 'chat',
+                displayName: 'Ask Task',
+                payload: { mode: 'ask', prompt: 'AlphaPromptText' },
+            }));
+            const t2 = await seedQueueTask(serverUrl, wsTask(wsId, {
+                type: 'chat',
+                displayName: 'Autopilot Task',
+                payload: { mode: 'autopilot', prompt: 'BetaPromptText' },
+            }));
+            await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
+            await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
 
-        await page.goto(serverUrl + '/#processes');
-        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+            await page.goto(tasksTabUrl(serverUrl, wsId));
+            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
-        // Filter dropdown appears when there are multiple task types
-        const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-        await expect(dropdown).toBeVisible({ timeout: 5000 });
+            // Filter dropdown appears when chat tasks have multiple modes
+            const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
+            await expect(dropdown).toBeVisible({ timeout: 5000 });
 
-        // Open the filter dropdown and exclude 'chat' to show only run-workflow
-        await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-        await page.locator('[data-testid="filter-checkbox-chat"]').uncheck();
-        await expect(page.locator('[title="Beta Workflow"]').first()).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[title="Alpha Chat"]')).not.toBeVisible();
+            // Open the filter dropdown and exclude the 'ask' mode → only Autopilot remains
+            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+            await page.locator('[data-testid="filter-checkbox-ask"]').uncheck();
+            await expect(page.locator('text=BetaPromptText').first()).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('text=AlphaPromptText')).not.toBeVisible();
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Type filter narrows to chat only (replaces status-filter stub) ─────────
 
     test('type filter shows only chat tasks when chat selected', async ({ page, serverUrl }) => {
-        const t1 = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Chat Only Task' });
-        const t2 = await seedQueueTask(serverUrl, { type: 'run-workflow', displayName: 'Workflow Only Task' });
-        await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
-        await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'filter2');
+        try {
+            const t1 = await seedQueueTask(serverUrl, wsTask(wsId, {
+                type: 'chat',
+                displayName: 'Ask Only Task',
+                payload: { mode: 'ask', prompt: 'GammaPromptText' },
+            }));
+            const t2 = await seedQueueTask(serverUrl, wsTask(wsId, {
+                type: 'chat',
+                displayName: 'Autopilot Only Task',
+                payload: { mode: 'autopilot', prompt: 'DeltaPromptText' },
+            }));
+            await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
+            await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
 
-        await page.goto(serverUrl + '/#processes');
-        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+            await page.goto(tasksTabUrl(serverUrl, wsId));
+            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
-        const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-        await expect(dropdown).toBeVisible({ timeout: 5000 });
+            const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
+            await expect(dropdown).toBeVisible({ timeout: 5000 });
 
-        // Open the filter dropdown and exclude 'run-workflow' to show only chat
-        await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-        await page.locator('[data-testid="filter-checkbox-run-workflow"]').uncheck();
+            // Open the filter dropdown and exclude the 'autopilot' mode → only Ask remains
+            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+            await page.locator('[data-testid="filter-checkbox-autopilot"]').uncheck();
 
-        await expect(page.locator('[title="Chat Only Task"]').first()).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[title="Workflow Only Task"]')).not.toBeVisible();
+            await expect(page.locator('text=GammaPromptText').first()).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('text=DeltaPromptText')).not.toBeVisible();
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Completed Tasks section is expanded by default ─────────────────────────
 
     test('completed tasks section is expanded and shows tasks by default', async ({ page, serverUrl }) => {
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'History Task' });
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'comp1');
+        try {
+            const task = await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'History Task' }));
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
 
-        await page.goto(serverUrl + '/#processes');
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        // Section header visible
-        await expect(page.locator('text=Completed Tasks').first()).toBeVisible({ timeout: 8000 });
-        // Task cards visible without needing to expand
-        await expect(page.locator('[data-task-id]').first()).toBeVisible();
+            // Section header visible
+            await expect(page.locator('text=Completed Tasks').first()).toBeVisible({ timeout: 8000 });
+            // Task cards visible without needing to expand
+            await expect(page.locator('[data-task-id]').first()).toBeVisible();
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Completed Tasks section can be collapsed and re-expanded ───────────────
 
     test('completed tasks section collapses and re-expands on toggle', async ({ page, serverUrl }) => {
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Toggle Task' });
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'comp2');
+        try {
+            const task = await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'Toggle Task' }));
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
 
-        await page.goto(serverUrl + '/#processes');
-        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+            await page.goto(tasksTabUrl(serverUrl, wsId));
+            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
-        // Collapse the section by clicking its toggle button
-        const toggleBtn = page.locator('button', { hasText: /Completed Tasks/ });
-        await expect(toggleBtn).toBeVisible({ timeout: 5000 });
-        await toggleBtn.click();
+            // Collapse the section by clicking its toggle button
+            const toggleBtn = page.locator('button', { hasText: /Completed Tasks/ });
+            await expect(toggleBtn).toBeVisible({ timeout: 5000 });
+            await toggleBtn.click();
 
-        // Task cards should disappear
-        await expect(page.locator('[data-task-id]')).toHaveCount(0, { timeout: 5000 });
+            // Task cards should disappear
+            await expect(page.locator('[data-task-id]')).toHaveCount(0, { timeout: 5000 });
 
-        // Re-expand
-        await toggleBtn.click();
-        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
+            // Re-expand
+            await toggleBtn.click();
+            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Queued tasks appear when queue is paused ───────────────────────────────
 
     test('queued tasks section shows tasks when queue is paused', async ({ page, serverUrl }) => {
-        // Pause the queue so tasks stay in the queued state
-        await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
-        await seedQueueTasks(serverUrl, [
-            { type: 'chat', displayName: 'Queued Task A' },
-            { type: 'chat', displayName: 'Queued Task B' },
-        ]);
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'queued');
+        try {
+            // Pause the queue so tasks stay in the queued state
+            await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
+            await seedQueueTasks(serverUrl, [
+                wsTask(wsId, { type: 'chat', displayName: 'Queued Task A' }),
+                wsTask(wsId, { type: 'chat', displayName: 'Queued Task B' }),
+            ]);
 
-        await page.goto(serverUrl + '/#processes');
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        // Queued Tasks section header is visible
-        await expect(page.locator('text=Queued Tasks').first()).toBeVisible({ timeout: 8000 });
-        // Task cards rendered for queued items
-        const cards = page.locator('[data-task-id]');
-        await expect(cards.first()).toBeVisible({ timeout: 8000 });
-        expect(await cards.count()).toBeGreaterThanOrEqual(2);
+            // Queued Tasks section header is visible
+            await expect(page.locator('text=Queued Tasks').first()).toBeVisible({ timeout: 8000 });
+            // Task cards rendered for queued items
+            const cards = page.locator('[data-task-id]');
+            await expect(cards.first()).toBeVisible({ timeout: 8000 });
+            expect(await cards.count()).toBeGreaterThanOrEqual(2);
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Pause/resume button and paused banner ──────────────────────────────────
 
     test('paused queue shows banner and resume button; clicking resume hides banner', async ({ page, serverUrl }) => {
-        // Pause the queue via API then seed a task so the list is non-empty
-        await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
-        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Paused Task' });
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'pause');
+        try {
+            // Pause the queue via API then seed a task so the list is non-empty
+            await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
+            await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'Paused Task' }));
 
-        await page.goto(serverUrl + '/#processes');
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        // Paused banner should be visible
-        await expect(page.locator('[data-testid="queue-paused-banner"]')).toBeVisible({ timeout: 8000 });
+            // Paused banner should be visible
+            await expect(page.locator('[data-testid="queue-paused-banner"]')).toBeVisible({ timeout: 8000 });
 
-        // Pause/resume button should show the Resume (▶) icon
-        const pauseResumeBtn = page.locator('[data-testid="repo-pause-resume-btn"]');
-        await expect(pauseResumeBtn).toBeVisible();
-        await expect(pauseResumeBtn).toContainText('▶');
+            // Pause/resume button should show the Resume (▶) icon
+            const pauseResumeBtn = page.locator('[data-testid="repo-pause-resume-btn"]');
+            await expect(pauseResumeBtn).toBeVisible();
+            await expect(pauseResumeBtn).toContainText('▶');
 
-        // Click resume
-        await pauseResumeBtn.click();
+            // Click resume
+            await pauseResumeBtn.click();
 
-        // Paused banner should disappear
-        await expect(page.locator('[data-testid="queue-paused-banner"]')).not.toBeVisible({ timeout: 8000 });
+            // Paused banner should disappear
+            await expect(page.locator('[data-testid="queue-paused-banner"]')).not.toBeVisible({ timeout: 8000 });
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Detail panel placeholder when no task is selected ─────────────────────
 
     test('detail panel shows placeholder when no task is selected', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl + '/#processes');
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'placeholder');
+        try {
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        // No task selected → right-panel shows "Select a task to view details"
-        await expect(page.locator('text=Select a task to view details')).toBeVisible({ timeout: 8000 });
+            // No task selected → right-panel shows the new-conversation prompt placeholder
+            await expect(page.locator('text=Start a new conversation')).toBeVisible({ timeout: 8000 });
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Deep link selects the task and opens its detail ────────────────────────
 
     test('deep link #process/queue_<id> opens the task detail', async ({ page, serverUrl }) => {
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Deep Link Task' });
-        await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
-        const taskId = task.id as string;
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'deep');
+        try {
+            const task = await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'Deep Link Task' }));
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+            const taskId = task.id as string;
 
-        // Navigate directly via the deep link URL
-        await page.goto(`${serverUrl}/#process/queue_${taskId}`);
+            // Navigate directly via the per-repo Activity deep-link URL.
+            // After completion, the queue task lands in process history with the
+            // `queue_<id>` prefixed process ID; the rendered card uses that ID.
+            const processId = `queue_${taskId}`;
+            await page.goto(
+                `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity/${encodeURIComponent(processId)}`,
+            );
 
-        // Detail panel should open for this queue task
-        await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
+            // Detail panel should open for this queue task
+            await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
 
-        // The task card should have the selection ring applied
-        const card = page.locator(`[data-task-id="${taskId}"]`);
-        await expect(card).toBeVisible({ timeout: 5000 });
-        await expect(card).toHaveClass(/ring-2/);
+            // The task card should be visible
+            const card = page.locator(`[data-task-id="${processId}"]`);
+            await expect(card).toBeVisible({ timeout: 5000 });
+            await expect(card).toHaveClass(/ring-2/);
+        } finally {
+            cleanup();
+        }
     });
 
     // ── Frozen task shows ❄️ indicator ─────────────────────────────────────────
 
     test('frozen queued task shows frozen indicator on card', async ({ page, serverUrl }) => {
-        // Pause so the task stays in queued state
-        await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
-        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Frozen Task' });
-        const taskId = task.id as string;
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'frozen');
+        try {
+            // Pause so the task stays in queued state
+            await request(`${serverUrl}/api/queue/pause`, { method: 'POST' });
+            const task = await seedQueueTask(serverUrl, wsTask(wsId, { type: 'chat', displayName: 'Frozen Task' }));
+            const taskId = task.id as string;
 
-        // Freeze via API
-        await request(`${serverUrl}/api/queue/${encodeURIComponent(taskId)}/freeze`, { method: 'POST' });
+            // Freeze via API
+            await request(`${serverUrl}/api/queue/${encodeURIComponent(taskId)}/freeze`, { method: 'POST' });
 
-        await page.goto(serverUrl + '/#processes');
+            await page.goto(tasksTabUrl(serverUrl, wsId));
 
-        const card = page.locator(`[data-task-id="${taskId}"]`);
-        await expect(card).toBeVisible({ timeout: 8000 });
+            const card = page.locator(`[data-task-id="${taskId}"]`);
+            await expect(card).toBeVisible({ timeout: 8000 });
 
-        // Card should have the task-frozen CSS class
-        await expect(card).toHaveClass(/task-frozen/);
+            // Card should have the task-frozen CSS class
+            await expect(card).toHaveClass(/task-frozen/);
 
-        // Card should display the ❄️ icon
-        await expect(card).toContainText('❄️');
+            // Card should display the ❄️ icon
+            await expect(card).toContainText('❄️');
+        } finally {
+            cleanup();
+        }
     });
 });

@@ -62,14 +62,19 @@ test.describe('Comment AI Advanced', () => {
             const fixBtn = card.locator('[data-testid="fix-with-ai"]');
             await expect(fixBtn).toBeVisible({ timeout: 5_000 });
 
-            // Click Fix with AI
+            // Click Fix with AI — opens the Fix-with-AI confirmation dialog.
             await fixBtn.click();
 
-            // Wait for the route to be hit
-            await routeReady;
+            // Confirm in the dialog to actually invoke the AI handler. The
+            // dialog's confirm button text is "▶ Resolve" (with a leading
+            // play-arrow glyph) which uniquely distinguishes it from per-card
+            // "Resolve" icon buttons.
+            const dialogResolve = page.getByRole('button', { name: '▶ Resolve' });
+            await expect(dialogResolve).toBeVisible({ timeout: 5_000 });
+            await dialogResolve.click();
 
-            // After response, verify the ask-ai was called
-            // The button should eventually disappear or comment should be resolved
+            // Wait for the ask-ai route to be hit
+            await routeReady;
         } finally {
             safeRmSync(tmpDir);
         }
@@ -216,12 +221,20 @@ test.describe('Comment AI Advanced', () => {
             // Set up batch route resolved callback
             const batchHit = new Promise<void>(r => { resolveBatchRoute = r; });
 
-            // Click Resolve All
+            // Click Resolve All — opens the Resolve-with-AI confirmation dialog.
             await resolveAllBtn.click();
-            await batchHit;
 
-            // During the batch operation, the button should be disabled
-            await expect(resolveAllBtn).toBeDisabled();
+            // Confirm in the dialog (button text "▶ Resolve") to invoke
+            // the batch-resolve handler.
+            const dialogResolve = page.getByRole('button', { name: '▶ Resolve' });
+            await expect(dialogResolve).toBeVisible({ timeout: 5_000 });
+            await dialogResolve.click();
+
+            // The batch-resolve API must be invoked. The previous "disables the
+            // trigger button while resolving" UX was replaced by the dialog
+            // flow; the test now only verifies the network round-trip happens
+            // (the dialog acts as the explicit user gate).
+            await batchHit;
         } finally {
             safeRmSync(tmpDir);
         }

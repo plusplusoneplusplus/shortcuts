@@ -13,11 +13,32 @@
  * with overflow:auto/scroll.
  */
 
-import { test, expect } from './fixtures/server-fixture';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { execSync } from 'child_process';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 
 const COMMIT_HASH = 'aabbccdd11223344556677889900aabbccdd1122';
 const FILE_PATH = 'src/index.ts';
+
+/**
+ * Create a real git-initialized workspace directory. The Git sub-tab in
+ * RepoDetail is gated on `repo.gitInfo?.isGitRepo` (line ~90 of RepoDetail);
+ * a non-git workspace has the Git tab filtered out and any deep link to
+ * `/git/<sha>` falls back to the Activity tab, so the per-file diff panel
+ * never mounts.
+ */
+function makeGitWorkspaceDir(prefix: string): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `e2e-hunk-${prefix}-`));
+    execSync('git init', { cwd: root, stdio: 'ignore' });
+    execSync(
+        'git -c user.name=test -c user.email=test@test.com commit -m init --allow-empty',
+        { cwd: root, stdio: 'ignore' },
+    );
+    return root;
+}
 
 /**
  * Build a unified diff with two widely-separated change hunks so they cannot
@@ -129,7 +150,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         serverUrl,
     }) => {
         const wsId = 'ws-hunk-next';
-        await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo');
+        const repoDir = makeGitWorkspaceDir('next');
+        await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo', repoDir);
         await setupMocks(page, wsId, COMMIT_HASH);
 
         // Navigate directly to the per-file diff via deep link
@@ -175,7 +197,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         serverUrl,
     }) => {
         const wsId = 'ws-hunk-prev';
-        await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo');
+        const repoDir = makeGitWorkspaceDir('prev');
+        await seedWorkspace(serverUrl, wsId, 'hunk-nav-repo', repoDir);
         await setupMocks(page, wsId, COMMIT_HASH);
 
         await page.goto(

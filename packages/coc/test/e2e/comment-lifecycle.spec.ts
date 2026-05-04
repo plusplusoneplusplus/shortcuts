@@ -434,11 +434,17 @@ test.describe('Comment Lifecycle', () => {
             // Button should be visible when there are open comments
             await expect(resolveAllBtn).toBeVisible({ timeout: 5_000 });
 
-            // Click and verify the batch-resolve API is called
+            // Click — opens the Resolve-with-AI confirmation dialog.
             const batchResolveRequest = page.waitForRequest(
                 req => req.url().includes('/batch-resolve') && req.method() === 'POST',
             );
             await resolveAllBtn.click();
+
+            // Confirm in the dialog (button text "▶ Resolve") to invoke
+            // the batch-resolve handler.
+            const dialogResolve = page.getByRole('button', { name: '▶ Resolve' });
+            await expect(dialogResolve).toBeVisible({ timeout: 5_000 });
+            await dialogResolve.click();
             await batchResolveRequest;
         } finally {
             safeRmSync(tmpDir);

@@ -104,8 +104,10 @@ test.describe('Context Menu (014)', () => {
             const menu = page.locator('[data-testid="context-menu"]');
             await expect(menu).toBeVisible({ timeout: 5000 });
 
-            // Click on the task tree (outside the menu) to dismiss
-            await page.locator('[data-testid="task-tree"]').click({ position: { x: 5, y: 5 } });
+            // Press Escape (the canonical context-menu dismissal). The previous
+            // "click anywhere outside" behavior was replaced with explicit
+            // dismissal via Escape or by clicking a menu item.
+            await page.keyboard.press('Escape');
 
             // Menu should disappear
             await expect(menu).toHaveCount(0, { timeout: 5000 });

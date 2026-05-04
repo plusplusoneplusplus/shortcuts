@@ -202,7 +202,8 @@ export function AdminPanel() {
             setPullRequestsEnabled(pre);
             setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre });
         } catch (err: unknown) {
-            setConfigError(getSpaCocClientErrorMessage(err, 'Failed to load configuration'));
+            const detail = getSpaCocClientErrorMessage(err, '');
+            setConfigError(detail ? `Failed to load configuration: ${detail}` : 'Failed to load configuration');
         } finally {
             setConfigLoading(false);
         }
@@ -465,26 +466,43 @@ export function AdminPanel() {
             setImportPreview(lines.length ? lines.join('\n') : JSON.stringify(p, null, 2));
             setImportStatus('Preview loaded.');
         } catch (err: unknown) {
-            setImportPreview(null);
-            setImportStatus(err instanceof SyntaxError ? 'Invalid JSON file.' : 'Preview failed: ' + getSpaCocClientErrorMessage(err, 'Invalid file'));
+            if (err instanceof SyntaxError) {
+                setImportPreview(null);
+                setImportStatus('Invalid JSON file.');
+            } else {
+                setImportPreview('Preview failed: ' + getSpaCocClientErrorMessage(err, 'Invalid file'));
+                setImportStatus('Preview failed.');
+            }
         }
     }, [importFile]);
 
     const handleImport = useCallback(async () => {
         if (!importFile) { setImportStatus('Please select a JSON file first.'); return; }
         setImportStatus('Requesting confirmation token…');
+        let payload: unknown;
         try {
             const text = await importFile.text();
-            const payload = JSON.parse(text);
-            const tokenRes = await getSpaCocClient().admin.getImportToken();
-            if (!tokenRes?.token) { setImportStatus('Failed to get import token.'); return; }
-            setImportStatus('Importing…');
+            payload = JSON.parse(text);
+        } catch (err: unknown) {
+            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, 'Invalid JSON file.'));
+            return;
+        }
+        let tokenRes: { token?: string } | null = null;
+        try {
+            tokenRes = await getSpaCocClient().admin.getImportToken();
+        } catch {
+            setImportStatus('Failed to get import token.');
+            return;
+        }
+        if (!tokenRes?.token) { setImportStatus('Failed to get import token.'); return; }
+        setImportStatus('Importing…');
+        try {
             await getSpaCocClient().admin.importData(payload, { token: tokenRes.token, mode: importMode });
             setImportStatus('Import complete.');
             addToast('Import complete', 'success');
             loadStats();
         } catch (err: unknown) {
-            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, err instanceof SyntaxError ? 'Invalid JSON file.' : 'Network error'));
+            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
     }, [importFile, importMode, addToast, loadStats]);
 
@@ -509,7 +527,8 @@ export function AdminPanel() {
             setWipeToken(data.token);
             setWipeStatus('');
         } catch (err: unknown) {
-            setWipeStatus(getSpaCocClientErrorMessage(err, 'Failed to get wipe token'));
+            const detail = getSpaCocClientErrorMessage(err, '');
+            setWipeStatus(detail ? `Failed to get wipe token: ${detail}` : 'Failed to get wipe token');
         }
     }, []);
 
