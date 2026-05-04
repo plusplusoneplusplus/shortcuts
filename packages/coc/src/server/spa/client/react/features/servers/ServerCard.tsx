@@ -1,0 +1,192 @@
+/**
+ * ServerCard — single tile rendering a server's status, stats, and actions.
+ *
+ * Used by ServersView to render both the local server (always first) and any
+ * remote servers registered via the localStorage `serverRegistry` module. The
+ * `health` shape is tolerant: it accepts both ServerHealthState (remote) and
+ * a structurally-compatible local health shape since both expose the same
+ * status/uptime/version/processCount/lastChecked/error/serverName fields.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import { Card } from '../../ui';
+
+export interface ServerCardHealth {
+    server: { id: string; label: string; url: string };
+    status: 'checking' | 'online' | 'offline';
+    version?: string;
+    serverName?: string;
+    uptime?: number;
+    processCount?: number;
+    lastChecked?: number;
+    error?: string;
+}
+
+export interface ServerCardProps {
+    health: ServerCardHealth;
+    isLocal: boolean;
+    onRemove?: (id: string) => void;
+    onEdit?: (id: string) => void;
+}
+
+function StatusDot({ status }: { status: ServerCardHealth['status'] }) {
+    const cls =
+        status === 'online' ? 'bg-[#16c060]' :
+        status === 'offline' ? 'bg-[#f14c4c]' :
+        'bg-[#e5a92b] animate-pulse';
+    return (
+        <span
+            data-testid="server-status-dot"
+            data-status={status}
+            className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${cls}`}
+        />
+    );
+}
+
+export function formatUptime(seconds: number): string {
+    if (!isFinite(seconds) || seconds < 0) { return '0m'; }
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const parts: string[] = [];
+    if (d > 0) { parts.push(`${d}d`); }
+    if (h > 0) { parts.push(`${h}h`); }
+    parts.push(`${m}m`);
+    return parts.join(' ');
+}
+
+export function timeAgo(ts: number, now: number = Date.now()): string {
+    const diff = Math.max(0, Math.floor((now - ts) / 1000));
+    if (diff < 60) { return `${diff}s ago`; }
+    if (diff < 3600) { return `${Math.floor(diff / 60)}m ago`; }
+    return `${Math.floor(diff / 3600)}h ago`;
+}
+
+export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProps) {
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuWrapRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!menuOpen) { return; }
+        const handler = (e: MouseEvent) => {
+            if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [menuOpen]);
+
+    const handleCopyUrl = () => {
+        setMenuOpen(false);
+        try {
+            void navigator.clipboard?.writeText(health.server.url);
+        } catch {
+            // best-effort
+        }
+    };
+
+    return (
+        <Card className="p-0 flex flex-col" data-testid="server-card">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <StatusDot status={health.status} />
+                <span className="flex-1 min-w-0 text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate" title={health.server.label}>
+                    {health.server.label}
+                </span>
+                {!isLocal && (
+                    <div className="relative" ref={menuWrapRef}>
+                        <button
+                            type="button"
+                            data-testid="server-card-menu-btn"
+                            className="p-1 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.06] text-[#848484] dark:text-[#999]"
+                            onClick={() => setMenuOpen(o => !o)}
+                            aria-label="Server options"
+                        >
+                            ⋮
+                        </button>
+                        {menuOpen && (
+                            <div
+                                data-testid="server-card-menu"
+                                className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-md text-sm"
+                            >
+                                <button
+                                    type="button"
+                                    data-testid="server-card-menu-edit"
+                                    className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    onClick={() => { setMenuOpen(false); onEdit?.(health.server.id); }}
+                                >
+                                    Edit label
+                                </button>
+                                <button
+                                    type="button"
+                                    data-testid="server-card-menu-copy"
+                                    className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    onClick={handleCopyUrl}
+                                >
+                                    Copy URL
+                                </button>
+                                <button
+                                    type="button"
+                                    data-testid="server-card-menu-remove"
+                                    className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#f14c4c] dark:text-[#f48771]"
+                                    onClick={() => { setMenuOpen(false); onRemove?.(health.server.id); }}
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div className="px-4 py-3 flex flex-col gap-1.5 text-xs text-[#848484] dark:text-[#999] flex-1">
+                {health.serverName && (
+                    <div className="text-[#1e1e1e] dark:text-[#cccccc] font-medium text-xs truncate" data-testid="server-card-hostname">
+                        CoC @ {health.serverName}
+                    </div>
+                )}
+                {health.processCount !== undefined && (
+                    <div data-testid="server-card-process-count">
+                        📦 {health.processCount} process{health.processCount === 1 ? '' : 'es'}
+                    </div>
+                )}
+                {health.uptime !== undefined && (
+                    <div data-testid="server-card-uptime">
+                        ⏱ up {formatUptime(health.uptime)}
+                    </div>
+                )}
+                {health.version && (
+                    <div data-testid="server-card-version">
+                        🔖 v{health.version}
+                    </div>
+                )}
+                {health.status === 'offline' && health.lastChecked !== undefined && (
+                    <div className="text-[#e5a92b]" data-testid="server-card-last-seen">
+                        Last seen {timeAgo(health.lastChecked)}
+                    </div>
+                )}
+            </div>
+
+            <div className="px-4 pb-3">
+                {isLocal ? (
+                    <span
+                        data-testid="server-card-current-label"
+                        className="inline-block text-xs text-[#0078d4] dark:text-[#3794ff] font-medium"
+                    >
+                        Current — You're here
+                    </span>
+                ) : (
+                    <a
+                        href={health.server.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="server-card-open-link"
+                        className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline font-medium"
+                    >
+                        Open Dashboard →
+                    </a>
+                )}
+            </div>
+        </Card>
+    );
+}

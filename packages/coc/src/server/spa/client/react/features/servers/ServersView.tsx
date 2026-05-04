@@ -1,0 +1,157 @@
+/**
+ * ServersView — Servers page.
+ *
+ * Renders the local "This Server" card (always first) plus one card per
+ * registered remote server. The local card is polled inline (one origin, one
+ * effect), while remote servers go through the `useRemoteServerHealth` hook.
+ *
+ * Routing for this view is wired in a later commit; this file is intentionally
+ * route-free so it can be unit-tested in isolation.
+ */
+
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../../ui';
+import {
+    addRemoteServer,
+    getRemoteServers,
+    removeRemoteServer,
+    type RemoteServer,
+} from '../../utils/serverRegistry';
+import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
+import { getApiBase, getHostname } from '../../utils/config';
+import { ServerCard, type ServerCardHealth } from './ServerCard';
+import { AddServerDialog } from './AddServerDialog';
+
+const LOCAL_POLL_INTERVAL_MS = 30_000;
+const FETCH_TIMEOUT_MS = 5_000;
+
+interface LocalHealthState {
+    server: { id: 'local'; label: string; url: string };
+    status: 'checking' | 'online' | 'offline';
+    version?: string;
+    serverName?: string;
+    uptime?: number;
+    processCount?: number;
+    lastChecked?: number;
+    error?: string;
+}
+
+export function ServersView() {
+    const [servers, setServers] = useState<RemoteServer[]>(() => getRemoteServers());
+    const [addOpen, setAddOpen] = useState(false);
+
+    // useMemo stabilises identity: only changes when the set of ids changes.
+    // Required because useRemoteServerHealth's effect depends on `servers`,
+    // and a fresh array literal each render would restart polling.
+    const serverIdsKey = servers.map(s => s.id).join(',');
+    const stableServers = useMemo(() => servers, [serverIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const remoteHealthStates = useRemoteServerHealth(stableServers);
+
+    const [localHealth, setLocalHealth] = useState<LocalHealthState>(() => ({
+        server: { id: 'local', label: 'This Server', url: '' },
+        status: 'checking',
+        serverName: getHostname(),
+    }));
+
+    useEffect(() => {
+        let cancelled = false;
+        const apiBase = getApiBase();
+
+        const poll = async () => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+            try {
+                const [healthRes, versionRes] = await Promise.all([
+                    fetch(`${apiBase}/health`, { signal: controller.signal }),
+                    fetch(`${apiBase}/admin/version`, { signal: controller.signal }),
+                ]);
+                clearTimeout(timer);
+                if (cancelled) { return; }
+                if (!healthRes.ok || !versionRes.ok) {
+                    const status = !healthRes.ok ? healthRes.status : versionRes.status;
+                    setLocalHealth(prev => ({
+                        ...prev,
+                        status: 'offline',
+                        lastChecked: Date.now(),
+                        error: `HTTP ${status}`,
+                    }));
+                    return;
+                }
+                const health = await healthRes.json().catch(() => ({}));
+                const ver = await versionRes.json().catch(() => ({}));
+                if (cancelled) { return; }
+                setLocalHealth(prev => ({
+                    ...prev,
+                    status: 'online',
+                    uptime: typeof health?.uptime === 'number' ? health.uptime : undefined,
+                    processCount: typeof health?.processCount === 'number' ? health.processCount : undefined,
+                    version: typeof ver?.version === 'string' ? ver.version : undefined,
+                    lastChecked: Date.now(),
+                    error: undefined,
+                }));
+            } catch (e) {
+                clearTimeout(timer);
+                if (cancelled) { return; }
+                setLocalHealth(prev => ({
+                    ...prev,
+                    status: 'offline',
+                    lastChecked: Date.now(),
+                    error: e instanceof Error ? e.message : 'Unknown error',
+                }));
+            }
+        };
+
+        void poll();
+        const id = setInterval(() => { void poll(); }, LOCAL_POLL_INTERVAL_MS);
+        return () => {
+            cancelled = true;
+            clearInterval(id);
+        };
+    }, []);
+
+    const handleAdd = (fields: { label: string; url: string }) => {
+        addRemoteServer(fields);
+        setServers(getRemoteServers());
+    };
+
+    const handleRemove = (id: string) => {
+        removeRemoteServer(id);
+        setServers(getRemoteServers());
+    };
+
+    const localHealthForCard: ServerCardHealth = localHealth;
+
+    return (
+        <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] overflow-y-auto" data-testid="servers-view">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Servers</h2>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="servers-view-add-btn"
+                    onClick={() => setAddOpen(true)}
+                >
+                    + Add Server
+                </Button>
+            </div>
+
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ServerCard health={localHealthForCard} isLocal={true} />
+                {remoteHealthStates.map(hs => (
+                    <ServerCard
+                        key={hs.server.id}
+                        health={hs}
+                        isLocal={false}
+                        onRemove={handleRemove}
+                    />
+                ))}
+            </div>
+
+            <AddServerDialog
+                open={addOpen}
+                onClose={() => setAddOpen(false)}
+                onAdd={handleAdd}
+            />
+        </div>
+    );
+}
