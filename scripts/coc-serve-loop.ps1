@@ -10,7 +10,8 @@
     4. Any other exit code (0 = clean shutdown, Ctrl+C, etc.) stops the loop.
 
 .PARAMETER Port
-    Port to serve on (default: 4000).
+    Port to serve on in non-tunnel mode (default: 4000). Cannot be used with
+    -TunnelId; configure tunnel ports with config-devtunnel.ps1 instead.
 
 .PARAMETER SkipInitialBuild
     Skip the first build (useful when you've just built manually).
@@ -20,14 +21,16 @@
     (in addition to the console). The file is rotated when it exceeds 10 MB.
     Used by Manage-CoCService.ps1 when running as a scheduled task.
 
-.PARAMETER Tunnel
-    Host the preconfigured Microsoft Dev Tunnel for the CoC server using the
-    stable tunnel ID "$env:COMPUTERNAME-coc". Run config-devtunnel.ps1 first.
+.PARAMETER TunnelId
+    Host the configured Microsoft Dev Tunnel for the CoC server using this
+    stable tunnel ID. The HTTP port is read from the tunnel binding created by
+    config-devtunnel.ps1.
 
 .EXAMPLE
     .\scripts\coc-serve-loop.ps1
     .\scripts\coc-serve-loop.ps1 -Port 8080
-    .\scripts\coc-serve-loop.ps1 -Tunnel
+    .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc
+    .\scripts\coc-serve-loop.ps1 -TunnelId my-remote-coc
     .\scripts\coc-serve-loop.ps1 -SkipInitialBuild
     .\scripts\coc-serve-loop.ps1 -LogFile "$env:USERPROFILE\.coc\logs\coc-service.log"
 #>
@@ -35,11 +38,19 @@ param(
     [int]$Port = 4000,
     [switch]$SkipInitialBuild,
     [string]$LogFile = '',
-    [switch]$Tunnel
+    [string]$TunnelId = ''
 )
 
 $RESTART_EXIT_CODE = 75
 $LOG_MAX_BYTES     = 10MB
+
+. (Join-Path $PSScriptRoot 'devtunnel-utils.ps1')
+
+$portWasProvided = $PSBoundParameters.ContainsKey('Port')
+if (-not [string]::IsNullOrWhiteSpace($TunnelId) -and $portWasProvided) {
+    Write-Error '-Port cannot be used with -TunnelId. Configure the tunnel port with config-devtunnel.ps1, then start the loop with only -TunnelId.'
+    exit 2
+}
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
@@ -87,7 +98,7 @@ function Start-DevTunnel {
 
     $devTunnelCommand = Resolve-DevTunnelCommand
     if (-not $devTunnelCommand) {
-        Write-Log 'devtunnel CLI not found. Run .\scripts\config-devtunnel.ps1 before starting the service with -Tunnel.' -Color Yellow
+        Write-Log 'devtunnel CLI not found. Run .\scripts\config-devtunnel.ps1 before starting the service with -TunnelId.' -Color Yellow
         return $null
     }
 
@@ -117,6 +128,38 @@ function Start-DevTunnel {
         StdoutPath = $stdoutPath
         StderrPath = $stderrPath
     }
+}
+
+function Resolve-ConfiguredDevTunnelPort {
+    param([Parameter(Mandatory)][string]$TunnelId)
+
+    $devTunnelCommand = Resolve-DevTunnelCommand
+    if (-not $devTunnelCommand) {
+        Write-Log 'devtunnel CLI not found. Run .\scripts\config-devtunnel.ps1 before starting the service with -TunnelId.' -Color Red
+        return $null
+    }
+
+    $portList = Invoke-DevTunnelCli -Command $devTunnelCommand -Arguments @('port', 'list', $TunnelId)
+    if (Test-DevTunnelAuthError $portList.Output) {
+        Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Red
+        return $null
+    }
+    if ($portList.ExitCode -ne 0) {
+        Write-Log "Failed to list dev tunnel ports for '$TunnelId': $($portList.Output.Trim())" -Color Red
+        return $null
+    }
+
+    $httpPorts = @(Get-HttpDevTunnelPorts -Output $portList.Output)
+    if ($httpPorts.Count -eq 0) {
+        Write-Log "Dev tunnel '$TunnelId' has no configured HTTP port. Run .\scripts\config-devtunnel.ps1 -TunnelId $TunnelId first." -Color Red
+        return $null
+    }
+    if ($httpPorts.Count -gt 1) {
+        Write-Log "Dev tunnel '$TunnelId' has multiple HTTP ports ($($httpPorts -join ', ')). Remove the extra ports or recreate the tunnel, then rerun this script." -Color Red
+        return $null
+    }
+
+    return [int]$httpPorts[0]
 }
 
 function Stop-ProcessTree {
@@ -168,8 +211,15 @@ function Build-Coc {
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
 $first = $true
-$tunnelEnabled = [bool]$Tunnel
-$tunnelId = "$($env:COMPUTERNAME.ToLower())-coc"
+$tunnelEnabled = -not [string]::IsNullOrWhiteSpace($TunnelId)
+if ($tunnelEnabled) {
+    $resolvedPort = Resolve-ConfiguredDevTunnelPort -TunnelId $TunnelId
+    if ($null -eq $resolvedPort) {
+        exit 2
+    }
+    $Port = $resolvedPort
+    Write-Log "Using dev tunnel '$TunnelId' configured HTTP port $Port." -Color Green
+}
 
 while ($true) {
     # Rotate log before each cycle to keep file size bounded
@@ -194,7 +244,7 @@ while ($true) {
 
     $tunnelSession = $null
     if ($tunnelEnabled) {
-        $tunnelSession = Start-DevTunnel -TunnelId $tunnelId
+        $tunnelSession = Start-DevTunnel -TunnelId $TunnelId
         if ($tunnelSession -and $tunnelSession.Url) {
             Write-Log "Dev tunnel URL: $($tunnelSession.Url)" -Color Green
         } elseif ($tunnelSession) {

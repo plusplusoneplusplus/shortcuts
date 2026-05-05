@@ -3,24 +3,36 @@
     Installs and configures the Microsoft Dev Tunnel used by the CoC service.
 
 .DESCRIPTION
-    Ensures the devtunnel CLI is available, creates the stable CoC tunnel ID, and
-    configures the CoC HTTP port. This script does not host the tunnel; use
-    coc-serve-loop.ps1 -Tunnel to start and stop devtunnel host with the server.
+    Ensures the devtunnel CLI is available, creates or reuses the stable CoC
+    tunnel ID, and owns the persistent TunnelId -> HTTP port binding. This script
+    does not host the tunnel; use coc-serve-loop.ps1 -TunnelId <id> to read the
+    configured binding and start devtunnel host with the server.
 
 .PARAMETER Port
-    Port to expose through the tunnel (default: 4000).
+    Optional HTTP port to expose through the tunnel when no HTTP port exists.
+    If omitted, a random free local port is selected once and persisted on the
+    tunnel. Existing HTTP port bindings are reused.
 
 .PARAMETER TunnelId
     Dev Tunnel ID to configure. Defaults to "$env:COMPUTERNAME-coc".
 
 .EXAMPLE
     .\scripts\config-devtunnel.ps1
-    .\scripts\config-devtunnel.ps1 -Port 4001
+    .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc
+    .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc -Port 51234
 #>
 param(
-    [int]$Port = 4000,
+    [Nullable[int]]$Port = $null,
     [string]$TunnelId = "$($env:COMPUTERNAME.ToLower())-coc"
 )
+
+. (Join-Path $PSScriptRoot 'devtunnel-utils.ps1')
+
+$portWasProvided = $PSBoundParameters.ContainsKey('Port')
+if ($portWasProvided -and ($Port -lt 1 -or $Port -gt 65535)) {
+    Write-Error '-Port must be between 1 and 65535.'
+    exit 2
+}
 
 function Write-Log {
     param([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White)
@@ -73,64 +85,85 @@ function Install-DevTunnelCli {
     return $false
 }
 
-function Test-DevTunnelAuthError {
-    param([string]$Output)
-    return $Output -match '(?i)(not logged in|not authenticated|login required|log in|401|unauthorized)'
-}
-
 function Test-DevTunnelAlreadyConfigured {
     param([string]$Output)
     return $Output -match '(?i)(already exists|conflict with existing entity)'
 }
 
-function Invoke-DevTunnelCli {
-    param([string[]]$Arguments)
-
-    $output = & devtunnel @Arguments 2>&1
-    [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
-        Output   = ($output | Out-String)
-    }
-}
-
 function Invoke-EnsureTunnel {
     param(
         [Parameter(Mandatory)][string]$TunnelId,
-        [Parameter(Mandatory)][int]$Port
+        [Nullable[int]]$RequestedPort = $null
     )
 
-    if (-not (Install-DevTunnelCli)) { return 'Unavailable' }
+    if (-not (Install-DevTunnelCli)) {
+        return [pscustomobject]@{ Status = 'Unavailable'; Port = $null }
+    }
 
     $create = Invoke-DevTunnelCli -Arguments @('create', $TunnelId)
     if (Test-DevTunnelAuthError $create.Output) {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
-        return 'Unauthenticated'
+        return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
     }
     if ($create.ExitCode -ne 0 -and -not (Test-DevTunnelAlreadyConfigured $create.Output)) {
         Write-Log "Failed to create dev tunnel '$TunnelId': $($create.Output.Trim())" -Color Red
-        return 'Unavailable'
+        return [pscustomobject]@{ Status = 'Unavailable'; Port = $null }
     }
 
-    $portCreate = Invoke-DevTunnelCli -Arguments @('port', 'create', $TunnelId, '-p', "$Port", '--protocol', 'http')
+    $portList = Invoke-DevTunnelCli -Arguments @('port', 'list', $TunnelId)
+    if (Test-DevTunnelAuthError $portList.Output) {
+        Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
+        return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
+    }
+    if ($portList.ExitCode -ne 0) {
+        Write-Log "Failed to list dev tunnel ports for '$TunnelId': $($portList.Output.Trim())" -Color Red
+        return [pscustomobject]@{ Status = 'Unavailable'; Port = $null }
+    }
+
+    $existingHttpPorts = @(Get-HttpDevTunnelPorts -Output $portList.Output)
+    if ($existingHttpPorts.Count -gt 1) {
+        Write-Log "Dev tunnel '$TunnelId' has multiple HTTP ports ($($existingHttpPorts -join ', ')). Remove the extra ports or recreate the tunnel, then rerun this script." -Color Red
+        return [pscustomobject]@{ Status = 'InvalidConfiguration'; Port = $null }
+    }
+
+    if ($existingHttpPorts.Count -eq 1) {
+        $resolvedPort = [int]$existingHttpPorts[0]
+        if ($null -ne $RequestedPort -and [int]$RequestedPort -ne $resolvedPort) {
+            Write-Log "Dev tunnel '$TunnelId' already has HTTP port $resolvedPort; reusing it instead of requested port $RequestedPort." -Color Yellow
+        }
+        return [pscustomobject]@{ Status = 'Ready'; Port = $resolvedPort }
+    }
+
+    if ($null -ne $RequestedPort) {
+        $resolvedPort = [int]$RequestedPort
+    } else {
+        $resolvedPort = Get-RandomFreePort
+        Write-Log "No HTTP port is configured for '$TunnelId'. Selected free local port $resolvedPort." -Color Yellow
+    }
+
+    $portCreate = Invoke-DevTunnelCli -Arguments @('port', 'create', $TunnelId, '-p', "$resolvedPort", '--protocol', 'http')
     if (Test-DevTunnelAuthError $portCreate.Output) {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
-        return 'Unauthenticated'
+        return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
     }
     if ($portCreate.ExitCode -ne 0 -and -not (Test-DevTunnelAlreadyConfigured $portCreate.Output)) {
-        Write-Log "Failed to create dev tunnel port $Port for '$TunnelId': $($portCreate.Output.Trim())" -Color Red
-        return 'Unavailable'
+        Write-Log "Failed to create dev tunnel port $resolvedPort for '$TunnelId': $($portCreate.Output.Trim())" -Color Red
+        return [pscustomobject]@{ Status = 'Unavailable'; Port = $null }
     }
 
-    return 'Ready'
+    return [pscustomobject]@{ Status = 'Ready'; Port = $resolvedPort }
 }
 
-Write-Log "=== Configuring dev tunnel '$TunnelId' for port $Port ===" -Color Cyan
-$status = Invoke-EnsureTunnel -TunnelId $TunnelId -Port $Port
-if ($status -eq 'Ready') {
-    Write-Log "Dev tunnel '$TunnelId' is configured for port $Port." -Color Green
+$requestedPort = if ($portWasProvided) { [int]$Port } else { $null }
+$target = if ($portWasProvided) { "requested port $requestedPort" } else { 'a persistent generated port' }
+Write-Log "=== Configuring dev tunnel '$TunnelId' for $target ===" -Color Cyan
+$status = Invoke-EnsureTunnel -TunnelId $TunnelId -RequestedPort $requestedPort
+if ($status.Status -eq 'Ready') {
+    Write-Log "Dev tunnel '$TunnelId' is configured for HTTP port $($status.Port)." -Color Green
+    Write-Log "Start CoC with: .\scripts\coc-serve-loop.ps1 -TunnelId $TunnelId" -Color Green
     exit 0
 }
-if ($status -eq 'Unauthenticated') {
+if ($status.Status -eq 'Unauthenticated' -or $status.Status -eq 'InvalidConfiguration') {
     exit 2
 }
 exit 1

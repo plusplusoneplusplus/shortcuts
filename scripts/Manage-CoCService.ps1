@@ -11,15 +11,16 @@
     Subcommand to run: install | uninstall | start | stop | restart | status | logs
 
 .PARAMETER Port
-    Port for the CoC server (default: 4000). Used only by install.
+    Port for the CoC server in non-tunnel mode (default: 4000). Used only by install.
 
 .PARAMETER NoBuildSkip
     install: do NOT pass -SkipInitialBuild to the loop script (forces a fresh build
     every time the task starts, not just on the first run after registration).
 
-.PARAMETER Tunnel
-    install: pass -Tunnel to the loop script so it hosts the preconfigured
+.PARAMETER TunnelId
+    install: pass -TunnelId to the loop script so it hosts the configured
     Microsoft Dev Tunnel alongside the CoC server. Run config-devtunnel.ps1 first.
+    Cannot be combined with -Port.
 
 .PARAMETER LogLines
     logs: number of trailing lines to display (default: 50).
@@ -32,8 +33,8 @@
 
 .EXAMPLE
     .\scripts\Manage-CoCService.ps1 install
-    .\scripts\config-devtunnel.ps1 -Port 4000
-    .\scripts\Manage-CoCService.ps1 install -Tunnel
+    .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc
+    .\scripts\Manage-CoCService.ps1 install -TunnelId my-remote-coc
     .\scripts\Manage-CoCService.ps1 status
     .\scripts\Manage-CoCService.ps1 logs -Follow
     .\scripts\Manage-CoCService.ps1 restart
@@ -48,7 +49,7 @@ param(
 
     [switch]$NoBuildSkip,
 
-    [switch]$Tunnel,
+    [string]$TunnelId = '',
 
     [int]$LogLines = 50,
 
@@ -58,6 +59,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+$portWasProvided = $PSBoundParameters.ContainsKey('Port')
+if (-not [string]::IsNullOrWhiteSpace($TunnelId) -and $portWasProvided) {
+    Write-Error '-Port cannot be used with -TunnelId. Configure the tunnel port with config-devtunnel.ps1, then install the service with only -TunnelId.'
+    exit 2
+}
 
 $Script:ScriptPath = $PSCommandPath
 $Script:ScriptDir  = Split-Path -Parent $Script:ScriptPath
@@ -80,11 +87,15 @@ function Assert-Admin {
         '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', "`"$Script:ScriptPath`"",
         '-Command', $Command,
-        '-Port', $Port,
         '-TaskName', "`"$TaskName`""
     )
+    if ([string]::IsNullOrWhiteSpace($TunnelId)) {
+        $argParts += @('-Port', $Port)
+    }
     if ($NoBuildSkip) { $argParts += '-NoBuildSkip' }
-    if ($Tunnel) { $argParts += '-Tunnel' }
+    if (-not [string]::IsNullOrWhiteSpace($TunnelId)) {
+        $argParts += @('-TunnelId', "`"$TunnelId`"")
+    }
 
     $proc = Start-Process powershell.exe -Verb RunAs -ArgumentList ($argParts -join ' ') -Wait -PassThru
     exit $proc.ExitCode
@@ -133,9 +144,14 @@ function Invoke-Install {
     }
 
     # Build argument string for the loop script
-    $loopArgs = "-NonInteractive -ExecutionPolicy Bypass -File `"$Script:LoopScript`" -Port $Port -LogFile `"$Script:LogFile`""
+    $loopArgs = "-NonInteractive -ExecutionPolicy Bypass -File `"$Script:LoopScript`""
+    if ([string]::IsNullOrWhiteSpace($TunnelId)) {
+        $loopArgs += " -Port $Port"
+    } else {
+        $loopArgs += " -TunnelId `"$TunnelId`""
+    }
+    $loopArgs += " -LogFile `"$Script:LogFile`""
     if (-not $NoBuildSkip) { $loopArgs += ' -SkipInitialBuild' }
-    if ($Tunnel) { $loopArgs += ' -Tunnel' }
 
     # Optionally run initial build now (before registering the task)
     if (-not $NoBuildSkip) {
