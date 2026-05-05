@@ -8,21 +8,22 @@ import type { RemoteServer } from '../../../../src/server/spa/client/react/utils
 
 const SERVER_A: RemoteServer = {
     id: 'a',
+    kind: 'url',
     label: 'Box A',
     url: 'https://a.example.com',
     addedAt: 100,
+    updatedAt: 100,
 };
 
 const SERVER_B: RemoteServer = {
     id: 'b',
+    kind: 'devtunnel',
     label: 'Box B',
-    url: 'https://b.example.com',
+    tunnelId: 'box-b',
     addedAt: 200,
+    updatedAt: 200,
 };
 
-// Stable references — the hook's contract requires callers to memoize the
-// array so the polling effect does not re-run on every render. New array
-// literals would trigger an infinite re-render loop.
 const EMPTY_SERVERS: RemoteServer[] = [];
 const ONE_SERVER: RemoteServer[] = [SERVER_A];
 const TWO_SERVERS: RemoteServer[] = [SERVER_A, SERVER_B];
@@ -72,31 +73,32 @@ describe('useRemoteServerHealth', () => {
         }
     });
 
-    it('marks a server online and populates uptime/version after a successful poll', async () => {
-        fetchMock.mockImplementation((url: string) => {
-            if (url.endsWith('/api/health')) {
-                return Promise.resolve(jsonResponse({ status: 'ok', uptime: 1234, processCount: 7 }));
-            }
-            if (url.endsWith('/api/admin/version')) {
-                return Promise.resolve(jsonResponse({ version: '1.2.3', commit: 'abc1234' }));
-            }
-            if (url.endsWith('/api/admin/config')) {
-                return Promise.resolve(jsonResponse({ hostname: 'box-a' }));
-            }
-            return Promise.reject(new Error(`unexpected url: ${url}`));
-        });
+    it('polls backend health and populates returned metadata', async () => {
+        fetchMock.mockResolvedValue(jsonResponse({
+            serverId: 'a',
+            kind: 'url',
+            status: 'online',
+            effectiveUrl: 'https://a.example.com',
+            uptime: 1234,
+            processCount: 7,
+            version: '1.2.3',
+            commit: 'abc1234',
+            serverName: 'box-a',
+            lastChecked: 10,
+        }));
 
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
             await waitFor(() => expect(result.current[0].status).toBe('online'));
             const state = result.current[0];
+            expect(fetchMock).toHaveBeenCalledWith('/api/servers/a/health');
             expect(state.uptime).toBe(1234);
             expect(state.processCount).toBe(7);
             expect(state.version).toBe('1.2.3');
             expect(state.commit).toBe('abc1234');
             expect(state.serverName).toBe('box-a');
-            expect(state.lastChecked).toBeTypeOf('number');
-            expect(state.error).toBeUndefined();
+            expect(state.effectiveUrl).toBe('https://a.example.com');
+            expect(state.lastChecked).toBe(10);
         } finally {
             unmount();
         }
@@ -114,16 +116,8 @@ describe('useRemoteServerHealth', () => {
         }
     });
 
-    it('marks a server offline when /api/health returns a non-200 status', async () => {
-        fetchMock.mockImplementation((url: string) => {
-            if (url.endsWith('/api/health')) {
-                return Promise.resolve(jsonResponse({}, 503));
-            }
-            if (url.endsWith('/api/admin/version')) {
-                return Promise.resolve(jsonResponse({ version: 'x', commit: 'y' }));
-            }
-            return Promise.resolve(jsonResponse({}, 404));
-        });
+    it('marks a server offline when backend health returns a non-200 status', async () => {
+        fetchMock.mockResolvedValue(jsonResponse({ error: 'bad' }, 503));
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
             await waitFor(() => expect(result.current[0].status).toBe('offline'));
@@ -133,41 +127,27 @@ describe('useRemoteServerHealth', () => {
         }
     });
 
-    it('leaves serverName undefined when /api/admin/config fails but health/version succeed', async () => {
-        fetchMock.mockImplementation((url: string) => {
-            if (url.endsWith('/api/health')) {
-                return Promise.resolve(jsonResponse({ uptime: 1, processCount: 0 }));
-            }
-            if (url.endsWith('/api/admin/version')) {
-                return Promise.resolve(jsonResponse({ version: '1', commit: '2' }));
-            }
-            if (url.endsWith('/api/admin/config')) {
-                return Promise.reject(new Error('forbidden'));
-            }
-            return Promise.reject(new Error(`unexpected ${url}`));
-        });
-
-        const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
-        try {
-            await waitFor(() => expect(result.current[0].status).toBe('online'));
-            expect(result.current[0].serverName).toBeUndefined();
-        } finally {
-            unmount();
-        }
-    });
-
     it('polls every server independently and returns one entry per server', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.startsWith(SERVER_A.url)) {
-                if (url.endsWith('/api/health')) {
-                    return Promise.resolve(jsonResponse({ uptime: 10, processCount: 1 }));
-                }
-                if (url.endsWith('/api/admin/version')) {
-                    return Promise.resolve(jsonResponse({ version: 'v-a', commit: 'c-a' }));
-                }
-                return Promise.resolve(jsonResponse({}));
+            if (url === '/api/servers/a/health') {
+                return Promise.resolve(jsonResponse({
+                    serverId: 'a',
+                    kind: 'url',
+                    status: 'online',
+                    version: 'v-a',
+                    uptime: 10,
+                    lastChecked: 1,
+                }));
             }
-            return Promise.reject(new Error('B is down'));
+            return Promise.resolve(jsonResponse({
+                serverId: 'b',
+                kind: 'devtunnel',
+                status: 'offline',
+                tunnelId: 'box-b',
+                localPort: 4000,
+                error: 'B is down',
+                lastChecked: 2,
+            }));
         });
 
         const { result, unmount } = renderHook(() => useRemoteServerHealth(TWO_SERVERS));
@@ -179,11 +159,9 @@ describe('useRemoteServerHealth', () => {
                 expect(a?.status).toBe('online');
                 expect(b?.status).toBe('offline');
             });
-            const a = result.current.find(s => s.server.id === 'a')!;
-            expect(a.version).toBe('v-a');
-            expect(a.uptime).toBe(10);
-            const b = result.current.find(s => s.server.id === 'b')!;
-            expect(b.error).toBe('B is down');
+            expect(result.current.find(s => s.server.id === 'a')?.version).toBe('v-a');
+            expect(result.current.find(s => s.server.id === 'b')?.error).toBe('B is down');
+            expect(result.current.find(s => s.server.id === 'b')?.localPort).toBe(4000);
         } finally {
             unmount();
         }
@@ -200,25 +178,16 @@ describe('useRemoteServerHealth', () => {
     });
 
     it('re-polls after the 30s interval', async () => {
-        // Use fake timers from the start so setInterval is registered against
-        // them; otherwise switching to fake timers mid-test cannot fire the
-        // already-registered real-timer interval.
         vi.useFakeTimers();
-        let healthCalls = 0;
-        fetchMock.mockImplementation((url: string) => {
-            if (url.endsWith('/api/health')) {
-                healthCalls++;
-                return Promise.resolve(jsonResponse({ uptime: healthCalls, processCount: 0 }));
-            }
-            if (url.endsWith('/api/admin/version')) {
-                return Promise.resolve(jsonResponse({ version: '1', commit: '2' }));
-            }
-            return Promise.resolve(jsonResponse({}));
-        });
+        fetchMock.mockResolvedValue(jsonResponse({
+            serverId: 'a',
+            kind: 'url',
+            status: 'online',
+            lastChecked: 1,
+        }));
 
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
-            // Flush the initial poll's microtasks.
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(0);
             });
@@ -236,6 +205,5 @@ describe('useRemoteServerHealth', () => {
     });
 });
 
-// Type-only sanity check: the public type is exported.
 const _typeCheck: ServerHealthState | undefined = undefined;
 void _typeCheck;

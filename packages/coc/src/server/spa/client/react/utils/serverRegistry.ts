@@ -1,89 +1,209 @@
-/**
- * Remote server registry — localStorage-backed CRUD for `RemoteServer` entries
- * that the Servers page polls for health/version metadata.
- *
- * No React dependency: this module is plain TypeScript so it can be reused by
- * non-React callers and is trivially testable. All `localStorage` access is
- * wrapped in try/catch so private-mode browsers, quota-exceeded errors, and
- * stripped storage APIs degrade silently.
- */
+import { getApiBase } from './config';
 
-const REGISTRY_KEY = 'coc-remote-servers';
+const LEGACY_REGISTRY_KEY = 'coc-remote-servers';
+const MIGRATION_DONE_KEY = 'coc-remote-servers-api-migrated';
 
-export interface RemoteServer {
-    /** Stable opaque identifier (crypto.randomUUID() when available). */
+export type RemoteServerKind = 'url' | 'devtunnel';
+export type RemoteServerRuntimeStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'failed';
+
+export interface BaseRemoteServer {
     id: string;
-    /** User-provided friendly name shown in the UI. */
     label: string;
-    /** Base URL of the remote CoC server (no trailing slash). */
-    url: string;
-    /** Date.now() at creation time. */
+    kind: RemoteServerKind;
     addedAt: number;
+    updatedAt: number;
+    effectiveUrl?: string;
+    status?: RemoteServerRuntimeStatus;
+    localPort?: number;
+    lastChecked?: number;
+    lastError?: string;
 }
 
-function loadAll(): RemoteServer[] {
-    try {
-        const raw = localStorage.getItem(REGISTRY_KEY);
-        return raw ? (JSON.parse(raw) as RemoteServer[]) : [];
-    } catch {
-        return [];
-    }
+export interface UrlRemoteServer extends BaseRemoteServer {
+    kind: 'url';
+    url: string;
 }
 
-function saveAll(servers: RemoteServer[]): void {
-    try {
-        localStorage.setItem(REGISTRY_KEY, JSON.stringify(servers));
-    } catch {
-        // storage quota or private-mode — silently ignore
-    }
+export interface DevTunnelRemoteServer extends BaseRemoteServer {
+    kind: 'devtunnel';
+    tunnelId: string;
+}
+
+export type RemoteServer = UrlRemoteServer | DevTunnelRemoteServer;
+
+export type RemoteServerInput =
+    | { kind: 'url'; label: string; url: string }
+    | { kind: 'devtunnel'; label: string; tunnelId: string };
+
+export type RemoteServerPatch =
+    | { label?: string; kind?: 'url'; url?: string }
+    | { label?: string; kind?: 'devtunnel'; tunnelId?: string };
+
+export interface RemoteServerHealth {
+    serverId: string;
+    status: 'checking' | 'online' | 'offline';
+    kind: RemoteServerKind;
+    effectiveUrl?: string;
+    version?: string;
+    commit?: string;
+    serverName?: string;
+    uptime?: number;
+    processCount?: number;
+    tunnelId?: string;
+    localPort?: number;
+    lastChecked: number;
+    error?: string;
+}
+
+interface LegacyRemoteServer {
+    id?: string;
+    label?: string;
+    url?: string;
+    addedAt?: number;
+}
+
+let migrationPromise: Promise<void> | undefined;
+
+function apiUrl(path: string): string {
+    return `${getApiBase()}${path}`;
 }
 
 function stripTrailingSlash(url: string): string {
     return url.replace(/\/+$/, '');
 }
 
-function generateId(): string {
+async function readJson<T>(res: Response): Promise<T> {
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const message = typeof (body as { error?: unknown }).error === 'string'
+            ? (body as { error: string }).error
+            : `HTTP ${res.status}`;
+        throw new Error(message);
+    }
+    return body as T;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(apiUrl(path), {
+        ...init,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(init?.headers ?? {}),
+        },
+    });
+    return readJson<T>(res);
+}
+
+async function fetchRemoteServersWithoutMigration(): Promise<RemoteServer[]> {
+    return requestJson<RemoteServer[]>('/servers');
+}
+
+function loadLegacyServers(): LegacyRemoteServer[] {
     try {
-        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-            return crypto.randomUUID();
+        const raw = localStorage.getItem(LEGACY_REGISTRY_KEY);
+        const parsed = raw ? JSON.parse(raw) as unknown : [];
+        return Array.isArray(parsed) ? parsed.filter((item): item is LegacyRemoteServer => {
+            return typeof item === 'object'
+                && item !== null
+                && typeof (item as LegacyRemoteServer).url === 'string'
+                && typeof (item as LegacyRemoteServer).label === 'string';
+        }) : [];
+    } catch {
+        return [];
+    }
+}
+
+async function migrateLegacyRemoteServers(): Promise<void> {
+    try {
+        if (localStorage.getItem(MIGRATION_DONE_KEY) === 'true') {
+            return;
         }
     } catch {
-        // fall through to timestamp fallback
+        return;
     }
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+    const legacy = loadLegacyServers();
+    if (legacy.length === 0) {
+        try {
+            localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+        } catch {
+            // If localStorage is unavailable, retrying the no-op migration on next load is safe.
+        }
+        return;
+    }
+
+    const existing = await fetchRemoteServersWithoutMigration();
+    const existingUrls = new Set(existing.filter((s): s is UrlRemoteServer => s.kind === 'url').map(s => stripTrailingSlash(s.url)));
+    for (const server of legacy) {
+        const url = stripTrailingSlash(server.url!.trim());
+        if (!url || existingUrls.has(url)) {
+            continue;
+        }
+        await addRemoteServerWithoutMigration({
+            kind: 'url',
+            label: server.label!.trim() || url,
+            url,
+        });
+        existingUrls.add(url);
+    }
+
+    try {
+        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+    } catch {
+        // A failed marker write means the migration may retry next load.
+    }
 }
 
-export function getRemoteServers(): RemoteServer[] {
-    return loadAll();
+async function ensureMigrated(): Promise<void> {
+    if (!migrationPromise) {
+        migrationPromise = migrateLegacyRemoteServers().finally(() => {
+            migrationPromise = undefined;
+        });
+    }
+    await migrationPromise;
 }
 
-export function addRemoteServer(fields: Omit<RemoteServer, 'id' | 'addedAt'>): RemoteServer {
-    const entry: RemoteServer = {
-        id: generateId(),
-        label: fields.label,
-        url: stripTrailingSlash(fields.url),
-        addedAt: Date.now(),
-    };
-    const next = [...loadAll(), entry];
-    saveAll(next);
-    return entry;
-}
-
-export function removeRemoteServer(id: string): void {
-    const next = loadAll().filter(s => s.id !== id);
-    saveAll(next);
-}
-
-export function updateRemoteServer(
-    id: string,
-    patch: Partial<Pick<RemoteServer, 'label' | 'url'>>,
-): void {
-    const next = loadAll().map(s => {
-        if (s.id !== id) { return s; }
-        const merged: RemoteServer = { ...s };
-        if (patch.label !== undefined) { merged.label = patch.label; }
-        if (patch.url !== undefined) { merged.url = stripTrailingSlash(patch.url); }
-        return merged;
+async function addRemoteServerWithoutMigration(input: RemoteServerInput): Promise<RemoteServer> {
+    return requestJson<RemoteServer>('/servers', {
+        method: 'POST',
+        body: JSON.stringify(input),
     });
-    saveAll(next);
+}
+
+export async function listRemoteServers(): Promise<RemoteServer[]> {
+    await ensureMigrated();
+    return fetchRemoteServersWithoutMigration();
+}
+
+export async function getRemoteServers(): Promise<RemoteServer[]> {
+    return listRemoteServers();
+}
+
+export async function addRemoteServer(input: RemoteServerInput): Promise<RemoteServer> {
+    await ensureMigrated();
+    return addRemoteServerWithoutMigration(input);
+}
+
+export async function updateRemoteServer(id: string, patch: RemoteServerPatch): Promise<RemoteServer> {
+    await ensureMigrated();
+    return requestJson<RemoteServer>(`/servers/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+    });
+}
+
+export async function removeRemoteServer(id: string): Promise<void> {
+    await ensureMigrated();
+    await requestJson<{ ok: true }>(`/servers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function testRemoteServer(input: RemoteServerInput): Promise<RemoteServerHealth> {
+    return requestJson<RemoteServerHealth>('/servers/test', {
+        method: 'POST',
+        body: JSON.stringify(input),
+    });
+}
+
+export function getServerEndpoint(server: RemoteServer): string | undefined {
+    return server.kind === 'url' ? server.url : server.effectiveUrl;
 }

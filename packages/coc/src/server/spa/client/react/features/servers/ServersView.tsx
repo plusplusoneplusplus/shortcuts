@@ -1,21 +1,11 @@
-/**
- * ServersView — Servers page.
- *
- * Renders the local "This Server" card (always first) plus one card per
- * registered remote server. The local card is polled inline (one origin, one
- * effect), while remote servers go through the `useRemoteServerHealth` hook.
- *
- * Routing for this view is wired in a later commit; this file is intentionally
- * route-free so it can be unit-tested in isolation.
- */
-
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../ui';
 import {
     addRemoteServer,
-    getRemoteServers,
+    listRemoteServers,
     removeRemoteServer,
     type RemoteServer,
+    type RemoteServerInput,
 } from '../../utils/serverRegistry';
 import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
 import { getApiBase, getHostname } from '../../utils/config';
@@ -37,15 +27,28 @@ interface LocalHealthState {
 }
 
 export function ServersView() {
-    const [servers, setServers] = useState<RemoteServer[]>(() => getRemoteServers());
+    const [servers, setServers] = useState<RemoteServer[]>([]);
     const [addOpen, setAddOpen] = useState(false);
+    const [loadError, setLoadError] = useState<string | undefined>();
 
-    // useMemo stabilises identity: only changes when the set of ids changes.
-    // Required because useRemoteServerHealth's effect depends on `servers`,
-    // and a fresh array literal each render would restart polling.
-    const serverIdsKey = servers.map(s => s.id).join(',');
-    const stableServers = useMemo(() => servers, [serverIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-    const remoteHealthStates = useRemoteServerHealth(stableServers);
+    useEffect(() => {
+        let cancelled = false;
+        listRemoteServers()
+            .then(result => {
+                if (!cancelled) {
+                    setServers(result);
+                    setLoadError(undefined);
+                }
+            })
+            .catch(error => {
+                if (!cancelled) {
+                    setLoadError(error instanceof Error ? error.message : String(error));
+                }
+            });
+        return () => { cancelled = true; };
+    }, []);
+
+    const remoteHealthStates = useRemoteServerHealth(servers);
 
     const [localHealth, setLocalHealth] = useState<LocalHealthState>(() => ({
         server: { id: 'local', label: 'This Server', url: '' },
@@ -109,14 +112,14 @@ export function ServersView() {
         };
     }, []);
 
-    const handleAdd = (fields: { label: string; url: string }) => {
-        addRemoteServer(fields);
-        setServers(getRemoteServers());
+    const handleAdd = async (fields: RemoteServerInput) => {
+        await addRemoteServer(fields);
+        setServers(await listRemoteServers());
     };
 
-    const handleRemove = (id: string) => {
-        removeRemoteServer(id);
-        setServers(getRemoteServers());
+    const handleRemove = async (id: string) => {
+        await removeRemoteServer(id);
+        setServers(await listRemoteServers());
     };
 
     const localHealthForCard: ServerCardHealth = localHealth;
@@ -134,6 +137,12 @@ export function ServersView() {
                     + Add Server
                 </Button>
             </div>
+
+            {loadError && (
+                <div className="mx-6 mt-4 px-3 py-2 rounded border border-[#f14c4c]/40 bg-[#f14c4c]/10 text-xs text-[#f14c4c]" data-testid="servers-view-load-error">
+                    {loadError}
+                </div>
+            )}
 
             <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <ServerCard health={localHealthForCard} isLocal={true} />

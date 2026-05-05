@@ -12,7 +12,7 @@ import {
 } from '../../../../../src/server/spa/client/react/features/servers/ServerCard';
 
 const REMOTE_BASE: ServerCardHealth = {
-    server: { id: 'r1', label: 'dev-vm', url: 'https://dev.example.com' },
+    server: { id: 'r1', kind: 'url', label: 'dev-vm', url: 'https://dev.example.com', addedAt: 1, updatedAt: 1 },
     status: 'online',
     version: '1.2.3',
     uptime: 3661,
@@ -27,6 +27,22 @@ const LOCAL_BASE: ServerCardHealth = {
     uptime: 60,
     processCount: 1,
     version: '1.2.3',
+};
+
+const DEVTUNNEL_BASE: ServerCardHealth = {
+    server: {
+        id: 'd1',
+        kind: 'devtunnel',
+        label: 'remote-vm',
+        tunnelId: 'my-remote-coc',
+        effectiveUrl: 'http://127.0.0.1:4000',
+        localPort: 4000,
+        addedAt: 1,
+        updatedAt: 1,
+    },
+    status: 'online',
+    effectiveUrl: 'http://127.0.0.1:4000',
+    localPort: 4000,
 };
 
 afterEach(() => {
@@ -110,6 +126,29 @@ describe('ServerCard — local vs remote footer', () => {
         expect(link.getAttribute('href')).toBe('https://dev.example.com');
         expect(link.getAttribute('target')).toBe('_blank');
         expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('DevTunnel card opens the effective local endpoint', () => {
+        render(<ServerCard health={DEVTUNNEL_BASE} isLocal={false} />);
+        const link = screen.getByTestId('server-card-open-link') as HTMLAnchorElement;
+        expect(link.getAttribute('href')).toBe('http://127.0.0.1:4000');
+    });
+
+    it('DevTunnel card disables Open Dashboard when no endpoint is available', () => {
+        render(<ServerCard health={{
+            ...DEVTUNNEL_BASE,
+            effectiveUrl: undefined,
+            server: {
+                id: 'd1',
+                kind: 'devtunnel',
+                label: 'remote-vm',
+                tunnelId: 'my-remote-coc',
+                addedAt: 1,
+                updatedAt: 1,
+            },
+        }} isLocal={false} />);
+        expect(screen.queryByTestId('server-card-open-link')).toBeNull();
+        expect(screen.getByTestId('server-card-open-unavailable').textContent).toContain('Endpoint unavailable');
     });
 
     it('remote card renders ⋮ button which toggles menu', () => {
@@ -218,7 +257,7 @@ describe('ServerCard — stats rendering', () => {
 
     it('omits stats rows when corresponding fields are undefined', () => {
         const minimal: ServerCardHealth = {
-            server: { id: 'm', label: 'Minimal', url: 'https://m.example.com' },
+            server: { id: 'm', kind: 'url', label: 'Minimal', url: 'https://m.example.com', addedAt: 1, updatedAt: 1 },
             status: 'checking',
         };
         render(<ServerCard health={minimal} isLocal={false} />);
@@ -226,6 +265,17 @@ describe('ServerCard — stats rendering', () => {
         expect(screen.queryByTestId('server-card-uptime')).toBeNull();
         expect(screen.queryByTestId('server-card-version')).toBeNull();
         expect(screen.queryByTestId('server-card-hostname')).toBeNull();
+    });
+
+    it('renders direct URL and DevTunnel metadata', () => {
+        render(<ServerCard health={REMOTE_BASE} isLocal={false} />);
+        expect(screen.getByTestId('server-card-url').textContent).toContain('https://dev.example.com');
+        cleanup();
+
+        render(<ServerCard health={DEVTUNNEL_BASE} isLocal={false} />);
+        expect(screen.getByTestId('server-card-tunnel-id').textContent).toContain('my-remote-coc');
+        expect(screen.getByTestId('server-card-local-port').textContent).toContain('localhost:4000');
+        expect(screen.getByTestId('server-card-effective-url').textContent).toContain('http://127.0.0.1:4000');
     });
 
     it('shows "Last seen" only when offline with a lastChecked timestamp', () => {

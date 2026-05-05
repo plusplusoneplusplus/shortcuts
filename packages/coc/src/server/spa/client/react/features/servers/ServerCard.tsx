@@ -1,18 +1,11 @@
-/**
- * ServerCard — single tile rendering a server's status, stats, and actions.
- *
- * Used by ServersView to render both the local server (always first) and any
- * remote servers registered via the localStorage `serverRegistry` module. The
- * `health` shape is tolerant: it accepts both ServerHealthState (remote) and
- * a structurally-compatible local health shape since both expose the same
- * status/uptime/version/processCount/lastChecked/error/serverName fields.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import { Card } from '../../ui';
+import { getServerEndpoint, type RemoteServer } from '../../utils/serverRegistry';
+
+type CardServer = RemoteServer | { id: 'local'; label: string; url: string };
 
 export interface ServerCardHealth {
-    server: { id: string; label: string; url: string };
+    server: CardServer;
     status: 'checking' | 'online' | 'offline';
     version?: string;
     serverName?: string;
@@ -20,13 +13,20 @@ export interface ServerCardHealth {
     processCount?: number;
     lastChecked?: number;
     error?: string;
+    effectiveUrl?: string;
+    tunnelId?: string;
+    localPort?: number;
 }
 
 export interface ServerCardProps {
     health: ServerCardHealth;
     isLocal: boolean;
-    onRemove?: (id: string) => void;
+    onRemove?: (id: string) => void | Promise<void>;
     onEdit?: (id: string) => void;
+}
+
+function isRemoteServer(server: CardServer): server is RemoteServer {
+    return 'kind' in server;
 }
 
 function StatusDot({ status }: { status: ServerCardHealth['status'] }) {
@@ -65,6 +65,9 @@ export function timeAgo(ts: number, now: number = Date.now()): string {
 export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuWrapRef = useRef<HTMLDivElement | null>(null);
+    const endpoint = isRemoteServer(health.server)
+        ? health.effectiveUrl ?? getServerEndpoint(health.server)
+        : health.server.url;
 
     useEffect(() => {
         if (!menuOpen) { return; }
@@ -79,8 +82,11 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
 
     const handleCopyUrl = () => {
         setMenuOpen(false);
+        if (!endpoint) {
+            return;
+        }
         try {
-            void navigator.clipboard?.writeText(health.server.url);
+            void navigator.clipboard?.writeText(endpoint);
         } catch {
             // best-effort
         }
@@ -129,7 +135,7 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                                     type="button"
                                     data-testid="server-card-menu-remove"
                                     className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#f14c4c] dark:text-[#f48771]"
-                                    onClick={() => { setMenuOpen(false); onRemove?.(health.server.id); }}
+                                    onClick={() => { setMenuOpen(false); void onRemove?.(health.server.id); }}
                                 >
                                     Remove
                                 </button>
@@ -144,6 +150,28 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                     <div className="text-[#1e1e1e] dark:text-[#cccccc] font-medium text-xs truncate" data-testid="server-card-hostname">
                         CoC @ {health.serverName}
                     </div>
+                )}
+                {isRemoteServer(health.server) && health.server.kind === 'url' && (
+                    <div className="truncate" data-testid="server-card-url">
+                        URL: {health.server.url}
+                    </div>
+                )}
+                {isRemoteServer(health.server) && health.server.kind === 'devtunnel' && (
+                    <>
+                        <div className="truncate" data-testid="server-card-tunnel-id">
+                            Tunnel: {health.server.tunnelId}
+                        </div>
+                        {health.localPort !== undefined && (
+                            <div data-testid="server-card-local-port">
+                                Local: localhost:{health.localPort}
+                            </div>
+                        )}
+                        {endpoint && (
+                            <div className="truncate" data-testid="server-card-effective-url">
+                                Endpoint: {endpoint}
+                            </div>
+                        )}
+                    </>
                 )}
                 {health.processCount !== undefined && (
                     <div data-testid="server-card-process-count">
@@ -165,6 +193,11 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                         Last seen {timeAgo(health.lastChecked)}
                     </div>
                 )}
+                {health.error && (
+                    <div className="text-[#f14c4c] truncate" data-testid="server-card-error">
+                        {health.error}
+                    </div>
+                )}
             </div>
 
             <div className="px-4 pb-3">
@@ -175,9 +208,9 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                     >
                         Current — You're here
                     </span>
-                ) : (
+                ) : endpoint ? (
                     <a
-                        href={health.server.url}
+                        href={endpoint}
                         target="_blank"
                         rel="noopener noreferrer"
                         data-testid="server-card-open-link"
@@ -185,6 +218,13 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                     >
                         Open Dashboard →
                     </a>
+                ) : (
+                    <span
+                        data-testid="server-card-open-unavailable"
+                        className="text-xs text-[#848484] dark:text-[#999] font-medium"
+                    >
+                        Endpoint unavailable
+                    </span>
                 )}
             </div>
         </Card>

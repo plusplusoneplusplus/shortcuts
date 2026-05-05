@@ -1,12 +1,19 @@
-/**
- * Tests for AddServerDialog component.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { AddServerDialog } from '../../../../../src/server/spa/client/react/features/servers/AddServerDialog';
 
-// Render Dialog inline (avoid Portal)
+const registryMocks = vi.hoisted(() => ({
+    testRemoteServer: vi.fn(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/utils/serverRegistry')>();
+    return {
+        ...actual,
+        testRemoteServer: registryMocks.testRemoteServer,
+    };
+});
+
 vi.mock('react-dom', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-dom')>();
     return { ...actual, createPortal: (children: React.ReactNode) => children };
@@ -16,27 +23,23 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
-function jsonResponse(body: unknown, status = 200): Response {
-    return {
-        ok: status >= 200 && status < 300,
-        status,
-        json: () => Promise.resolve(body),
-    } as unknown as Response;
-}
-
 describe('AddServerDialog', () => {
-    let fetchMock: ReturnType<typeof vi.fn>;
-
     beforeEach(() => {
-        fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
-        vi.stubGlobal('fetch', fetchMock);
+        registryMocks.testRemoteServer.mockResolvedValue({
+            serverId: 'test',
+            kind: 'url',
+            status: 'online',
+            version: '1.2.3',
+            serverName: 'box-a',
+            lastChecked: 1,
+        });
     });
 
     afterEach(() => {
         cleanup();
-        vi.unstubAllGlobals();
         vi.useRealTimers();
         vi.restoreAllMocks();
+        registryMocks.testRemoteServer.mockReset();
     });
 
     it('renders nothing when open=false', () => {
@@ -46,64 +49,88 @@ describe('AddServerDialog', () => {
         expect(container.querySelector('[data-testid="add-server-url-input"]')).toBeNull();
     });
 
-    it('renders URL and Label inputs when open', () => {
+    it('renders connection type, URL, and Label inputs when open', () => {
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        expect(screen.getByTestId('add-server-kind-url')).toBeTruthy();
+        expect(screen.getByTestId('add-server-kind-devtunnel')).toBeTruthy();
         expect(screen.getByTestId('add-server-url-input')).toBeTruthy();
         expect(screen.getByTestId('add-server-label-input')).toBeTruthy();
         expect(screen.getByTestId('add-server-submit-btn')).toBeTruthy();
         expect(screen.getByTestId('add-server-cancel-btn')).toBeTruthy();
     });
 
-    it('disables Add Server button when URL is empty', () => {
+    it('disables Add Server button when the active endpoint field is empty', () => {
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
-        const submit = screen.getByTestId('add-server-submit-btn') as HTMLButtonElement;
-        expect(submit.disabled).toBe(true);
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByTestId('add-server-kind-devtunnel'));
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
     });
 
-    it('enables Add Server button when URL is non-empty (regardless of test result)', () => {
+    it('enables Add Server button when URL is non-empty', () => {
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
-        const url = screen.getByTestId('add-server-url-input') as HTMLInputElement;
-        fireEvent.change(url, { target: { value: 'https://x.example.com' } });
-        const submit = screen.getByTestId('add-server-submit-btn') as HTMLButtonElement;
-        expect(submit.disabled).toBe(false);
+        fireEvent.change(screen.getByTestId('add-server-url-input'), { target: { value: 'https://x.example.com' } });
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('shows "Testing…" indicator immediately while debounce is pending', () => {
+    it('shows "Testing" indicator immediately while debounce is pending', () => {
         vi.useFakeTimers();
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
-        const url = screen.getByTestId('add-server-url-input') as HTMLInputElement;
-        fireEvent.change(url, { target: { value: 'https://x.example.com' } });
-        const indicator = screen.getByTestId('add-server-test-indicator');
-        expect(indicator.textContent).toContain('Testing');
+        fireEvent.change(screen.getByTestId('add-server-url-input'), { target: { value: 'https://x.example.com' } });
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('Testing');
     });
 
-    it('shows green indicator after a successful debounced fetch', async () => {
+    it('tests Direct URL entries through /api/servers/test client', async () => {
         vi.useFakeTimers();
-        fetchMock.mockImplementation((u: string) => {
-            if (u.endsWith('/api/health')) { return Promise.resolve(jsonResponse({ uptime: 1, processCount: 0 })); }
-            if (u.endsWith('/api/admin/version')) { return Promise.resolve(jsonResponse({ version: '1.2.3' })); }
-            if (u.endsWith('/api/admin/config')) { return Promise.resolve(jsonResponse({ hostname: 'box-a' })); }
-            return Promise.resolve(jsonResponse({}));
-        });
-
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         fireEvent.change(screen.getByTestId('add-server-url-input'), {
-            target: { value: 'https://x.example.com' },
+            target: { value: 'https://x.example.com/' },
         });
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(700);
         });
 
-        const indicator = screen.getByTestId('add-server-test-indicator');
-        expect(indicator.textContent).toContain('🟢');
-        expect(indicator.textContent).toMatch(/CoC @ box-a/);
-        expect(indicator.textContent).toMatch(/v1\.2\.3/);
+        expect(registryMocks.testRemoteServer).toHaveBeenCalledWith({
+            kind: 'url',
+            label: 'https://x.example.com',
+            url: 'https://x.example.com',
+        });
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toMatch(/CoC @ box-a/);
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toMatch(/v1\.2\.3/);
+    });
+
+    it('supports DevTunnel ID mode and displays the resolved local port', async () => {
+        vi.useFakeTimers();
+        registryMocks.testRemoteServer.mockResolvedValue({
+            serverId: 'test',
+            kind: 'devtunnel',
+            status: 'online',
+            tunnelId: 'my-remote-coc',
+            localPort: 4000,
+            lastChecked: 1,
+        });
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-devtunnel'));
+        fireEvent.change(screen.getByTestId('add-server-tunnel-id-input'), {
+            target: { value: 'my-remote-coc' },
+        });
+
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('Connecting tunnel');
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(700);
+        });
+
+        expect(registryMocks.testRemoteServer).toHaveBeenCalledWith({
+            kind: 'devtunnel',
+            label: 'my-remote-coc',
+            tunnelId: 'my-remote-coc',
+        });
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('localhost:4000');
     });
 
     it('shows red indicator when the connection test fails', async () => {
         vi.useFakeTimers();
-        fetchMock.mockRejectedValue(new Error('network down'));
+        registryMocks.testRemoteServer.mockRejectedValue(new Error('network down'));
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         fireEvent.change(screen.getByTestId('add-server-url-input'), {
             target: { value: 'https://x.example.com' },
@@ -111,16 +138,18 @@ describe('AddServerDialog', () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(700);
         });
-        const indicator = screen.getByTestId('add-server-test-indicator');
-        expect(indicator.textContent).toContain('🔴');
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('🔴');
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('network down');
     });
 
-    it('shows red indicator on non-200 health response', async () => {
+    it('shows red indicator when backend health returns offline', async () => {
         vi.useFakeTimers();
-        fetchMock.mockImplementation((u: string) => {
-            if (u.endsWith('/api/health')) { return Promise.resolve(jsonResponse({}, 500)); }
-            if (u.endsWith('/api/admin/version')) { return Promise.resolve(jsonResponse({ version: 'x' })); }
-            return Promise.resolve(jsonResponse({}));
+        registryMocks.testRemoteServer.mockResolvedValue({
+            serverId: 'test',
+            kind: 'url',
+            status: 'offline',
+            error: 'HTTP 503',
+            lastChecked: 1,
         });
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         fireEvent.change(screen.getByTestId('add-server-url-input'), {
@@ -129,11 +158,11 @@ describe('AddServerDialog', () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(700);
         });
-        const indicator = screen.getByTestId('add-server-test-indicator');
-        expect(indicator.textContent).toContain('🔴');
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('🔴');
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('HTTP 503');
     });
 
-    it('debounces — does not fetch immediately on every keystroke', async () => {
+    it('debounces and does not test immediately on every keystroke', async () => {
         vi.useFakeTimers();
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         const url = screen.getByTestId('add-server-url-input') as HTMLInputElement;
@@ -143,15 +172,15 @@ describe('AddServerDialog', () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(100);
         });
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(registryMocks.testRemoteServer).not.toHaveBeenCalled();
         await act(async () => {
             await vi.advanceTimersByTimeAsync(700);
         });
-        expect(fetchMock).toHaveBeenCalled();
+        expect(registryMocks.testRemoteServer).toHaveBeenCalledTimes(1);
     });
 
-    it('submit calls onAdd with trimmed URL (no trailing slash) and onClose', () => {
-        const onAdd = vi.fn();
+    it('submit calls onAdd with trimmed Direct URL and onClose', async () => {
+        const onAdd = vi.fn().mockResolvedValue(undefined);
         const onClose = vi.fn();
         render(<AddServerDialog open={true} onClose={onClose} onAdd={onAdd} />);
         fireEvent.change(screen.getByTestId('add-server-url-input'), {
@@ -160,24 +189,31 @@ describe('AddServerDialog', () => {
         fireEvent.change(screen.getByTestId('add-server-label-input'), {
             target: { value: '  My Box  ' },
         });
-        fireEvent.click(screen.getByTestId('add-server-submit-btn'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('add-server-submit-btn'));
+        });
         expect(onAdd).toHaveBeenCalledWith({
+            kind: 'url',
             label: 'My Box',
             url: 'https://x.example.com',
         });
         expect(onClose).toHaveBeenCalled();
     });
 
-    it('submit uses URL as label when label is blank', () => {
-        const onAdd = vi.fn();
+    it('submit calls onAdd with trimmed DevTunnel ID', async () => {
+        const onAdd = vi.fn().mockResolvedValue(undefined);
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={onAdd} />);
-        fireEvent.change(screen.getByTestId('add-server-url-input'), {
-            target: { value: 'https://x.example.com' },
+        fireEvent.click(screen.getByTestId('add-server-kind-devtunnel'));
+        fireEvent.change(screen.getByTestId('add-server-tunnel-id-input'), {
+            target: { value: '  my-remote-coc  ' },
         });
-        fireEvent.click(screen.getByTestId('add-server-submit-btn'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('add-server-submit-btn'));
+        });
         expect(onAdd).toHaveBeenCalledWith({
-            label: 'https://x.example.com',
-            url: 'https://x.example.com',
+            kind: 'devtunnel',
+            label: 'my-remote-coc',
+            tunnelId: 'my-remote-coc',
         });
     });
 
@@ -197,17 +233,16 @@ describe('AddServerDialog', () => {
         const { rerender } = render(
             <AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />
         );
-        const url = screen.getByTestId('add-server-url-input') as HTMLInputElement;
-        fireEvent.change(url, { target: { value: 'https://x.example.com' } });
-        expect(url.value).toBe('https://x.example.com');
+        fireEvent.click(screen.getByTestId('add-server-kind-devtunnel'));
+        const tunnel = screen.getByTestId('add-server-tunnel-id-input') as HTMLInputElement;
+        fireEvent.change(tunnel, { target: { value: 'my-remote-coc' } });
+        expect(tunnel.value).toBe('my-remote-coc');
 
         rerender(<AddServerDialog open={false} onClose={() => {}} onAdd={() => {}} />);
         rerender(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
 
-        const url2 = screen.getByTestId('add-server-url-input') as HTMLInputElement;
-        expect(url2.value).toBe('');
-        const label2 = screen.getByTestId('add-server-label-input') as HTMLInputElement;
-        expect(label2.value).toBe('');
+        expect((screen.getByTestId('add-server-url-input') as HTMLInputElement).value).toBe('');
+        expect((screen.getByTestId('add-server-label-input') as HTMLInputElement).value).toBe('');
         expect(screen.queryByTestId('add-server-test-indicator')).toBeNull();
     });
 });

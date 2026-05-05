@@ -218,6 +218,13 @@ src/
 │   ├── prompts/                      # Prompt management
 │   │   ├── prompt-handler.ts             # Prompt CRUD API
 │   │   └── prompt-utils.ts               # Variable rendering and lookup helpers
+│   ├── servers/                      # Remote CoC server registry + DevTunnel connector
+│   │   ├── remote-server-types.ts        # Discriminated URL/DevTunnel server contracts and runtime health shapes
+│   │   ├── remote-server-store.ts        # Global ~/.coc/remote-servers.json persistence and validation
+│   │   ├── devtunnel-port-parser.ts      # Parses devtunnel port list output and enforces one HTTP port
+│   │   ├── devtunnel-connector.ts        # Managed devtunnel connect lifecycle, deduplication, readiness polling, cleanup
+│   │   ├── remote-server-health.ts       # Common health probing for direct and tunnel-backed endpoints
+│   │   └── remote-server-routes.ts       # /api/servers CRUD, test, health, connection, connect/disconnect routes
 │   ├── git/                          # Git utilities (cache + repo path helpers)
 │   │   ├── git-cache.ts                  # Cache for git diff/log queries
 │   │   ├── git-info-cache.ts             # Cached git status/branch info

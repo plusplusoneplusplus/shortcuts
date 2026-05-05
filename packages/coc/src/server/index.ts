@@ -44,6 +44,8 @@ import { gitInfoCache } from './git/git-info-cache';
 import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
+import { DevTunnelConnector } from './servers/devtunnel-connector';
+import { RemoteServerStore } from './servers/remote-server-store';
 
 // ============================================================================
 // Close Handler Builder
@@ -66,6 +68,7 @@ interface CloseHandlerDeps {
     wsServer: ProcessWebSocketServer;
     terminalWsServer?: { closeAll(): void };
     terminalSessionManager?: { destroyAll(): void };
+    remoteServerConnector: { dispose(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -101,6 +104,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
 
         deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
+        deps.remoteServerConnector.dispose();
         wsServer.closeAll();
         for (const socket of activeSockets) {
             socket.destroy();
@@ -210,6 +214,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;
     const notesGitTimerManager = new NotesGitTimerManager();
+    const remoteServerStore = new RemoteServerStore(dataDir);
+    const remoteServerConnector = new DevTunnelConnector();
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
@@ -222,6 +228,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
+        remoteServerStore,
+        remoteServerConnector,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -244,6 +252,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
+    try {
+        void remoteServerConnector.connectConfigured(remoteServerStore.list());
+    } catch (error) {
+        process.stderr.write(`[servers] Failed to start DevTunnel connectors: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
     modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
@@ -264,6 +277,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
+            remoteServerConnector,
             activeSockets, server,
         }),
     };

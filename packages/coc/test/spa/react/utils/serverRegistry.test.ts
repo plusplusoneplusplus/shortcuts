@@ -1,146 +1,112 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    getRemoteServers,
     addRemoteServer,
+    getServerEndpoint,
+    listRemoteServers,
     removeRemoteServer,
+    testRemoteServer,
     updateRemoteServer,
     type RemoteServer,
 } from '../../../../src/server/spa/client/react/utils/serverRegistry';
 
-const REGISTRY_KEY = 'coc-remote-servers';
+const LEGACY_REGISTRY_KEY = 'coc-remote-servers';
+const MIGRATION_DONE_KEY = 'coc-remote-servers-api-migrated';
 
-beforeEach(() => {
-    localStorage.clear();
-});
+function jsonResponse(body: unknown, status = 200): Response {
+    return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: () => Promise.resolve(body),
+    } as unknown as Response;
+}
 
-afterEach(() => {
-    localStorage.clear();
-    vi.restoreAllMocks();
-});
+describe('serverRegistry API client', () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
 
-describe('serverRegistry', () => {
-    describe('getRemoteServers', () => {
-        it('returns [] when storage is empty', () => {
-            expect(getRemoteServers()).toEqual([]);
-        });
-
-        it('returns [] when stored value is invalid JSON', () => {
-            localStorage.setItem(REGISTRY_KEY, '{not json');
-            expect(getRemoteServers()).toEqual([]);
-        });
-
-        it('returns the stored array', () => {
-            const sample: RemoteServer[] = [
-                { id: 'a', label: 'A', url: 'https://a.example.com', addedAt: 1 },
-            ];
-            localStorage.setItem(REGISTRY_KEY, JSON.stringify(sample));
-            expect(getRemoteServers()).toEqual(sample);
-        });
-
-        it('does not throw when localStorage.getItem throws', () => {
-            const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-                throw new Error('storage disabled');
-            });
-            expect(() => getRemoteServers()).not.toThrow();
-            expect(getRemoteServers()).toEqual([]);
-            spy.mockRestore();
-        });
+    beforeEach(() => {
+        localStorage.clear();
+        fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+        vi.stubGlobal('fetch', fetchMock);
     });
 
-    describe('addRemoteServer', () => {
-        it('returns an entry with a non-empty id and numeric addedAt', () => {
-            const entry = addRemoteServer({ label: 'My Box', url: 'https://b.example.com' });
-            expect(typeof entry.id).toBe('string');
-            expect(entry.id.length).toBeGreaterThan(0);
-            expect(typeof entry.addedAt).toBe('number');
-            expect(entry.addedAt).toBeGreaterThan(0);
-            expect(entry.label).toBe('My Box');
-            expect(entry.url).toBe('https://b.example.com');
-        });
-
-        it('strips a single trailing slash from url', () => {
-            const entry = addRemoteServer({ label: 'L', url: 'https://x.example.com/' });
-            expect(entry.url).toBe('https://x.example.com');
-        });
-
-        it('strips multiple trailing slashes from url', () => {
-            const entry = addRemoteServer({ label: 'L', url: 'https://x.example.com///' });
-            expect(entry.url).toBe('https://x.example.com');
-        });
-
-        it('persists the new entry to storage', () => {
-            const entry = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            const stored = JSON.parse(localStorage.getItem(REGISTRY_KEY) || '[]');
-            expect(stored).toHaveLength(1);
-            expect(stored[0].id).toBe(entry.id);
-        });
-
-        it('appends to an existing list without modifying earlier entries', () => {
-            const first = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            const second = addRemoteServer({ label: 'B', url: 'https://b.example.com' });
-            const stored = getRemoteServers();
-            expect(stored).toHaveLength(2);
-            expect(stored[0].id).toBe(first.id);
-            expect(stored[1].id).toBe(second.id);
-        });
-
-        it('does not throw when localStorage.setItem throws', () => {
-            const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-                throw new Error('quota exceeded');
-            });
-            expect(() => addRemoteServer({ label: 'A', url: 'https://a.example.com' })).not.toThrow();
-            spy.mockRestore();
-        });
+    afterEach(() => {
+        localStorage.clear();
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
     });
 
-    describe('removeRemoteServer', () => {
-        it('removes the entry with the matching id', () => {
-            const a = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            const b = addRemoteServer({ label: 'B', url: 'https://b.example.com' });
-            removeRemoteServer(a.id);
-            const remaining = getRemoteServers();
-            expect(remaining).toHaveLength(1);
-            expect(remaining[0].id).toBe(b.id);
-        });
+    it('lists remote servers from the backend after migration is marked complete', async () => {
+        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+        const servers: RemoteServer[] = [
+            { id: 'a', kind: 'url', label: 'A', url: 'http://a.example.com', addedAt: 1, updatedAt: 1 },
+        ];
+        fetchMock.mockResolvedValueOnce(jsonResponse(servers));
 
-        it('is a no-op when the id is not present', () => {
-            const a = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            removeRemoteServer('does-not-exist');
-            expect(getRemoteServers()).toHaveLength(1);
-            expect(getRemoteServers()[0].id).toBe(a.id);
-        });
+        await expect(listRemoteServers()).resolves.toEqual(servers);
+        expect(fetchMock).toHaveBeenCalledWith('/api/servers', expect.objectContaining({
+            headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        }));
     });
 
-    describe('updateRemoteServer', () => {
-        it('updates only the label of the matching entry', () => {
-            const a = addRemoteServer({ label: 'Old', url: 'https://a.example.com' });
-            const b = addRemoteServer({ label: 'B', url: 'https://b.example.com' });
-            updateRemoteServer(a.id, { label: 'New' });
-            const stored = getRemoteServers();
-            expect(stored.find(s => s.id === a.id)?.label).toBe('New');
-            expect(stored.find(s => s.id === a.id)?.url).toBe('https://a.example.com');
-            expect(stored.find(s => s.id === b.id)?.label).toBe('B');
-        });
+    it('adds, updates, removes, and tests through backend routes', async () => {
+        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+        const created = { id: 'a', kind: 'url', label: 'A', url: 'http://a.example.com', addedAt: 1, updatedAt: 1 };
+        fetchMock
+            .mockResolvedValueOnce(jsonResponse(created, 201))
+            .mockResolvedValueOnce(jsonResponse({ ...created, label: 'B' }))
+            .mockResolvedValueOnce(jsonResponse({ ok: true }))
+            .mockResolvedValueOnce(jsonResponse({ serverId: 'test', kind: 'url', status: 'online', lastChecked: 1 }));
 
-        it('strips trailing slashes from a patched url', () => {
-            const a = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            updateRemoteServer(a.id, { url: 'https://a2.example.com/' });
-            expect(getRemoteServers()[0].url).toBe('https://a2.example.com');
-        });
+        await expect(addRemoteServer({ kind: 'url', label: 'A', url: 'http://a.example.com' })).resolves.toEqual(created);
+        await expect(updateRemoteServer('a', { label: 'B' })).resolves.toMatchObject({ label: 'B' });
+        await expect(removeRemoteServer('a')).resolves.toBeUndefined();
+        await expect(testRemoteServer({ kind: 'url', label: 'A', url: 'http://a.example.com' })).resolves.toMatchObject({ status: 'online' });
 
-        it('is a no-op when the id is not present', () => {
-            const a = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            updateRemoteServer('missing', { label: 'X' });
-            expect(getRemoteServers()[0].label).toBe('A');
-            expect(getRemoteServers()[0].id).toBe(a.id);
-        });
+        expect(fetchMock.mock.calls.map(call => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+            ['/api/servers', 'POST'],
+            ['/api/servers/a', 'PATCH'],
+            ['/api/servers/a', 'DELETE'],
+            ['/api/servers/test', 'POST'],
+        ]);
+    });
 
-        it('preserves id and addedAt across updates', () => {
-            const a = addRemoteServer({ label: 'A', url: 'https://a.example.com' });
-            updateRemoteServer(a.id, { label: 'A2', url: 'https://a2.example.com' });
-            const updated = getRemoteServers()[0];
-            expect(updated.id).toBe(a.id);
-            expect(updated.addedAt).toBe(a.addedAt);
+    it('migrates legacy localStorage URL entries once without deleting them', async () => {
+        localStorage.setItem(LEGACY_REGISTRY_KEY, JSON.stringify([
+            { id: 'old', label: 'Old Box', url: 'http://old.example.com/', addedAt: 1 },
+        ]));
+        fetchMock
+            .mockResolvedValueOnce(jsonResponse([]))
+            .mockResolvedValueOnce(jsonResponse({ id: 'new', kind: 'url', label: 'Old Box', url: 'http://old.example.com', addedAt: 2, updatedAt: 2 }, 201))
+            .mockResolvedValueOnce(jsonResponse([{ id: 'new', kind: 'url', label: 'Old Box', url: 'http://old.example.com', addedAt: 2, updatedAt: 2 }]));
+
+        const servers = await listRemoteServers();
+
+        expect(servers).toHaveLength(1);
+        expect(fetchMock.mock.calls[1][0]).toBe('/api/servers');
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+            kind: 'url',
+            label: 'Old Box',
+            url: 'http://old.example.com',
         });
+        expect(localStorage.getItem(LEGACY_REGISTRY_KEY)).not.toBeNull();
+        expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
+    });
+
+    it('does not mark migration complete when import fails', async () => {
+        localStorage.setItem(LEGACY_REGISTRY_KEY, JSON.stringify([
+            { label: 'Old Box', url: 'http://old.example.com' },
+        ]));
+        fetchMock
+            .mockResolvedValueOnce(jsonResponse([]))
+            .mockResolvedValueOnce(jsonResponse({ error: 'nope' }, 500));
+
+        await expect(listRemoteServers()).rejects.toThrow('nope');
+        expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBeNull();
+    });
+
+    it('resolves direct URL and DevTunnel endpoints', () => {
+        expect(getServerEndpoint({ id: 'u', kind: 'url', label: 'U', url: 'http://u.example.com', addedAt: 1, updatedAt: 1 })).toBe('http://u.example.com');
+        expect(getServerEndpoint({ id: 'd', kind: 'devtunnel', label: 'D', tunnelId: 'tid', effectiveUrl: 'http://127.0.0.1:4000', addedAt: 1, updatedAt: 1 })).toBe('http://127.0.0.1:4000');
+        expect(getServerEndpoint({ id: 'd', kind: 'devtunnel', label: 'D', tunnelId: 'tid', addedAt: 1, updatedAt: 1 })).toBeUndefined();
     });
 });

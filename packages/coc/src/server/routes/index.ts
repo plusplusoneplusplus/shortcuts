@@ -66,6 +66,9 @@ import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { TerminalSessionManager } from '../terminal/index';
+import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
+import { RemoteServerStore } from '../servers/remote-server-store';
+import { DevTunnelConnector } from '../servers/devtunnel-connector';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -104,6 +107,8 @@ export interface RegisterRoutesOptions {
     aiInvoker: AIInvoker;
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
+    remoteServerStore?: RemoteServerStore;
+    remoteServerConnector?: DevTunnelConnector;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -119,6 +124,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
+    registerRemoteServerRoutes(routes, {
+        store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
+        connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
+    });
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);

@@ -1,43 +1,56 @@
-/**
- * AddServerDialog — modal for adding a remote CoC server with a debounced
- * inline connection test.
- *
- * The dialog never persists state itself; it just collects URL + label and
- * invokes `onAdd` so the parent (ServersView) can call addRemoteServer().
- * The connection test is purely informational — it does NOT block submission.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../../ui';
+import { testRemoteServer, type RemoteServerInput } from '../../utils/serverRegistry';
 
 export interface AddServerDialogProps {
     open: boolean;
     onClose: () => void;
-    onAdd: (fields: { label: string; url: string }) => void;
+    onAdd: (fields: RemoteServerInput) => void | Promise<void>;
 }
 
 const DEBOUNCE_MS = 600;
-const FETCH_TIMEOUT_MS = 5_000;
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
+type ConnectionKind = RemoteServerInput['kind'];
 
 function stripTrailingSlash(url: string): string {
     return url.replace(/\/+$/, '');
 }
 
+function buildInput(kind: ConnectionKind, label: string, url: string, tunnelId: string): RemoteServerInput | undefined {
+    if (kind === 'url') {
+        const cleanedUrl = stripTrailingSlash(url.trim());
+        if (!cleanedUrl) {
+            return undefined;
+        }
+        return { kind, label: label.trim() || cleanedUrl, url: cleanedUrl };
+    }
+    const cleanedTunnelId = tunnelId.trim();
+    if (!cleanedTunnelId) {
+        return undefined;
+    }
+    return { kind, label: label.trim() || cleanedTunnelId, tunnelId: cleanedTunnelId };
+}
+
 export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) {
+    const [kind, setKind] = useState<ConnectionKind>('url');
     const [label, setLabel] = useState('');
     const [url, setUrl] = useState('');
+    const [tunnelId, setTunnelId] = useState('');
     const [testState, setTestState] = useState<TestState>('idle');
     const [testLabel, setTestLabel] = useState('');
+    const [submitting, setSubmitting] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (!open) {
+            setKind('url');
             setLabel('');
             setUrl('');
+            setTunnelId('');
             setTestState('idle');
             setTestLabel('');
+            setSubmitting(false);
             if (debounceRef.current) {
                 clearTimeout(debounceRef.current);
                 debounceRef.current = null;
@@ -50,8 +63,9 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
             clearTimeout(debounceRef.current);
             debounceRef.current = null;
         }
-        const trimmed = stripTrailingSlash(url.trim());
-        if (!trimmed) {
+
+        const input = buildInput(kind, label, url, tunnelId);
+        if (!input) {
             setTestState('idle');
             setTestLabel('');
             return;
@@ -61,44 +75,24 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
         setTestLabel('');
 
         debounceRef.current = setTimeout(async () => {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
             try {
-                const [healthRes, versionRes] = await Promise.all([
-                    fetch(`${trimmed}/api/health`, { signal: controller.signal }),
-                    fetch(`${trimmed}/api/admin/version`, { signal: controller.signal }),
-                ]);
-                clearTimeout(timer);
-                if (!healthRes.ok || !versionRes.ok) {
+                const health = await testRemoteServer(input);
+                if (health.status !== 'online') {
                     setTestState('fail');
-                    setTestLabel('');
+                    setTestLabel(health.error ?? 'Cannot reach server');
                     return;
                 }
-                const ver = await versionRes.json().catch(() => ({}));
-
-                let hostname = '';
-                try {
-                    const cfgRes = await fetch(`${trimmed}/api/admin/config`);
-                    if (cfgRes.ok) {
-                        const cfg = await cfgRes.json().catch(() => ({}));
-                        const candidate = cfg?.hostname ?? cfg?.resolved?.hostname;
-                        if (typeof candidate === 'string') { hostname = candidate; }
-                    }
-                } catch {
-                    // ignore — best effort
-                }
-
                 const desc = [
-                    hostname ? `CoC @ ${hostname}` : null,
-                    typeof ver?.version === 'string' && ver.version ? `v${ver.version}` : null,
+                    health.serverName ? `CoC @ ${health.serverName}` : null,
+                    typeof health.version === 'string' && health.version ? `v${health.version}` : null,
+                    input.kind === 'devtunnel' && health.localPort ? `localhost:${health.localPort}` : null,
                 ].filter(Boolean).join(' · ');
 
                 setTestState('ok');
                 setTestLabel(desc || 'Connected');
-            } catch {
-                clearTimeout(timer);
+            } catch (error) {
                 setTestState('fail');
-                setTestLabel('');
+                setTestLabel(error instanceof Error ? error.message : 'Cannot reach server');
             }
         }, DEBOUNCE_MS);
 
@@ -108,17 +102,20 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                 debounceRef.current = null;
             }
         };
-    }, [url]);
+    }, [kind, label, url, tunnelId]);
 
-    const trimmedUrl = url.trim();
-    const submitDisabled = trimmedUrl.length === 0;
+    const input = buildInput(kind, label, url, tunnelId);
+    const submitDisabled = !input || submitting;
 
-    const handleSubmit = () => {
-        const cleanedUrl = stripTrailingSlash(trimmedUrl);
-        if (!cleanedUrl) { return; }
-        const cleanedLabel = label.trim() || cleanedUrl;
-        onAdd({ label: cleanedLabel, url: cleanedUrl });
-        onClose();
+    const handleSubmit = async () => {
+        if (!input) { return; }
+        setSubmitting(true);
+        try {
+            await onAdd(input);
+            onClose();
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -142,7 +139,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                         size="sm"
                         data-testid="add-server-submit-btn"
                         disabled={submitDisabled}
-                        onClick={handleSubmit}
+                        onClick={() => { void handleSubmit(); }}
                     >
                         Add Server
                     </Button>
@@ -150,33 +147,80 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
             }
         >
             <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                        URL <span className="text-[#f14c4c]">*</span>
-                    </label>
-                    <input
-                        type="url"
-                        data-testid="add-server-url-input"
-                        value={url}
-                        onChange={e => setUrl(e.target.value)}
-                        placeholder="https://machine-coc-4000.devtunnels.ms"
-                        className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
-                        autoFocus
-                    />
-                    {trimmedUrl !== '' && (
-                        <div className="text-xs mt-1" data-testid="add-server-test-indicator">
-                            {testState === 'testing' && (
-                                <span className="text-[#848484] dark:text-[#999]">○ Testing…</span>
-                            )}
-                            {testState === 'ok' && (
-                                <span className="text-[#16c060]">🟢 {testLabel}</span>
-                            )}
-                            {testState === 'fail' && (
-                                <span className="text-[#f14c4c]">🔴 Cannot reach server</span>
-                            )}
-                        </div>
-                    )}
-                </div>
+                <fieldset className="flex flex-col gap-2">
+                    <legend className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Connection type</legend>
+                    <div className="flex gap-3 text-sm text-[#1e1e1e] dark:text-[#cccccc]">
+                        <label className="inline-flex items-center gap-1.5">
+                            <input
+                                type="radio"
+                                name="server-kind"
+                                value="url"
+                                checked={kind === 'url'}
+                                onChange={() => setKind('url')}
+                                data-testid="add-server-kind-url"
+                            />
+                            Direct URL
+                        </label>
+                        <label className="inline-flex items-center gap-1.5">
+                            <input
+                                type="radio"
+                                name="server-kind"
+                                value="devtunnel"
+                                checked={kind === 'devtunnel'}
+                                onChange={() => setKind('devtunnel')}
+                                data-testid="add-server-kind-devtunnel"
+                            />
+                            DevTunnel ID
+                        </label>
+                    </div>
+                </fieldset>
+
+                {kind === 'url' ? (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                            URL <span className="text-[#f14c4c]">*</span>
+                        </label>
+                        <input
+                            type="url"
+                            data-testid="add-server-url-input"
+                            value={url}
+                            onChange={e => setUrl(e.target.value)}
+                            placeholder="http://remote-host:4000"
+                            className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
+                            autoFocus
+                        />
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                            Tunnel ID <span className="text-[#f14c4c]">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            data-testid="add-server-tunnel-id-input"
+                            value={tunnelId}
+                            onChange={e => setTunnelId(e.target.value)}
+                            placeholder="my-remote-coc"
+                            className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
+                            autoFocus
+                        />
+                    </div>
+                )}
+
+                {input && (
+                    <div className="text-xs" data-testid="add-server-test-indicator">
+                        {testState === 'testing' && (
+                            <span className="text-[#848484] dark:text-[#999]">○ {kind === 'devtunnel' ? 'Connecting tunnel...' : 'Testing...'}</span>
+                        )}
+                        {testState === 'ok' && (
+                            <span className="text-[#16c060]">🟢 {testLabel}</span>
+                        )}
+                        {testState === 'fail' && (
+                            <span className="text-[#f14c4c]">🔴 {testLabel || 'Cannot reach server'}</span>
+                        )}
+                    </div>
+                )}
+
                 <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                         Label <span className="text-[#848484] dark:text-[#666] font-normal">(optional)</span>
@@ -190,7 +234,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                         className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
                     />
                     <p className="text-xs text-[#848484] dark:text-[#999]">
-                        If blank, the URL is used as the display name.
+                        If blank, the endpoint is used as the display name.
                     </p>
                 </div>
             </div>
