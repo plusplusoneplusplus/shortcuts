@@ -45,6 +45,7 @@ describe('useLinkHandlers', () => {
             const [config] = result.current;
             expect(config.teams).toBe(true);
             expect(config.vscode).toBe(true);
+            expect(config.file).toBe(true);
             expect(config.onenote).toBe(true);
         });
     });
@@ -59,6 +60,7 @@ describe('useLinkHandlers', () => {
             const [config] = result.current;
             expect(config.teams).toBe(false);
             expect(config.vscode).toBe(true);
+            expect(config.file).toBe(true);
             expect(config.onenote).toBe(true);
         });
     });
@@ -74,6 +76,7 @@ describe('useLinkHandlers', () => {
             const [config] = result.current;
             expect(config.teams).toBe(true);
             expect(config.vscode).toBe(true);
+            expect(config.file).toBe(true);
             expect(config.onenote).toBe(true);
         });
     });

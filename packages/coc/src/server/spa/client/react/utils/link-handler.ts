@@ -47,6 +47,12 @@ const vscodeHandler: LinkHandler = {
     open: (href) => { window.location.href = href; },
 };
 
+const fileHandler: LinkHandler = {
+    name: 'file',
+    matches: (href) => /^file:\/\//i.test(href),
+    open: (href) => { window.location.href = href; },
+};
+
 /** OneNote links can arrive as:
  *  - https://onedrive.live.com/redir?...onenote...
  *  - onenote:https://...
@@ -79,6 +85,7 @@ const onenoteHandler: LinkHandler = {
 export const BUILTIN_LINK_HANDLERS: LinkHandler[] = [
     teamsHandler,
     vscodeHandler,
+    fileHandler,
     onenoteHandler,
 ];
 
@@ -93,6 +100,11 @@ export const LINK_HANDLER_META: LinkHandlerMeta[] = [
         name: 'vscode',
         label: 'VS Code',
         description: 'Open vscode:// and vscode-insiders:// links in the VS Code desktop app.',
+    },
+    {
+        name: 'file',
+        label: 'Local Files',
+        description: 'Open file:// links in the native file manager or OS handler.',
     },
     {
         name: 'onenote',

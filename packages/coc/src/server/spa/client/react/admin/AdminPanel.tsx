@@ -95,7 +95,7 @@ export function AdminPanel() {
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
-    const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(false);
+    const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(true);
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
@@ -109,7 +109,7 @@ export function AdminPanel() {
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, htmlEmbedEnabled: false, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, htmlEmbedEnabled: true, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false });
 
     // Export
@@ -218,7 +218,7 @@ export function AdminPanel() {
             const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
             const r = data.reposSidebarCollapsed ?? false;
             const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
-            const h = data.htmlEmbed?.enabled === true;
+            const h = data.htmlEmbed?.enabled !== false;
             setTheme(t);
             setReposSidebarCollapsed(r);
             setUiLayoutMode(u);

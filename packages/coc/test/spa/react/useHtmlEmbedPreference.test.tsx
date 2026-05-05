@@ -24,10 +24,24 @@ describe('useHtmlEmbedPreference', () => {
         expect(mockFetch.mock.calls[0][0]).toContain('/preferences');
     });
 
-    it('defaults to disabled when preference is absent', async () => {
+    it('defaults to enabled when preference is absent', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: () => Promise.resolve({}),
+        });
+
+        const { result } = renderHook(() => useHtmlEmbedPreference('ws1'));
+
+        await waitFor(() => {
+            expect(mockFetch).toHaveBeenCalled();
+            expect(result.current).toBe(true);
+        });
+    });
+
+    it('preserves explicit disabled preference', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ htmlEmbed: { enabled: false } }),
         });
 
         const { result } = renderHook(() => useHtmlEmbedPreference('ws1'));

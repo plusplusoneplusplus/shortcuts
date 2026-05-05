@@ -62,6 +62,10 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
         });
+
+        it('should default terminal feature to enabled', () => {
+            expect(DEFAULT_CONFIG.terminal.enabled).toBe(true);
+        });
     });
 
     // ========================================================================

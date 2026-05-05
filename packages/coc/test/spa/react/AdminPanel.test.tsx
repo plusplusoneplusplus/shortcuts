@@ -857,6 +857,15 @@ describe('AdminPanel', () => {
             });
         });
 
+        it('defaults absent HTML embeds and local file link handler to enabled', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect((screen.getByTestId('pref-html-embed-enabled') as HTMLInputElement).checked).toBe(true);
+                expect((screen.getByTestId('toggle-link-handler-file') as HTMLInputElement).checked).toBe(true);
+            });
+        });
+
         it('Save buttons are disabled when cards are not dirty', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });

@@ -54,6 +54,20 @@ describe('vscode handler', () => {
     });
 });
 
+describe('file handler', () => {
+    const handler = BUILTIN_LINK_HANDLERS.find(h => h.name === 'file')!;
+
+    it('matches file:// URLs', () => {
+        expect(handler.matches('file:///C:/Users/example/report.html')).toBe(true);
+        expect(handler.matches('FILE:///tmp/report.html')).toBe(true);
+    });
+
+    it('does not match non-file URLs', () => {
+        expect(handler.matches('https://example.com/file')).toBe(false);
+        expect(handler.matches('vscode://file/open')).toBe(false);
+    });
+});
+
 describe('onenote handler', () => {
     const handler = BUILTIN_LINK_HANDLERS.find(h => h.name === 'onenote')!;
 
@@ -128,6 +142,19 @@ describe('openLink', () => {
         expect(mockLocationHref).toBe('vscode://ms-vscode.cpptools/open');
     });
 
+    it('opens file URL via location.href when file handler is enabled', () => {
+        openLink('file:///C:/Users/example/report.html', { file: true });
+        expect(mockWindowOpen).not.toHaveBeenCalled();
+        expect(mockLocationHref).toBe('file:///C:/Users/example/report.html');
+    });
+
+    it('falls back to window.open when file handler is disabled', () => {
+        openLink('file:///C:/Users/example/report.html', { file: false });
+        expect(mockWindowOpen).toHaveBeenCalledWith(
+            'file:///C:/Users/example/report.html', '_blank', 'noopener'
+        );
+    });
+
     it('opens onenote: scheme URLs via location.href when onenote handler is enabled', () => {
         openLink('onenote:https://d.docs.live.net/nb/page', { onenote: true });
         expect(mockWindowOpen).not.toHaveBeenCalled();
@@ -154,12 +181,14 @@ describe('openLink', () => {
 // ── getLinkHandlersMeta() ──────────────────────────────────────────────────
 
 describe('getLinkHandlersMeta', () => {
-    it('returns metadata for all three built-in handlers', () => {
+    it('returns metadata for all four built-in handlers', () => {
         const meta = getLinkHandlersMeta();
         const names = meta.map(m => m.name);
         expect(names).toContain('teams');
         expect(names).toContain('vscode');
+        expect(names).toContain('file');
         expect(names).toContain('onenote');
+        expect(names).toHaveLength(4);
     });
 
     it('each entry has name, label, and description', () => {

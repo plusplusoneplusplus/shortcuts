@@ -7,7 +7,7 @@ let fetchPromise: Promise<boolean> | null = null;
 async function fetchHtmlEmbedEnabled(): Promise<boolean> {
     try {
         const data = await getSpaCocClient().preferences.getGlobal();
-        return data?.htmlEmbed?.enabled === true;
+        return data?.htmlEmbed?.enabled !== false;
     } catch {
         return false;
     }
@@ -31,7 +31,7 @@ export function invalidateHtmlEmbedPreference(): void {
 }
 
 export function useHtmlEmbedPreference(workspaceId?: string): boolean {
-    const [enabled, setEnabled] = useState(cachedEnabled ?? false);
+    const [enabled, setEnabled] = useState(workspaceId ? (cachedEnabled ?? true) : false);
 
     useEffect(() => {
         if (!workspaceId) {
