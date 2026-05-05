@@ -1176,5 +1176,23 @@ describe('Task Comments Resolve AI Routes', () => {
             const input = mockEnqueue.mock.calls[0][0];
             expect(input.payload.context.skills).toEqual(['my-skill']);
         });
+
+        it('stamps workspaceId on the chat payload so the resolved conversation appears in the Activity tab', async () => {
+            // Regression: the batch-resolve handler bypasses bridge.enqueue() and
+            // calls queueManager.enqueue() directly. Without an explicit
+            // payload.workspaceId / repoId, the resulting process row was stored
+            // with workspace_id='' and never returned by the workspace history
+            // endpoint that powers the Activity tab.
+            await postJSON(commentsUrl(), makeCommentData());
+
+            await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.workspaceId).toBe(WS_ID);
+            expect(input.repoId).toBe(WS_ID);
+        });
     });
 });

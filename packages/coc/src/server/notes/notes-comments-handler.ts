@@ -456,11 +456,18 @@ export function registerNotesCommentsRoutes(
                 const input: CreateTaskInput = {
                     type: 'chat',
                     priority: 'normal',
+                    // repoId is required so the task's resulting process inherits
+                    // the workspace_id column. process-lifecycle-runner falls back
+                    // to task.repoId when payload.workspaceId is missing; without
+                    // either, the conversation is invisible to the workspace
+                    // history endpoint that powers the Activity tab.
+                    repoId: ws.id,
                     payload: {
                         kind: 'chat',
                         mode: 'ask',
                         prompt,
                         tools: ['resolve-comments'],
+                        workspaceId: ws.id,
                         workingDirectory: wsRootPath,
                         context: {
                             resolveComments: {

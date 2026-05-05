@@ -1477,6 +1477,30 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(input.payload.context.resolveDiffCommentsMulti.newRef).toBe('feature-branch');
         });
 
+        it('stamps workspaceId on the chat payload so the resolved conversation appears in the Activity tab', async () => {
+            // Regression: prior to this fix the resolve-with-AI handler bypassed
+            // bridge.enqueue() and called queueManager.enqueue() directly, leaving
+            // both task.repoId and payload.workspaceId unset. The resulting process
+            // row was stored with workspace_id='' and never returned by
+            // GET /api/workspaces/:id/history that powers the Activity tab.
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            // Payload-level workspaceId is the primary signal read by chat-base-executor
+            // and process-lifecycle-runner.
+            expect(input.payload.workspaceId).toBe(WS_ID);
+            // Top-level repoId is the fallback used by process-lifecycle-runner
+            // when payload.workspaceId is missing — set it as defense in depth so
+            // task routing/queue stats also see the workspace explicitly.
+            expect(input.repoId).toBe(WS_ID);
+        });
+
         it('includes context.files with absolute paths for file references', async () => {
             await postJSON(collectionUrl(), makePostBody());
 

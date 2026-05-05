@@ -126,11 +126,18 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
+            // repoId is required so the task's resulting process inherits the
+            // workspace_id column (process-lifecycle-runner falls back to
+            // task.repoId when payload.workspaceId is missing). Without it,
+            // the resolved-comments conversation is invisible to the workspace
+            // history endpoint that powers the Activity tab.
+            repoId: wsId,
             payload: {
                 kind: 'chat',
                 mode: 'ask',
                 prompt,
                 tools: ['resolve-comments'],
+                workspaceId: wsId,
                 workingDirectory: wsRootPath,
                 context: {
                     files: [path.resolve(wsRootPath, taskPath)],
