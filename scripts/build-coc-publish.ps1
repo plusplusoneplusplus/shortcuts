@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Build forge and coc, then verify the tarball includes forge.
 .DESCRIPTION

@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { delimiter, join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,10 @@ const repoRoot = resolve(__dirname, '..', '..', '..');
 const scriptsRoot = resolve(repoRoot, 'scripts');
 
 const readScript = (name: string) => readFileSync(resolve(scriptsRoot, name), 'utf-8');
+const readScriptBytes = (name: string) => readFileSync(resolve(scriptsRoot, name));
+const hasUtf8Bom = (bytes: Buffer) => bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+const hasNonAsciiText = (bytes: Buffer) =>
+  [...bytes.toString('utf-8').replace(/^\uFEFF/, '')].some((char) => (char.codePointAt(0) ?? 0) > 0x7f);
 
 const findPowerShell = () => {
   for (const command of ['pwsh', 'powershell']) {
@@ -263,11 +267,24 @@ describe('CoC service PowerShell scripts', () => {
   });
 });
 
+describe('PowerShell script encoding', () => {
+  it('uses a UTF-8 BOM for scripts containing non-ASCII text', () => {
+    const scriptsMissingBom = readdirSync(scriptsRoot)
+      .filter((name) => name.endsWith('.ps1'))
+      .filter((name) => {
+        const bytes = readScriptBytes(name);
+        return hasNonAsciiText(bytes) && !hasUtf8Bom(bytes);
+      });
+
+    expect(scriptsMissingBom).toEqual([]);
+  });
+});
+
 describePowerShell('CoC service PowerShell script behavior', () => {
   it('passes PowerShell parser checks', () => {
     const command = `
 $errors = @()
-foreach ($file in @('devtunnel-utils.ps1','config-devtunnel.ps1','coc-serve-loop.ps1','Manage-CoCService.ps1')) {
+foreach ($file in @('build-coc-publish.ps1','devtunnel-utils.ps1','config-devtunnel.ps1','coc-serve-loop.ps1','Manage-CoCService.ps1')) {
   $parseErrors = $null
   [System.Management.Automation.Language.Parser]::ParseFile((Join-Path '${scriptsRoot.replace(/'/g, "''")}' $file), [ref]$null, [ref]$parseErrors) | Out-Null
   if ($parseErrors.Count -gt 0) {
