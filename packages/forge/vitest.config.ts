@@ -15,11 +15,10 @@ export default defineConfig({
         },
         testTimeout: 30000,
         hookTimeout: 30000,
-        // See packages/coc/vitest.config.ts — forge ships better-sqlite3
-        // and worker_threads on macOS Apple Silicon (Node 24 + vitest 1.6)
-        // can SIGSEGV during native-addon teardown. Forks each file into
-        // its own OS process; teardown runs on process exit so the
-        // worker-thread cleanup race vanishes.
-        pool: 'forks',
+        // See packages/coc/vitest.config.ts — forks fix the macOS SIGSEGV
+        // during better-sqlite3 worker-thread teardown but trigger
+        // "Worker exited unexpectedly" on Windows (vitest 1.6 + tinypool).
+        // Use forks only on macOS; default to threads everywhere else.
+        pool: process.platform === 'darwin' ? 'forks' : 'threads',
     }
 });
