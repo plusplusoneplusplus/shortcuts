@@ -4,11 +4,23 @@
     Manage the CoC server as a Windows scheduled task.
 
 .DESCRIPTION
-    Registers coc-serve-loop.ps1 as a SYSTEM-level startup task and provides
-    day-to-day management: install, uninstall, start, stop, restart, status, logs.
+    Registers coc-serve-loop.ps1 as a scheduled task and provides day-to-day
+    management: install, uninstall, start, stop, restart, status, logs.
+
+    Two modes are supported:
+      - system (default): runs as SYSTEM at startup. Requires administrator
+        privileges to install/uninstall. The task survives logoff and starts
+        before any user logs in.
+      - user: runs as the current user at logon. Does NOT require administrator
+        privileges. The task starts when the current user signs in.
 
 .PARAMETER Command
     Subcommand to run: install | uninstall | start | stop | restart | status | logs
+
+.PARAMETER Mode
+    Scheduling mode: system (default) or user.
+      system — SYSTEM principal, AtStartup trigger, requires admin.
+      user   — current-user principal, AtLogOn trigger, no admin required.
 
 .PARAMETER Port
     Port for the CoC server in non-tunnel mode (default: 4000). Used only by install.
@@ -33,6 +45,7 @@
 
 .EXAMPLE
     .\scripts\Manage-CoCService.ps1 install
+    .\scripts\Manage-CoCService.ps1 install -Mode user
     .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc
     .\scripts\Manage-CoCService.ps1 install -TunnelId my-remote-coc
     .\scripts\Manage-CoCService.ps1 status
@@ -44,6 +57,9 @@ param(
     [Parameter(Mandatory, Position = 0)]
     [ValidateSet('install', 'uninstall', 'start', 'stop', 'restart', 'status', 'logs')]
     [string]$Command,
+
+    [ValidateSet('system', 'user')]
+    [string]$Mode = 'user',
 
     [int]$Port = 4000,
 
@@ -73,20 +89,40 @@ $Script:LoopScript = Join-Path $Script:ScriptDir 'coc-serve-loop.ps1'
 $Script:LogDir     = Join-Path $env:USERPROFILE '.coc\logs'
 $Script:LogFile    = Join-Path $Script:LogDir 'coc-service.log'
 
+# ── Task-path helper ──────────────────────────────────────────────────────────
+# system mode places the task in the root (\) folder (requires admin).
+# user mode places it under \CoC\ so a non-admin user can create it.
+
+function Get-TaskPath {
+    if ($Mode -eq 'user') { return '\CoC\' } else { return '\' }
+}
+
+function Find-CocTask {
+    $paths = @('\', '\CoC\')
+    foreach ($tp in $paths) {
+        $t = Get-ScheduledTask -TaskName $TaskName -TaskPath $tp -ErrorAction SilentlyContinue
+        if ($t) { return $t }
+    }
+    return $null
+}
+
 # ── Admin guard ────────────────────────────────────────────────────────────────
-# install and uninstall require Task Scheduler access (Administrator).
+# system mode install/uninstall require Task Scheduler access (Administrator).
 # Re-launches the script elevated if needed.
 
 function Assert-Admin {
+    if ($Mode -eq 'user') { return }
+
     $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
 
-    Write-Host 'Elevation required. Re-launching as administrator...' -ForegroundColor Yellow
+    Write-Host 'Elevation required for system mode. Re-launching as administrator...' -ForegroundColor Yellow
 
     $argParts = @(
         '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', "`"$Script:ScriptPath`"",
         '-Command', $Command,
+        '-Mode', $Mode,
         '-TaskName', "`"$TaskName`""
     )
     if ([string]::IsNullOrWhiteSpace($TunnelId)) {
@@ -172,26 +208,38 @@ function Invoke-Install {
         Write-Host 'Build succeeded.' -ForegroundColor Green
     }
 
-    # Remove any existing task with the same name
-    if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-        Write-Host "Removing existing task '$TaskName'..." -ForegroundColor Yellow
-        Stop-ScheduledTask  -TaskName $TaskName -ErrorAction SilentlyContinue
+    # Remove any existing task with the same name (search both paths)
+    $existing = Find-CocTask
+    if ($existing) {
+        Write-Host "Removing existing task '$TaskName' (path: $($existing.TaskPath))..." -ForegroundColor Yellow
+        Stop-ScheduledTask  -TaskName $TaskName -TaskPath $existing.TaskPath -ErrorAction SilentlyContinue
         Stop-CocProcesses
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+        Unregister-ScheduledTask -TaskName $TaskName -TaskPath $existing.TaskPath -Confirm:$false
     }
 
+    $taskPath  = Get-TaskPath
+
     $action    = New-ScheduledTaskAction  -Execute $psExe -Argument $loopArgs -WorkingDirectory $Script:RepoRoot
-    $trigger   = New-ScheduledTaskTrigger -AtStartup
     $settings  = New-ScheduledTaskSettingsSet `
                      -ExecutionTimeLimit ([TimeSpan]::Zero) `
                      -RestartCount 3 `
                      -RestartInterval (New-TimeSpan -Minutes 1) `
                      -StartWhenAvailable `
                      -MultipleInstances IgnoreNew
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+
+    if ($Mode -eq 'system') {
+        $trigger   = New-ScheduledTaskTrigger -AtStartup
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest -LogonType ServiceAccount
+        $modeLabel = 'SYSTEM, runs at startup'
+    } else {
+        $trigger   = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+        $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -RunLevel Limited -LogonType Interactive
+        $modeLabel = "$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name), runs at logon"
+    }
 
     Register-ScheduledTask `
         -TaskName    $TaskName `
+        -TaskPath    $taskPath `
         -Action      $action `
         -Trigger     $trigger `
         -Settings    $settings `
@@ -199,7 +247,7 @@ function Invoke-Install {
         -Description 'CoC server loop — managed by Manage-CoCService.ps1' |
         Out-Null
 
-    Write-Host "`n✓ Task '$TaskName' registered (SYSTEM, runs at startup)." -ForegroundColor Green
+    Write-Host "`n✓ Task '$TaskName' registered ($modeLabel)." -ForegroundColor Green
     Write-Host "  Log : $Script:LogFile"   -ForegroundColor DarkGray
     Write-Host "  Run : Manage-CoCService.ps1 start   (to start without rebooting)" -ForegroundColor DarkGray
 }
@@ -209,35 +257,40 @@ function Invoke-Install {
 function Invoke-Uninstall {
     Assert-Admin
 
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $task = Find-CocTask
     if (-not $task) {
         Write-Host "Task '$TaskName' is not registered." -ForegroundColor Yellow
         return
     }
 
-    Write-Host "Stopping task '$TaskName' and killing CoC processes..." -ForegroundColor Cyan
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $tp = $task.TaskPath
+    Write-Host "Stopping task '$TaskName' (path: $tp) and killing CoC processes..." -ForegroundColor Cyan
+    Stop-ScheduledTask -TaskName $TaskName -TaskPath $tp -ErrorAction SilentlyContinue
     Stop-CocProcesses
 
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    Unregister-ScheduledTask -TaskName $TaskName -TaskPath $tp -Confirm:$false
     Write-Host "✓ Task '$TaskName' removed." -ForegroundColor Green
 }
 
 # ── START ──────────────────────────────────────────────────────────────────────
 
 function Invoke-Start {
-    if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+    $task = Find-CocTask
+    if (-not $task) {
         Write-Host "Task '$TaskName' not found. Run 'install' first." -ForegroundColor Red
         exit 1
     }
-    Start-ScheduledTask -TaskName $TaskName
+    Start-ScheduledTask -TaskName $TaskName -TaskPath $task.TaskPath
     Write-Host "✓ Task '$TaskName' started." -ForegroundColor Green
 }
 
 # ── STOP ───────────────────────────────────────────────────────────────────────
 
 function Invoke-Stop {
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $task = Find-CocTask
+    if ($task) {
+        Stop-ScheduledTask -TaskName $TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue
+    }
     Stop-CocProcesses
     Write-Host '✓ CoC server stopped.' -ForegroundColor Green
 }
@@ -253,13 +306,14 @@ function Invoke-Restart {
 # ── STATUS ─────────────────────────────────────────────────────────────────────
 
 function Invoke-Status {
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $task = Find-CocTask
     if (-not $task) {
         Write-Host "Task '$TaskName' is not registered. Run 'install' first." -ForegroundColor Yellow
         return
     }
 
-    $info  = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
+    $tp = $task.TaskPath
+    $info  = Get-ScheduledTaskInfo -TaskName $TaskName -TaskPath $tp -ErrorAction SilentlyContinue
     $state = $task.State
 
     $stateColor = switch ($state) {
@@ -268,8 +322,13 @@ function Invoke-Status {
         default   { 'Yellow' }
     }
 
+    # Detect mode from the registered task principal
+    $taskPrincipalId = $task.Principal.UserId
+    $taskMode = if ($taskPrincipalId -eq 'SYSTEM') { 'system' } else { 'user' }
+
     Write-Host ''
     Write-Host "  Task      : $TaskName"
+    Write-Host "  Mode      : $taskMode ($taskPrincipalId)" -ForegroundColor DarkCyan
     Write-Host "  State     : $state" -ForegroundColor $stateColor
 
     if ($info -and $info.LastRunTime -ne [datetime]::MinValue) {
