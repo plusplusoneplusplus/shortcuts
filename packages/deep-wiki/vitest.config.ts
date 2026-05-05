@@ -14,10 +14,11 @@ export default defineConfig({
         },
         testTimeout: 30000,
         hookTimeout: 30000,
-        // See packages/coc/vitest.config.ts — forks fix the macOS SIGSEGV
-        // during better-sqlite3 worker-thread teardown but trigger
-        // "Worker exited unexpectedly" on Windows (vitest 1.6 + tinypool).
-        // Use forks only on macOS; default to threads everywhere else.
-        pool: process.platform === 'darwin' ? 'forks' : 'threads',
+        // See packages/coc/vitest.config.ts — forks isolate native-addon
+        // teardown to avoid macOS SIGSEGV / Windows ACCESS_VIOLATION;
+        // the unhandled-errors flag swallows the post-completion Windows
+        // "Worker exited unexpectedly" tinypool race fixed in vitest 4.x.
+        pool: 'forks',
+        dangerouslyIgnoreUnhandledErrors: true,
     }
 });
