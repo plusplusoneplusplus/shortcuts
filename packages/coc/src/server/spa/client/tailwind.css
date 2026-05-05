@@ -10,9 +10,6 @@
     .scrollbar-hide::-webkit-scrollbar {
         display: none;
     }
-    .animate-blink {
-        animation: blink 1.5s steps(1) infinite;
-    }
     .mobile-fab {
         position: fixed;
         bottom: 1rem;
@@ -37,10 +34,6 @@
     .mobile-fab:active {
         transform: scale(0.95);
     }
-}
-
-@keyframes blink {
-    50% { opacity: 0; }
 }
 
 /* Subtree collapse: hide nested tool-call children when parent is collapsed */

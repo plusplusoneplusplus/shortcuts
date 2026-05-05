@@ -1,18 +1,17 @@
 /**
- * RepoTabStrip — queue status dot indicator tests.
+ * RepoTabStrip — queue status indicator tests.
  *
- * Verifies the repo-tab dot gets the correct animation class
- * for each queue state (idle, running, queued, paused).
- * Covers both main tabs and overflow dropdown dots.
+ * Verifies repo tabs and overflow rows use explicit status icons
+ * for active queue states while keeping the idle repo marker.
  *
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import {
     RepoTabStrip,
-    getDotAnimationClass,
-    type QueueDotStatus,
+    getRepoQueueStatusInfo,
+    type RepoQueueStatus,
 } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 /* ── Configurable queue mock ─────────────────────────────────────────── */
@@ -50,11 +49,12 @@ vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () =
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
-const makeRepo = (id: string, name: string, color = '#ff0000') => ({
+const makeRepo = (id: string, name: string, color = '#ff0000', isGitRepo: boolean | undefined = undefined) => ({
     workspace: { id, name, rootPath: `/repos/${id}`, color },
     stats: { success: 0, failed: 0, running: 0 },
     workflows: [],
     taskCount: 0,
+    ...(isGitRepo === undefined ? {} : { gitInfo: { isGitRepo } }),
 });
 
 const defaultStats = {
@@ -74,33 +74,56 @@ function renderStrip(repos: ReturnType<typeof makeRepo>[], selectedRepoId: strin
     );
 }
 
+function expectNoActiveIcon(container: HTMLElement = document.body) {
+    expect(within(container).queryByTestId('repo-queue-play-icon')).toBeNull();
+    expect(within(container).queryByTestId('repo-queue-pause-icon')).toBeNull();
+    expect(within(container).queryByTestId('repo-queue-pending-icon')).toBeNull();
+}
+
+function getOverflowItem(repoId: string) {
+    const item = screen.getAllByTestId('overflow-repo-item')
+        .find(el => el.getAttribute('data-repo-id') === repoId);
+    expect(item).toBeTruthy();
+    return item as HTMLElement;
+}
+
 /* ── Tests ────────────────────────────────────────────────────────────── */
 
-describe('getDotAnimationClass (pure)', () => {
-    it.each<[QueueDotStatus, string]>([
-        ['idle', ''],
-        ['running', ' animate-pulse'],
-        ['queued', ' animate-blink'],
-        ['paused', ' ring-1 ring-[#f14c4c]'],
-    ])('returns correct class for %s', (status, expected) => {
-        expect(getDotAnimationClass(status)).toBe(expected);
+describe('getRepoQueueStatusInfo (pure)', () => {
+    it.each<[RepoQueueStatus, ReturnType<typeof getRepoQueueStatusInfo>]>([
+        ['idle', { status: 'idle', label: 'idle', icon: null }],
+        ['running', { status: 'running', label: 'running jobs', icon: 'play' }],
+        ['queued', { status: 'queued', label: 'queued jobs', icon: 'pending' }],
+        ['paused', { status: 'paused', label: 'queue paused', icon: 'pause' }],
+    ])('returns correct metadata for %s', (status, expected) => {
+        expect(getRepoQueueStatusInfo(status)).toEqual(expected);
     });
 });
 
-describe('RepoTabStrip queue dot indicator', () => {
+describe('RepoTabStrip queue status indicator', () => {
     beforeEach(() => {
         cleanup();
         mockQueueState = { repoQueueMap: {} };
     });
 
-    it('dot has no animation class when queue is idle', () => {
+    it('idle Git repo keeps the round color marker and no active-state icon', () => {
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).not.toContain('animate-');
-        expect(dot.className).not.toContain('ring-');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('idle');
+        expect(indicator.className).toContain('rounded-full');
+        expectNoActiveIcon();
+        expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
     });
 
-    it('dot has animate-pulse when repo has running tasks', () => {
+    it('idle non-Git repo keeps the square color marker', () => {
+        renderStrip([makeRepo('r1', 'Alpha', '#ff0000', false)]);
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('idle');
+        expect(indicator.className).toContain('rounded-sm');
+        expectNoActiveIcon();
+    });
+
+    it('shows a play icon when repo has running tasks', () => {
         mockQueueState = {
             repoQueueMap: {
                 r1: {
@@ -112,11 +135,13 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('animate-pulse');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('running');
+        expect(within(indicator).getByTestId('repo-queue-play-icon')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Alpha, running jobs' })).toBeTruthy();
     });
 
-    it('dot has animate-blink when repo has only queued tasks', () => {
+    it('shows a pending icon when repo has only queued tasks', () => {
         mockQueueState = {
             repoQueueMap: {
                 r1: {
@@ -128,11 +153,13 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('animate-blink');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('queued');
+        expect(within(indicator).getByTestId('repo-queue-pending-icon')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Alpha, queued jobs' })).toBeTruthy();
     });
 
-    it('dot has ring class when queue is paused', () => {
+    it('shows a pause icon when queue is paused', () => {
         mockQueueState = {
             repoQueueMap: {
                 r1: {
@@ -144,9 +171,10 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('ring-1');
-        expect(dot.className).toContain('ring-[#f14c4c]');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('paused');
+        expect(within(indicator).getByTestId('repo-queue-pause-icon')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Alpha, queue paused' })).toBeTruthy();
     });
 
     it('paused takes priority over running', () => {
@@ -161,9 +189,10 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('ring-1');
-        expect(dot.className).not.toContain('animate-pulse');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('paused');
+        expect(within(indicator).getByTestId('repo-queue-pause-icon')).toBeTruthy();
+        expect(within(indicator).queryByTestId('repo-queue-play-icon')).toBeNull();
     });
 
     it('running takes priority over queued', () => {
@@ -178,9 +207,10 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('animate-pulse');
-        expect(dot.className).not.toContain('animate-blink');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('running');
+        expect(within(indicator).getByTestId('repo-queue-play-icon')).toBeTruthy();
+        expect(within(indicator).queryByTestId('repo-queue-pending-icon')).toBeNull();
     });
 
     it('hidden chat follow-ups are excluded from running count', () => {
@@ -195,9 +225,9 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).not.toContain('animate-pulse');
-        expect(dot.className).not.toContain('animate-blink');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('idle');
+        expectNoActiveIcon();
     });
 
     it('hidden chat follow-ups are excluded from queued count', () => {
@@ -212,8 +242,9 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).not.toContain('animate-blink');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('idle');
+        expectNoActiveIcon();
     });
 
     it('each repo shows independent status', () => {
@@ -234,12 +265,14 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]);
-        const dots = screen.getAllByTestId('repo-tab-dot');
-        expect(dots[0].className).toContain('animate-pulse');
-        expect(dots[1].className).toContain('animate-blink');
+        const indicators = screen.getAllByTestId('repo-tab-dot');
+        expect(indicators[0].dataset.status).toBe('running');
+        expect(within(indicators[0]).getByTestId('repo-queue-play-icon')).toBeTruthy();
+        expect(indicators[1].dataset.status).toBe('queued');
+        expect(within(indicators[1]).getByTestId('repo-queue-pending-icon')).toBeTruthy();
     });
 
-    it('selected tab dot also gets animation class', () => {
+    it('selected tab active icon remains visible', () => {
         mockQueueState = {
             repoQueueMap: {
                 r1: {
@@ -251,11 +284,13 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')], 'r1');
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).toContain('animate-pulse');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('running');
+        expect(indicator.style.color).toBe('rgba(255, 255, 255, 0.85)');
+        expect(within(indicator).getByTestId('repo-queue-play-icon')).toBeTruthy();
     });
 
-    it('repo not in repoQueueMap renders idle (no extra class)', () => {
+    it('repo not in repoQueueMap renders idle', () => {
         mockQueueState = {
             repoQueueMap: {
                 other: {
@@ -267,13 +302,13 @@ describe('RepoTabStrip queue dot indicator', () => {
             },
         };
         renderStrip([makeRepo('r1', 'Alpha')]);
-        const dot = screen.getByTestId('repo-tab-dot');
-        expect(dot.className).not.toContain('animate-');
-        expect(dot.className).not.toContain('ring-');
+        const indicator = screen.getByTestId('repo-tab-dot');
+        expect(indicator.dataset.status).toBe('idle');
+        expectNoActiveIcon();
     });
 });
 
-describe('RepoTabStrip overflow dropdown queue dot indicator', () => {
+describe('RepoTabStrip overflow dropdown queue status indicator', () => {
     beforeEach(() => {
         cleanup();
         mockQueueState = { repoQueueMap: {} };
@@ -325,7 +360,7 @@ describe('RepoTabStrip overflow dropdown queue dot indicator', () => {
         return result;
     }
 
-    it('overflow dot has animate-pulse for running repo', () => {
+    it('overflow row shows play icon and label for running repo', () => {
         mockQueueState = {
             repoQueueMap: {
                 r2: {
@@ -337,13 +372,14 @@ describe('RepoTabStrip overflow dropdown queue dot indicator', () => {
             },
         };
         renderWithOverflowOpen([makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta'), makeRepo('r3', 'Gamma')]);
-        const overflowDots = screen.queryAllByTestId('overflow-repo-dot');
-        // At least one overflow dot should exist with animate-pulse
-        const pulsingDots = overflowDots.filter(d => d.className.includes('animate-pulse'));
-        expect(pulsingDots.length).toBeGreaterThanOrEqual(1);
+        const item = getOverflowItem('r2');
+        const indicator = within(item).getByTestId('overflow-repo-dot');
+        expect(item.getAttribute('aria-label')).toBe('Beta, running jobs');
+        expect(indicator.dataset.status).toBe('running');
+        expect(within(indicator).getByTestId('repo-queue-play-icon')).toBeTruthy();
     });
 
-    it('overflow dot has animate-blink for queued-only repo', () => {
+    it('overflow row shows pending icon and label for queued-only repo', () => {
         mockQueueState = {
             repoQueueMap: {
                 r3: {
@@ -355,12 +391,14 @@ describe('RepoTabStrip overflow dropdown queue dot indicator', () => {
             },
         };
         renderWithOverflowOpen([makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta'), makeRepo('r3', 'Gamma')]);
-        const overflowDots = screen.queryAllByTestId('overflow-repo-dot');
-        const blinkingDots = overflowDots.filter(d => d.className.includes('animate-blink'));
-        expect(blinkingDots.length).toBeGreaterThanOrEqual(1);
+        const item = getOverflowItem('r3');
+        const indicator = within(item).getByTestId('overflow-repo-dot');
+        expect(item.getAttribute('aria-label')).toBe('Gamma, queued jobs');
+        expect(indicator.dataset.status).toBe('queued');
+        expect(within(indicator).getByTestId('repo-queue-pending-icon')).toBeTruthy();
     });
 
-    it('overflow dot has ring for paused repo', () => {
+    it('overflow row shows pause icon and label for paused repo', () => {
         mockQueueState = {
             repoQueueMap: {
                 r2: {
@@ -372,8 +410,19 @@ describe('RepoTabStrip overflow dropdown queue dot indicator', () => {
             },
         };
         renderWithOverflowOpen([makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta'), makeRepo('r3', 'Gamma')]);
-        const overflowDots = screen.queryAllByTestId('overflow-repo-dot');
-        const pausedDots = overflowDots.filter(d => d.className.includes('ring-1'));
-        expect(pausedDots.length).toBeGreaterThanOrEqual(1);
+        const item = getOverflowItem('r2');
+        const indicator = within(item).getByTestId('overflow-repo-dot');
+        expect(item.getAttribute('aria-label')).toBe('Beta, queue paused');
+        expect(indicator.dataset.status).toBe('paused');
+        expect(within(indicator).getByTestId('repo-queue-pause-icon')).toBeTruthy();
+    });
+
+    it('overflow row keeps idle marker without an active-state icon', () => {
+        renderWithOverflowOpen([makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta'), makeRepo('r3', 'Gamma')]);
+        const item = getOverflowItem('r2');
+        const indicator = within(item).getByTestId('overflow-repo-dot');
+        expect(item.getAttribute('aria-label')).toBe('Beta');
+        expect(indicator.dataset.status).toBe('idle');
+        expectNoActiveIcon(item);
     });
 });

@@ -15,16 +15,95 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
-export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
+export type RepoQueueStatus = 'idle' | 'running' | 'queued' | 'paused';
 
-/** Returns the extra CSS class(es) for a repo-tab dot based on its queue status. */
-export function getDotAnimationClass(status: QueueDotStatus): string {
+export interface RepoQueueStatusInfo {
+    status: RepoQueueStatus;
+    label: string;
+    icon: 'play' | 'pause' | 'pending' | null;
+}
+
+export function getRepoQueueStatusInfo(status: RepoQueueStatus): RepoQueueStatusInfo {
     switch (status) {
-        case 'running': return ' animate-pulse';
-        case 'queued': return ' animate-blink';
-        case 'paused': return ' ring-1 ring-[#f14c4c]';
-        default: return '';
+        case 'running':
+            return { status, label: 'running jobs', icon: 'play' };
+        case 'queued':
+            return { status, label: 'queued jobs', icon: 'pending' };
+        case 'paused':
+            return { status, label: 'queue paused', icon: 'pause' };
+        default:
+            return { status: 'idle', label: 'idle', icon: null };
     }
+}
+
+function getRepoQueueAccessibleLabel(repoName: string, status: RepoQueueStatus): string {
+    const info = getRepoQueueStatusInfo(status);
+    return status === 'idle' ? repoName : `${repoName}, ${info.label}`;
+}
+
+function RepoQueueStatusIcon({ icon }: { icon: NonNullable<RepoQueueStatusInfo['icon']> }) {
+    if (icon === 'play') {
+        return (
+            <svg viewBox="0 0 12 12" className="w-3 h-3" fill="currentColor" aria-hidden="true" data-testid="repo-queue-play-icon">
+                <path d="M3.5 2.25v7.5L9 6 3.5 2.25z" />
+            </svg>
+        );
+    }
+    if (icon === 'pause') {
+        return (
+            <svg viewBox="0 0 12 12" className="w-3 h-3" fill="currentColor" aria-hidden="true" data-testid="repo-queue-pause-icon">
+                <path d="M3 2.25h2.1v7.5H3v-7.5zm3.9 0H9v7.5H6.9v-7.5z" />
+            </svg>
+        );
+    }
+    return (
+        <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-testid="repo-queue-pending-icon">
+            <circle cx="6" cy="6" r="4.25" />
+            <path d="M6 3.75v2.5l1.75 1" />
+        </svg>
+    );
+}
+
+function RepoQueueStatusIndicator({
+    status,
+    color,
+    idleShape,
+    isSelected,
+    testId,
+}: {
+    status: RepoQueueStatus;
+    color: string;
+    idleShape: string;
+    isSelected?: boolean;
+    testId: string;
+}) {
+    const info = getRepoQueueStatusInfo(status);
+    if (info.icon === null) {
+        return (
+            <span
+                className={`inline-block w-2 h-2 ${idleShape} flex-shrink-0`}
+                style={{ background: isSelected ? 'rgba(255,255,255,0.7)' : color }}
+                data-testid={testId}
+                data-status={status}
+            />
+        );
+    }
+
+    const statusColor = status === 'paused'
+        ? (isSelected ? 'rgba(255,255,255,0.88)' : '#f14c4c')
+        : (isSelected ? 'rgba(255,255,255,0.85)' : color);
+
+    return (
+        <span
+            className="inline-flex w-3 h-3 flex-shrink-0 items-center justify-center"
+            style={{ color: statusColor }}
+            data-testid={testId}
+            data-status={status}
+            title={info.label}
+        >
+            <RepoQueueStatusIcon icon={info.icon} />
+        </span>
+    );
 }
 
 export interface RepoTabStripProps {
@@ -144,9 +223,9 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const { dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
-    /** Pre-computed queue-dot status for each repo. */
-    const repoQueueStatusMap = useMemo<Record<string, QueueDotStatus>>(() => {
-        const map: Record<string, QueueDotStatus> = {};
+    /** Pre-computed queue status for each repo. */
+    const repoQueueStatusMap = useMemo<Record<string, RepoQueueStatus>>(() => {
+        const map: Record<string, RepoQueueStatus> = {};
         for (const repo of repos) {
             const wsId = repo.workspace.id;
             const entry = queueState.repoQueueMap?.[wsId];
@@ -332,6 +411,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         const unseenCount = unseenCounts[ws.id] ?? 0;
         const color = ws.color || '#848484';
         const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
+        const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
+        const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
         return (
             <button
                 key={ws.id}
@@ -344,18 +425,20 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                 }
                 aria-pressed={isSelected}
-                aria-label={ws.name}
-                title={ws.name}
+                aria-label={accessibleLabel}
+                title={accessibleLabel}
                 onClick={() => onSelect(ws.id)}
                 onContextMenu={e => {
                     e.preventDefault();
                     setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
                 }}
             >
-                <span
-                    className={`inline-block w-2 h-2 ${dotShape} flex-shrink-0` + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
-                    style={{ background: isSelected ? 'rgba(255,255,255,0.7)' : color }}
-                    data-testid="repo-tab-dot"
+                <RepoQueueStatusIndicator
+                    status={queueStatus}
+                    color={color}
+                    idleShape={dotShape}
+                    isSelected={isSelected}
+                    testId="repo-tab-dot"
                 />
                 <span className="max-w-[100px] truncate">{ws.name}</span>
                 {unseenCount > 0 && (
@@ -380,7 +463,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 data-repo-id={ws.id}
                 className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs whitespace-nowrap shrink-0"
             >
-                <span className="inline-block w-2 h-2" />
+                <span className="inline-block w-3 h-3" />
                 <span className="max-w-[100px] truncate">{ws.name}</span>
             </span>
         );
@@ -491,6 +574,9 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             const isSelected = ws.id === selectedRepoId;
                                             const unseenCount = unseenCounts[ws.id] ?? 0;
                                             const color = ws.color || '#848484';
+                                            const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
+                                            const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
+                                            const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
                                             const flatIdx = flatFilteredRepos.indexOf(repo);
                                             const isHighlighted = flatIdx === overflowHighlight;
                                             return (
@@ -508,6 +594,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         'hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 text-[#1e1e1e] dark:text-[#cccccc]'
                                                     }
                                                     role="menuitem"
+                                                    aria-label={accessibleLabel}
+                                                    title={accessibleLabel}
                                                     onClick={() => { onSelect(ws.id); setOverflowOpen(false); }}
                                                     onContextMenu={e => {
                                                         e.preventDefault();
@@ -515,10 +603,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         setOverflowOpen(false);
                                                     }}
                                                 >
-                                                    <span
-                                                        className={`inline-block w-2 h-2 ${(repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm'} flex-shrink-0` + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
-                                                        style={{ background: color }}
-                                                        data-testid="overflow-repo-dot"
+                                                    <RepoQueueStatusIndicator
+                                                        status={queueStatus}
+                                                        color={color}
+                                                        idleShape={dotShape}
+                                                        testId="overflow-repo-dot"
                                                     />
                                                     <span className="flex-1 truncate">{ws.name}</span>
                                                     {isSelected && (
