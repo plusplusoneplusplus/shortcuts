@@ -1,4 +1,5 @@
 import type { ClientConversationTurn, ClientToolCall } from '../types/dashboard';
+import { getApplyPatchText, parseApplyPatchFileChanges } from './applyPatchParser';
 import { FILE_WRITE_TOOLS } from './fileWriteTools';
 
 /** File extensions considered "plan/doc" files worth pinning */
@@ -9,9 +10,6 @@ const CREATED_FILE_RE = /Created file (.+\.\w+)/;
 
 /** Regex to extract file paths from apply_patch result: "Added N file(s): path1, path2" */
 const ADDED_FILES_RE = /Added \d+ file\(s\): (.+)/;
-
-/** Regex to extract "Add File" paths from apply_patch string args. */
-const ADD_FILE_LINE_RE = /^\*\*\* Add File: (.+)$/gm;
 
 export interface CreatedFileRecord {
     filePath: string;
@@ -53,8 +51,9 @@ function buildToolStartStringArgsMap(
     const map = new Map<string, string>();
     for (const item of timeline ?? []) {
         if (item.type === 'tool-start' && item.toolCall) {
-            if (typeof item.toolCall.args === 'string' && item.toolCall.id) {
-                map.set(item.toolCall.id, item.toolCall.args);
+            const patchText = getApplyPatchText(item.toolCall.args);
+            if (patchText && item.toolCall.id) {
+                map.set(item.toolCall.id, patchText);
             }
         }
     }
@@ -90,13 +89,14 @@ function extractApplyPatchPaths(
         }
     }
 
-    // 2. Parse tool-start string args: "*** Add File: <path>" lines
-    const stringArgs = (typeof tc.args === 'string' ? tc.args : null)
-        ?? (tc.id ? toolStartStringArgs.get(tc.id) : null)
-        ?? '';
+    // 2. Parse tool-start args when tool-complete args no longer include the patch text.
+    const stringArgs = getApplyPatchText(tc.args)
+        || (tc.id ? toolStartStringArgs.get(tc.id) : '')
+        || '';
     if (stringArgs) {
-        for (const m of stringArgs.matchAll(ADD_FILE_LINE_RE)) {
-            const trimmed = m[1].trim();
+        for (const change of parseApplyPatchFileChanges(stringArgs)) {
+            if (!change.isCreate) continue;
+            const trimmed = change.path.trim();
             if (trimmed && !localSeen.has(trimmed)) {
                 localSeen.add(trimmed);
                 paths.push(trimmed);

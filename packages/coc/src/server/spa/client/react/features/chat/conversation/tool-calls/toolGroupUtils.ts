@@ -4,6 +4,7 @@
  */
 import type { DetectedCommit } from '../commitDetection';
 import { detectCommitsInToolGroup } from '../commitDetection';
+import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
@@ -27,6 +28,7 @@ export const CATEGORY_MAP: Record<string, ToolGroupCategory> = {
     grep:       'read',
     edit:       'write',
     create:     'write',
+    apply_patch: 'write',
     powershell: 'shell',
     shell:      'shell',
     bash:       'shell',
@@ -41,10 +43,14 @@ export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {
 
 export function getToolGroupCategory(
     toolName: string,
-    args?: Record<string, unknown>,
+    args?: unknown,
 ): ToolGroupCategory | null {
-    if (toolName === 'read_agent' && args?.agent_id) return 'agent';
+    if (toolName === 'read_agent' && isRecord(args) && args.agent_id) return 'agent';
     return CATEGORY_MAP[toolName] ?? null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -105,7 +111,8 @@ interface ToolLike {
     status?: string;
     startTime?: string;
     endTime?: string;
-    args?: Record<string, unknown>;
+    args?: unknown;
+    result?: string;
 }
 
 interface ToolChunk {
@@ -198,7 +205,7 @@ export function groupConsecutiveToolChunks(
 
         // For agent polling groups, track the shared agent_id
         const runAgentId = category === 'agent'
-            ? String(tool.args?.agent_id ?? '')
+            ? String(isRecord(tool.args) ? tool.args.agent_id ?? '' : '')
             : undefined;
 
         // Start a run
@@ -219,7 +226,7 @@ export function groupConsecutiveToolChunks(
                 if (next.parentToolId !== chunk.parentToolId) break;
                 // For agent groups, also require matching agent_id
                 if (category === 'agent') {
-                    const nextAgentId = String(nextTool.args?.agent_id ?? '');
+                    const nextAgentId = String(isRecord(nextTool.args) ? nextTool.args.agent_id ?? '' : '');
                     if (nextAgentId !== runAgentId) break;
                 }
                 run.push(next);
@@ -248,7 +255,7 @@ export function groupConsecutiveToolChunks(
                         ) {
                             // For agent groups, also require matching agent_id
                             if (category === 'agent') {
-                                const afterAgentId = String(afterTool.args?.agent_id ?? '');
+                                const afterAgentId = String(isRecord(afterTool.args) ? afterTool.args.agent_id ?? '' : '');
                                 if (afterAgentId !== runAgentId) break;
                             }
                             const contentItem = { key: next.key, html: next.html as string };
@@ -384,6 +391,32 @@ export interface FileEdit {
     isCreate: boolean;
 }
 
+interface FileEditStats {
+    insertions: number;
+    deletions: number;
+    netInsertions: number;
+    netDeletions: number;
+    hasCreate: boolean;
+    hasEdit: boolean;
+}
+
+function getFileEditStats(fileMap: Map<string, FileEditStats>, filePath: string): FileEditStats {
+    const existing = fileMap.get(filePath);
+    if (existing) {
+        return existing;
+    }
+    const entry = {
+        insertions: 0,
+        deletions: 0,
+        netInsertions: 0,
+        netDeletions: 0,
+        hasCreate: false,
+        hasEdit: false,
+    };
+    fileMap.set(filePath, entry);
+    return entry;
+}
+
 /**
  * Summary of the "preceding" chunks that Whisper mode collapses.
  */
@@ -501,7 +534,7 @@ export function filterWhisperChunks(
     }
 
     // Count unique commits across all preceding tool calls
-    const allToolCalls: Array<{ id: string; toolName: string; args?: any; result?: string; status?: string }> = [];
+    const allToolCalls: Array<{ id: string; toolName: string; args?: unknown; result?: string; status?: string }> = [];
     for (const c of preceding) {
         if (c.kind === 'tool' && c.toolId) {
             const tool = toolById.get(c.toolId);
@@ -538,7 +571,7 @@ export function filterWhisperChunks(
     // Count unique skill invocations
     const skillNameSet = new Set<string>();
     for (const tc of allToolCalls) {
-        if (tc.toolName === 'skill' && tc.args) {
+        if (tc.toolName === 'skill' && isRecord(tc.args)) {
             const name = tc.args.skill || tc.args.name || tc.args.skill_name;
             if (typeof name === 'string' && name) {
                 skillNameSet.add(name);
@@ -549,7 +582,7 @@ export function filterWhisperChunks(
     // Collect memory tool invocations
     const memoryActions: Array<{ action: string; target: string; content?: string }> = [];
     for (const tc of allToolCalls) {
-        if (tc.toolName === 'memory' && tc.args) {
+        if (tc.toolName === 'memory' && isRecord(tc.args)) {
             const actionArg = tc.args.action;
             const targetArg = tc.args.target;
             const contentArg = tc.args.content ?? tc.args.old_text;
@@ -561,44 +594,52 @@ export function filterWhisperChunks(
     }
 
     // Count file edits/creates
-    const fileMap = new Map<string, {
-        insertions: number; deletions: number;
-        netInsertions: number; netDeletions: number;
-        hasCreate: boolean; hasEdit: boolean;
-    }>();
+    const fileMap = new Map<string, FileEditStats>();
     for (const tc of allToolCalls) {
-        if (tc.toolName === 'edit' && tc.args) {
-            const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
+        if (tc.toolName === 'edit' && isRecord(tc.args)) {
+            const pathArg = tc.args.path;
+            const filePathArg = tc.args.filePath;
+            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
             if (filePath) {
-                const entry = fileMap.get(filePath) ?? {
-                    insertions: 0, deletions: 0,
-                    netInsertions: 0, netDeletions: 0,
-                    hasCreate: false, hasEdit: false,
-                };
+                const entry = getFileEditStats(fileMap, filePath);
                 entry.hasEdit = true;
-                const oldStr = (tc.args.old_str ?? tc.args.old_string ?? '') as string;
-                const newStr = (tc.args.new_str ?? tc.args.new_string ?? '') as string;
+                const oldArg = tc.args.old_str ?? tc.args.old_string;
+                const newArg = tc.args.new_str ?? tc.args.new_string;
+                const oldStr = typeof oldArg === 'string' ? oldArg : '';
+                const newStr = typeof newArg === 'string' ? newArg : '';
                 if (oldStr) entry.deletions += oldStr.split('\n').length;
                 if (newStr) entry.insertions += newStr.split('\n').length;
                 const net = computeNetDiff(oldStr, newStr);
                 entry.netInsertions += net.insertions;
                 entry.netDeletions += net.deletions;
-                fileMap.set(filePath, entry);
             }
-        } else if (tc.toolName === 'create' && tc.args) {
-            const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
+        } else if (tc.toolName === 'create' && isRecord(tc.args)) {
+            const pathArg = tc.args.path;
+            const filePathArg = tc.args.filePath;
+            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
             if (filePath) {
-                const entry = fileMap.get(filePath) ?? {
-                    insertions: 0, deletions: 0,
-                    netInsertions: 0, netDeletions: 0,
-                    hasCreate: false, hasEdit: false,
-                };
+                const entry = getFileEditStats(fileMap, filePath);
                 entry.hasCreate = true;
-                const fileText = (tc.args.file_text ?? '') as string;
+                const fileText = typeof tc.args.file_text === 'string' ? tc.args.file_text : '';
                 const lineCount = fileText ? fileText.split('\n').length : 0;
                 entry.insertions += lineCount;
                 entry.netInsertions += lineCount;
-                fileMap.set(filePath, entry);
+            }
+        } else if (tc.toolName === 'apply_patch') {
+            const patchText = getApplyPatchText(tc.args);
+            if (patchText) {
+                for (const change of parseApplyPatchFileChanges(patchText)) {
+                    const entry = getFileEditStats(fileMap, change.path);
+                    entry.insertions += change.insertions;
+                    entry.deletions += change.deletions;
+                    entry.netInsertions += change.insertions;
+                    entry.netDeletions += change.deletions;
+                    if (change.isCreate) {
+                        entry.hasCreate = true;
+                    } else {
+                        entry.hasEdit = true;
+                    }
+                }
             }
         }
     }

@@ -12,6 +12,7 @@ import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
 import { copyToClipboard } from '../../../../utils/format';
+import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 
 interface ToolCallData {
     id?: string;
@@ -107,7 +108,14 @@ function CopyCommandBtn({ command }: { command: string }) {
     );
 }
 
-function getToolSummary(toolName: string, args: any): string {
+function getToolSummary(toolName: string, args: any, rawArgs?: any): string {
+    if (toolName === 'apply_patch') {
+        const changes = parseApplyPatchFileChanges(getApplyPatchText(rawArgs ?? args));
+        if (changes.length === 1) {
+            return shortenPath(changes[0].path);
+        }
+        return changes.length > 1 ? `${changes.length} files` : '';
+    }
     if (!args || typeof args !== 'object') return '';
 
     switch (toolName) {
@@ -338,6 +346,38 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
     );
 }
 
+function ApplyPatchToolView({ patchText }: { patchText: string }) {
+    const changes = useMemo(() => parseApplyPatchFileChanges(patchText), [patchText]);
+    const diffLines = useMemo<DiffLine[]>(() => patchText.split(/\r?\n/).map((line) => {
+        if (line.startsWith('+') && !/^(\+\+\+)\s/.test(line)) {
+            return { type: 'added', content: line.slice(1) };
+        }
+        if (line.startsWith('-') && !/^(---)\s/.test(line)) {
+            return { type: 'removed', content: line.slice(1) };
+        }
+        return {
+            type: 'context',
+            content: line.startsWith(' ') ? line.slice(1) : line,
+        };
+    }), [patchText]);
+
+    return (
+        <div className="space-y-1.5">
+            {changes.length > 0 && (
+                <div className="space-y-0.5">
+                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">Files</div>
+                    {changes.map(change => (
+                        <div key={change.path} className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc]">
+                            <FilePathLink path={change.path} noTruncate />
+                        </div>
+                    ))}
+                </div>
+            )}
+            <DiffView diffLines={diffLines} />
+        </div>
+    );
+}
+
 function ViewToolView({ args, result }: { args: Record<string, any>; result: string }) {
     const filePath = args.path || args.filePath || '';
     const viewRange = Array.isArray(args.view_range) ? args.view_range : null;
@@ -434,8 +474,9 @@ export function ToolCallView({
     const name = toolName;
     const argsObj = parseArgsObject(toolCall.args);
     const args = formatArgs(toolCall.args);
+    const applyPatchText = name === 'apply_patch' ? getApplyPatchText(toolCall.args) : '';
     const hasDetails = args || toolCall.result || toolCall.error;
-    const summary = getToolSummary(name, argsObj);
+    const summary = getToolSummary(name, argsObj, toolCall.args);
     const summaryIsPath = !!summary && ['view', 'edit', 'create', 'glob', 'grep'].includes(name)
         && argsObj && (argsObj.path || argsObj.filePath);
     const duration = formatDuration(toolCall.startTime, toolCall.endTime);
@@ -481,7 +522,7 @@ export function ToolCallView({
         return renderMarkdownToHtml(taskCompleteSummary);
     }, [isTaskComplete, taskCompleteSummary]);
 
-    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -658,7 +699,10 @@ export function ToolCallView({
                     {name === 'view' && argsObj && (
                         <ViewToolView args={argsObj} result={visibleResult} />
                     )}
-                    {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !isTaskComplete && args && (
+                    {name === 'apply_patch' && applyPatchText && (
+                        <ApplyPatchToolView patchText={applyPatchText} />
+                    )}
+                    {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && applyPatchText) && !isTaskComplete && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
