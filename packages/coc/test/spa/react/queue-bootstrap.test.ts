@@ -72,10 +72,10 @@ describe('App.tsx — bootstrap does not load queue', () => {
         expect(bootstrapBlock![0]).not.toContain('SEED_QUEUE');
     });
 
-    it('bootstrap fetches only preferences (processes moved to ReposContext)', () => {
+    it('bootstrap loads only preferences (processes moved to ReposContext)', () => {
         const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
         expect(bootstrapBlock).not.toBeNull();
-        expect(bootstrapBlock![0]).toContain("fetchApi('/preferences')");
+        expect(bootstrapBlock![0]).toContain('loadGlobalPreferences(true)');
         expect(bootstrapBlock![0]).not.toContain("fetchApi('/processes/summaries')");
     });
 });
@@ -100,6 +100,12 @@ describe('App.tsx — onConnect reconnect handler', () => {
         const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
         expect(handleConnectBlock).not.toBeNull();
         expect(handleConnectBlock![0]).toContain('getSpaCocClient().queue.list()');
+    });
+
+    it('handleConnect refreshes preferences without marking bootstrap failure', () => {
+        const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
+        expect(handleConnectBlock).not.toBeNull();
+        expect(handleConnectBlock![0]).toContain('loadGlobalPreferences(false)');
     });
 
     it('handleConnect dispatches QUEUE_UPDATED (not SEED_QUEUE) for reconnect', () => {

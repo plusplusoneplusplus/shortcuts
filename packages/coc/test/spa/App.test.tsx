@@ -31,6 +31,19 @@ vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
+const mockQueueList = vi.fn();
+const mockModelsList = vi.fn();
+vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        models: {
+            list: mockModelsList,
+        },
+        queue: {
+            list: mockQueueList,
+        },
+    }),
+}));
+
 // ── Contexts ─────────────────────────────────────────────────────
 
 const mockAppDispatch = vi.fn();
@@ -158,6 +171,10 @@ describe('App bootstrap', () => {
         mockAddToast.mockClear();
         mockFetchApi.mockClear();
         mockWsConnect.mockClear();
+        mockQueueList.mockReset();
+        mockQueueList.mockResolvedValue({ queued: [], running: [] });
+        mockModelsList.mockReset();
+        mockModelsList.mockResolvedValue([]);
     });
 
     it('fetches /preferences on mount and dispatches SET_WELCOME_PREFERENCES', async () => {
@@ -255,6 +272,49 @@ describe('App bootstrap', () => {
 
         await waitFor(() => expect(mockWsConnect).toHaveBeenCalled());
     });
+
+    it('refreshes welcome preferences when WebSocket reconnects after server restart', async () => {
+        mockFetchApi
+            .mockResolvedValueOnce({
+                hasSeenWelcome: true,
+                onboardingProgress: { hasCompletedTour: false },
+                dismissedTips: [],
+            })
+            .mockResolvedValueOnce({
+                hasSeenWelcome: true,
+                onboardingProgress: { hasCompletedTour: true },
+                dismissedTips: [],
+            });
+
+        render(<App />);
+
+        await waitFor(() =>
+            expect(mockAppDispatch).toHaveBeenCalledWith({
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    hasSeenWelcome: true,
+                    onboardingProgress: { hasCompletedTour: false },
+                    dismissedTips: [],
+                    activityFilters: undefined,
+                },
+            }),
+        );
+
+        await act(async () => {
+            await capturedOnConnect?.();
+        });
+
+        expect(mockFetchApi).toHaveBeenNthCalledWith(2, '/preferences');
+        expect(mockAppDispatch).toHaveBeenCalledWith({
+            type: 'SET_WELCOME_PREFERENCES',
+            payload: {
+                hasSeenWelcome: true,
+                onboardingProgress: { hasCompletedTour: true },
+                dismissedTips: [],
+                activityFilters: undefined,
+            },
+        });
+    });
 });
 
 // ── WebSocket event → context dispatch ──────────────────────────
@@ -268,6 +328,10 @@ describe('App WebSocket events dispatch to correct context slice', () => {
         mockQueueDispatch.mockClear();
         mockAddNotification.mockClear();
         mockFetchApi.mockResolvedValue(null);
+        mockQueueList.mockReset();
+        mockQueueList.mockResolvedValue({ queued: [], running: [] });
+        mockModelsList.mockReset();
+        mockModelsList.mockResolvedValue([]);
     });
 
     function renderAndCapture() {
@@ -366,6 +430,10 @@ describe('App connection-lost toast', () => {
         mockAddToast.mockClear();
         mockFetchApi.mockResolvedValue(null);
         mockWsConnect.mockClear();
+        mockQueueList.mockReset();
+        mockQueueList.mockResolvedValue({ queued: [], running: [] });
+        mockModelsList.mockReset();
+        mockModelsList.mockResolvedValue([]);
     });
 
     it('shows connection-lost toast when WS status transitions open→closed', async () => {
@@ -395,6 +463,10 @@ describe('App review dialog lifecycle', () => {
         mockAppState = makeAppState({ workspaces });
         mockAppDispatch.mockClear();
         mockFetchApi.mockResolvedValue(null);
+        mockQueueList.mockReset();
+        mockQueueList.mockResolvedValue({ queued: [], running: [] });
+        mockModelsList.mockReset();
+        mockModelsList.mockResolvedValue([]);
     });
 
     it('opens MarkdownReviewDialog with task-relative filePath when wsId hint is provided', async () => {

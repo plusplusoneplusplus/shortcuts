@@ -116,15 +116,47 @@ function AppInner() {
         fetchMode: 'auto',
     });
 
+    const applyGlobalPreferences = useCallback((prefRes: any) => {
+        appDispatch({
+            type: 'SET_WELCOME_PREFERENCES',
+            payload: {
+                hasSeenWelcome: prefRes.hasSeenWelcome,
+                onboardingProgress: prefRes.onboardingProgress,
+                dismissedTips: prefRes.dismissedTips,
+                activityFilters: prefRes.activityFilters,
+            },
+        });
+        if (typeof prefRes.reposSidebarCollapsed === 'boolean') {
+            appDispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: prefRes.reposSidebarCollapsed });
+            try { localStorage.setItem('coc-repos-sidebar-collapsed', String(prefRes.reposSidebarCollapsed)); } catch { /* SSR / test */ }
+        }
+    }, [appDispatch]);
+
+    const loadGlobalPreferences = useCallback(async (markFailure: boolean) => {
+        const prefRes = await fetchApi('/preferences').catch(() => null);
+        if (prefRes) {
+            applyGlobalPreferences(prefRes);
+            return true;
+        }
+
+        if (markFailure) {
+            appDispatch({ type: 'SET_PREFERENCES_LOAD_FAILED' });
+        }
+        return false;
+    }, [appDispatch, applyGlobalPreferences]);
+
     const handleConnect = useCallback(async () => {
-        const data = await getSpaCocClient().queue.list().catch(() => null);
+        const [data] = await Promise.all([
+            getSpaCocClient().queue.list().catch(() => null),
+            loadGlobalPreferences(false),
+        ]);
         if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             if (data.history) {
                 queueDispatch({ type: 'SET_HISTORY', history: data.history });
             }
         }
-    }, [queueDispatch]);
+    }, [loadGlobalPreferences, queueDispatch]);
 
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
@@ -257,35 +289,11 @@ function AppInner() {
     // Process summaries are fetched by ReposContext.fetchRepos (single global call).
     useEffect(() => {
         async function bootstrap() {
-            try {
-                const prefRes = await fetchApi('/preferences').catch(() => null);
-
-                // Populate welcome/onboarding state from server preferences
-                if (prefRes) {
-                    appDispatch({
-                        type: 'SET_WELCOME_PREFERENCES',
-                        payload: {
-                            hasSeenWelcome: prefRes.hasSeenWelcome,
-                            onboardingProgress: prefRes.onboardingProgress,
-                            dismissedTips: prefRes.dismissedTips,
-                            activityFilters: prefRes.activityFilters,
-                        },
-                    });
-                    if (typeof prefRes.reposSidebarCollapsed === 'boolean') {
-                        appDispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: prefRes.reposSidebarCollapsed });
-                        try { localStorage.setItem('coc-repos-sidebar-collapsed', String(prefRes.reposSidebarCollapsed)); } catch { /* SSR / test */ }
-                    }
-                } else {
-                    // Even on fetch failure, unblock the UI without treating this as a first launch.
-                    appDispatch({ type: 'SET_PREFERENCES_LOAD_FAILED' });
-                }
-            } catch {
-                appDispatch({ type: 'SET_PREFERENCES_LOAD_FAILED' });
-            }
+            await loadGlobalPreferences(true);
             connect();
         }
         bootstrap();
-    }, [connect, appDispatch]);
+    }, [connect, loadGlobalPreferences]);
 
     // Admin and Logs are now full-page routes handled by Router.tsx via #admin and #logs hashes.
     // handleAdminOpen and handleLogsOpen just navigate to the respective hash.

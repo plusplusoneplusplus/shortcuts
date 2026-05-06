@@ -21,10 +21,12 @@ import {
     readPreferences,
     writePreferences,
     readRepoPreferences,
+    readGlobalPreferences,
     writeRepoPreferences,
     validatePreferences,
     validatePerRepoPreferences,
     validateGlobalPreferences,
+    normalizeGlobalPreferencesForRead,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
 import type { PreferencesFile } from '../../src/server/preferences-handler';
@@ -145,6 +147,27 @@ describe('readPreferences / writePreferences', () => {
         writePreferences(tmpDir, { global: { hasSeenWelcome: true } });
         const result = readPreferences(tmpDir);
         expect(result.global?.hasSeenWelcome).toBe(true);
+    });
+
+    it('normalizes stale welcome dismissal state when reading global preferences', () => {
+        writePreferences(tmpDir, {
+            global: {
+                hasSeenWelcome: true,
+                onboardingProgress: { dismissed: false, hasCompletedTour: false },
+            },
+        });
+
+        expect(readPreferences(tmpDir).global?.onboardingProgress?.hasCompletedTour).toBe(false);
+        expect(readGlobalPreferences(tmpDir).onboardingProgress?.hasCompletedTour).toBe(true);
+    });
+
+    it('does not normalize welcome relaunch state before the welcome modal is seen', () => {
+        const global = normalizeGlobalPreferencesForRead({
+            hasSeenWelcome: false,
+            onboardingProgress: { dismissed: false, hasCompletedTour: false },
+        });
+
+        expect(global.onboardingProgress?.hasCompletedTour).toBe(false);
     });
 
     it('round-trips onboardingProgress', () => {
@@ -1061,6 +1084,23 @@ describe('Preferences REST API', () => {
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
+    });
+
+    it('GET normalizes stale welcome dismissal state', async () => {
+        writePreferences(tmpDir, {
+            global: {
+                hasSeenWelcome: true,
+                onboardingProgress: { dismissed: false, hasCompletedTour: false },
+            },
+        });
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            hasSeenWelcome: true,
+            onboardingProgress: { dismissed: false, hasCompletedTour: true },
+        });
     });
 
     it('GET does not return per-repo preferences', async () => {

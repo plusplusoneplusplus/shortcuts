@@ -326,6 +326,24 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     return result;
 }
 
+export function normalizeGlobalPreferencesForRead(global: GlobalPreferences): GlobalPreferences {
+    if (
+        global.hasSeenWelcome === true
+        && global.onboardingProgress?.dismissed !== true
+        && global.onboardingProgress?.hasCompletedTour !== true
+    ) {
+        return {
+            ...global,
+            onboardingProgress: {
+                ...global.onboardingProgress,
+                hasCompletedTour: true,
+            },
+        };
+    }
+
+    return global;
+}
+
 function validateAutoPromoteConfig(raw: unknown): BoundedMemoryAutoPromoteConfig {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         return { mode: 'off' };
@@ -611,7 +629,7 @@ export function readPreferences(dataDir: string): PreferencesFile {
 
 /** Read only the global preferences block from disk. */
 export function readGlobalPreferences(dataDir: string): GlobalPreferences {
-    return readPreferences(dataDir).global ?? {};
+    return normalizeGlobalPreferencesForRead(readPreferences(dataDir).global ?? {});
 }
 
 /**
@@ -692,8 +710,7 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'GET',
         pattern: '/api/preferences',
         handler: async (_req, res) => {
-            const file = readPreferences(dataDir);
-            sendJSON(res, 200, file.global ?? {});
+            sendJSON(res, 200, readGlobalPreferences(dataDir));
         },
     });
 
