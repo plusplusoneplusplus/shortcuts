@@ -35,6 +35,10 @@ export function saveGroupExpandedState(state: Record<string, boolean>): void {
     } catch { /* SSR / test */ }
 }
 
+function openRepoTabCustomizeMode(): void {
+    window.dispatchEvent(new Event('coc-customize-repo-tabs'));
+}
+
 interface ReposGridProps {
     repos: RepoData[];
     onRefresh: () => void;
@@ -289,40 +293,51 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             {/* Header with add button */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Repositories</span>
-                <div className="relative" ref={menuRef}>
+                <div className="flex items-center gap-1.5">
                     <Button
-                        variant="primary"
+                        variant="ghost"
                         size="sm"
-                        id="add-repo-btn"
-                        data-testid="add-repo-btn"
-                        onClick={() => setMenuOpen(prev => !prev)}
+                        data-testid="customize-repo-tabs-button"
+                        title="Customize repo tab order"
+                        onClick={openRepoTabCustomizeMode}
                     >
-                        + Add ▾
+                        Reorder
                     </Button>
-                    {menuOpen && (
-                        <ul className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-md text-xs py-1">
-                            <li>
-                                <button
-                                    type="button"
-                                    className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
-                                    data-testid="add-single-repo-item"
-                                    onClick={() => { setMenuOpen(false); setAddOpen(true); }}
-                                >
-                                    Add Repository
-                                </button>
-                            </li>
-                            <li>
-                                <button
-                                    type="button"
-                                    className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
-                                    data-testid="add-workspace-folder-item"
-                                    onClick={() => { setMenuOpen(false); setAddFolderOpen(true); }}
-                                >
-                                    Add Workspace Folder
-                                </button>
-                            </li>
-                        </ul>
-                    )}
+                    <div className="relative" ref={menuRef}>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            id="add-repo-btn"
+                            data-testid="add-repo-btn"
+                            onClick={() => setMenuOpen(prev => !prev)}
+                        >
+                            + Add ▾
+                        </Button>
+                        {menuOpen && (
+                            <ul className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-md text-xs py-1">
+                                <li>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="add-single-repo-item"
+                                        onClick={() => { setMenuOpen(false); setAddOpen(true); }}
+                                    >
+                                        Add Repository
+                                    </button>
+                                </li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="add-workspace-folder-item"
+                                        onClick={() => { setMenuOpen(false); setAddFolderOpen(true); }}
+                                    >
+                                        Add Workspace Folder
+                                    </button>
+                                </li>
+                            </ul>
+                        )}
+                    </div>
                 </div>
             </div>
 

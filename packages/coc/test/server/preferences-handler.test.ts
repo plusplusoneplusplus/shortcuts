@@ -800,6 +800,29 @@ describe('validateGlobalPreferences', () => {
         expect(result).toEqual({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
     });
 
+    // -- repoTabOrder field --
+
+    it('accepts valid repoTabOrder array of workspace IDs', () => {
+        const result = validateGlobalPreferences({ repoTabOrder: ['ws-1', 'ws-2'] });
+        expect(result).toEqual({ repoTabOrder: ['ws-1', 'ws-2'] });
+    });
+
+    it('rejects non-array repoTabOrder', () => {
+        expect(validateGlobalPreferences({ repoTabOrder: 'not-array' })).toEqual({});
+        expect(validateGlobalPreferences({ repoTabOrder: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ repoTabOrder: {} })).toEqual({});
+    });
+
+    it('filters out non-string and empty entries from repoTabOrder', () => {
+        const result = validateGlobalPreferences({ repoTabOrder: ['ws-1', 42, '', null, 'ws-2'] });
+        expect(result.repoTabOrder).toEqual(['ws-1', 'ws-2']);
+    });
+
+    it('omits repoTabOrder when all entries are invalid', () => {
+        const result = validateGlobalPreferences({ repoTabOrder: [42, null, ''] });
+        expect(result.repoTabOrder).toBeUndefined();
+    });
+
     // -- topBarItemOrder field --
 
     it('accepts valid topBarItemOrder array of strings', () => {
@@ -1337,6 +1360,32 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
+    });
+
+    // -- repoTabOrder persistence via API --
+
+    it('PATCH persists repoTabOrder', async () => {
+        const order = ['ws-alpha', 'ws-bravo'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { repoTabOrder: order });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).repoTabOrder).toEqual(order);
+    });
+
+    it('GET returns persisted repoTabOrder', async () => {
+        const order = ['ws-charlie', 'ws-delta'];
+        await patchJSON(`${baseUrl}/api/preferences`, { repoTabOrder: order });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).repoTabOrder).toEqual(order);
+    });
+
+    it('PATCH updates repoTabOrder without affecting other global prefs', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const order = ['ws-echo'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { repoTabOrder: order });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.theme).toBe('dark');
+        expect(body.repoTabOrder).toEqual(order);
     });
 
     // -- topBarItemOrder persistence via API --

@@ -4,12 +4,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { RepoTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 const mockGetGlobalPreferences = vi.fn().mockResolvedValue({ gitGroupOrder: [] });
+const mockPatchGlobalPreferences = vi.fn().mockResolvedValue({});
+const mockReplaceGlobalPreferences = vi.fn().mockResolvedValue({});
 const mockDeleteWorkspace = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: mockDispatch }),
@@ -27,6 +29,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         preferences: {
             getGlobal: mockGetGlobalPreferences,
+            patchGlobal: mockPatchGlobalPreferences,
+            replaceGlobal: mockReplaceGlobalPreferences,
         },
         workspaces: {
             delete: mockDeleteWorkspace,
@@ -69,6 +73,8 @@ describe('RepoTabStrip', () => {
         cleanup();
         mockUiLayoutMode = 'classic';
         mockGetGlobalPreferences.mockReset().mockResolvedValue({ gitGroupOrder: [] });
+        mockPatchGlobalPreferences.mockReset().mockResolvedValue({});
+        mockReplaceGlobalPreferences.mockReset().mockResolvedValue({});
         mockDeleteWorkspace.mockReset().mockResolvedValue(undefined);
     });
 
@@ -745,6 +751,98 @@ describe('RepoTabStrip', () => {
         // Bravo should come first per the saved order
         expect(tabs[0].textContent).toContain('Bravo');
         expect(tabs[1].textContent).toContain('Alpha');
+    });
+
+    it('applies saved repoTabOrder ahead of group ordering', async () => {
+        const repoA = makeRepo('a1', 'Alpha', '#ff0000', 'https://github.com/org/alpha');
+        const repoB = makeRepo('b1', 'Bravo', '#00ff00', 'https://github.com/org/bravo');
+        const repoC = makeRepo('c1', 'Charlie', '#0000ff', 'https://github.com/org/alpha');
+
+        mockGetGlobalPreferences.mockResolvedValueOnce({
+            gitGroupOrder: ['github.com/org/alpha', 'github.com/org/bravo'],
+            repoTabOrder: ['b1', 'c1', 'a1'],
+        });
+
+        await act(async () => {
+            render(
+                <RepoTabStrip
+                    repos={[repoA, repoB, repoC]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+        });
+
+        const tabs = screen.getAllByTestId('repo-tab');
+        expect(tabs.map(tab => tab.textContent?.replace('⠿', ''))).toEqual(['Bravo', 'Charlie', 'Alpha']);
+        expect(screen.queryByTestId('repo-group-separator')).toBeNull();
+    });
+
+    it('enters customize mode from the repo tab context menu', () => {
+        render(
+            <RepoTabStrip
+                repos={[makeRepo('r1', 'Alpha')]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+
+        fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+        fireEvent.click(screen.getByTestId('repo-tab-context-customize-order'));
+
+        expect(screen.getByTestId('repo-tab-customize-banner')).toBeDefined();
+    });
+
+    it('persists order changes from overflow list move controls', async () => {
+        const repos = [makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta'), makeRepo('r3', 'Gamma')];
+        render(
+            <RepoTabStrip
+                repos={repos}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+
+        fireEvent.contextMenu(screen.getAllByTestId('repo-tab')[0]);
+        fireEvent.click(screen.getByTestId('repo-tab-context-customize-order'));
+        fireEvent.click(screen.getByTestId('overflow-pill'));
+        fireEvent.click(screen.getAllByTestId('overflow-move-to-top')[2]);
+
+        await waitFor(() => {
+            expect(mockPatchGlobalPreferences).toHaveBeenCalledWith({ repoTabOrder: ['r3', 'r1', 'r2'] });
+        });
+    });
+
+    it('resets explicit repo tab order through preferences', async () => {
+        mockGetGlobalPreferences
+            .mockResolvedValueOnce({ repoTabOrder: ['r2', 'r1'], theme: 'dark' })
+            .mockResolvedValueOnce({ repoTabOrder: ['r2', 'r1'], theme: 'dark' });
+
+        await act(async () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+        });
+
+        fireEvent.contextMenu(screen.getAllByTestId('repo-tab')[0]);
+        fireEvent.click(screen.getByTestId('repo-tab-context-customize-order'));
+        fireEvent.click(screen.getByText('Reset order'));
+
+        await waitFor(() => {
+            expect(mockReplaceGlobalPreferences).toHaveBeenCalledWith({ theme: 'dark' });
+        });
     });
 
     describe('context menu — layout mode visibility', () => {

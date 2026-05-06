@@ -84,6 +84,8 @@ export interface GlobalPreferences {
     reposSidebarCollapsed?: boolean;
     /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
     gitGroupOrder?: string[];
+    /** User-defined display order of individual repository tabs by workspace ID. */
+    repoTabOrder?: string[];
     /** User-defined display order for reorderable dashboard top-bar destination IDs. */
     topBarItemOrder?: string[];
 
@@ -249,6 +251,15 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         );
         if (order.length > 0) {
             result.gitGroupOrder = order;
+        }
+    }
+
+    if (Array.isArray(obj.repoTabOrder)) {
+        const order = (obj.repoTabOrder as unknown[]).filter(
+            (k): k is string => typeof k === 'string' && k.length > 0
+        );
+        if (order.length > 0) {
+            result.repoTabOrder = order;
         }
     }
 

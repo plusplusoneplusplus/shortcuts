@@ -3,15 +3,17 @@
  * Shows visible tabs that fit, with a "+N" overflow pill and dropdown for the rest.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { groupReposByRemote, applyGroupOrder } from '../../repos/repoGrouping';
+import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
+import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -120,6 +122,20 @@ interface ContextMenuState {
     y: number;
 }
 
+type RepoDropIndicator = { targetId: string; position: 'before' | 'after' } | null;
+
+const REPO_TAB_DRAG_MIME = 'application/x-coc-repo-tab';
+
+function getHorizontalDropPosition(event: ReactDragEvent<HTMLElement>): 'before' | 'after' {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+}
+
+function getVerticalDropPosition(event: ReactDragEvent<HTMLElement>): 'before' | 'after' {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+}
+
 /**
  * Compute which repo IDs are visible given a container width.
  * Measures each tab's offsetWidth and accumulates until the budget runs out.
@@ -195,6 +211,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [overflowHighlight, setOverflowHighlight] = useState(-1);
     const [visibleRepoIds, setVisibleRepoIds] = useState<Set<string> | null>(null);
     const [groupOrder, setGroupOrder] = useState<string[]>([]);
+    const [repoTabOrder, setRepoTabOrder] = useState<string[] | undefined>();
+    const [customizeRepoTabs, setCustomizeRepoTabs] = useState(false);
+    const [draggedRepoId, setDraggedRepoId] = useState<string | null>(null);
+    const [repoDropIndicator, setRepoDropIndicator] = useState<RepoDropIndicator>(null);
+    const [repoLiveMessage, setRepoLiveMessage] = useState('');
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -202,12 +223,16 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const overflowFilterRef = useRef<HTMLInputElement>(null);
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const measureContainerRef = useRef<HTMLDivElement>(null);
+    const toast = useContext(ToastContext);
 
     useEffect(() => {
         let cancelled = false;
         getSpaCocClient().preferences.getGlobal().then((prefs) => {
-            if (!cancelled && Array.isArray(prefs?.gitGroupOrder)) {
-                setGroupOrder(prefs.gitGroupOrder);
+            if (!cancelled) {
+                if (Array.isArray(prefs?.gitGroupOrder)) {
+                    setGroupOrder(prefs.gitGroupOrder);
+                }
+                setRepoTabOrder(Array.isArray(prefs?.repoTabOrder) ? prefs.repoTabOrder : undefined);
             }
         }).catch((error) => {
             if (!cancelled) {
@@ -217,8 +242,22 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         return () => { cancelled = true; };
     }, []);
 
-    const rawGroups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
-    const groups = useMemo(() => applyGroupOrder(rawGroups, groupOrder), [rawGroups, groupOrder]);
+    const repoIds = useMemo(() => repos.map(repo => String(repo.workspace.id)), [repos]);
+    const hasCustomRepoOrder = useMemo(
+        () => sanitizeRepoTabOrder(repoTabOrder, repoIds).length > 0,
+        [repoIds, repoTabOrder],
+    );
+    const orderedRepos = useMemo(() => resolveRepoTabOrder(repos, repoTabOrder), [repos, repoTabOrder]);
+    const rawGroups = useMemo<RepoGroup[]>(() => {
+        if (hasCustomRepoOrder) {
+            return [{ normalizedUrl: null, label: 'Repositories', repos: orderedRepos, expanded: true }];
+        }
+        return groupReposByRemote(repos, {});
+    }, [hasCustomRepoOrder, orderedRepos, repos]);
+    const groups = useMemo(
+        () => hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
+        [groupOrder, hasCustomRepoOrder, rawGroups],
+    );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
     const { dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -247,6 +286,109 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         location.hash = '';
         onRefresh();
     };
+
+    const persistRepoTabOrder = useCallback(async (nextOrder: string[]) => {
+        const sanitized = sanitizeRepoTabOrder(nextOrder, repoIds);
+        setRepoTabOrder(sanitized);
+        try {
+            await getSpaCocClient().preferences.patchGlobal({ repoTabOrder: sanitized });
+        } catch (error) {
+            console.warn('Failed to save repo tab order', error);
+            toast?.addToast(`${getSpaCocClientErrorMessage(error, 'Failed to save repo tab order')}. The order will stay for this session and retry on the next reorder.`, 'error');
+        }
+    }, [repoIds, toast]);
+
+    const finishRepoReorder = useCallback((nextOrder: string[]) => {
+        setDraggedRepoId(null);
+        setRepoDropIndicator(null);
+        void persistRepoTabOrder(nextOrder);
+        setRepoLiveMessage('Repository tab order updated.');
+    }, [persistRepoTabOrder]);
+
+    const resetRepoTabOrder = useCallback(async () => {
+        setRepoTabOrder(undefined);
+        try {
+            const prefs = await getSpaCocClient().preferences.getGlobal();
+            const { repoTabOrder: _repoTabOrder, ...rest } = prefs;
+            await getSpaCocClient().preferences.replaceGlobal(rest);
+            setCustomizeRepoTabs(false);
+            toast?.addToast('Repo tab order reset', 'success');
+            setRepoLiveMessage('Repository tab order reset.');
+        } catch (error) {
+            console.warn('Failed to reset repo tab order', error);
+            toast?.addToast(getSpaCocClientErrorMessage(error, 'Failed to reset repo tab order'), 'error');
+        }
+    }, [toast]);
+
+    const enterCustomizeRepoTabs = useCallback(() => {
+        setCustomizeRepoTabs(true);
+        setContextMenu(null);
+        setRepoLiveMessage('Repo tab customize mode started.');
+    }, []);
+
+    useEffect(() => {
+        const handler = () => enterCustomizeRepoTabs();
+        window.addEventListener('coc-customize-repo-tabs', handler);
+        return () => window.removeEventListener('coc-customize-repo-tabs', handler);
+    }, [enterCustomizeRepoTabs]);
+
+    useEffect(() => {
+        if (!customizeRepoTabs && !draggedRepoId) {
+            return;
+        }
+        const handler = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            event.preventDefault();
+            setDraggedRepoId(null);
+            setRepoDropIndicator(null);
+            setCustomizeRepoTabs(false);
+            setRepoLiveMessage('Repo tab customize mode finished.');
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [customizeRepoTabs, draggedRepoId]);
+
+    const moveRepoToIndex = useCallback((repoId: string, targetIndex: number) => {
+        finishRepoReorder(moveRepoTabOrderToIndex(allRepoIds, repoId, targetIndex));
+    }, [allRepoIds, finishRepoReorder]);
+
+    const startRepoDrag = useCallback((event: ReactDragEvent<HTMLElement>, repoId: string) => {
+        if (!customizeRepoTabs) {
+            return;
+        }
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData(REPO_TAB_DRAG_MIME, repoId);
+        event.dataTransfer.setData('text/plain', repoId);
+        setDraggedRepoId(repoId);
+    }, [customizeRepoTabs]);
+
+    const updateRepoDropTarget = useCallback((event: ReactDragEvent<HTMLElement>, targetId: string, orientation: 'horizontal' | 'vertical') => {
+        if (!draggedRepoId || draggedRepoId === targetId) {
+            return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setRepoDropIndicator({
+            targetId,
+            position: orientation === 'horizontal' ? getHorizontalDropPosition(event) : getVerticalDropPosition(event),
+        });
+    }, [draggedRepoId]);
+
+    const dropRepoOnTarget = useCallback((event: ReactDragEvent<HTMLElement>, targetId: string, orientation: 'horizontal' | 'vertical') => {
+        if (!draggedRepoId || draggedRepoId === targetId) {
+            setDraggedRepoId(null);
+            setRepoDropIndicator(null);
+            return;
+        }
+        event.preventDefault();
+        const sourceId = event.dataTransfer.getData(REPO_TAB_DRAG_MIME) || event.dataTransfer.getData('text/plain') || draggedRepoId;
+        const position = repoDropIndicator?.targetId === targetId
+            ? repoDropIndicator.position
+            : (orientation === 'horizontal' ? getHorizontalDropPosition(event) : getVerticalDropPosition(event));
+        finishRepoReorder(moveRepoTabOrder(allRepoIds, sourceId, targetId, position));
+    }, [allRepoIds, draggedRepoId, finishRepoReorder, repoDropIndicator]);
 
     // Overflow detection via ResizeObserver
     const recalcOverflow = useCallback(() => {
@@ -294,6 +436,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     const overflowCount = visibleRepoIds ? allRepoIds.length - visibleRepoIds.size : 0;
     const hasOverflow = overflowCount > 0;
+    const showOverflowControl = hasOverflow || customizeRepoTabs;
     const overflowHasUnseen = hasOverflow && allRepoIds.some(
         id => !visibleRepoIds!.has(id) && (unseenCounts[id] ?? 0) > 0
     );
@@ -413,44 +556,75 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
         const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
+        const showBefore = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'before';
+        const showAfter = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'after';
+        const isDragging = draggedRepoId === ws.id;
         return (
-            <button
+            <div
                 key={ws.id}
-                data-testid="repo-tab"
-                data-repo-id={ws.id}
-                className={
-                    'relative flex items-center gap-1.5 px-2.5 h-7 rounded text-xs whitespace-nowrap shrink-0 transition-colors ' +
-                    (isSelected
-                        ? 'bg-[#0078d4] text-white'
-                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                }
-                aria-pressed={isSelected}
-                aria-label={accessibleLabel}
-                title={accessibleLabel}
-                onClick={() => onSelect(ws.id)}
-                onContextMenu={e => {
-                    e.preventDefault();
-                    setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
+                className={`relative group flex-shrink-0 ${isDragging ? 'opacity-50 outline outline-1 outline-dashed outline-[#8c8c8c]' : ''}`}
+                draggable={customizeRepoTabs}
+                onDragStart={event => startRepoDrag(event, ws.id)}
+                onDragOver={event => updateRepoDropTarget(event, ws.id, 'horizontal')}
+                onDragEnter={event => updateRepoDropTarget(event, ws.id, 'horizontal')}
+                onDrop={event => dropRepoOnTarget(event, ws.id, 'horizontal')}
+                onDragEnd={() => {
+                    setDraggedRepoId(null);
+                    setRepoDropIndicator(null);
                 }}
             >
-                <RepoQueueStatusIndicator
-                    status={queueStatus}
-                    color={color}
-                    idleShape={dotShape}
-                    isSelected={isSelected}
-                    testId="repo-tab-dot"
-                />
-                <span className="max-w-[100px] truncate">{ws.name}</span>
-                {unseenCount > 0 && (
+                {showBefore && <span className="absolute -left-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
+                <button
+                    data-testid="repo-tab"
+                    data-repo-id={ws.id}
+                    className={
+                        'relative flex items-center gap-1.5 px-2.5 h-7 rounded text-xs whitespace-nowrap shrink-0 transition-colors ' +
+                        (customizeRepoTabs ? 'outline outline-1 outline-dashed outline-[#c0c0c0] dark:outline-[#555] ' : '') +
+                        (isSelected
+                            ? 'bg-[#0078d4] text-white'
+                            : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
+                    aria-pressed={isSelected}
+                    aria-label={customizeRepoTabs ? `${accessibleLabel}. Drag to reorder.` : accessibleLabel}
+                    title={customizeRepoTabs ? `${accessibleLabel}. Drag to reorder.` : accessibleLabel}
+                    onClick={event => {
+                        if (customizeRepoTabs) {
+                            event.preventDefault();
+                            return;
+                        }
+                        onSelect(ws.id);
+                    }}
+                    onContextMenu={e => {
+                        e.preventDefault();
+                        setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
+                    }}
+                >
                     <span
-                        className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
-                        data-testid="repo-tab-unseen-badge"
-                        aria-label={`${unseenCount} unread`}
+                        className={`text-[10px] leading-none text-[#616161] dark:text-[#999] ${customizeRepoTabs ? 'inline' : 'hidden group-hover:inline group-focus-within:inline'}`}
+                        aria-hidden
                     >
-                        {unseenCount > 99 ? '99+' : unseenCount}
+                        ⠿
                     </span>
-                )}
-            </button>
+                    <RepoQueueStatusIndicator
+                        status={queueStatus}
+                        color={color}
+                        idleShape={dotShape}
+                        isSelected={isSelected}
+                        testId="repo-tab-dot"
+                    />
+                    <span className="max-w-[100px] truncate">{ws.name}</span>
+                    {unseenCount > 0 && (
+                        <span
+                            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
+                            data-testid="repo-tab-unseen-badge"
+                            aria-label={`${unseenCount} unread`}
+                        >
+                            {unseenCount > 99 ? '99+' : unseenCount}
+                        </span>
+                    )}
+                </button>
+                {showAfter && <span className="absolute -right-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
+            </div>
         );
     };
 
@@ -499,7 +673,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 if (visibleInGroup.length === 0) return null;
                 return (
                     <div key={group.normalizedUrl ?? `ungrouped-${groupIndex}`} className="contents">
-                        {groupIndex > 0 && groups.slice(0, groupIndex).some(g => g.repos.some(r => isRepoVisible(r.workspace.id))) && (
+                        {!hasCustomRepoOrder && groupIndex > 0 && groups.slice(0, groupIndex).some(g => g.repos.some(r => isRepoVisible(r.workspace.id))) && (
                             <div
                                 className="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-1 flex-shrink-0"
                                 data-testid="repo-group-separator"
@@ -511,8 +685,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 );
             })}
         </div>
-        {/* "+N" overflow pill */}
-        {hasOverflow && (
+        {/* "+N" overflow pill / customize order list */}
+        {showOverflowControl && (
             <div ref={overflowRef} className="relative flex-shrink-0 px-0.5" data-testid="overflow-pill-container">
                 <button
                     data-testid="overflow-pill"
@@ -523,11 +697,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             : 'bg-gray-200 dark:bg-gray-700 text-[#1e1e1e] dark:text-[#cccccc] ') +
                         'hover:bg-gray-300 dark:hover:bg-gray-600'
                     }
-                    aria-label={`${overflowCount} more repositories — click to see all`}
-                    title={`${overflowCount} more repositories — click to see all`}
+                    aria-label={hasOverflow ? `${overflowCount} more repositories - click to see all` : 'Customize repository order'}
+                    title={hasOverflow ? `${overflowCount} more repositories - click to see all` : 'Customize repository order'}
                     onClick={() => setOverflowOpen(prev => !prev)}
                 >
-                    +{overflowCount}
+                    {hasOverflow ? `+${overflowCount}` : 'Order'}
                     {overflowHasUnseen && (
                         <span
                             className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#d16969]"
@@ -554,6 +728,26 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 onChange={e => { setOverflowFilter(e.target.value); setOverflowHighlight(-1); }}
                             />
                         </div>
+                        <div className="px-2 pb-1 flex items-center gap-2">
+                            <button
+                                type="button"
+                                data-testid="overflow-customize-order"
+                                className="text-xs text-[#0078d4] dark:text-[#60b4ff] hover:underline"
+                                onClick={() => setCustomizeRepoTabs(true)}
+                            >
+                                Customize order
+                            </button>
+                            {customizeRepoTabs && (
+                                <button
+                                    type="button"
+                                    data-testid="overflow-reset-order"
+                                    className="text-xs text-[#0078d4] dark:text-[#60b4ff] hover:underline"
+                                    onClick={() => void resetRepoTabOrder()}
+                                >
+                                    Reset order
+                                </button>
+                            )}
+                        </div>
                         {/* Repo list */}
                         <div className="max-h-[320px] overflow-y-auto" data-testid="overflow-repo-list">
                             {filteredReposForDropdown.length === 0 ? (
@@ -579,30 +773,22 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
                                             const flatIdx = flatFilteredRepos.indexOf(repo);
                                             const isHighlighted = flatIdx === overflowHighlight;
-                                            return (
-                                                <button
-                                                    key={ws.id}
-                                                    data-testid="overflow-repo-item"
-                                                    data-repo-id={ws.id}
-                                                    className={
-                                                        'w-full flex items-center gap-2 h-8 px-3 text-xs text-left cursor-pointer transition-colors ' +
-                                                        (isHighlighted
-                                                            ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 '
-                                                            : isSelected
-                                                                ? 'bg-[#0078d4]/5 '
-                                                                : '') +
-                                                        'hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 text-[#1e1e1e] dark:text-[#cccccc]'
-                                                    }
-                                                    role="menuitem"
-                                                    aria-label={accessibleLabel}
-                                                    title={accessibleLabel}
-                                                    onClick={() => { onSelect(ws.id); setOverflowOpen(false); }}
-                                                    onContextMenu={e => {
-                                                        e.preventDefault();
-                                                        setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
-                                                        setOverflowOpen(false);
-                                                    }}
-                                                >
+                                            const orderIndex = allRepoIds.indexOf(ws.id);
+                                            const showBefore = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'before';
+                                            const showAfter = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'after';
+                                            const rowClassName =
+                                                'w-full flex items-center gap-2 h-8 px-3 text-xs text-left transition-colors ' +
+                                                (isHighlighted
+                                                    ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 '
+                                                    : isSelected
+                                                        ? 'bg-[#0078d4]/5 '
+                                                        : '') +
+                                                'hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 text-[#1e1e1e] dark:text-[#cccccc]';
+                                            const rowContent = (
+                                                <>
+                                                    {customizeRepoTabs && (
+                                                        <span className="text-[10px] text-[#616161] dark:text-[#999] cursor-grab active:cursor-grabbing" aria-hidden>⠿</span>
+                                                    )}
                                                     <RepoQueueStatusIndicator
                                                         status={queueStatus}
                                                         color={color}
@@ -621,6 +807,81 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                             {unseenCount > 99 ? '99+' : unseenCount}
                                                         </span>
                                                     )}
+                                                </>
+                                            );
+                                            if (customizeRepoTabs) {
+                                                return (
+                                                    <div key={ws.id} className="relative">
+                                                        {showBefore && <div className="h-0.5 bg-[#0078d4] dark:bg-[#60b4ff] rounded mx-2" aria-hidden />}
+                                                        <div
+                                                            data-testid="overflow-repo-item"
+                                                            data-repo-id={ws.id}
+                                                            className={`${rowClassName} cursor-grab active:cursor-grabbing`}
+                                                            role="menuitem"
+                                                            aria-label={`${accessibleLabel}. Drag or use move buttons to reorder.`}
+                                                            title={`${accessibleLabel}. Drag or use move buttons to reorder.`}
+                                                            draggable
+                                                            onDragStart={event => startRepoDrag(event, ws.id)}
+                                                            onDragOver={event => updateRepoDropTarget(event, ws.id, 'vertical')}
+                                                            onDragEnter={event => updateRepoDropTarget(event, ws.id, 'vertical')}
+                                                            onDrop={event => dropRepoOnTarget(event, ws.id, 'vertical')}
+                                                            onDragEnd={() => {
+                                                                setDraggedRepoId(null);
+                                                                setRepoDropIndicator(null);
+                                                            }}
+                                                        >
+                                                            {rowContent}
+                                                            <button
+                                                                type="button"
+                                                                data-testid="overflow-move-to-top"
+                                                                className="text-[10px] text-[#0078d4] dark:text-[#60b4ff] hover:underline disabled:opacity-40"
+                                                                disabled={orderIndex <= 0}
+                                                                onClick={() => moveRepoToIndex(ws.id, 0)}
+                                                            >
+                                                                Top
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                data-testid="overflow-move-up"
+                                                                aria-label={`Move ${ws.name} up`}
+                                                                className="text-[10px] text-[#0078d4] dark:text-[#60b4ff] hover:underline disabled:opacity-40"
+                                                                disabled={orderIndex <= 0}
+                                                                onClick={() => moveRepoToIndex(ws.id, orderIndex - 1)}
+                                                            >
+                                                                Up
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                data-testid="overflow-move-down"
+                                                                aria-label={`Move ${ws.name} down`}
+                                                                className="text-[10px] text-[#0078d4] dark:text-[#60b4ff] hover:underline disabled:opacity-40"
+                                                                disabled={orderIndex < 0 || orderIndex >= allRepoIds.length - 1}
+                                                                onClick={() => moveRepoToIndex(ws.id, orderIndex + 1)}
+                                                            >
+                                                                Down
+                                                            </button>
+                                                        </div>
+                                                        {showAfter && <div className="h-0.5 bg-[#0078d4] dark:bg-[#60b4ff] rounded mx-2" aria-hidden />}
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <button
+                                                    key={ws.id}
+                                                    data-testid="overflow-repo-item"
+                                                    data-repo-id={ws.id}
+                                                    className={rowClassName + ' cursor-pointer'}
+                                                    role="menuitem"
+                                                    aria-label={accessibleLabel}
+                                                    title={accessibleLabel}
+                                                    onClick={() => { onSelect(ws.id); setOverflowOpen(false); }}
+                                                    onContextMenu={e => {
+                                                        e.preventDefault();
+                                                        setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
+                                                        setOverflowOpen(false);
+                                                    }}
+                                                >
+                                                    {rowContent}
                                                 </button>
                                             );
                                         })}
@@ -670,28 +931,40 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 </div>
             )}
         </div>
-            <AddRepoDialog
-                open={addOpen}
-                onClose={() => setAddOpen(false)}
-                repos={repos}
-                onSuccess={() => { setAddOpen(false); onRefresh(); }}
-            />
-            <AddFolderDialog
-                open={addFolderOpen}
-                onClose={() => setAddFolderOpen(false)}
-                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
-            />
-            <AddRepoDialog
-                open={editRepoId !== null}
-                onClose={() => setEditRepoId(null)}
-                editId={editRepoId}
-                repos={repos}
-                onSuccess={() => { setEditRepoId(null); onRefresh(); }}
-            />
-            {contextMenu !== null && (() => {                const ws = repos.flatMap(r => [r.workspace]).find(w => w.id === contextMenu.repoId);
-                if (!ws) return null;
-                return (
-                    <div
+        <div className="sr-only" aria-live="polite">{repoLiveMessage}</div>
+        {customizeRepoTabs && (
+            <div
+                data-testid="repo-tab-customize-banner"
+                className="fixed top-12 left-1/2 -translate-x-1/2 z-[9000] flex items-center gap-2 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+            >
+                <span>Drag repos to reorder. Use the overflow list for hidden repos.</span>
+                <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => void resetRepoTabOrder()}>Reset order</button>
+                <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => setCustomizeRepoTabs(false)}>Done</button>
+            </div>
+        )}
+        <AddRepoDialog
+            open={addOpen}
+            onClose={() => setAddOpen(false)}
+            repos={repos}
+            onSuccess={() => { setAddOpen(false); onRefresh(); }}
+        />
+        <AddFolderDialog
+            open={addFolderOpen}
+            onClose={() => setAddFolderOpen(false)}
+            onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+        />
+        <AddRepoDialog
+            open={editRepoId !== null}
+            onClose={() => setEditRepoId(null)}
+            editId={editRepoId}
+            repos={repos}
+            onSuccess={() => { setEditRepoId(null); onRefresh(); }}
+        />
+        {contextMenu !== null && (() => {
+            const ws = repos.flatMap(r => [r.workspace]).find(w => w.id === contextMenu.repoId);
+            if (!ws) return null;
+            return (
+                <div
                         ref={contextMenuRef}
                         data-testid="repo-tab-context-menu"
                         className="fixed z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
@@ -749,6 +1022,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             </button>
                         )}
                         <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                        <button
+                            data-testid="repo-tab-context-customize-order"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={enterCustomizeRepoTabs}
+                        >
+                            Customize repo tabs
+                        </button>
                         <button
                             data-testid="repo-tab-context-edit"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
