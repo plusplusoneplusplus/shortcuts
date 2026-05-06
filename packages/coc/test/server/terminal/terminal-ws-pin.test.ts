@@ -6,6 +6,7 @@
  * - terminal-unpin message triggers unpinSession and responds with terminal-pin-changed
  * - pin/unpin for unknown session returns terminal-error
  * - terminal-created includes pinned field
+ * - terminal-attach reuses an existing workspace-scoped session
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -47,10 +48,11 @@ function createMockPty(): IPty {
 // ============================================================================
 
 const TEST_WORKSPACE = { id: 'test-ws', name: 'Test Workspace', rootPath: '/tmp/test-ws' };
+const OTHER_WORKSPACE = { id: 'other-ws', name: 'Other Workspace', rootPath: '/tmp/other-ws' };
 
 function createTestServer() {
     const store = createMockProcessStore();
-    (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([TEST_WORKSPACE]);
+    (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([TEST_WORKSPACE, OTHER_WORKSPACE]);
 
     const terminalWs = new TerminalWebSocketServer(store, {
         nodePtyModule: { spawn: vi.fn(() => createMockPty()) },
@@ -215,5 +217,41 @@ describe('TerminalWebSocketServer pin/unpin', () => {
         sendMsg(ws, { type: 'terminal-unpin', sessionId });
         await waitForMessages(messages, 3);
         expect(mgr.getSession(sessionId)?.pinned).toBe(false);
+    });
+
+    it('should attach a second client to an existing terminal session in the same workspace', async () => {
+        const { sessionId } = await connectAndCreate();
+        const { ws, messages } = await connect();
+
+        sendMsg(ws, { type: 'terminal-attach', sessionId });
+        await waitForMessages(messages, 1);
+
+        expect(messages[0].type).toBe('terminal-created');
+        expect(messages[0].session.id).toBe(sessionId);
+        expect(messages[0].session.workspaceId).toBe('test-ws');
+        expect(messages[0].session.pinned).toBe(false);
+    });
+
+    it('should return terminal-error when attaching an unknown session', async () => {
+        const { ws, messages } = await connect();
+
+        sendMsg(ws, { type: 'terminal-attach', sessionId: 'nonexistent' });
+        await waitForMessages(messages, 1);
+
+        expect(messages[0].type).toBe('terminal-error');
+        expect(messages[0].sessionId).toBe('nonexistent');
+        expect(messages[0].message).toContain('not found');
+    });
+
+    it('should return terminal-error when attaching a session from another workspace', async () => {
+        const { sessionId } = await connectAndCreate();
+        const { ws, messages } = await connect('other-ws');
+
+        sendMsg(ws, { type: 'terminal-attach', sessionId });
+        await waitForMessages(messages, 1);
+
+        expect(messages[0].type).toBe('terminal-error');
+        expect(messages[0].sessionId).toBe(sessionId);
+        expect(messages[0].message).toContain('different workspace');
     });
 });

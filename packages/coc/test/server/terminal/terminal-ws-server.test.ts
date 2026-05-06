@@ -286,6 +286,22 @@ describe('TerminalWebSocketServer', () => {
         expect(outputMsg.data).toBe('hello world\r\n');
     });
 
+    it('should forward PTY output to an attached WebSocket client', async () => {
+        const { sessionId } = await connectAndCreate();
+        const { ws, messages } = await connect();
+
+        sendMsg(ws, { type: 'terminal-attach', sessionId });
+        await waitForMessages(messages, 1);
+
+        lastMockPty._emitData('attached output\r\n');
+        await waitForMessages(messages, 2);
+
+        const outputMsg = messages.find(m => m.type === 'terminal-output');
+        expect(outputMsg).toBeDefined();
+        expect(outputMsg.sessionId).toBe(sessionId);
+        expect(outputMsg.data).toBe('attached output\r\n');
+    });
+
     // ========================================================================
     // WebSocket input → PTY
     // ========================================================================

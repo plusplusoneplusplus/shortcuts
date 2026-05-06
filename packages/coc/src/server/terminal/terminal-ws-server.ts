@@ -201,6 +201,31 @@ export class TerminalWebSocketServer {
                 }
                 break;
             }
+            case 'terminal-attach': {
+                const session = this.sessionManager.getSession(msg.sessionId);
+                if (!session) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-error',
+                        sessionId: msg.sessionId,
+                        message: 'Terminal session not found',
+                    });
+                    break;
+                }
+                if (session.workspaceId !== client.workspaceId) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-error',
+                        sessionId: msg.sessionId,
+                        message: 'Terminal session belongs to a different workspace',
+                    });
+                    break;
+                }
+                client.sessions.add(session.id);
+                this.sendMessage(client.socket, {
+                    type: 'terminal-created',
+                    session: toSessionInfo(session),
+                });
+                break;
+            }
             case 'terminal-input': {
                 try {
                     this.sessionManager.writeToSession(msg.sessionId, msg.data);
@@ -264,8 +289,10 @@ export class TerminalWebSocketServer {
     // ========================================================================
 
     private onPtyData(sessionId: string, data: string): void {
-        const client = this.findClientBySession(sessionId);
-        if (client && client.socket.readyState === WebSocket.OPEN) {
+        for (const client of this.findClientsBySession(sessionId)) {
+            if (client.socket.readyState !== WebSocket.OPEN) {
+                continue;
+            }
             this.sendMessage(client.socket, {
                 type: 'terminal-output',
                 sessionId,
@@ -275,17 +302,17 @@ export class TerminalWebSocketServer {
     }
 
     private onPtyExit(sessionId: string, exitCode: number, signal?: number): void {
-        const client = this.findClientBySession(sessionId);
-        if (client) {
+        for (const client of this.findClientsBySession(sessionId)) {
             client.sessions.delete(sessionId);
-            if (client.socket.readyState === WebSocket.OPEN) {
-                this.sendMessage(client.socket, {
-                    type: 'terminal-exit',
-                    sessionId,
-                    exitCode,
-                    signal,
-                });
+            if (client.socket.readyState !== WebSocket.OPEN) {
+                continue;
             }
+            this.sendMessage(client.socket, {
+                type: 'terminal-exit',
+                sessionId,
+                exitCode,
+                signal,
+            });
         }
     }
 
@@ -293,13 +320,14 @@ export class TerminalWebSocketServer {
     // Helpers
     // ========================================================================
 
-    private findClientBySession(sessionId: string): TerminalWSClient | undefined {
+    private findClientsBySession(sessionId: string): TerminalWSClient[] {
+        const clients: TerminalWSClient[] = [];
         for (const [, client] of this.clients) {
             if (client.sessions.has(sessionId)) {
-                return client;
+                clients.push(client);
             }
         }
-        return undefined;
+        return clients;
     }
 
     private cleanupClient(client: TerminalWSClient): void {

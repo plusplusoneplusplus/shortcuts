@@ -301,7 +301,7 @@ src/
 │   ├── terminal/                     # WebSocket-based terminal (PTY layer)
 │   │   ├── types.ts                          # IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage
 │   │   ├── terminal-session-manager.ts       # PTY lifecycle (create, resize, destroy, idle cleanup; WSL roots launch bash via wsl.exe on Windows)
-│   │   └── terminal-ws-server.ts             # /ws/terminal — per-workspace, multi-session
+│   │   └── terminal-ws-server.ts             # /ws/terminal — per-workspace create/attach, multi-session
 │   ├── memory/                       # Memory configuration + bounded-memory REST API
 │   │   ├── memory-config-handler.ts          # readMemoryConfig, writeMemoryConfig
 │   │   ├── memory-routes.ts                  # Global memory REST endpoints
