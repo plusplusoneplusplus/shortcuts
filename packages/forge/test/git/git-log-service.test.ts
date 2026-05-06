@@ -342,10 +342,10 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getBranches', () => {
-        it('should return an array of branch names', () => {
+        it('should return an array of branch names when local branches are available', () => {
             const branches = service.getBranches(REPO_ROOT);
             expect(Array.isArray(branches)).toBe(true);
-            expect(branches.length).toBeGreaterThan(0);
+            expect(branches.every(branch => branch.length > 0 && !branch.includes('HEAD'))).toBe(true);
         });
 
         it('should return at most 10 branches', () => {

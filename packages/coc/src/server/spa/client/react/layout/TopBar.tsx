@@ -190,7 +190,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 tab: 'logs',
                 icon: '\ud83d\udccb',
                 desktopOnly: true,
-                active: false,
+                active: state.activeTab === 'logs',
                 onActivate: onLogsOpen,
             },
             ...(SHOW_MEMORY_TAB ? [{

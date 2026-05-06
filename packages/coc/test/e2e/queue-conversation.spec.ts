@@ -960,6 +960,7 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
             const bubble = page.locator('.chat-message.assistant').last();
+            const bubbleContent = bubble.locator('.chat-message-content');
 
             // Wait for executor to start — streaming placeholder proves SSE is connected
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
@@ -968,17 +969,17 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
 
             // ── Chunk 1 ───────────────────────────────────────────────────────
             await gate.releaseNext();
-            await expect(bubble).toContainText('Hello', { timeout: 5000 });
-            await expect(bubble).not.toContainText(', world');
+            await expect(bubbleContent).toContainText('Hello', { timeout: 5000 });
+            await expect(bubbleContent).not.toContainText(', world');
 
             // ── Chunk 2 ───────────────────────────────────────────────────────
             await gate.releaseNext();
-            await expect(bubble).toContainText('Hello, world', { timeout: 2000 });
-            await expect(bubble).not.toContainText('!');
+            await expect(bubbleContent).toContainText('Hello, world', { timeout: 2000 });
+            await expect(bubbleContent).not.toContainText('!');
 
             // ── Chunk 3 ───────────────────────────────────────────────────────
             await gate.releaseNext();
-            await expect(bubble).toContainText('Hello, world!', { timeout: 2000 });
+            await expect(bubbleContent).toContainText('Hello, world!', { timeout: 2000 });
 
             // After all chunks are released the mock returns and the server marks the
             // task completed. Wait for that server-side completion, then navigate away
