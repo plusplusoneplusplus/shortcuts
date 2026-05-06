@@ -76,6 +76,18 @@ describe('AgentSkillsPanel — expand', () => {
         await user.click(screen.getByTestId('skill-expand-code-review'));
         expect(onExpandSkill).toHaveBeenCalledWith('code-review');
     });
+
+    it('renders an expanded detail panel from list metadata when fetched detail is missing', () => {
+        renderPanel({
+            skills: [{ name: 'code-review', description: 'Reviews code changes', version: '1.2.3' }],
+            expandedSkill: 'code-review',
+            skillDetail: null,
+            detailLoading: false,
+        });
+
+        expect(screen.getByTestId('skill-detail-panel')).toBeTruthy();
+        expect(screen.getByTestId('skill-detail-version').textContent).toContain('v1.2.3');
+    });
 });
 
 describe('AgentSkillsPanel — toggle', () => {

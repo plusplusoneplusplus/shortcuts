@@ -163,6 +163,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             return;
         }
         setExpandedSkill(name);
+        setSkillDetail(null);
         setDetailLoading(true);
         try {
             const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);

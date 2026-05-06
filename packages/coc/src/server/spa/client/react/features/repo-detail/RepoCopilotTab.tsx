@@ -116,6 +116,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             return;
         }
         setExpandedSkill(name);
+        setSkillDetail(null);
         setDetailLoading(true);
         try {
             const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);

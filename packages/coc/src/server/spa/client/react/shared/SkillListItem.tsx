@@ -41,6 +41,8 @@ export function SkillListItem({
     sourceRepoName,
     hideDelete = false,
 }: SkillListItemProps) {
+    const detailForPanel = detail?.name === skill.name ? detail : skill;
+
     return (
         <li
             className={`skill-item flex flex-col rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group${!isEnabled ? ' opacity-60' : ''}`}
@@ -112,7 +114,7 @@ export function SkillListItem({
                 </div>
             </div>
             {isExpanded && (
-                <SkillDetailPanel detail={detail} loading={detailLoading} />
+                <SkillDetailPanel detail={detailForPanel} loading={detailLoading} />
             )}
         </li>
     );
