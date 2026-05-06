@@ -13,6 +13,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useTerminalWebSocket } from './hooks/useTerminalWebSocket';
 import { detectDarkMode } from '../../utils/theme';
 import type { ITheme } from '@xterm/xterm';
+import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalPanelProps {
     sessionId: string;
@@ -22,6 +23,7 @@ export interface TerminalPanelProps {
     isActive: boolean;
     onExit?: (code: number) => void;
     onTitleChange?: (title: string) => void;
+    onServerSessionCreated?: (session: TerminalSessionInfo) => void;
 }
 
 const DARK_THEME: ITheme = {
@@ -82,19 +84,20 @@ export function TerminalPanel({
     isActive,
     onExit,
     onTitleChange,
+    onServerSessionCreated,
 }: TerminalPanelProps) {
     const termRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
 
-    const { status, connect, disconnect, sendInput, sendResize } = useTerminalWebSocket({
+    const { connect, disconnect, sendInput, sendResize } = useTerminalWebSocket({
         onMessage: (msg) => {
             const term = xtermRef.current;
             if (!term) return;
 
             switch (msg.type) {
                 case 'terminal-created':
-                    // Session created — hook stores sessionId internally
+                    onServerSessionCreated?.(msg.session);
                     break;
                 case 'terminal-output':
                     term.write(msg.data);

@@ -54,8 +54,6 @@ export interface UseTerminalWebSocketReturn {
     disconnect: () => void;
     sendInput: (data: string) => void;
     sendResize: (cols: number, rows: number) => void;
-    sendPin: (sessionId: string) => void;
-    sendUnpin: (sessionId: string) => void;
 }
 
 export type TerminalConnectOptions =
@@ -215,18 +213,6 @@ export function useTerminalWebSocket({
         }
     }, []);
 
-    const sendPin = useCallback((sessionId: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'terminal-pin', sessionId }));
-        }
-    }, []);
-
-    const sendUnpin = useCallback((sessionId: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'terminal-unpin', sessionId }));
-        }
-    }, []);
-
     useEffect(() => {
         return () => {
             manualCloseRef.current = true;
@@ -238,5 +224,5 @@ export function useTerminalWebSocket({
         };
     }, [cleanup]);
 
-    return { status, connect, disconnect, sendInput, sendResize, sendPin, sendUnpin };
+    return { status, connect, disconnect, sendInput, sendResize };
 }

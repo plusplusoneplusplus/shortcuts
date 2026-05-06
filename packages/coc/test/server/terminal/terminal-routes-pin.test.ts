@@ -104,6 +104,16 @@ async function apiPatch(path: string, body: any): Promise<{ status: number; body
     return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+async function apiPatchRaw(path: string, body: string): Promise<{ status: number; body: any }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : null };
+}
+
 async function apiGet(path: string): Promise<{ status: number; body: any }> {
     const res = await fetch(`${baseUrl}${path}`);
     const text = await res.text();
@@ -172,6 +182,19 @@ describe('Terminal Pin REST Routes', () => {
             expect(body.error).toContain('pinned');
         });
 
+        it('returns 400 for invalid JSON', async () => {
+            const mgr = makeMockSessionManager();
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPatchRaw(
+                `/api/workspaces/${WORKSPACE.id}/terminals/sess-1/pin`,
+                '{bad json',
+            );
+            expect(status).toBe(400);
+            expect(body.error).toContain('Invalid JSON');
+        });
+
         it('returns 400 for non-boolean pinned field', async () => {
             const mgr = makeMockSessionManager();
             server = createTestServer(store, () => mgr, makeConfig(true));
@@ -196,6 +219,21 @@ describe('Terminal Pin REST Routes', () => {
             );
             expect(status).toBe(404);
             expect(body.error).toContain('Terminal session');
+        });
+
+        it('returns 404 when the session belongs to another workspace', async () => {
+            const session = makeSession({ id: 'sess-1', workspaceId: 'ws-other' });
+            const mgr = makeMockSessionManager({ sessions: [session], pinResult: true });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPatch(
+                `/api/workspaces/${WORKSPACE.id}/terminals/sess-1/pin`,
+                { pinned: true },
+            );
+            expect(status).toBe(404);
+            expect(body.error).toContain('Terminal session');
+            expect(mgr.pinSession).not.toHaveBeenCalled();
         });
 
         it('returns 404 for unknown workspace', async () => {

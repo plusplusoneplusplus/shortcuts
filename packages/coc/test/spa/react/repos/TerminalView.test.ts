@@ -19,6 +19,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel
             serverSessionId?: string;
             connectionMode?: 'create' | 'attach';
             isActive: boolean;
+            onServerSessionCreated?: (session: typeof pinnedSession) => void;
         }) => React.createElement('div', {
             'data-testid': `mock-terminal-panel-${props.sessionId}`,
             'data-server-session-id': props.serverSessionId ?? '',
@@ -156,6 +157,11 @@ describe('TerminalView', () => {
             expect(source).toContain('connectionMode={tab.connectionMode}');
         });
 
+        it('passes server-created sessions back to TerminalView', () => {
+            expect(source).toContain('onServerSessionCreated');
+            expect(source).toContain('handleServerSessionCreated');
+        });
+
         it('has new terminal button', () => {
             expect(source).toContain('terminal-new-btn');
         });
@@ -186,6 +192,24 @@ describe('TerminalView', () => {
     });
 
     describe('pinned terminal hydration', () => {
+        it('persists pin clicks through the terminal REST endpoint', () => {
+            expect(source).toContain('/terminals/${encodeURIComponent(tab.serverSessionId)}/pin');
+            expect(source).toContain("method: 'PATCH'");
+            expect(source).toContain('body: JSON.stringify({ pinned: requestedPinned })');
+            expect(source).toContain('body.pinned');
+        });
+
+        it('does not pin tabs before a server session id exists', () => {
+            expect(source).toContain('!tab.serverSessionId');
+            expect(source).toContain('Waiting for terminal session');
+        });
+
+        it('surfaces pin failures and clears false pinned state for missing sessions', () => {
+            expect(source).toContain('terminal-pin-error');
+            expect(source).toContain('markSessionMissing');
+            expect(source).toContain('Terminal session no longer exists.');
+        });
+
         it('fetches workspace terminal sessions and restores only pinned tabs in attach mode', async () => {
             mockFetchSessions([pinnedSession, unpinnedSession]);
 

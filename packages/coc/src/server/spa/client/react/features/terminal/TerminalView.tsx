@@ -28,11 +28,18 @@ interface TerminalSessionsResponse {
     sessions?: TerminalSessionInfo[];
 }
 
+interface TerminalPinResponse {
+    sessionId: string;
+    pinned: boolean;
+}
+
 export function TerminalView({ workspaceId }: TerminalViewProps) {
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
     const [activeId, setActiveId] = useState<string>('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
+    const [pinningIds, setPinningIds] = useState<Set<string>>(() => new Set());
+    const [pinError, setPinError] = useState<string | null>(null);
     const editInputRef = useRef<HTMLInputElement>(null);
     const counterRef = useRef(0);
 
@@ -115,19 +122,81 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
 
     const handleExit = useCallback((id: string, code: number) => {
         setTerminals(prev =>
-            prev.map(t => t.id === id ? { ...t, title: `${t.title} (exited)` } : t)
+            prev.map(t => t.id === id ? { ...t, title: `${t.title} (exited)`, pinned: false } : t)
         );
     }, []);
 
-    const togglePin = useCallback((id: string) => {
+    const markPinning = useCallback((id: string, pinning: boolean) => {
+        setPinningIds(prev => {
+            const next = new Set(prev);
+            if (pinning) {
+                next.add(id);
+            } else {
+                next.delete(id);
+            }
+            return next;
+        });
+    }, []);
+
+    const markSessionMissing = useCallback((id: string) => {
         setTerminals(prev =>
-            prev.map(t => t.id === id ? { ...t, pinned: !t.pinned } : t)
+            prev.map(t => {
+                if (t.id !== id) return t;
+                const title = t.title.includes('(missing)') ? t.title : `${t.title} (missing)`;
+                return { ...t, title, pinned: false, serverSessionId: undefined };
+            })
         );
     }, []);
 
-    const updatePinState = useCallback((id: string, pinned: boolean) => {
+    const togglePin = useCallback(async (id: string) => {
+        const tab = terminals.find(t => t.id === id);
+        if (!tab || !tab.serverSessionId || pinningIds.has(id)) return;
+
+        const requestedPinned = !tab.pinned;
+        setPinError(null);
+        markPinning(id, true);
+        try {
+            const response = await fetch(
+                `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(tab.serverSessionId)}/pin`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pinned: requestedPinned }),
+                },
+            );
+
+            if (response.status === 404) {
+                markSessionMissing(id);
+                setPinError('Terminal session no longer exists.');
+                return;
+            }
+            if (!response.ok) {
+                throw new Error(`Failed to update terminal pin: ${response.status} ${response.statusText}`);
+            }
+
+            const body = await response.json() as TerminalPinResponse;
+            if (body.sessionId !== tab.serverSessionId || typeof body.pinned !== 'boolean') {
+                throw new Error('Terminal pin response did not match the requested session.');
+            }
+
+            setTerminals(prev =>
+                prev.map(t => t.id === id ? { ...t, pinned: body.pinned } : t)
+            );
+        } catch (err) {
+            console.error('Failed to update terminal pin state:', err);
+            setPinError(`Failed to ${requestedPinned ? 'pin' : 'unpin'} terminal.`);
+        } finally {
+            markPinning(id, false);
+        }
+    }, [markPinning, markSessionMissing, pinningIds, terminals, workspaceId]);
+
+    const handleServerSessionCreated = useCallback((id: string, session: TerminalSessionInfo) => {
         setTerminals(prev =>
-            prev.map(t => t.id === id ? { ...t, pinned } : t)
+            prev.map(t =>
+                t.id === id
+                    ? { ...t, serverSessionId: session.id, pinned: session.pinned }
+                    : t
+            )
         );
     }, []);
 
@@ -204,12 +273,14 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                             <span
                                 className={cn(
                                     "ml-0.5 cursor-pointer",
+                                    (!tab.serverSessionId || pinningIds.has(tab.id)) && "cursor-not-allowed opacity-40",
                                     tab.pinned
                                         ? "opacity-80 hover:opacity-100 text-blue-500 dark:text-blue-400"
                                         : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
                                 )}
-                                onClick={(e) => { e.stopPropagation(); togglePin(tab.id); }}
-                                title={tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
+                                onClick={(e) => { e.stopPropagation(); void togglePin(tab.id); }}
+                                title={!tab.serverSessionId ? 'Waiting for terminal session' : tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
+                                aria-disabled={!tab.serverSessionId || pinningIds.has(tab.id)}
                                 data-testid={`terminal-tab-pin-${tab.id}`}
                             >
                                 📌
@@ -234,6 +305,11 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                 >
                     <span>+</span>
                 </button>
+                {pinError ? (
+                    <span className="text-xs text-red-600 dark:text-red-400 truncate" data-testid="terminal-pin-error">
+                        {pinError}
+                    </span>
+                ) : null}
             </div>
 
             {/* Terminal panels — all rendered, visibility toggled */}
@@ -262,6 +338,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                                     prev.map(t => t.id === tab.id ? { ...t, title } : t)
                                 )
                             }
+                            onServerSessionCreated={(session) => handleServerSessionCreated(tab.id, session)}
                         />
                     </div>
                 ))}

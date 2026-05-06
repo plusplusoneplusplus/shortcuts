@@ -98,7 +98,7 @@ export function registerTerminalRoutes(
 
             const sessionId = decodeURIComponent(match![2]);
 
-            let body: { pinned: boolean };
+            let body: unknown;
             try {
                 const chunks: Buffer[] = [];
                 for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -108,21 +108,27 @@ export function registerTerminalRoutes(
                 return;
             }
 
-            if (typeof body.pinned !== 'boolean') {
+            if (!body || typeof body !== 'object' || typeof (body as { pinned?: unknown }).pinned !== 'boolean') {
                 sendJSON(res, 400, { error: 'Missing or invalid "pinned" field (boolean required)' });
                 return;
             }
 
-            const success = body.pinned ? mgr.pinSession(sessionId) : mgr.unpinSession(sessionId);
+            const sessionBeforeUpdate = mgr.getSession(sessionId);
+            if (!sessionBeforeUpdate || sessionBeforeUpdate.workspaceId !== ws.id) {
+                return handleAPIError(res, notFound('Terminal session'));
+            }
+
+            const { pinned } = body as { pinned: boolean };
+            const success = pinned ? mgr.pinSession(sessionId) : mgr.unpinSession(sessionId);
             if (!success) {
                 return handleAPIError(res, notFound('Terminal session'));
             }
 
             const session = mgr.getSession(sessionId);
-            if (session) {
+            if (session && session.workspaceId === ws.id) {
                 sendJSON(res, 200, { sessionId, pinned: session.pinned });
             } else {
-                sendJSON(res, 200, { sessionId, pinned: body.pinned });
+                return handleAPIError(res, notFound('Terminal session'));
             }
         },
     });

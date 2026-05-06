@@ -48,6 +48,10 @@ describe('TerminalPanel', () => {
         it('accepts optional onTitleChange callback', () => {
             expect(source).toContain('onTitleChange');
         });
+
+        it('accepts optional onServerSessionCreated callback', () => {
+            expect(source).toContain('onServerSessionCreated');
+        });
     });
 
     describe('xterm.js integration', () => {
@@ -106,6 +110,7 @@ describe('TerminalPanel', () => {
     describe('message handling', () => {
         it('handles terminal-created message', () => {
             expect(source).toContain('terminal-created');
+            expect(source).toContain('onServerSessionCreated?.(msg.session)');
         });
 
         it('handles terminal-output message', () => {
