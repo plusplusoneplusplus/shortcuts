@@ -1,5 +1,15 @@
 import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('child_process', async () => {
+    const actual = await vi.importActual<typeof import('child_process')>('child_process');
+    return {
+        ...actual,
+        execFileSync: vi.fn(),
+    };
+});
+
+import * as childProcess from 'child_process';
 import {
     buildWslCommandArgs,
     clearWorkspaceExecutionCaches,
@@ -290,6 +300,31 @@ describe('workspace-execution', () => {
     describe('getDefaultWslDistro', () => {
         afterEach(() => {
             clearWorkspaceExecutionCaches();
+        });
+
+        it.runIf(process.platform === 'win32')('reads the default distro from `wsl -l -v` output', () => {
+            clearWorkspaceExecutionCaches();
+            const spy = vi.spyOn(childProcess, 'execFileSync').mockReturnValue(`
+  NAME            STATE           VERSION
+* Ubuntu-24.04    Running         2
+  Debian          Stopped         2
+` as never);
+
+            expect(getDefaultWslDistro()).toBe('Ubuntu-24.04');
+            expect(spy).toHaveBeenCalledWith(
+                getWslExecutablePath(),
+                ['-l', '-v'],
+                expect.objectContaining({ encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+            );
+        });
+
+        it.runIf(process.platform === 'win32')('handles NUL-padded `wsl -l -v` output from Windows', () => {
+            clearWorkspaceExecutionCaches();
+            vi.spyOn(childProcess, 'execFileSync').mockReturnValue(
+                ' \u0000 \u0000N\u0000A\u0000M\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000S\u0000T\u0000A\u0000T\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000V\u0000E\u0000R\u0000S\u0000I\u0000O\u0000N\u0000\r\u0000\n\u0000*\u0000 \u0000U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000-\u00002\u00004\u0000.\u00000\u00004\u0000 \u0000 \u0000 \u0000 \u0000R\u0000u\u0000n\u0000n\u0000i\u0000n\u0000g\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u00002\u0000\r\u0000\n\u0000' as never,
+            );
+
+            expect(getDefaultWslDistro()).toBe('Ubuntu-24.04');
         });
 
         it.runIf(process.platform !== 'win32')('returns undefined on non-Windows platforms', async () => {

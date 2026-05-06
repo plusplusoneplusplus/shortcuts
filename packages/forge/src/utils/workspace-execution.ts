@@ -31,6 +31,18 @@ export type WorkspaceExecutionContext = WindowsExecutionContext | WslExecutionCo
 
 let defaultWslDistroCache: string | null | undefined;
 
+function parseDefaultWslDistro(output: string): string | undefined {
+    const normalized = output.replace(/^\uFEFF/, '').replace(/\u0000/g, '');
+    for (const rawLine of normalized.split(/\r?\n/)) {
+        const line = rawLine.trimEnd();
+        const match = line.match(/^\s*\*\s+(.+?)\s{2,}\S+\s+\d+\s*$/);
+        if (match) {
+            return match[1].trim();
+        }
+    }
+    return undefined;
+}
+
 function normalizeLinuxPath(input: string): string {
     const normalized = trimTrailingPathSeparators(toForwardSlashes(input));
     return normalized.length === 0 ? '/' : normalized;
@@ -67,10 +79,11 @@ export function getDefaultWslDistro(): string | undefined {
     try {
         const output = execFileSync(
             getWslExecutablePath(),
-            ['-e', 'sh', '-lc', 'printf %s "$WSL_DISTRO_NAME"'],
+            ['-l', '-v'],
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-        ).trim();
-        defaultWslDistroCache = output || null;
+        );
+        const distro = parseDefaultWslDistro(output);
+        defaultWslDistroCache = distro || null;
         return defaultWslDistroCache ?? undefined;
     } catch {
         defaultWslDistroCache = null;

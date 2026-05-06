@@ -56,7 +56,8 @@ test.describe('Logs tab — navigation', () => {
 
         const logsTab = page.locator('[data-tab="logs"]');
         await expect(logsTab).toBeVisible({ timeout: 8000 });
-        await expect(logsTab).toHaveClass(/active/);
+        await expect(logsTab).toHaveClass(/bg-\[#0078d4\]/);
+        await expect(logsTab).toHaveClass(/text-white/);
     });
 });
 
