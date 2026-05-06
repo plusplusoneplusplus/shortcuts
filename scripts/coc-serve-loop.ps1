@@ -93,8 +93,55 @@ function Resolve-DevTunnelCommand {
     return $null
 }
 
+function Test-DevTunnelUrlMatchesPort {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][int]$Port
+    )
+
+    try {
+        $uri = [Uri]$Url
+    } catch {
+        return $false
+    }
+
+    if ($uri.Port -eq $Port) {
+        return $true
+    }
+
+    return $uri.Host -match "(^|[-.])$([regex]::Escape([string]$Port))([-.]|$)"
+}
+
+function Select-DevTunnelUrl {
+    param(
+        [string]$Text,
+        [Parameter(Mandatory)][int]$Port
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+
+    $urlMatches = [regex]::Matches($Text, 'https://[^\s,]+devtunnels\.ms[^\s,]*')
+    if ($urlMatches.Count -eq 0) {
+        return $null
+    }
+
+    $urls = @($urlMatches | ForEach-Object { $_.Value.TrimEnd('.', ';', ')', ']') })
+    foreach ($candidate in $urls) {
+        if (Test-DevTunnelUrlMatchesPort -Url $candidate -Port $Port) {
+            return $candidate
+        }
+    }
+
+    return $urls[0]
+}
+
 function Start-DevTunnel {
-    param([Parameter(Mandatory)][string]$TunnelId)
+    param(
+        [Parameter(Mandatory)][string]$TunnelId,
+        [Parameter(Mandatory)][int]$Port
+    )
 
     $devTunnelCommand = Resolve-DevTunnelCommand
     if (-not $devTunnelCommand) {
@@ -113,9 +160,9 @@ function Start-DevTunnel {
         $text = ''
         if (Test-Path $stdoutPath) { $text += (Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue) }
         if (Test-Path $stderrPath) { $text += "`n" + (Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue) }
-        $match = [regex]::Match($text, 'https://[^\s]+devtunnels\.ms[^\s,]*')
-        if ($match.Success) {
-            $url = $match.Value
+        $matchedUrl = Select-DevTunnelUrl -Text $text -Port $Port
+        if ($matchedUrl) {
+            $url = $matchedUrl
             break
         }
         Start-Sleep -Milliseconds 500
@@ -244,7 +291,7 @@ while ($true) {
 
     $tunnelSession = $null
     if ($tunnelEnabled) {
-        $tunnelSession = Start-DevTunnel -TunnelId $TunnelId
+        $tunnelSession = Start-DevTunnel -TunnelId $TunnelId -Port $Port
         if ($tunnelSession -and $tunnelSession.Url) {
             Write-Log "Dev tunnel URL: $($tunnelSession.Url)" -Color Green
         } elseif ($tunnelSession) {

@@ -46,7 +46,7 @@ const runPowerShellFile = (scriptName: string, args: string[], env: NodeJS.Proce
   );
 };
 
-const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi') => {
+const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first') => {
   const dir = mkdtempSync(join(tmpdir(), 'coc-devtunnel-test-'));
   const logPath = join(dir, 'devtunnel.log');
   const cocLogPath = join(dir, 'coc.log');
@@ -70,6 +70,9 @@ if (args[0] === 'port' && args[1] === 'list') {
   if (mode === 'one') {
     console.log('Port Number  Protocol');
     console.log('51234        http');
+  } else if (mode === 'host-wrong-first') {
+    console.log('Port Number  Protocol');
+    console.log('53910        http');
   } else if (mode === 'multi') {
     console.log('Port Number  Protocol');
     console.log('4000         http');
@@ -83,7 +86,12 @@ if (args[0] === 'port' && args[1] === 'create') {
   process.exit(0);
 }
 if (args[0] === 'host') {
-  console.log('Connect via https://fake.devtunnels.ms');
+  if (mode === 'host-wrong-first') {
+    console.log('Connect via https://fake.devtunnels.ms:4000');
+    console.log('Connect via https://fake.devtunnels.ms:53910');
+  } else {
+    console.log('Connect via https://fake.devtunnels.ms');
+  }
   setInterval(() => {}, 60000);
 } else {
   console.error('unexpected devtunnel args: ' + args.join(' '));
@@ -225,8 +233,11 @@ describe('CoC service PowerShell scripts', () => {
 
     it('hosts devtunnel as a subprocess and parses the public URL from output', () => {
       expect(serveLoop).toContain('function Start-DevTunnel');
+      expect(serveLoop).toContain('function Select-DevTunnelUrl');
+      expect(serveLoop).toContain('function Test-DevTunnelUrlMatchesPort');
       expect(serveLoop).toContain("Start-Process $devTunnelCommand -ArgumentList @('host', $TunnelId)");
-      expect(serveLoop).toContain("https://[^\\s]+devtunnels\\.ms[^\\s,]*");
+      expect(serveLoop).toContain('Start-DevTunnel -TunnelId $TunnelId -Port $Port');
+      expect(serveLoop).toContain("https://[^\\s,]+devtunnels\\.ms[^\\s,]*");
       expect(serveLoop).toContain('Dev tunnel URL:');
     });
 
@@ -429,6 +440,23 @@ if ($errors.Count -gt 0) {
       expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 51234.");
       expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms');
       expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51234');
+      expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it.skipIf(process.platform !== 'win32')('reports the dev tunnel URL for the configured HTTP port', () => {
+    const fake = createFakeDevTunnel('host-wrong-first');
+    try {
+      const result = runPowerShellFile('coc-serve-loop.ps1', ['-TunnelId', 'existing-coc', '-SkipInitialBuild'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(0);
+      expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 53910.");
+      expect(output).toContain('=== Starting coc serve (port 53910) ===');
+      expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms:53910');
+      expect(output).not.toContain('Dev tunnel URL: https://fake.devtunnels.ms:4000');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910');
       expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
     } finally {
       fake.cleanup();
