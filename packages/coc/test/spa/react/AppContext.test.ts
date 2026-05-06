@@ -978,6 +978,33 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: updated });
             expect(result.repoSubTabNavState['repo1::tasks']).toEqual(updated);
         });
+
+        it('is a no-op when nav state is unchanged', () => {
+            const existing = nav({
+                openFilePath: 'feature1/task.md',
+                selectedFilePaths: ['feature1/task.md', 'feature1/spec.md'],
+                selectedFolderPath: 'feature1',
+                activeFolderPath: 'feature1',
+            });
+            const state = makeState({ repoSubTabNavState: { 'repo1::tasks': existing } });
+            const sameValue = nav({
+                openFilePath: 'feature1/task.md',
+                selectedFilePaths: ['feature1/task.md', 'feature1/spec.md'],
+                selectedFolderPath: 'feature1',
+                activeFolderPath: 'feature1',
+            });
+            const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: sameValue });
+            expect(result).toBe(state);
+        });
+
+        it('updates nav state when selected file order changes', () => {
+            const existing = nav({ selectedFilePaths: ['a.md', 'b.md'] });
+            const state = makeState({ repoSubTabNavState: { 'repo1::tasks': existing } });
+            const reordered = nav({ selectedFilePaths: ['b.md', 'a.md'] });
+            const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: reordered });
+            expect(result).not.toBe(state);
+            expect(result.repoSubTabNavState['repo1::tasks']).toEqual(reordered);
+        });
     });
 
     // ── SET_SETTINGS_SECTION ────────────────────────────────────────

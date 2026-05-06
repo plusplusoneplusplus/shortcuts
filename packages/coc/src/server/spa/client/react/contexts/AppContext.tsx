@@ -246,6 +246,15 @@ export type AppAction =
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
+function areTasksPanelNavStatesEqual(a: TasksPanelNavState | undefined, b: TasksPanelNavState): boolean {
+    if (!a) return false;
+    if (a.openFilePath !== b.openFilePath) return false;
+    if (a.selectedFolderPath !== b.selectedFolderPath) return false;
+    if (a.activeFolderPath !== b.activeFolderPath) return false;
+    if (a.selectedFilePaths.length !== b.selectedFilePaths.length) return false;
+    return a.selectedFilePaths.every((path, index) => path === b.selectedFilePaths[index]);
+}
+
 export function appReducer(state: AppContextState, action: AppAction): AppContextState {
     switch (action.type) {
         case 'PROCESS_ADDED': {
@@ -498,14 +507,19 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return state.selectedPrDetailTab === action.tab ? state : { ...state, selectedPrDetailTab: action.tab };
         case 'CLEAR_SELECTED_PR':
             return { ...state, selectedPrId: null, selectedPrDetailTab: null };
-        case 'SET_TASKS_NAV_STATE':
+        case 'SET_TASKS_NAV_STATE': {
+            const key = `${action.repoId}::tasks`;
+            if (areTasksPanelNavStatesEqual(state.repoSubTabNavState[key], action.navState)) {
+                return state;
+            }
             return {
                 ...state,
                 repoSubTabNavState: {
                     ...state.repoSubTabNavState,
-                    [`${action.repoId}::tasks`]: action.navState,
+                    [key]: action.navState,
                 },
             };
+        }
         case 'SET_SETTINGS_SECTION':
             return state.settingsSection === action.section ? state : { ...state, settingsSection: action.section };
         case 'SET_WELCOME_PREFERENCES': {

@@ -40,7 +40,7 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
 import type { RepoData } from '../../repos/repoGrouping';
-import type { RepoSubTab } from '../../types/dashboard';
+import type { RepoSubTab, TasksPanelNavState } from '../../types/dashboard';
 
 interface RepoDetailProps {
     repo: RepoData;
@@ -314,6 +314,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
     }, [ws.id, queueDispatch]);
 
+    const handleTasksNavStateChange = useCallback((navState: TasksPanelNavState) => {
+        dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState });
+    }, [dispatch, ws.id]);
+
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
@@ -548,7 +552,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 repos={repos}
                                 onOpenGenerateDialog={handleOpenGenerateDialog}
                                 initialNavState={state.repoSubTabNavState?.[tasksNavStateKey]}
-                                onNavStateChange={(ns) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState: ns })}
+                                onNavStateChange={handleTasksNavStateChange}
                             />
                         ) : (
                             <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
