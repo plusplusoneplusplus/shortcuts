@@ -15,6 +15,18 @@ export interface PerRepoPrefsClient extends PerRepoPreferences {
     enabled?: boolean;
     charLimit?: number;
     writeFrequency?: 'low' | 'medium' | 'high';
+    autoPromote?: {
+      mode: 'off' | 'threshold' | 'cron' | 'cron+threshold';
+      cron?: string;
+      timezone?: string;
+      thresholdCount?: number;
+      minIntervalMs?: number;
+      gates?: {
+        minScore?: number;
+        minRecallCount?: number;
+        minUniqueQueries?: number;
+      };
+    };
   };
   /** Notes directory git tracking settings. */
   notesGit?: NotesGitConfig;

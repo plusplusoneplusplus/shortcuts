@@ -201,6 +201,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRepoMemoryRoutes(routes, dataDir, {
         store,
         queueManager: queueFacade,
+        scheduleManager,
     });
 
     registerModelRoutes(routes, modelMetadataStore, {

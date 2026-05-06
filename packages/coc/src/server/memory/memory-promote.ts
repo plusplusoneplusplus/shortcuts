@@ -23,6 +23,11 @@ export interface MemoryPromoteConfig {
         /** Optional model override for candidate normalization. */
         model?: string;
     };
+    lock?: {
+        waitTimeoutMs: number;
+        staleMs: number;
+        retryIntervalMs: number;
+    };
 }
 
 export const DEFAULT_PROMOTE_CONFIG: MemoryPromoteConfig = {
@@ -33,5 +38,10 @@ export const DEFAULT_PROMOTE_CONFIG: MemoryPromoteConfig = {
         enabled: false,
         timeoutMs: 60_000,
         model: undefined,
+    },
+    lock: {
+        waitTimeoutMs: 10_000,
+        staleMs: 60_000,
+        retryIntervalMs: 100,
     },
 };

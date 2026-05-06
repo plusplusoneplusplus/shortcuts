@@ -3,6 +3,17 @@ import type { JsonObject } from './common';
 export type MemoryBackend = 'file' | 'sqlite' | 'vector';
 export type MemoryLevel = 'system' | 'repo' | 'git-remote';
 export type MemoryPromoteTarget = 'memory' | 'system';
+export type AutoPromoteMode = 'off' | 'threshold' | 'cron' | 'cron+threshold';
+
+export interface AutoPromoteStatus {
+  mode: AutoPromoteMode;
+  nextRunAt: string | null;
+  lastAutoRunAt?: string;
+  lastTrigger?: 'auto-threshold' | 'auto-cron';
+  lastSkipReason?: string;
+  lastEnqueuedAt?: string;
+  lastTaskId?: string;
+}
 
 export interface MemoryConfig {
   storageDir: string;
@@ -25,6 +36,7 @@ export interface MemoryStats {
   promotionProcessId?: string;
   lastPromotedAt?: string | null;
   lastPromotionError?: string | null;
+  autoPromote?: AutoPromoteStatus;
   consolidationStatus?: 'idle' | 'queued' | 'running';
   consolidationTaskId?: string;
   consolidationProcessId?: string;

@@ -17,6 +17,7 @@ import {
     hashMemoryCandidateContent,
     normalizeMemoryCandidateContent,
     rankMemoryCandidates,
+    LOOSE_MEMORY_CANDIDATE_SELECTION_POLICY,
     scanMemoryContent,
     getLogger,
     LogCategory,
@@ -28,6 +29,9 @@ import {
 } from './memory-promote';
 import type { MemoryPromoteConfig } from './memory-promote';
 import { getRepoDataPath } from '../paths';
+import { acquireMemoryPromoteLock, type MemoryPromoteLockHandle } from './memory-promote-lock';
+import { isAutoTrigger, resolveAutoPromoteGates, writeAutoPromoteState } from './auto-promote';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 interface MemoryPromoteCounts {
     ranked: number;
@@ -66,6 +70,7 @@ export class MemoryPromoteExecutor {
         private readonly aiService: CopilotSDKService,
         private readonly dataDir: string,
         private readonly config: MemoryPromoteConfig = DEFAULT_PROMOTE_CONFIG,
+        private readonly getWsServer?: () => ProcessWebSocketServer | undefined,
     ) {}
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -75,15 +80,49 @@ export class MemoryPromoteExecutor {
         const { workspaceId, target } = payload;
 
         const candidateDbPath = this.resolveCandidatePath(workspaceId, target);
+        let lock: MemoryPromoteLockHandle | undefined;
 
         let candidateStore: MemoryCandidateStore | undefined;
         try {
+            lock = await acquireMemoryPromoteLock(this.resolveMemoryDir(workspaceId, target), this.config.lock ?? DEFAULT_PROMOTE_CONFIG.lock!);
+            if (!lock.acquired) {
+                const reason = lock.reason ?? 'lock-held';
+                logger.debug(LogCategory.AI, `[MemoryPromote] Skipped ${target}@${workspaceId}: ${reason}`);
+                if (isAutoTrigger(payload.trigger)) {
+                    writeAutoPromoteState(this.dataDir, workspaceId, {
+                        lastSkipReason: reason,
+                        lastTrigger: payload.trigger,
+                    });
+                }
+                this.getWsServer?.()?.broadcastProcessEvent({
+                    type: 'memory-promote:skipped',
+                    workspaceId,
+                    reason,
+                    details: { target, trigger: payload.trigger ?? 'manual' },
+                    timestamp: Date.now(),
+                });
+                return {
+                    success: true,
+                    result: createPromoteResult(`Memory promotion skipped; ${reason}`, {
+                        ranked: 0,
+                        promoted: 0,
+                        dropped: 0,
+                        ignored: 0,
+                        pending: 0,
+                    }, 0, []),
+                    durationMs: Date.now() - startTime,
+                };
+            }
+
             candidateStore = new MemoryCandidateStore({ dbPath: candidateDbPath });
 
             const candidates = await candidateStore.listPendingCandidates(this.config.batchSize);
             if (candidates.length === 0) {
                 logger.debug(LogCategory.AI, `[MemoryPromote] No pending candidates for ${target}@${workspaceId}`);
                 const preservedExistingEntries = await this.readExistingEntryCount(workspaceId, target);
+                if (isAutoTrigger(payload.trigger)) {
+                    this.recordAutoSkip(workspaceId, payload.trigger, 'no-pending-candidates', { target });
+                }
                 return {
                     success: true,
                     result: createPromoteResult('No pending candidates', {
@@ -98,10 +137,20 @@ export class MemoryPromoteExecutor {
             }
 
             logger.debug(LogCategory.AI, `[MemoryPromote] Found ${candidates.length} pending candidates for ${target}@${workspaceId}`);
-            const ranked = rankMemoryCandidates(candidates);
+            const ranked = rankMemoryCandidates(candidates, {
+                policy: isAutoTrigger(payload.trigger)
+                    ? resolveAutoPromoteGates(payload.gates)
+                    : LOOSE_MEMORY_CANDIDATE_SELECTION_POLICY,
+            });
             const selected = ranked.filter(candidate => candidate.selected);
             if (selected.length === 0) {
                 const preservedExistingEntries = await this.readExistingEntryCount(workspaceId, target);
+                if (isAutoTrigger(payload.trigger)) {
+                    this.recordAutoSkip(workspaceId, payload.trigger, 'no-qualifying-candidates', {
+                        target,
+                        ranked: ranked.length,
+                    });
+                }
                 return {
                     success: true,
                     result: createPromoteResult(
@@ -185,6 +234,21 @@ export class MemoryPromoteExecutor {
             );
 
             logger.debug(LogCategory.AI, `[MemoryPromote] Finalized ${target}@${workspaceId}: ${JSON.stringify(counts)}`);
+            if (isAutoTrigger(payload.trigger)) {
+                writeAutoPromoteState(this.dataDir, workspaceId, {
+                    lastAutoRunAt: new Date().toISOString(),
+                    lastTrigger: payload.trigger,
+                    lastSkipReason: counts.promoted === 0 ? 'no-qualifying-candidates' : undefined,
+                });
+            }
+            this.getWsServer?.()?.broadcastProcessEvent({
+                type: 'memory-promote:completed',
+                workspaceId,
+                trigger: payload.trigger ?? 'manual',
+                target,
+                counts: { ...counts },
+                timestamp: Date.now(),
+            });
 
             return {
                 success: true,
@@ -197,7 +261,12 @@ export class MemoryPromoteExecutor {
             return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: Date.now() - startTime };
         } finally {
             try { candidateStore?.close(); } catch { /* already closed */ }
+            try { lock?.release(); } catch { /* already released */ }
         }
+    }
+
+    private resolveMemoryDir(workspaceId: string, target: 'memory' | 'system'): string {
+        return path.dirname(this.resolveMemoryPath(workspaceId, target));
     }
 
     private resolveCandidatePath(workspaceId: string, target: 'memory' | 'system'): string {
@@ -218,6 +287,21 @@ export class MemoryPromoteExecutor {
         const memoryStore = new BoundedMemoryStore({ filePath: this.resolveMemoryPath(workspaceId, target) });
         await memoryStore.load();
         return memoryStore.read().length;
+    }
+
+    private recordAutoSkip(workspaceId: string, trigger: 'auto-threshold' | 'auto-cron', reason: string, details: Record<string, unknown>): void {
+        writeAutoPromoteState(this.dataDir, workspaceId, {
+            lastAutoRunAt: new Date().toISOString(),
+            lastTrigger: trigger,
+            lastSkipReason: reason,
+        });
+        this.getWsServer?.()?.broadcastProcessEvent({
+            type: 'memory-promote:skipped',
+            workspaceId,
+            reason,
+            details: { trigger, ...details },
+            timestamp: Date.now(),
+        });
     }
 }
 

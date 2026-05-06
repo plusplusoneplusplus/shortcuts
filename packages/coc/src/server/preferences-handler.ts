@@ -41,6 +41,21 @@ export interface LastModelsByMode {
     note?: string;
 }
 
+export type AutoPromoteMode = 'off' | 'threshold' | 'cron' | 'cron+threshold';
+
+export interface BoundedMemoryAutoPromoteConfig {
+    mode: AutoPromoteMode;
+    cron?: string;
+    timezone?: string;
+    thresholdCount?: number;
+    minIntervalMs?: number;
+    gates?: {
+        minScore?: number;
+        minRecallCount?: number;
+        minUniqueQueries?: number;
+    };
+}
+
 /** A single saved run-script template. */
 export interface ScriptTemplateEntry {
     id: string;
@@ -148,6 +163,8 @@ export interface PerRepoPreferences {
             /** Optional FTS5 BM25 upper bound. Lower scores are better. */
             maxBm25Score?: number;
         };
+        /** Opt-in automatic candidate promotion. Defaults to off. */
+        autoPromote?: BoundedMemoryAutoPromoteConfig;
     };
     /** Notes directory git tracking settings. */
     notesGit?: NotesGitConfig;
@@ -183,6 +200,26 @@ export interface PreferencesFile {
 
 /** Name of the preferences file within the data directory. */
 export const PREFERENCES_FILE_NAME = 'preferences.json';
+
+export interface RepoPreferencesChangedEvent {
+    workspaceId: string;
+    preferences: PerRepoPreferences;
+}
+
+const repoPreferenceListeners = new Set<(event: RepoPreferencesChangedEvent) => void>();
+
+export function onRepoPreferencesChanged(listener: (event: RepoPreferencesChangedEvent) => void): () => void {
+    repoPreferenceListeners.add(listener);
+    return () => {
+        repoPreferenceListeners.delete(listener);
+    };
+}
+
+function emitRepoPreferencesChanged(event: RepoPreferencesChangedEvent): void {
+    for (const listener of repoPreferenceListeners) {
+        try { listener(event); } catch { /* preference listeners are non-fatal */ }
+    }
+}
 
 // ============================================================================
 // Validation
@@ -276,6 +313,49 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     }
 
     return result;
+}
+
+function validateAutoPromoteConfig(raw: unknown): BoundedMemoryAutoPromoteConfig {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return { mode: 'off' };
+    }
+    const obj = raw as Record<string, unknown>;
+    const mode = (
+        obj.mode === 'threshold'
+        || obj.mode === 'cron'
+        || obj.mode === 'cron+threshold'
+        || obj.mode === 'off'
+    ) ? obj.mode : 'off';
+    const validated: BoundedMemoryAutoPromoteConfig = { mode };
+    if (typeof obj.cron === 'string' && obj.cron.trim()) {
+        validated.cron = obj.cron.trim();
+    }
+    if (typeof obj.timezone === 'string' && obj.timezone.trim()) {
+        validated.timezone = obj.timezone.trim();
+    }
+    if (typeof obj.thresholdCount === 'number' && Number.isInteger(obj.thresholdCount) && obj.thresholdCount > 0) {
+        validated.thresholdCount = obj.thresholdCount;
+    }
+    if (typeof obj.minIntervalMs === 'number' && Number.isInteger(obj.minIntervalMs) && obj.minIntervalMs >= 0) {
+        validated.minIntervalMs = obj.minIntervalMs;
+    }
+    if (typeof obj.gates === 'object' && obj.gates !== null && !Array.isArray(obj.gates)) {
+        const rawGates = obj.gates as Record<string, unknown>;
+        const gates: NonNullable<BoundedMemoryAutoPromoteConfig['gates']> = {};
+        if (typeof rawGates.minScore === 'number' && Number.isFinite(rawGates.minScore) && rawGates.minScore >= 0 && rawGates.minScore <= 1) {
+            gates.minScore = rawGates.minScore;
+        }
+        if (typeof rawGates.minRecallCount === 'number' && Number.isInteger(rawGates.minRecallCount) && rawGates.minRecallCount > 0) {
+            gates.minRecallCount = rawGates.minRecallCount;
+        }
+        if (typeof rawGates.minUniqueQueries === 'number' && Number.isInteger(rawGates.minUniqueQueries) && rawGates.minUniqueQueries > 0) {
+            gates.minUniqueQueries = rawGates.minUniqueQueries;
+        }
+        if (Object.keys(gates).length > 0) {
+            validated.gates = gates;
+        }
+    }
+    return validated;
 }
 
 /** Validate and sanitize per-repo preferences. Unknown keys are silently dropped. */
@@ -434,6 +514,9 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                     validated.recall = validatedRecall;
                 }
             }
+            if (typeof bm.autoPromote === 'object' && bm.autoPromote !== null) {
+                validated.autoPromote = validateAutoPromoteConfig(bm.autoPromote);
+            }
             result.boundedMemory = validated;
         }
     }
@@ -575,6 +658,7 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
     const tmpPath = filePath + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpPath, filePath);
+    emitRepoPreferencesChanged({ workspaceId, preferences: data });
 }
 
 // ============================================================================
@@ -717,6 +801,19 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing typeFilter value.
             if (patch.activityFilters && existingRepo.activityFilters) {
                 merged.activityFilters = { ...existingRepo.activityFilters, ...patch.activityFilters };
+            }
+
+            if (patch.boundedMemory && existingRepo.boundedMemory) {
+                merged.boundedMemory = {
+                    ...existingRepo.boundedMemory,
+                    ...patch.boundedMemory,
+                    ...(patch.boundedMemory.recall && existingRepo.boundedMemory.recall
+                        ? { recall: { ...existingRepo.boundedMemory.recall, ...patch.boundedMemory.recall } }
+                        : {}),
+                    ...(patch.boundedMemory.autoPromote && existingRepo.boundedMemory.autoPromote
+                        ? { autoPromote: { ...existingRepo.boundedMemory.autoPromote, ...patch.boundedMemory.autoPromote } }
+                        : {}),
+                };
             }
 
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear

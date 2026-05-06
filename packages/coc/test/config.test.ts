@@ -770,6 +770,8 @@ timeout: 300
                 '  enabled: true',
                 'servers:',
                 '  enabled: true',
+                'features:',
+                '  autoMemoryPromotion: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',

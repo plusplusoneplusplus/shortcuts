@@ -219,6 +219,40 @@ export class ScheduleManager extends EventEmitter {
     }
 
     /**
+     * Create or replace a deterministic user schedule.
+     * Used for server-managed schedules whose IDs must survive restart.
+     */
+    setSchedule(repoId: string, entry: ScheduleEntry): ScheduleEntry {
+        parseCron(entry.cron);
+
+        const existing = this.schedules.get(repoId)?.get(entry.id);
+        const schedule: ScheduleEntry = {
+            ...entry,
+            createdAt: existing?.createdAt ?? entry.createdAt ?? new Date().toISOString(),
+        };
+
+        if (!this.schedules.has(repoId)) {
+            this.schedules.set(repoId, new Map());
+        }
+        this.schedules.get(repoId)!.set(schedule.id, schedule);
+
+        this.cancelTimer(schedule.id);
+        this.persist(repoId);
+        if (schedule.status === 'active') {
+            this.scheduleNextRun(repoId, schedule);
+        }
+
+        this.emit('change', {
+            type: existing ? 'schedule-updated' : 'schedule-added',
+            repoId,
+            scheduleId: schedule.id,
+            schedule,
+        } as ScheduleChangeEvent);
+
+        return schedule;
+    }
+
+    /**
      * Update an existing schedule.
      * For repo-sourced schedules, field changes are written back to the YAML file.
      */
@@ -693,6 +727,30 @@ export class ScheduleManager extends EventEmitter {
                         displayName: `[Schedule:script] ${schedule.name}`,
                         repoId,
                     });
+                    run.taskId = taskId;
+                    run.processId = toQueueProcessId(taskId);
+                } else if (schedule.targetType === 'memory-promote') {
+                    const target = schedule.params?.target === 'system' ? 'system' : 'memory';
+                    const existing = this.queueManager.getAll().find(task =>
+                        task.type === TaskDefs.memoryPromote.kind
+                        && (task.payload as any)?.workspaceId === repoId
+                        && (task.payload as any)?.target === target
+                        && (task.status === 'queued' || task.status === 'running')
+                    );
+                    const taskId = existing?.id ?? this.queueManager.enqueue({
+                            type: TaskDefs.memoryPromote.kind,
+                            priority: 'low',
+                            payload: {
+                                kind: TaskDefs.memoryPromote.kind,
+                                workspaceId: repoId,
+                                target,
+                                trigger: 'auto-cron',
+                                ...(schedule.params?.gates ? { gates: JSON.parse(schedule.params.gates) } : {}),
+                            },
+                            config: { model: schedule.model || undefined },
+                            displayName: `[Schedule] ${schedule.name}`,
+                            repoId,
+                        });
                     run.taskId = taskId;
                     run.processId = toQueueProcessId(taskId);
                 }

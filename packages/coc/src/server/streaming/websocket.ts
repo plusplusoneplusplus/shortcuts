@@ -129,6 +129,9 @@ export type ServerMessage =
     | { type: 'work-item-updated'; workspaceId: string; item: any }
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }
     | { type: 'work-item-pr-created'; workspaceId: string; workItemId: string; prUrl: string; prNumber: number; iteration: number }
+    | { type: 'memory-promote:auto-enqueued'; workspaceId: string; trigger: string; taskId: string; timestamp: number }
+    | { type: 'memory-promote:skipped'; workspaceId: string; reason: string; details?: Record<string, unknown>; timestamp: number }
+    | { type: 'memory-promote:completed'; workspaceId: string; trigger: string; target: string; counts: Record<string, unknown>; timestamp: number }
     | { type: 'turn-deleted'; processId: string; turnIndex: number; deletedAt: string | null }
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
     | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean };
@@ -436,7 +439,10 @@ export class ProcessWebSocketServer {
             message.type === 'diff-comment-updated' ||
             message.type === 'work-item-added' ||
             message.type === 'work-item-updated' ||
-            message.type === 'work-item-removed'
+            message.type === 'work-item-removed' ||
+            message.type === 'memory-promote:auto-enqueued' ||
+            message.type === 'memory-promote:skipped' ||
+            message.type === 'memory-promote:completed'
         ) {
             return message.workspaceId;
         }

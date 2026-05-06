@@ -16,6 +16,8 @@ import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { getRepoDataPath } from '../paths';
 import { TaskDefs } from '../tasks/task-types';
+import type { ScheduleManager } from '../schedule/schedule-manager';
+import { getAutoPromoteStatus } from './auto-promote';
 
 // ============================================================================
 // Types
@@ -46,6 +48,8 @@ export interface RepoMemoryRouteOptions {
     store: ProcessStore;
     /** Task queue manager for promotion-task status and manual trigger. */
     queueManager?: TaskQueueManager;
+    /** Schedule manager for automatic promotion schedule status. */
+    scheduleManager?: ScheduleManager;
 }
 
 // ============================================================================
@@ -126,7 +130,7 @@ export function registerRepoMemoryRoutes(
     dataDir: string,
     options: RepoMemoryRouteOptions,
 ): void {
-    const { store, queueManager } = options;
+    const { store, queueManager, scheduleManager } = options;
 
     /**
      * Find the most recent memory-promote task for a workspace from the queue.
@@ -239,6 +243,7 @@ export function registerRepoMemoryRoutes(
                     consolidationProcessId: promotionInfo.processId,
                     lastAggregatedAt: promotionInfo.lastPromotedAt ?? null,
                     lastAggregateError: promotionInfo.lastPromotionError ?? null,
+                    autoPromote: getAutoPromoteStatus(dataDir, workspaceId, scheduleManager),
                 });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));

@@ -21,6 +21,23 @@ export interface PerRepoPreferences {
   linkedRepoIds?: string[];
   disabledLlmTools?: string[];
   filesViewMode?: 'flat' | 'tree';
+  boundedMemory?: {
+    enabled?: boolean;
+    charLimit?: number;
+    writeFrequency?: 'low' | 'medium' | 'high';
+    autoPromote?: {
+      mode: 'off' | 'threshold' | 'cron' | 'cron+threshold';
+      cron?: string;
+      timezone?: string;
+      thresholdCount?: number;
+      minIntervalMs?: number;
+      gates?: {
+        minScore?: number;
+        minRecallCount?: number;
+        minUniqueQueries?: number;
+      };
+    };
+  };
   [key: string]: unknown;
 }
 

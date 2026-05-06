@@ -38,6 +38,7 @@ export type {
     MemoryToolCaptureContext,
     MemoryToolCaptureResult,
     MemoryWriteFrequency,
+    MemoryCandidateCapturedCallback,
 } from './memory-tool';
 
 // Tool call cache
@@ -87,6 +88,7 @@ export type {
 export {
     DEFAULT_MEMORY_CANDIDATE_RANKING_WEIGHTS,
     DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY,
+    LOOSE_MEMORY_CANDIDATE_SELECTION_POLICY,
     rankMemoryCandidates,
 } from './memory-candidate-ranking';
 export type {

@@ -20,7 +20,13 @@ export interface MemoryCandidateRankingWeights extends MemoryCandidateScoreCompo
 
 export interface MemoryCandidateSelectionPolicy {
     minScore: number;
+    /** Minimum repeated recall/signal count required for standard promotion. */
+    minRecallCount: number;
+    /** Minimum cross-query/process/day diversity required for standard promotion. */
+    minUniqueQueries: number;
+    /** @deprecated Use minRecallCount. */
     minSignalCount: number;
+    /** @deprecated Use minUniqueQueries. */
     minDiversity: number;
     recencyHalfLifeDays: number;
     minExplicitRelevance: number;
@@ -53,10 +59,20 @@ export const DEFAULT_MEMORY_CANDIDATE_RANKING_WEIGHTS: MemoryCandidateRankingWei
 
 export const DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY: MemoryCandidateSelectionPolicy = Object.freeze({
     minScore: 0.75,
-    minSignalCount: 2,
-    minDiversity: 1,
+    minRecallCount: 3,
+    minUniqueQueries: 2,
+    minSignalCount: 3,
+    minDiversity: 2,
     recencyHalfLifeDays: 14,
     minExplicitRelevance: 0.5,
+});
+
+export const LOOSE_MEMORY_CANDIDATE_SELECTION_POLICY: MemoryCandidateSelectionPolicy = Object.freeze({
+    ...DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY,
+    minRecallCount: 2,
+    minUniqueQueries: 1,
+    minSignalCount: 2,
+    minDiversity: 1,
 });
 
 const MAX_FREQUENCY_SIGNALS = 10;
@@ -106,10 +122,10 @@ function rankMemoryCandidate(
     );
 
     const standardSelected = score >= policy.minScore
-        && candidate.signalCount >= policy.minSignalCount
-        && diversitySignalCount >= policy.minDiversity;
+        && candidate.signalCount >= policy.minRecallCount
+        && diversitySignalCount >= policy.minUniqueQueries;
     const explicitSelected = candidate.explicitMemoryIntent
-        && diversitySignalCount >= Math.min(policy.minDiversity, 1);
+        && diversitySignalCount >= Math.min(policy.minUniqueQueries, 1);
 
     return {
         id: candidate.id,
@@ -148,15 +164,22 @@ function normalizeWeights(overrides: Partial<MemoryCandidateRankingWeights> | un
 }
 
 function normalizePolicy(overrides: Partial<MemoryCandidateSelectionPolicy> | undefined): MemoryCandidateSelectionPolicy {
-    const policy = { ...DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY, ...overrides };
+    const raw = { ...DEFAULT_MEMORY_CANDIDATE_SELECTION_POLICY, ...overrides };
+    const policy: MemoryCandidateSelectionPolicy = {
+        ...raw,
+        minRecallCount: overrides?.minRecallCount ?? overrides?.minSignalCount ?? raw.minRecallCount,
+        minUniqueQueries: overrides?.minUniqueQueries ?? overrides?.minDiversity ?? raw.minUniqueQueries,
+        minSignalCount: overrides?.minRecallCount ?? overrides?.minSignalCount ?? raw.minRecallCount,
+        minDiversity: overrides?.minUniqueQueries ?? overrides?.minDiversity ?? raw.minUniqueQueries,
+    };
     if (!Number.isFinite(policy.minScore) || policy.minScore < 0 || policy.minScore > 1) {
         throw new Error('Memory candidate minScore must be a finite number between 0 and 1.');
     }
-    if (!Number.isInteger(policy.minSignalCount) || policy.minSignalCount < 1) {
-        throw new Error('Memory candidate minSignalCount must be a positive integer.');
+    if (!Number.isInteger(policy.minRecallCount) || policy.minRecallCount < 1) {
+        throw new Error('Memory candidate minRecallCount must be a positive integer.');
     }
-    if (!Number.isInteger(policy.minDiversity) || policy.minDiversity < 1) {
-        throw new Error('Memory candidate minDiversity must be a positive integer.');
+    if (!Number.isInteger(policy.minUniqueQueries) || policy.minUniqueQueries < 1) {
+        throw new Error('Memory candidate minUniqueQueries must be a positive integer.');
     }
     if (!Number.isFinite(policy.recencyHalfLifeDays) || policy.recencyHalfLifeDays <= 0) {
         throw new Error('Memory candidate recencyHalfLifeDays must be greater than zero.');

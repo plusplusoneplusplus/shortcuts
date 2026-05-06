@@ -108,7 +108,7 @@ export class ExecutorRegistry {
             options.getMemoryStore ?? (() => undefined),
         );
         this.memoryPromoteExecutor = options.dataDir
-            ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion)
+            ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion, options.getWsServer)
             : undefined;
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview);
     }

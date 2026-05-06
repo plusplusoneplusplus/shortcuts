@@ -13,6 +13,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { memoryApi } from './memoryApi';
+import type { MemoryStats } from './memoryApi';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useModels } from '../../hooks/useModels';
 
@@ -26,6 +27,7 @@ interface PromotePanelProps {
     promotionProcessId?: string;
     /** Active taskId from server stats (for cancellation). */
     promotionTaskId?: string;
+    autoPromote?: MemoryStats['autoPromote'];
     onClose: () => void;
     onDone: () => void;
 }
@@ -38,6 +40,7 @@ export function PromotePanel({
     promotionStatus,
     promotionProcessId,
     promotionTaskId,
+    autoPromote,
     onClose,
     onDone,
 }: PromotePanelProps) {
@@ -281,6 +284,20 @@ export function PromotePanel({
                             </div>
                         </div>
                         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2 text-[11px] text-[#616161] dark:text-[#999]">
+                            <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1">
+                                <span className="block text-[#848484]">Last trigger</span>
+                                {autoPromote?.lastTrigger ?? 'manual / none'}
+                            </div>
+                            <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1">
+                                <span className="block text-[#848484]">Next auto run</span>
+                                {autoPromote?.nextRunAt ? new Date(autoPromote.nextRunAt).toLocaleString() : 'not scheduled'}
+                            </div>
+                            <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1">
+                                <span className="block text-[#848484]">Last skip</span>
+                                {autoPromote?.lastSkipReason ?? 'none'}
+                            </div>
+                        </div>
                     </>
                 )}
 

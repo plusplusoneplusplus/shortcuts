@@ -13,7 +13,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { MemoryToolCaptureContext, MemoryWriteFrequency, Tool } from '@plusplusoneplusplus/forge';
+import type { MemoryCandidateCapturedCallback, MemoryToolCaptureContext, MemoryWriteFrequency, Tool } from '@plusplusoneplusplus/forge';
 import {
     BoundedMemoryStore,
     createMemoryTool,
@@ -21,6 +21,8 @@ import {
     MemoryCandidateStore,
     MemoryPromptBuilder,
     MemoryRecallIndex,
+    getLogger,
+    LogCategory,
 } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
@@ -56,6 +58,12 @@ const EMPTY_ADDON: BoundedMemoryAddon = Object.freeze({
     suffix: '',
     dispose: () => { },
 });
+
+let candidateCapturedCallback: MemoryCandidateCapturedCallback | undefined;
+
+export function setMemoryCandidateCapturedCallback(callback: MemoryCandidateCapturedCallback | undefined): void {
+    candidateCapturedCallback = callback;
+}
 
 // ============================================================================
 // Builder
@@ -148,6 +156,18 @@ export async function buildBoundedMemoryAddon(
                     ...captureContext,
                     workspaceId,
                 },
+                onCandidateCaptured: candidateCapturedCallback
+                    ? async (event) => {
+                        try {
+                            await candidateCapturedCallback?.(event);
+                        } catch (error) {
+                            getLogger().debug(
+                                LogCategory.AI,
+                                `[Memory] Auto-promotion trigger failed: ${error instanceof Error ? error.message : String(error)}`,
+                            );
+                        }
+                    }
+                    : undefined,
             };
         }
 

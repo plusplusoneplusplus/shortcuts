@@ -14,6 +14,7 @@ import { ToastContext } from '../../contexts/ToastContext';
 import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../hooks/preferences/preferencesApi';
 import { PipelineStatusStrip } from './PipelineStatusStrip';
 import { PromotePanel } from './PromotePanel';
+import { AutoPromoteSection } from './AutoPromoteSection';
 
 interface BoundedMemoryTabProps {
     repoId: string;
@@ -309,6 +310,14 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
 
             {/* Pipeline status strip */}
             {enabled && <PipelineStatusStrip stats={overviewStats} />}
+            {enabled && (
+                <AutoPromoteSection
+                    repoId={repoId}
+                    enabled={enabled}
+                    stats={overviewStats}
+                    onSaved={fetchOverview}
+                />
+            )}
 
             {/* Toolbar */}
             <div className="flex items-center gap-2 mb-3 flex-wrap mt-3" data-testid="bounded-toolbar">
@@ -477,6 +486,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                     promotionStatus={overviewStats?.promotionStatus ?? overviewStats?.consolidationStatus}
                     promotionProcessId={overviewStats?.promotionProcessId ?? overviewStats?.consolidationProcessId}
                     promotionTaskId={overviewStats?.promotionTaskId ?? overviewStats?.consolidationTaskId}
+                    autoPromote={overviewStats?.autoPromote}
                     onClose={handlePromoteClose}
                     onDone={handlePromoteDone}
                 />

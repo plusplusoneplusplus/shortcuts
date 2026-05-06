@@ -15,6 +15,7 @@ import { defineTool, Tool } from '../copilot-sdk-wrapper/types';
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { scanMemoryContent } from './memory-security-scanner';
 import type { MemoryCandidateStore } from './memory-candidate-store';
+import type { MemoryCandidate } from './memory-candidate-types';
 
 // ---------------------------------------------------------------------------
 // Option & argument interfaces
@@ -71,6 +72,14 @@ export type MemoryToolCandidateStores = {
     repo?: MemoryCandidateStore;
     system?: MemoryCandidateStore;
 };
+
+export type MemoryCandidateCapturedCallback = (
+    event: {
+        target: 'repo' | 'system';
+        candidate: MemoryCandidate;
+        context: MemoryToolCaptureContext;
+    },
+) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Tool description — behavioral guidance embedded in the schema (Hermes pattern)
@@ -185,6 +194,7 @@ export function createMemoryTool(
     captureConfig?: {
         candidateStores?: MemoryToolCandidateStores;
         context: MemoryToolCaptureContext;
+        onCandidateCaptured?: MemoryCandidateCapturedCallback;
     },
 ): { tool: Tool<MemoryToolArgs>; getWrittenFacts: () => string[] } {
     const writtenFacts: string[] = [];
@@ -284,6 +294,7 @@ async function handleCaptureMode(
     captureConfig: {
         candidateStores?: MemoryToolCandidateStores;
         context: MemoryToolCaptureContext;
+        onCandidateCaptured?: MemoryCandidateCapturedCallback;
     } | undefined,
     options: MemoryToolOptions,
     writtenFacts: string[],
@@ -338,6 +349,11 @@ async function handleCaptureMode(
         });
 
         writtenFacts.push(trimmed);
+        await captureConfig.onCandidateCaptured?.({
+            target: args.target,
+            candidate,
+            context: captureConfig.context,
+        });
 
         return {
             success: true,

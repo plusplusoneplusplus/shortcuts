@@ -46,6 +46,8 @@ import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-mi
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
 import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
+import { AutoPromoteScheduler } from './memory/auto-promote';
+import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
 
 // ============================================================================
 // Close Handler Builder
@@ -69,6 +71,7 @@ interface CloseHandlerDeps {
     terminalWsServer?: { closeAll(): void };
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
+    autoPromoteScheduler?: { dispose(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -90,6 +93,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.scheduleInfraDispose();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
+        deps.autoPromoteScheduler?.dispose();
+        setMemoryCandidateCapturedCallback(undefined);
 
         let drainOutcome: 'completed' | 'timeout' | undefined;
         if (closeOptions?.drain) {
@@ -248,6 +253,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
+    const autoPromoteScheduler = new AutoPromoteScheduler({
+        dataDir,
+        queueManager: queueFacade,
+        scheduleManager,
+        enabled: resolvedConfig.features.autoMemoryPromotion,
+        wsServer,
+    });
+    autoPromoteScheduler.start(allWorkspaces.map(workspace => workspace.id));
+    setMemoryCandidateCapturedCallback(event => autoPromoteScheduler.handleCandidateCaptured(event));
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
@@ -278,6 +292,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
+            autoPromoteScheduler,
             activeSockets, server,
         }),
     };

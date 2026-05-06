@@ -124,6 +124,17 @@ describe('MemoryPromoteExecutor', () => {
         };
     }
 
+    function fastLockConfig(staleMs = DEFAULT_PROMOTE_CONFIG.lock!.staleMs) {
+        return {
+            ...DEFAULT_PROMOTE_CONFIG,
+            lock: {
+                waitTimeoutMs: 0,
+                staleMs,
+                retryIntervalMs: 1,
+            },
+        };
+    }
+
     it('retains pending candidates without invoking AI or rewriting bounded MEMORY.md', async () => {
         const wsId = 'ws-preserve';
         const originalMemory = [
@@ -286,6 +297,52 @@ describe('MemoryPromoteExecutor', () => {
 
         expect(typeof result.durationMs).toBe('number');
         expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('skips promotion when a fresh promote.lock is already held', async () => {
+        const wsId = 'ws-lock-held';
+        const memDir = setupRepoDir(wsId);
+        fs.writeFileSync(path.join(memDir, 'promote.lock'), 'held', 'utf-8');
+        seedRawRecords(wsId, ['User explicitly prefers lock-safe promotion']);
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, fastLockConfig());
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({
+            message: 'Memory promotion skipped; lock-held',
+            promoted: 0,
+        });
+        expect(fs.existsSync(path.join(memDir, 'promote.lock'))).toBe(true);
+        const stats = await readRepoStats(wsId);
+        expect(stats.pending).toBe(1);
+    });
+
+    it('recovers a stale promote.lock and completes promotion', async () => {
+        const wsId = 'ws-stale-lock';
+        const memDir = setupRepoDir(wsId);
+        const lockPath = path.join(memDir, 'promote.lock');
+        fs.writeFileSync(lockPath, 'stale', 'utf-8');
+        const oldTime = new Date(Date.now() - 10_000);
+        fs.utimesSync(lockPath, oldTime, oldTime);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers stale lock recovery',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+        });
+        candidateStore.close();
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir, fastLockConfig(1));
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({ promoted: 1 });
+        expect(readBoundedMemoryRaw(wsId)).toBe('User explicitly prefers stale lock recovery');
+        expect(fs.existsSync(lockPath)).toBe(false);
     });
 
     it('promotes selected candidates by appending after existing memory without invoking AI', async () => {

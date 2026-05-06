@@ -17,7 +17,7 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 // Target Type
 // ============================================================================
 
-export type TargetType = 'prompt' | 'script';
+export type TargetType = 'prompt' | 'script' | 'memory-promote';
 
 // ============================================================================
 // Task Type Definitions (Single Source of Truth)
@@ -235,8 +235,14 @@ export interface MemoryPromotePayload {
     workspaceId: string;
     target: 'memory' | 'system';
     model?: string;
-    /** Why this task was enqueued (e.g. 'manual', 'schedule'). */
-    trigger?: string;
+    /** Why this task was enqueued. */
+    trigger?: 'manual' | 'auto-threshold' | 'auto-cron';
+    /** Optional promotion gates for auto-triggered runs. */
+    gates?: {
+        minScore?: number;
+        minRecallCount?: number;
+        minUniqueQueries?: number;
+    };
 }
 
 export interface BackgroundReviewPayload {

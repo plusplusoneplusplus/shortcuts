@@ -108,6 +108,10 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    /** Development feature flags. */
+    features?: {
+        autoMemoryPromotion?: boolean;
+    };
     /** Memory promotion configuration */
     memoryPromotion?: {
         batchSize?: number;
@@ -252,6 +256,10 @@ export interface ResolvedCLIConfig {
     servers: {
         enabled: boolean;
     };
+    /** Development feature flags. */
+    features: {
+        autoMemoryPromotion: boolean;
+    };
     /** Memory promotion configuration */
     memoryPromotion: {
         batchSize: number;
@@ -357,6 +365,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     servers: {
         enabled: false,
     },
+    features: {
+        autoMemoryPromotion: false,
+    },
     memoryPromotion: {
         batchSize: 50,
         timeoutMs: 90_000,
@@ -407,6 +418,7 @@ export const CONFIG_SOURCE_KEYS = [
     'workflows.enabled',
     'pullRequests.enabled',
     'servers.enabled',
+    'features.autoMemoryPromotion',
     'memoryPromotion.batchSize',
     'memoryPromotion.timeoutMs',
     'memoryPromotion.model',
@@ -577,6 +589,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         servers: {
             enabled: override.servers?.enabled ?? base.servers.enabled,
         },
+        features: {
+            autoMemoryPromotion: override.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? DEFAULT_CONFIG.features.autoMemoryPromotion,
+        },
         memoryPromotion: {
             batchSize: override.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
             timeoutMs: override.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
@@ -686,6 +701,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('servers.')) {
         const subKey = key.slice('servers.'.length) as keyof NonNullable<CLIConfig['servers']>;
         return fileConfig.servers?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('features.')) {
+        const subKey = key.slice('features.'.length) as keyof NonNullable<CLIConfig['features']>;
+        return fileConfig.features?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     if (key.startsWith('memoryPromotion.aiNormalization.')) {
