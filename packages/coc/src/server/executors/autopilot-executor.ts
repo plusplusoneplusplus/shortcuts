@@ -19,18 +19,11 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import {
-    buildFollowUpSuggestionsAddon,
-    buildSearchConversationsAddon,
-    buildCreateWorkItemAddon,
-    buildTavilyWebSearchAddon,
-    applyLlmToolPreferences,
-} from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
-import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { buildChatToolBundle } from './chat-tool-builder';
 
 // ============================================================================
 // AutopilotExecutor
@@ -55,30 +48,18 @@ export class AutopilotExecutor extends ChatBaseExecutor {
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
 
-        const followUp = buildFollowUpSuggestionsAddon(
-            this.followUpSuggestions.enabled,
-            this.followUpSuggestions.count,
-        );
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
-        const createWorkItem = buildCreateWorkItemAddon(
-            this.dataDir,
-            payload.workspaceId,
-            this.getWsServerFn
+        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
+        const { tools, suffix } = buildChatToolBundle({
+            dataDir: this.dataDir,
+            store: this.store,
+            workspaceId: payload.workspaceId,
+            processId: toQueueProcessId(task.id),
+            followUpSuggestions: this.followUpSuggestions,
+            broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
-        );
-        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
-
-        const disabledLlmTools = this.dataDir && payload.workspaceId
-            ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)
-            : undefined;
-
-        const { tools, suffix } = applyLlmToolPreferences(
-            [followUp, searchConversations, createWorkItem, tavilySearch, boundedMemory],
-            disabledLlmTools,
-        );
+            boundedMemory,
+        });
 
         return {
             agentMode: 'autopilot' as AgentMode,

@@ -31,9 +31,7 @@ import {
 import {
     buildModeSystemMessage,
     buildConversationHistoryContext,
-    buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
-    applyLlmToolPreferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
@@ -41,7 +39,8 @@ import { emitMessageSteering } from '../streaming/sse-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';
-import { readEffectiveDisabledLlmTools } from '../preferences-handler';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
+import { buildChatToolBundle } from './chat-tool-builder';
 // ============================================================================
 // Types
 // ============================================================================
@@ -60,6 +59,7 @@ function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
 export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
     /** Fire-and-forget title generation callback (optional) */
     onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
+    getWsServer?: () => ProcessWebSocketServer | undefined;
 }
 
 // ============================================================================
@@ -68,10 +68,12 @@ export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
 
 export class FollowUpExecutor extends ChatBaseExecutor {
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
+    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
 
     constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
         this.onTitleNeeded = options.onTitleNeeded;
+        this.getWsServerFn = options.getWsServer;
     }
 
     protected async buildModeOptions(
@@ -232,14 +234,17 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
 
-            const followUp = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const disabledLlmTools = this.dataDir && wsId
-                ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
-                : undefined;
-            const { tools: filteredTools, suffix: combinedSuffix } = applyLlmToolPreferences(
-                [followUp, boundedMemory],
-                disabledLlmTools,
-            );
+            const { tools: filteredTools, suffix: combinedSuffix } = buildChatToolBundle({
+                dataDir: this.dataDir,
+                store: this.store,
+                workspaceId: wsId,
+                processId,
+                followUpSuggestions: this.followUpSuggestions,
+                broadcastWorkItem: this.getWsServerFn
+                    ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                    : undefined,
+                boundedMemory,
+            });
             const followUpMessage = prependSelectedSkillsDirective(
                 combinedSuffix ? `${message}${combinedSuffix}` : message,
                 selectedSkillNames,

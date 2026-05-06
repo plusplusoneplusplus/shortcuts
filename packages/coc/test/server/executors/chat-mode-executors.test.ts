@@ -25,6 +25,7 @@ import { AutopilotExecutor } from '../../../src/server/executors/autopilot-execu
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 
 // ============================================================================
 // Mocks
@@ -739,6 +740,30 @@ describe('create_work_item / create_bug tool wiring', () => {
             expect(call.prompt).toContain('create-work-item');
             expect(call.prompt).toContain('create-bug');
             expect(call.prompt).toContain('update-work-item');
+        }
+    });
+
+    it('all three initial executors include tavily_web_search when explicitly enabled', async () => {
+        writeRepoPreferences(dataDir, 'ws-123', { disabledLlmTools: [] });
+
+        for (const { mode, Ctor, id } of [
+            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'tavily-ask' },
+            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'tavily-auto' },
+            { mode: 'plan' as const, Ctor: PlanExecutor, id: 'tavily-plan' },
+        ]) {
+            sdkMocks.resetAll();
+            sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+            sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
+
+            const executor = new Ctor(store, makeOptions(store), dataDir);
+            const task = makeTaskWithWorkspace(mode, id);
+
+            await executor.execute(task, 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).toContain('tavily_web_search');
+            expect(call.prompt).toContain('tavily_web_search');
         }
     });
 

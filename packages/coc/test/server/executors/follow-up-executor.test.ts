@@ -51,6 +51,7 @@ const mockApplyLlmToolPreferences = vi.fn().mockImplementation((addons: Array<{ 
     }
     return { tools, suffix };
 });
+const mockBuildChatToolBundle = vi.fn().mockReturnValue({ tools: [], suffix: '' });
 
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
@@ -77,6 +78,10 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
         selectedSkills && selectedSkills.length > 0
             ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
             : prompt,
+}));
+
+vi.mock('../../../src/server/executors/chat-tool-builder', () => ({
+    buildChatToolBundle: (...args: any[]) => mockBuildChatToolBundle(...args),
 }));
 
 const mockEmitMessageSteering = vi.fn();
@@ -145,6 +150,7 @@ describe('FollowUpExecutor', () => {
         sdkMocks.resetAll();
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockApplyLlmToolPreferences.mockClear();
+        mockBuildChatToolBundle.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
@@ -494,9 +500,10 @@ describe('FollowUpExecutor', () => {
     // Regression: suggest_follow_ups tool must be available on every turn
     // -------------------------------------------------------------------------
 
-    it('provides suggest_follow_ups tool on follow-up turns (not only first turn)', async () => {
+    it('uses the shared chat tool bundle on follow-up turns', async () => {
         const proc = makeProcess({
             id: 'proc-suggest',
+            metadata: { type: 'chat', workspaceId: 'ws-id' },
             conversationTurns: [
                 { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
                 { role: 'assistant', content: 'Hi there', timestamp: new Date(), turnIndex: 1, timeline: [] },
@@ -509,9 +516,33 @@ describe('FollowUpExecutor', () => {
         });
         await executor.executeFollowUp('proc-suggest', 'another question');
 
-        // buildFollowUpSuggestionsAddon must be called with enabled=true even
-        // when there are already assistant turns in the conversation.
-        expect(mockBuildFollowUpSuggestionsAddon).toHaveBeenCalledWith(true, 3);
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
+            dataDir: undefined,
+            store,
+            workspaceId: 'ws-id',
+            processId: 'proc-suggest',
+            followUpSuggestions: { enabled: true, count: 3 },
+        }));
+    });
+
+    it('passes shared chat tools and suffix to sendMessage on follow-up turns', async () => {
+        mockBuildChatToolBundle.mockReturnValue({
+            tools: [{ name: 'tavily_web_search' }],
+            suffix: '\n\nTavily suffix',
+        });
+        const proc = makeProcess({
+            id: 'proc-shared-tools',
+            metadata: { type: 'chat', workspaceId: 'ws-tools' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-shared-tools', 'another question');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.tools.map((tool: any) => tool.name)).toContain('tavily_web_search');
+        expect(callArg.prompt).toContain('another question');
+        expect(callArg.prompt).toContain('Tavily suffix');
     });
 
     // -------------------------------------------------------------------------

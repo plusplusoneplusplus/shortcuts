@@ -1,0 +1,106 @@
+import type { ProcessStore, Tool } from '@plusplusoneplusplus/forge';
+import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
+import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
+import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import {
+    applyLlmToolPreferences,
+    buildAskUserAddon,
+    buildCreateWorkItemAddon,
+    buildFollowUpSuggestionsAddon,
+    buildSearchConversationsAddon,
+    buildTavilyWebSearchAddon,
+} from './prompt-builder';
+
+type ToolAddon = { tools: Tool<any>[]; suffix: string };
+type AskUserAddon = ReturnType<typeof buildAskUserAddon>;
+
+export interface ChatToolBundleOptions {
+    dataDir?: string;
+    store: ProcessStore;
+    workspaceId?: string;
+    processId?: string;
+    followUpSuggestions?: { enabled: boolean; count: number };
+    askUser?: {
+        enabled: boolean;
+        deps: AskUserToolDeps;
+    };
+    broadcastWorkItem?: BroadcastWorkItemFn;
+    boundedMemory?: BoundedMemoryAddon;
+    includeFollowUpSuggestions?: boolean;
+    includeSearchConversations?: boolean;
+    includeWorkItemTools?: boolean;
+    includeTavilyWebSearch?: boolean;
+    excludeTools?: string[];
+}
+
+export interface ChatToolBundle {
+    tools: Tool<any>[];
+    suffix: string;
+    askUser?: AskUserAddon;
+}
+
+export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
+    const addons: ToolAddon[] = [];
+
+    if (options.includeFollowUpSuggestions !== false && options.followUpSuggestions) {
+        addons.push(buildFollowUpSuggestionsAddon(
+            options.followUpSuggestions.enabled,
+            options.followUpSuggestions.count,
+        ));
+    }
+
+    if (options.includeSearchConversations !== false) {
+        addons.push(buildSearchConversationsAddon(
+            options.store,
+            options.workspaceId,
+            options.processId,
+        ));
+    }
+
+    const askUser = options.askUser
+        ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps)
+        : undefined;
+    if (askUser) {
+        addons.push(askUser);
+    }
+
+    if (options.includeWorkItemTools !== false) {
+        addons.push(buildCreateWorkItemAddon(
+            options.dataDir,
+            options.workspaceId,
+            options.broadcastWorkItem,
+        ));
+    }
+
+    if (options.includeTavilyWebSearch !== false) {
+        addons.push(buildTavilyWebSearchAddon(options.dataDir));
+    }
+
+    if (options.boundedMemory) {
+        addons.push(options.boundedMemory);
+    }
+
+    const disabledLlmTools = options.dataDir && options.workspaceId
+        ? readEffectiveDisabledLlmTools(options.dataDir, options.workspaceId)
+        : undefined;
+    const disabledWithContextExclusions = mergeDisabledTools(disabledLlmTools, options.excludeTools);
+    const { tools, suffix } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
+
+    return { tools, suffix, askUser };
+}
+
+function mergeDisabledTools(
+    disabledLlmTools: string[] | undefined,
+    excludeTools: string[] | undefined,
+): string[] | undefined {
+    if (!excludeTools || excludeTools.length === 0) {
+        return disabledLlmTools;
+    }
+
+    return Array.from(new Set([
+        ...(disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS),
+        ...excludeTools,
+    ]));
+}

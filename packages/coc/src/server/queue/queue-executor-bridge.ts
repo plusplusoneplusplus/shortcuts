@@ -194,6 +194,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             const proc = await this.store.getProcess(processId);
             if (!proc?.sdkSessionId) return false;
+            // SDK steering targets the already-running session; it cannot change
+            // that live session's custom tool registry.
             return await this.aiService.steerSession(proc.sdkSessionId, message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);

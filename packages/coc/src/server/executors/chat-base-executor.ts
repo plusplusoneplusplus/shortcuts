@@ -44,23 +44,17 @@ import {
 import type { ChatPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
-import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { BaseExecutor } from './base-executor';
 import {
-    applyLlmToolPreferences,
     assertNoAskUserConflict,
-    buildAskUserAddon,
     buildBoundedMemoryAddon,
-    buildCreateWorkItemAddon,
-    buildFollowUpSuggestionsAddon,
     buildModeSystemMessage,
-    buildSearchConversationsAddon,
-    buildTavilyWebSearchAddon,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
+import { buildChatToolBundle } from './chat-tool-builder';
 
 // ============================================================================
 // Types
@@ -223,50 +217,42 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
-        const followUp = buildFollowUpSuggestionsAddon(
-            this.followUpSuggestions.enabled,
-            this.followUpSuggestions.count,
-        );
         const processId = toQueueProcessId(task.id);
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, processId);
-        const createWorkItem = buildCreateWorkItemAddon(
-            this.dataDir,
-            payload.workspaceId,
-            broadcastWorkItem,
-        );
-        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        const askUser = buildAskUserAddon(mode === 'plan' && this.askUser.enabled, {
-            emitQuestion: (questionPayload) => {
-                this.store.emitProcessEvent(processId, {
-                    type: 'ask-user',
-                    askUser: questionPayload,
-                });
+        const toolBundle = buildChatToolBundle({
+            dataDir: this.dataDir,
+            store: this.store,
+            workspaceId: payload.workspaceId,
+            processId,
+            followUpSuggestions: this.followUpSuggestions,
+            broadcastWorkItem,
+            boundedMemory,
+            askUser: {
+                enabled: mode === 'plan' && this.askUser.enabled,
+                deps: {
+                    emitQuestion: (questionPayload) => {
+                        this.store.emitProcessEvent(processId, {
+                            type: 'ask-user',
+                            askUser: questionPayload,
+                        });
+                    },
+                    computeTurnIndex: () => 1,
+                },
             },
-            computeTurnIndex: () => 1,
         });
         const session = this.getOrCreateSession(processId);
         session.pendingAskUser = {
-            answerQuestion: askUser.answerQuestion,
-            skipQuestion: askUser.skipQuestion,
-            cancelAll: askUser.cancelAll,
-            hasPending: askUser.hasPending,
+            answerQuestion: toolBundle.askUser!.answerQuestion,
+            skipQuestion: toolBundle.askUser!.skipQuestion,
+            cancelAll: toolBundle.askUser!.cancelAll,
+            hasPending: toolBundle.askUser!.hasPending,
         };
-
-        const disabledLlmTools = this.dataDir && payload.workspaceId
-            ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)
-            : undefined;
-
-        const { tools, suffix } = applyLlmToolPreferences(
-            [followUp, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
-            disabledLlmTools,
-        );
 
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
-            tools,
-            effectivePrompt: prompt + suffix,
+            tools: toolBundle.tools,
+            effectivePrompt: prompt + toolBundle.suffix,
             dispose: boundedMemory.dispose,
         };
     }
