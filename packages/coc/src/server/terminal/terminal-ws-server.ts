@@ -331,8 +331,11 @@ export class TerminalWebSocketServer {
     }
 
     private cleanupClient(client: TerminalWSClient): void {
-        for (const sessionId of client.sessions) {
-            this.sessionManager.destroySession(sessionId);
+        for (const sessionId of [...client.sessions]) {
+            if (!this.sessionManager.isSessionPinned(sessionId)) {
+                this.sessionManager.destroySession(sessionId);
+            }
+            client.sessions.delete(sessionId);
         }
         this.clients.delete(client.id);
     }

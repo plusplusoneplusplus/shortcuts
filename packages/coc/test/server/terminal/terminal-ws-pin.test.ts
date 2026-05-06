@@ -102,8 +102,16 @@ function waitForMessages(messages: any[], count: number, timeoutMs = 3000): Prom
     });
 }
 
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+function waitForCondition(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const start = Date.now();
+        const check = () => {
+            if (predicate()) resolve();
+            else if (Date.now() - start > timeoutMs) reject(new Error('Timed out waiting for condition'));
+            else setTimeout(check, 20);
+        };
+        check();
+    });
 }
 
 // ============================================================================
@@ -217,6 +225,46 @@ describe('TerminalWebSocketServer pin/unpin', () => {
         sendMsg(ws, { type: 'terminal-unpin', sessionId });
         await waitForMessages(messages, 3);
         expect(mgr.getSession(sessionId)?.pinned).toBe(false);
+    });
+
+    it('should destroy unpinned sessions when the WebSocket closes', async () => {
+        const { ws, sessionId } = await connectAndCreate();
+        const mgr = terminalWs.getSessionManager();
+        const pty = mgr.getSession(sessionId)?.pty;
+
+        ws.close();
+        await waitForCondition(() => terminalWs.clientCount === 0 && mgr.getSession(sessionId) === undefined);
+
+        expect(pty?.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it('should keep pinned sessions alive when the WebSocket closes', async () => {
+        const { ws, messages, sessionId } = await connectAndCreate();
+        const mgr = terminalWs.getSessionManager();
+
+        sendMsg(ws, { type: 'terminal-pin', sessionId });
+        await waitForMessages(messages, 2);
+        const pty = mgr.getSession(sessionId)?.pty;
+
+        ws.close();
+        await waitForCondition(() => terminalWs.clientCount === 0);
+
+        expect(mgr.getSession(sessionId)).toBeDefined();
+        expect(pty?.kill).not.toHaveBeenCalled();
+    });
+
+    it('should destroy pinned sessions during server shutdown', async () => {
+        const { ws, messages, sessionId } = await connectAndCreate();
+        const mgr = terminalWs.getSessionManager();
+
+        sendMsg(ws, { type: 'terminal-pin', sessionId });
+        await waitForMessages(messages, 2);
+        const pty = mgr.getSession(sessionId)?.pty;
+
+        terminalWs.closeAll();
+
+        expect(mgr.getSession(sessionId)).toBeUndefined();
+        expect(pty?.kill).toHaveBeenCalledTimes(1);
     });
 
     it('should attach a second client to an existing terminal session in the same workspace', async () => {

@@ -248,6 +248,10 @@ export class TerminalSessionManager {
         return true;
     }
 
+    isSessionPinned(id: string): boolean {
+        return this.sessions.get(id)?.pinned === true;
+    }
+
     destroyAll(): void {
         for (const [, session] of this.sessions) {
             try { session.pty.kill(); } catch { /* ignore */ }
@@ -294,7 +298,7 @@ export class TerminalSessionManager {
     private cleanupIdleSessions(): void {
         const now = Date.now();
         for (const [id, session] of this.sessions) {
-            if (session.pinned) continue;
+            if (this.isSessionPinned(id)) continue;
             if ((now - session.lastActivity) > this.options.idleTimeoutMs) {
                 try { session.pty.kill(); } catch { /* ignore */ }
                 this.sessions.delete(id);
