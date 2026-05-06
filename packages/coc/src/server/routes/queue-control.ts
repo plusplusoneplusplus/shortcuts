@@ -34,6 +34,40 @@ import {
     type QueueRouteContext,
 } from './queue-shared';
 
+const ALLOWED_TIMED_PAUSE_HOURS = new Set([1, 2, 3, 4, 8]);
+
+async function parsePauseUntil(req: import('http').IncomingMessage): Promise<{ until?: number; error?: string }> {
+    let body: any;
+    try {
+        body = await parseBody(req);
+    } catch {
+        return { error: 'Invalid JSON' };
+    }
+
+    const hasDuration = body?.durationHours !== undefined;
+    const hasUntil = body?.until !== undefined;
+    if (hasDuration && hasUntil) {
+        return { error: 'Specify either durationHours or until, not both' };
+    }
+    if (!hasDuration && !hasUntil) {
+        return {};
+    }
+
+    if (hasDuration) {
+        const durationHours = body.durationHours;
+        if (!Number.isInteger(durationHours) || !ALLOWED_TIMED_PAUSE_HOURS.has(durationHours)) {
+            return { error: 'durationHours must be one of: 1, 2, 3, 4, 8' };
+        }
+        return { until: Date.now() + durationHours * 60 * 60 * 1000 };
+    }
+
+    const until = typeof body.until === 'number' ? body.until : Date.parse(String(body.until));
+    if (!Number.isFinite(until) || until <= Date.now()) {
+        return { error: 'until must be a future timestamp' };
+    }
+    return { until };
+}
+
 export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
 
@@ -46,22 +80,29 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
             const repoId = getRepoIdentifierFromQuery(parsed.query);
+            const pause = await parsePauseUntil(req);
+            if (pause.error) {
+                return sendError(res, 400, pause.error);
+            }
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
-                mgr.pause();
+                mgr.pause(pause.until);
                 process.stderr.write(`[Queue] pause repoId=${repoId}\n`);
-                sendJSON(res, 200, { repoId, paused: true, stats: mgr.getStats() });
+                const stats = mgr.getStats();
+                sendJSON(res, 200, { repoId, paused: true, pausedUntil: stats.pausedUntil, stats });
             } else {
                 state.globalPaused = true;
+                state.globalPausedUntil = pause.until;
                 for (const m of bridge.registry.getAllQueues().values()) {
-                    m.pause();
+                    m.pause(pause.until);
                 }
                 process.stderr.write(`[Queue] pause repoId=global\n`);
-                sendJSON(res, 200, { paused: true, stats: getAggregateStats(bridge, state) });
+                const stats = getAggregateStats(bridge, state);
+                sendJSON(res, 200, { paused: true, pausedUntil: stats.pausedUntil, stats });
             }
         },
     });
@@ -86,6 +127,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 sendJSON(res, 200, { repoId, paused: false, stats: mgr.getStats() });
             } else {
                 state.globalPaused = false;
+                state.globalPausedUntil = undefined;
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.resume();
                 }
@@ -104,22 +146,29 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
             const repoId = getRepoIdentifierFromQuery(parsed.query);
+            const pause = await parsePauseUntil(req);
+            if (pause.error) {
+                return sendError(res, 400, pause.error);
+            }
 
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
-                mgr.pauseAutopilot();
+                mgr.pauseAutopilot(pause.until);
                 process.stderr.write(`[Queue] pause-autopilot repoId=${repoId}\n`);
-                sendJSON(res, 200, { repoId, isAutopilotPaused: true, stats: mgr.getStats() });
+                const stats = mgr.getStats();
+                sendJSON(res, 200, { repoId, isAutopilotPaused: true, autopilotPausedUntil: stats.autopilotPausedUntil, stats });
             } else {
                 state.globalAutopilotPaused = true;
+                state.globalAutopilotPausedUntil = pause.until;
                 for (const m of bridge.registry.getAllQueues().values()) {
-                    m.pauseAutopilot();
+                    m.pauseAutopilot(pause.until);
                 }
                 process.stderr.write(`[Queue] pause-autopilot repoId=global\n`);
-                sendJSON(res, 200, { isAutopilotPaused: true, stats: getAggregateStats(bridge, state) });
+                const stats = getAggregateStats(bridge, state);
+                sendJSON(res, 200, { isAutopilotPaused: true, autopilotPausedUntil: stats.autopilotPausedUntil, stats });
             }
         },
     });
@@ -144,6 +193,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 sendJSON(res, 200, { repoId, isAutopilotPaused: false, stats: mgr.getStats() });
             } else {
                 state.globalAutopilotPaused = false;
+                state.globalAutopilotPausedUntil = undefined;
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.resumeAutopilot();
                 }

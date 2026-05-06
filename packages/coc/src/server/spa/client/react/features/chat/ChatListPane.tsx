@@ -45,6 +45,10 @@ const CHAT_MODE_LABELS: Record<string, string> = {
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
+type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
+type PauseMenuScope = 'all' | 'autopilot';
+const PAUSE_HOUR_PRESETS = [1, 2, 3, 4, 8] as const;
+
 /** Session category labels for display and filtering. */
 export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
     'generating-code': { label: 'Generating Code', icon: '⚙️', color: 'text-blue-600 dark:text-blue-400' },
@@ -143,13 +147,17 @@ export interface ChatListPaneProps {
     /** Mark a single completed task as unread. */
     onMarkUnread?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
-    onPauseResume: () => void;
+    onPauseResume: (options?: QueuePauseOptions) => void;
+    /** Epoch milliseconds or ISO timestamp when the queue pause expires. */
+    pausedUntil?: number | string;
     /** Whether the autopilot scheduler is currently paused. */
     isAutopilotPaused?: boolean;
+    /** Epoch milliseconds or ISO timestamp when the autopilot pause expires. */
+    autopilotPausedUntil?: number | string;
     /** True while the pause/resume autopilot request is in-flight. */
     isAutopilotPauseLoading?: boolean;
     /** Toggle autopilot pause/resume. */
-    onPauseResumeAutopilot?: () => void;
+    onPauseResumeAutopilot?: (options?: QueuePauseOptions) => void;
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
@@ -185,6 +193,70 @@ function formatMetadataText(task: any): string {
     return buildRows(task).map(r => `${r.label}: ${r.value}`).join('\n');
 }
 
+function pauseUntilMs(value: number | string | undefined): number | undefined {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+}
+
+function formatPauseRemaining(value: number | string | undefined, now: number): string | undefined {
+    const until = pauseUntilMs(value);
+    if (until === undefined) return undefined;
+    const remainingMs = Math.max(0, until - now);
+    const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+}
+
+function formatPauseResumeTime(value: number | string | undefined): string | undefined {
+    const until = pauseUntilMs(value);
+    if (until === undefined) return undefined;
+    return new Date(until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function PauseDurationMenu({
+    scope,
+    onSelect,
+}: {
+    scope: PauseMenuScope;
+    onSelect: (scope: PauseMenuScope, options?: QueuePauseOptions) => void;
+}) {
+    return (
+        <div
+            className="absolute right-0 top-full mt-1 z-30 min-w-44 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            data-testid={`pause-duration-menu-${scope}`}
+        >
+            <button
+                type="button"
+                className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                onClick={() => onSelect(scope)}
+                data-testid={`pause-duration-${scope}-indefinite`}
+            >
+                Until resumed
+            </button>
+            {PAUSE_HOUR_PRESETS.map(hours => (
+                <button
+                    key={hours}
+                    type="button"
+                    className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    onClick={() => onSelect(scope, { durationHours: hours })}
+                    data-testid={`pause-duration-${scope}-${hours}h`}
+                >
+                    {hours} {hours === 1 ? 'hour' : 'hours'}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export function ChatListPane({
     running,
     queued,
@@ -202,7 +274,9 @@ export function ChatListPane({
     onMarkUnread,
     onSelectTask,
     onPauseResume,
+    pausedUntil,
     isAutopilotPaused,
+    autopilotPausedUntil,
     isAutopilotPauseLoading,
     onPauseResumeAutopilot,
     onRefresh,
@@ -258,6 +332,20 @@ export function ChatListPane({
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
     const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
+    const [pauseMenuScope, setPauseMenuScope] = useState<PauseMenuScope | null>(null);
+    const queuePauseRemaining = formatPauseRemaining(pausedUntil, now);
+    const autopilotPauseRemaining = formatPauseRemaining(autopilotPausedUntil, now);
+    const queuePauseResumeTime = formatPauseResumeTime(pausedUntil);
+    const autopilotPauseResumeTime = formatPauseResumeTime(autopilotPausedUntil);
+
+    const selectPauseDuration = useCallback((scope: PauseMenuScope, options?: QueuePauseOptions) => {
+        if (scope === 'all') {
+            onPauseResume(options);
+        } else {
+            onPauseResumeAutopilot?.(options);
+        }
+        setPauseMenuScope(null);
+    }, [onPauseResume, onPauseResumeAutopilot]);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
@@ -1074,7 +1162,9 @@ export function ChatListPane({
                         <span className="flex-1">
                             {pauseReason
                                 ? <>⏸ Queue paused — <strong>{pauseReason.displayName}</strong> failed at {new Date(pauseReason.failedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</>
-                                : <>⏸ Queue is paused — new tasks will not start.</>
+                                : queuePauseRemaining
+                                    ? <>⏸ Queue is paused for {queuePauseRemaining}{queuePauseResumeTime ? <> — resumes at {queuePauseResumeTime}.</> : <>.</>}</>
+                                    : <>⏸ Queue is paused — new tasks will not start.</>
                             }
                         </span>
                         {pauseReason && (
@@ -1097,7 +1187,12 @@ export function ChatListPane({
                         className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-1.5 text-xs flex items-center gap-2"
                         data-testid="autopilot-paused-banner"
                     >
-                        <span className="flex-1">🤖⏸ Autopilot is paused — queued autopilot tasks will not start.</span>
+                        <span className="flex-1">
+                            {autopilotPauseRemaining
+                                ? <>🤖⏸ Autopilot is paused for {autopilotPauseRemaining}{autopilotPauseResumeTime ? <> — resumes at {autopilotPauseResumeTime}.</> : <>.</>}</>
+                                : <>🤖⏸ Autopilot is paused — queued autopilot tasks will not start.</>
+                            }
+                        </span>
                         <Button
                             variant="ghost"
                             size="sm"
@@ -1134,42 +1229,47 @@ export function ChatListPane({
                             </span>
                         )}
                     </Button>
-                    <div
-                        className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
-                        data-testid="pause-toggle-group"
-                    >
-                        <button
-                            disabled={isPauseResumeLoading}
-                            onClick={onPauseResume}
-                            title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
-                            data-testid="repo-pause-resume-btn"
-                            className={cn(
-                                'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                isPaused
-                                    ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
-                                    : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                            )}
+                    <div className="relative">
+                        <div
+                            className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
+                            data-testid="pause-toggle-group"
                         >
-                            {isPaused ? '▶' : '⏸'} All
-                        </button>
-                        {onPauseResumeAutopilot && (
-                            <>
-                                <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#474749]" />
-                                <button
-                                    disabled={isAutopilotPauseLoading}
-                                    onClick={onPauseResumeAutopilot}
-                                    title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
-                                    data-testid="autopilot-pause-resume-btn"
-                                    className={cn(
-                                        'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                        isAutopilotPaused
-                                            ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
-                                            : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                                    )}
-                                >
-                                    {isAutopilotPaused ? '▶' : '⏸'} AP
-                                </button>
-                            </>
+                            <button
+                                disabled={isPauseResumeLoading}
+                                onClick={() => isPaused ? onPauseResume() : setPauseMenuScope(pauseMenuScope === 'all' ? null : 'all')}
+                                title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
+                                data-testid="repo-pause-resume-btn"
+                                className={cn(
+                                    'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                    isPaused
+                                        ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
+                                        : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                                )}
+                            >
+                                {isPaused ? '▶' : '⏸'} All{isPaused && queuePauseRemaining ? ` ${queuePauseRemaining}` : ''}
+                            </button>
+                            {onPauseResumeAutopilot && (
+                                <>
+                                    <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#474749]" />
+                                    <button
+                                        disabled={isAutopilotPauseLoading}
+                                        onClick={() => isAutopilotPaused ? onPauseResumeAutopilot() : setPauseMenuScope(pauseMenuScope === 'autopilot' ? null : 'autopilot')}
+                                        title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
+                                        data-testid="autopilot-pause-resume-btn"
+                                        className={cn(
+                                            'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                            isAutopilotPaused
+                                                ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
+                                                : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                                        )}
+                                    >
+                                        {isAutopilotPaused ? '▶' : '⏸'} AP{isAutopilotPaused && autopilotPauseRemaining ? ` ${autopilotPauseRemaining}` : ''}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        {pauseMenuScope && (
+                            <PauseDurationMenu scope={pauseMenuScope} onSelect={selectPauseDuration} />
                         )}
                     </div>
                 </div>

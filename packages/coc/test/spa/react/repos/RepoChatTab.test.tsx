@@ -185,9 +185,9 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         queue: {
             list: (query?: { repoId?: string }) => mockFetchApi('/queue?repoId=' + encodeURIComponent(query?.repoId ?? '')),
             getTask: (taskId: string) => mockFetchApi(`/queue/${encodeURIComponent(taskId)}`),
-            pause: (scope?: { repoId?: string }) => mockFetchApi('/queue/pause?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            pause: (scope?: { repoId?: string }, options?: any) => mockFetchApi('/queue/pause?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', ...(options ? { body: options } : {}) }),
             resume: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
-            pauseAutopilot: (scope?: { repoId?: string }) => mockFetchApi('/queue/pause-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            pauseAutopilot: (scope?: { repoId?: string }, options?: any) => mockFetchApi('/queue/pause-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', ...(options ? { body: options } : {}) }),
             resumeAutopilot: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
         },
         processes: {
@@ -990,6 +990,40 @@ describe('RepoChatTab: pause/resume', () => {
             expect(mockFetchApi).toHaveBeenCalledWith(
                 expect.stringContaining('/queue/pause-autopilot?repoId=ws-1'),
                 expect.objectContaining({ method: 'POST' }),
+            );
+        });
+    });
+
+    it('timed pause passes duration options to queue client', async () => {
+        setupFetchMock({ stats: { isPaused: false, isAutopilotPaused: false } });
+        await renderTab();
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+
+        await act(async () => {
+            await props.onPauseResume({ durationHours: 2 });
+        });
+
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith(
+                expect.stringContaining('/queue/pause?repoId=ws-1'),
+                expect.objectContaining({ method: 'POST', body: { durationHours: 2 } }),
+            );
+        });
+    });
+
+    it('timed autopilot pause passes duration options to queue client', async () => {
+        setupFetchMock({ stats: { isPaused: false, isAutopilotPaused: false } });
+        await renderTab();
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+
+        await act(async () => {
+            await props.onPauseResumeAutopilot({ durationHours: 3 });
+        });
+
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith(
+                expect.stringContaining('/queue/pause-autopilot?repoId=ws-1'),
+                expect.objectContaining({ method: 'POST', body: { durationHours: 3 } }),
             );
         });
     });

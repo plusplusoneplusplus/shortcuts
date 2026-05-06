@@ -91,7 +91,18 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(10);
+        expect(SCHEMA_VERSION).toBe(11);
+    });
+
+    it('creates queue pause timer columns', () => {
+        initializeDatabase(db);
+
+        const cols = db.prepare("PRAGMA table_info(queue_repo_state)").all() as Array<{ name: string }>;
+        const colNames = cols.map(c => c.name);
+        expect(colNames).toContain('queue_paused');
+        expect(colNames).toContain('queue_paused_until');
+        expect(colNames).toContain('autopilot_paused');
+        expect(colNames).toContain('autopilot_paused_until');
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {

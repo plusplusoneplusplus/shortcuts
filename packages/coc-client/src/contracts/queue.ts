@@ -11,9 +11,11 @@ export interface QueueStats {
   cancelled: number;
   total: number;
   isPaused: boolean;
+  pausedUntil?: number;
   isDraining: boolean;
   pausedRepos?: string[];
   isAutopilotPaused: boolean;
+  autopilotPausedUntil?: number;
   pauseReason?: JsonObject;
 }
 

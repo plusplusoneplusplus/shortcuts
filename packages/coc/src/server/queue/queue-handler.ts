@@ -26,7 +26,9 @@ export function registerQueueRoutes(
 ): void {
     const state: QueueGlobalState = {
         globalPaused: false,
+        globalPausedUntil: undefined,
         globalAutopilotPaused: false,
+        globalAutopilotPausedUntil: undefined,
         resumeInProgress: new Set(),
     };
     const ctx = { bridge, store, globalWorkspaceRootPath, state };

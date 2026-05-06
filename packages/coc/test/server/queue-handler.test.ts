@@ -1071,6 +1071,26 @@ describe('Queue Handler', () => {
             expect(body.stats.isPaused).toBe(true);
         });
 
+        it('should pause the queue for a fixed duration', async () => {
+            const srv = await startServer();
+            const before = Date.now();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours: 2 });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.paused).toBe(true);
+            expect(body.pausedUntil).toBeGreaterThanOrEqual(before + 2 * 60 * 60 * 1000);
+            expect(body.stats.pausedUntil).toBe(body.pausedUntil);
+        });
+
+        it('should reject unsupported timed queue pause durations', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours: 5 });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('durationHours must be one of');
+        });
+
         it('should resume the queue', async () => {
             const srv = await startServer();
 
@@ -1215,6 +1235,18 @@ describe('Queue Handler', () => {
             expect(body.isAutopilotPaused).toBe(true);
             expect(body.stats).toBeDefined();
             expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('POST /api/queue/pause-autopilot should accept a fixed duration', async () => {
+            const srv = await startServer();
+            const before = Date.now();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause-autopilot`, { durationHours: 3 });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isAutopilotPaused).toBe(true);
+            expect(body.autopilotPausedUntil).toBeGreaterThanOrEqual(before + 3 * 60 * 60 * 1000);
+            expect(body.stats.autopilotPausedUntil).toBe(body.autopilotPausedUntil);
         });
 
         it('POST /api/queue/resume-autopilot should return isAutopilotPaused: false', async () => {

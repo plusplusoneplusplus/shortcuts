@@ -390,12 +390,16 @@ export interface QueueStats {
     total: number;
     /** Whether the queue is paused */
     isPaused: boolean;
+    /** Epoch milliseconds when the queue pause expires. Omitted for indefinite pauses. */
+    pausedUntil?: number;
     /** Whether the queue is in drain mode */
     isDraining: boolean;
     /** List of repository IDs that are currently paused (optional, for per-repo pause) */
     pausedRepos?: string[];
     /** Whether autopilot is paused (new work will not be enqueued automatically) */
     isAutopilotPaused: boolean;
+    /** Epoch milliseconds when the autopilot pause expires. Omitted for indefinite pauses. */
+    autopilotPausedUntil?: number;
     /** Why the queue was paused (present only when auto-paused due to task failure). */
     pauseReason?: PauseReason;
 }

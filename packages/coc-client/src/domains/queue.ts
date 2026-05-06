@@ -41,6 +41,11 @@ export interface QueuePauseMarkerRequest {
 
 export type QueueScope = string | Pick<QueueQuery, 'workspace' | 'repoId'>;
 
+export interface QueuePauseOptions {
+  durationHours?: 1 | 2 | 3 | 4 | 8;
+  until?: number | string;
+}
+
 function serializeQueueQuery(query?: QueueQuery | QueueHistoryQuery): CocRequestOptions['query'] {
   if (!query) return undefined;
   const status = 'status' in query ? query.status : undefined;
@@ -102,16 +107,16 @@ export class QueueClient {
     return this.transport.request<EnqueueTaskResponse>('/queue', { method: 'POST', body: { ...request } });
   }
 
-  pause(scope?: QueueScope): Promise<QueueStatsResponse & { paused: boolean; workspace?: string; repoId?: string }> {
-    return this.transport.request('/queue/pause', { method: 'POST', query: serializeQueueScope(scope) });
+  pause(scope?: QueueScope, options?: QueuePauseOptions): Promise<QueueStatsResponse & { paused: boolean; pausedUntil?: number; workspace?: string; repoId?: string }> {
+    return this.transport.request('/queue/pause', { method: 'POST', query: serializeQueueScope(scope), body: options });
   }
 
   resume(scope?: QueueScope): Promise<QueueStatsResponse & { paused: boolean; workspace?: string; repoId?: string }> {
     return this.transport.request('/queue/resume', { method: 'POST', query: serializeQueueScope(scope) });
   }
 
-  pauseAutopilot(scope?: QueueScope): Promise<QueueStatsResponse & { isAutopilotPaused: boolean; repoId?: string }> {
-    return this.transport.request('/queue/pause-autopilot', { method: 'POST', query: serializeQueueScope(scope) });
+  pauseAutopilot(scope?: QueueScope, options?: QueuePauseOptions): Promise<QueueStatsResponse & { isAutopilotPaused: boolean; autopilotPausedUntil?: number; repoId?: string }> {
+    return this.transport.request('/queue/pause-autopilot', { method: 'POST', query: serializeQueueScope(scope), body: options });
   }
 
   resumeAutopilot(scope?: QueueScope): Promise<QueueStatsResponse & { isAutopilotPaused: boolean; repoId?: string }> {

@@ -34,10 +34,23 @@ interface QueueTaskRow {
     result: string | null;
 }
 
+export interface QueueRepoState {
+    isPaused: boolean;
+    pauseReason?: PauseReason;
+    queuePaused?: boolean;
+    queuePausedUntil?: number;
+    autopilotPaused?: boolean;
+    autopilotPausedUntil?: number;
+}
+
 interface RepoStateRow {
     repo_id: string;
     is_paused: number;
     pause_reason: string | null;
+    queue_paused?: number;
+    queue_paused_until?: number | null;
+    autopilot_paused?: number;
+    autopilot_paused_until?: number | null;
 }
 
 // ============================================================================
@@ -188,7 +201,7 @@ export class SqliteQueueStore {
     // ── queue_repo_state ────────────────────────────────────────────
 
     /** SELECT queue_repo_state for a repo. Returns undefined if not found. */
-    getQueueRepoState(repoId: string): { isPaused: boolean; pauseReason?: PauseReason } | undefined {
+    getQueueRepoState(repoId: string): QueueRepoState | undefined {
         const row = this.db.prepare(
             'SELECT * FROM queue_repo_state WHERE repo_id = ?',
         ).get(repoId) as RepoStateRow | undefined;
@@ -198,15 +211,55 @@ export class SqliteQueueStore {
         return {
             isPaused: row.is_paused === 1,
             pauseReason: jsonToPauseReason(row.pause_reason),
+            queuePaused: row.queue_paused === 1,
+            queuePausedUntil: row.queue_paused_until ?? undefined,
+            autopilotPaused: row.autopilot_paused === 1,
+            autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
         };
     }
 
     /** INSERT OR REPLACE queue_repo_state. Serializes pauseReason to JSON. */
     setQueueRepoState(repoId: string, isPaused: boolean, pauseReason?: PauseReason): void {
         this.db.prepare(`
-            INSERT OR REPLACE INTO queue_repo_state (repo_id, is_paused, pause_reason)
+            INSERT INTO queue_repo_state (repo_id, is_paused, pause_reason)
             VALUES (?, ?, ?)
+            ON CONFLICT(repo_id) DO UPDATE SET
+                is_paused = excluded.is_paused,
+                pause_reason = excluded.pause_reason
         `).run(repoId, isPaused ? 1 : 0, pauseReasonToJson(pauseReason));
+    }
+
+    /** Persist manager-level queue and autopilot pause state for this repo queue. */
+    setQueueControlState(
+        repoId: string,
+        state: {
+            queuePaused: boolean;
+            queuePausedUntil?: number;
+            autopilotPaused: boolean;
+            autopilotPausedUntil?: number;
+        }
+    ): void {
+        this.db.prepare(`
+            INSERT INTO queue_repo_state (
+                repo_id,
+                queue_paused,
+                queue_paused_until,
+                autopilot_paused,
+                autopilot_paused_until
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(repo_id) DO UPDATE SET
+                queue_paused = excluded.queue_paused,
+                queue_paused_until = excluded.queue_paused_until,
+                autopilot_paused = excluded.autopilot_paused,
+                autopilot_paused_until = excluded.autopilot_paused_until
+        `).run(
+            repoId,
+            state.queuePaused ? 1 : 0,
+            state.queuePausedUntil ?? null,
+            state.autopilotPaused ? 1 : 0,
+            state.autopilotPausedUntil ?? null,
+        );
     }
 
     /** DELETE queue_repo_state row for a repo. No-op if not found. */
@@ -215,14 +268,18 @@ export class SqliteQueueStore {
     }
 
     /** SELECT all queue_repo_state rows. Returns a Map keyed by repoId. */
-    getAllQueueRepoStates(): Map<string, { isPaused: boolean; pauseReason?: PauseReason }> {
+    getAllQueueRepoStates(): Map<string, QueueRepoState> {
         const rows = this.db.prepare('SELECT * FROM queue_repo_state').all() as RepoStateRow[];
-        const map = new Map<string, { isPaused: boolean; pauseReason?: PauseReason }>();
+        const map = new Map<string, QueueRepoState>();
 
         for (const row of rows) {
             map.set(row.repo_id, {
                 isPaused: row.is_paused === 1,
                 pauseReason: jsonToPauseReason(row.pause_reason),
+                queuePaused: row.queue_paused === 1,
+                queuePausedUntil: row.queue_paused_until ?? undefined,
+                autopilotPaused: row.autopilot_paused === 1,
+                autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
             });
         }
 

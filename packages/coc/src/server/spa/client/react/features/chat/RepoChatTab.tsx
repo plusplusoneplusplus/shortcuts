@@ -30,6 +30,14 @@ export interface RepoChatTabProps {
     mode?: 'chats' | 'tasks';
 }
 
+type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
+
+function isQueuePauseOptions(value: unknown): value is QueuePauseOptions {
+    return !!value
+        && typeof value === 'object'
+        && ('durationHours' in value || 'until' in value);
+}
+
 function getActiveProcessIds(tasks: any[]): string[] {
     return tasks.map((task: any) => task.processId ?? toQueueProcessId(task.id));
 }
@@ -43,8 +51,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
+    const [pausedUntil, setPausedUntil] = useState<number | string | undefined>();
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
+    const [autopilotPausedUntil, setAutopilotPausedUntil] = useState<number | string | undefined>();
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pauseReason, setPauseReason] = useState<{ taskId: string; displayName: string; failedAt: string } | undefined>();
@@ -119,8 +129,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
+            setPausedUntil(nextStats?.pausedUntil);
             setPauseReason(nextStats?.pauseReason);
             setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
+            setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
             await fetchHistory();
 
             queueDispatch({
@@ -185,10 +197,12 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
+            setPausedUntil(repoQueue.stats.pausedUntil);
             setPauseReason(repoQueue.stats.pauseReason);
         }
         if (repoQueue?.stats?.isAutopilotPaused !== undefined) {
             setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
+            setAutopilotPausedUntil(repoQueue.stats.autopilotPausedUntil);
         }
         setLoading(false);
     }, [repoQueue, history, fetchHistory]);
@@ -349,20 +363,23 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [selectedTaskId]);
 
     // Live timer for running tasks
-    const hasActive = useMemo(() => running.length > 0, [running]);
+    const hasActive = useMemo(
+        () => running.length > 0 || (isPaused && pausedUntil !== undefined) || (isAutopilotPaused && autopilotPausedUntil !== undefined),
+        [autopilotPausedUntil, isAutopilotPaused, isPaused, pausedUntil, running],
+    );
     useEffect(() => {
         if (!hasActive) return;
         const timer = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(timer);
     }, [hasActive]);
 
-    async function handlePauseResume() {
+    async function handlePauseResume(options?: QueuePauseOptions) {
         setIsPauseResumeLoading(true);
         try {
             if (isPaused) {
                 await getSpaCocClient().queue.resume({ repoId: workspaceId });
             } else {
-                await getSpaCocClient().queue.pause({ repoId: workspaceId });
+                await getSpaCocClient().queue.pause({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
             await fetchQueue();
         } finally {
@@ -370,13 +387,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         }
     }
 
-    async function handlePauseResumeAutopilot() {
+    async function handlePauseResumeAutopilot(options?: QueuePauseOptions) {
         setIsAutopilotPauseLoading(true);
         try {
             if (isAutopilotPaused) {
                 await getSpaCocClient().queue.resumeAutopilot({ repoId: workspaceId });
             } else {
-                await getSpaCocClient().queue.pauseAutopilot({ repoId: workspaceId });
+                await getSpaCocClient().queue.pauseAutopilot({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
             await fetchQueue();
         } finally {
@@ -421,7 +438,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             onMarkUnread={markUnseen}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
+            pausedUntil={pausedUntil}
             isAutopilotPaused={isAutopilotPaused}
+            autopilotPausedUntil={autopilotPausedUntil}
             isAutopilotPauseLoading={isAutopilotPauseLoading}
             onPauseResumeAutopilot={handlePauseResumeAutopilot}
             onRefresh={handleRefresh}

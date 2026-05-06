@@ -19,9 +19,7 @@
  * ✗ Pause markers are NOT preserved (getQueued() filters them out so they are
  *   never written to disk)
  *
- * ✗ Per-repo pause state set via HTTP API (mgr.pause()) is NOT preserved
- *   because SqliteQueuePersistence only persists repo-scoped pause state set
- *   via pauseRepo/resumeRepo, not the manager-level pause flag.
+ * ✓ Per-repo manager pause state set via HTTP API is preserved.
  *
  * ✗ History (tasks cancelled before execution) is NOT preserved across
  *   restart. History is served from the process store, which only tracks
@@ -237,10 +235,10 @@ describe('Queue Persistence Across Server Restart', () => {
     });
 
     // ========================================================================
-    // Section 10.5: Per-repo pause NOT preserved via HTTP pause API
+    // Section 10.5: Per-repo pause preserved via HTTP pause API
     // ========================================================================
 
-    it('per-repo pause via HTTP API is NOT preserved across restart', async () => {
+    it('per-repo pause via HTTP API is preserved across restart', async () => {
         // Use the built-in global workspace ID (always registered by createExecutionServer)
         const WS_ID = 'global-workspace-00';
         const store1 = new SqliteProcessStore({ dbPath });
@@ -251,7 +249,7 @@ describe('Queue Persistence Across Server Restart', () => {
         await post(`${server1.url}/api/queue`, makeGlobalTask('T'));
         await post(`${server1.url}/api/queue/resume`, {});
 
-        // Per-repo pause via HTTP API (sets manager.paused=true, not pauseRepo)
+        // Per-repo pause via HTTP API sets manager.paused=true.
         await request(`${server1.url}/api/queue/pause?repoId=${WS_ID}`, { method: 'POST' });
 
         const beforeRepos = JSON.parse((await request(`${server1.url}/api/queue/repos`)).body).repos;
@@ -265,12 +263,9 @@ describe('Queue Persistence Across Server Restart', () => {
         const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2, queue: { autoStart: false } });
         activeServers.push(server2);
         const afterRepos = JSON.parse((await request(`${server2.url}/api/queue/repos`)).body).repos;
-        // Per-repo pause via HTTP API is NOT persisted; repo should not be paused after restart
         const repo = afterRepos.find((r: any) => r.repoId === WS_ID);
-        if (repo) {
-            expect(repo.isPaused).toBe(false);
-        }
-        // If the repo doesn't appear, that also confirms the pause was not persisted.
+        expect(repo).toBeDefined();
+        expect(repo.isPaused).toBe(true);
 
         await server2.close();
         store2.close();

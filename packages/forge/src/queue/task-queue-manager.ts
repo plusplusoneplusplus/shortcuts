@@ -48,8 +48,12 @@ export class TaskQueueManager extends EventEmitter {
     private history: QueuedTask[] = [];
     /** Whether the queue is paused */
     private paused = false;
+    /** Epoch milliseconds when queue pause expires; undefined means manual/indefinite pause. */
+    private pausedUntil: number | undefined;
     /** Whether autopilot is paused */
     private autopilotPaused = false;
+    /** Epoch milliseconds when autopilot pause expires; undefined means manual/indefinite pause. */
+    private autopilotPausedUntil: number | undefined;
     /** Whether the queue is in drain mode (no new tasks accepted) */
     private draining = false;
     /** Callbacks waiting for the queue to become idle */
@@ -119,6 +123,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns The next item, or undefined if queue is empty
      */
     dequeue(): QueueItem | undefined {
+        this.clearExpiredTimedPauses();
         if (this.queue.length === 0) {
             return undefined;
         }
@@ -150,6 +155,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns The next eligible item, or undefined if none available
      */
     peek(): QueueItem | undefined {
+        this.clearExpiredTimedPauses();
         for (const item of this.queue) {
             if (isPauseMarker(item)) {
                 return item;
@@ -243,6 +249,7 @@ export class TaskQueueManager extends EventEmitter {
      * Get queue statistics
      */
     getStats(): QueueStats {
+        this.clearExpiredTimedPauses();
         const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
         const stats: QueueStats = {
             queued: taskCount,
@@ -252,9 +259,11 @@ export class TaskQueueManager extends EventEmitter {
             cancelled: this.history.filter(t => t.status === 'cancelled').length,
             total: taskCount + this.running.size + this.history.length,
             isPaused: this.paused,
+            pausedUntil: this.pausedUntil,
             isDraining: this.draining,
             pausedRepos: Array.from(this.pausedRepos),
             isAutopilotPaused: this.autopilotPaused,
+            autopilotPausedUntil: this.autopilotPausedUntil,
         };
         // Attach the first available pause reason (single-repo manager → at most one).
         if (this.pauseReasons.size > 0) {
@@ -785,9 +794,12 @@ export class TaskQueueManager extends EventEmitter {
      * Pause queue processing
      * Running tasks continue, but no new tasks will be started
      */
-    pause(): void {
-        if (!this.paused) {
-            this.paused = true;
+    pause(until?: number): void {
+        const nextPausedUntil = this.normalizePauseUntil(until);
+        const changed = !this.paused || this.pausedUntil !== nextPausedUntil;
+        this.paused = true;
+        this.pausedUntil = nextPausedUntil;
+        if (changed) {
             this.emitChange('paused');
             this.emit('paused');
         }
@@ -797,8 +809,10 @@ export class TaskQueueManager extends EventEmitter {
      * Resume queue processing
      */
     resume(): void {
-        if (this.paused) {
-            this.paused = false;
+        const changed = this.paused || this.pausedUntil !== undefined;
+        this.paused = false;
+        this.pausedUntil = undefined;
+        if (changed) {
             this.emitChange('resumed');
             this.emit('resumed');
         }
@@ -808,6 +822,7 @@ export class TaskQueueManager extends EventEmitter {
      * Check if queue is paused
      */
     isPaused(): boolean {
+        this.clearExpiredTimedPauses();
         return this.paused;
     }
 
@@ -819,9 +834,12 @@ export class TaskQueueManager extends EventEmitter {
      * Pause autopilot — prevents new tasks from being enqueued automatically.
      * Running and already-queued tasks are unaffected.
      */
-    pauseAutopilot(): void {
-        if (!this.autopilotPaused) {
-            this.autopilotPaused = true;
+    pauseAutopilot(until?: number): void {
+        const nextAutopilotPausedUntil = this.normalizePauseUntil(until);
+        const changed = !this.autopilotPaused || this.autopilotPausedUntil !== nextAutopilotPausedUntil;
+        this.autopilotPaused = true;
+        this.autopilotPausedUntil = nextAutopilotPausedUntil;
+        if (changed) {
             this.emitChange('autopilot-paused');
             this.emit('autopilot-paused');
         }
@@ -832,8 +850,10 @@ export class TaskQueueManager extends EventEmitter {
      * Clears any stale admitted flags on queued tasks.
      */
     resumeAutopilot(): void {
-        if (this.autopilotPaused) {
-            this.autopilotPaused = false;
+        const changed = this.autopilotPaused || this.autopilotPausedUntil !== undefined;
+        this.autopilotPaused = false;
+        this.autopilotPausedUntil = undefined;
+        if (changed) {
             for (const item of this.queue) {
                 if (!isPauseMarker(item)) {
                     (item as QueuedTask).admitted = false;
@@ -848,6 +868,7 @@ export class TaskQueueManager extends EventEmitter {
      * Check if autopilot is paused.
      */
     isAutopilotPaused(): boolean {
+        this.clearExpiredTimedPauses();
         return this.autopilotPaused;
     }
 
@@ -1065,7 +1086,9 @@ export class TaskQueueManager extends EventEmitter {
         this.runningProcessIds.clear();
         this.history = [];
         this.paused = false;
+        this.pausedUntil = undefined;
         this.autopilotPaused = false;
+        this.autopilotPausedUntil = undefined;
         this.draining = false;
         this.pausedRepos.clear();
         // Resolve any pending idle waiters since there's nothing left
@@ -1163,6 +1186,19 @@ export class TaskQueueManager extends EventEmitter {
         // Trim history if needed
         if (this.history.length > this.options.maxHistorySize) {
             this.history = this.history.slice(0, this.options.maxHistorySize);
+        }
+    }
+
+    private normalizePauseUntil(until: number | undefined): number | undefined {
+        return typeof until === 'number' && Number.isFinite(until) ? until : undefined;
+    }
+
+    private clearExpiredTimedPauses(now = Date.now()): void {
+        if (this.paused && this.pausedUntil !== undefined && this.pausedUntil <= now) {
+            this.resume();
+        }
+        if (this.autopilotPaused && this.autopilotPausedUntil !== undefined && this.autopilotPausedUntil <= now) {
+            this.resumeAutopilot();
         }
     }
 

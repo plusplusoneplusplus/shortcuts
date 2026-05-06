@@ -47,8 +47,25 @@ export const MAX_RESUME_CONTEXT_TURNS = 20;
  */
 export interface QueueGlobalState {
     globalPaused: boolean;
+    globalPausedUntil?: number;
     globalAutopilotPaused: boolean;
+    globalAutopilotPausedUntil?: number;
     resumeInProgress: Set<string>;
+}
+
+export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.now()): void {
+    if (state.globalPaused && state.globalPausedUntil !== undefined && state.globalPausedUntil <= now) {
+        state.globalPaused = false;
+        state.globalPausedUntil = undefined;
+    }
+    if (
+        state.globalAutopilotPaused &&
+        state.globalAutopilotPausedUntil !== undefined &&
+        state.globalAutopilotPausedUntil <= now
+    ) {
+        state.globalAutopilotPaused = false;
+        state.globalAutopilotPausedUntil = undefined;
+    }
 }
 
 /**
@@ -325,6 +342,8 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
 export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
     let queued = 0, running = 0, completed = 0, failed = 0, cancelled = 0, total = 0;
     let allPaused = true, allAutopilotPaused = true, any = false, anyDraining = false;
+    let pausedUntil: number | undefined;
+    let autopilotPausedUntil: number | undefined;
     for (const m of bridge.registry.getAllQueues().values()) {
         const s = m.getStats();
         queued += s.queued;
@@ -336,9 +355,32 @@ export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
         if (!s.isPaused) { allPaused = false; }
         if (!s.isAutopilotPaused) { allAutopilotPaused = false; }
         if (s.isDraining) { anyDraining = true; }
+        if (s.pausedUntil !== undefined) {
+            pausedUntil = pausedUntil === undefined ? s.pausedUntil : Math.max(pausedUntil, s.pausedUntil);
+        }
+        if (s.autopilotPausedUntil !== undefined) {
+            autopilotPausedUntil = autopilotPausedUntil === undefined ? s.autopilotPausedUntil : Math.max(autopilotPausedUntil, s.autopilotPausedUntil);
+        }
         any = true;
     }
-    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isAutopilotPaused: any && allAutopilotPaused, isDraining: anyDraining };
+    const stats: QueueStats = {
+        queued,
+        running,
+        completed,
+        failed,
+        cancelled,
+        total,
+        isPaused: any && allPaused,
+        isAutopilotPaused: any && allAutopilotPaused,
+        isDraining: anyDraining,
+    };
+    if (stats.isPaused && pausedUntil !== undefined) {
+        stats.pausedUntil = pausedUntil;
+    }
+    if (stats.isAutopilotPaused && autopilotPausedUntil !== undefined) {
+        stats.autopilotPausedUntil = autopilotPausedUntil;
+    }
+    return stats;
 }
 
 /**
@@ -346,12 +388,15 @@ export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
  * where no bridges exist yet but pause was called.
  */
 export function getAggregateStats(bridge: MultiRepoQueueRouter, state: QueueGlobalState): QueueStats {
+    normalizeGlobalQueueState(state);
     const stats = aggregateStats(bridge);
     if (state.globalPaused && bridge.registry.getAllQueues().size === 0) {
         stats.isPaused = true;
+        stats.pausedUntil = state.globalPausedUntil;
     }
     if (state.globalAutopilotPaused && bridge.registry.getAllQueues().size === 0) {
         stats.isAutopilotPaused = true;
+        stats.autopilotPausedUntil = state.globalAutopilotPausedUntil;
     }
     return stats;
 }
@@ -388,6 +433,7 @@ export async function enqueueViaBridge(
     globalWorkspaceRootPath: string | undefined,
     store: ProcessStore | undefined
 ): Promise<string> {
+    normalizeGlobalQueueState(state);
     const fallback = globalWorkspaceRootPath ?? process.cwd();
     const rootPath = await resolveRootPath(input.payload, store, globalWorkspaceRootPath) || fallback;
     bridge.getOrCreateBridge(rootPath);
@@ -396,10 +442,10 @@ export async function enqueueViaBridge(
     }
     const queueManager = bridge.registry.getQueueForRepo(rootPath);
     if (state.globalPaused && !queueManager.getStats().isPaused) {
-        queueManager.pause();
+        queueManager.pause(state.globalPausedUntil);
     }
     if (state.globalAutopilotPaused && !queueManager.getStats().isAutopilotPaused) {
-        queueManager.pauseAutopilot();
+        queueManager.pauseAutopilot(state.globalAutopilotPausedUntil);
     }
     return queueManager.enqueue(input);
 }

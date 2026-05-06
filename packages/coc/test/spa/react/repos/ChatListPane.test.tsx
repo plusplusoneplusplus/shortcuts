@@ -316,6 +316,50 @@ describe('ChatListPane', () => {
             renderPane({ isPaused: true, history: [makeHistoryTask()] });
             expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('▶');
         });
+
+        it('opens duration menu and pauses all tasks for selected hours', () => {
+            const onPauseResume = vi.fn();
+            renderPane({ history: [makeHistoryTask()], onPauseResume });
+
+            fireEvent.click(screen.getByTestId('repo-pause-resume-btn'));
+            expect(screen.getByTestId('pause-duration-menu-all')).toBeTruthy();
+
+            fireEvent.click(screen.getByTestId('pause-duration-all-2h'));
+            expect(onPauseResume).toHaveBeenCalledWith({ durationHours: 2 });
+        });
+
+        it('opens duration menu and pauses autopilot tasks for selected hours', () => {
+            const onPauseResumeAutopilot = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot,
+            });
+
+            fireEvent.click(screen.getByTestId('autopilot-pause-resume-btn'));
+            expect(screen.getByTestId('pause-duration-menu-autopilot')).toBeTruthy();
+
+            fireEvent.click(screen.getByTestId('pause-duration-autopilot-3h'));
+            expect(onPauseResumeAutopilot).toHaveBeenCalledWith({ durationHours: 3 });
+        });
+
+        it('shows timed pause remaining in banners and toolbar labels', () => {
+            const now = Date.parse('2026-01-01T00:00:00Z');
+            const pausedUntil = now + 90 * 60 * 1000;
+            renderPane({
+                isPaused: true,
+                pausedUntil,
+                isAutopilotPaused: true,
+                autopilotPausedUntil: pausedUntil,
+                onPauseResumeAutopilot: vi.fn(),
+                history: [makeHistoryTask()],
+                now,
+            });
+
+            expect(screen.getByTestId('queue-paused-banner').textContent).toContain('1h 30m');
+            expect(screen.getByTestId('autopilot-paused-banner').textContent).toContain('1h 30m');
+            expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('1h 30m');
+            expect(screen.getByTestId('autopilot-pause-resume-btn').textContent).toContain('1h 30m');
+        });
     });
 
     // ── Running Tasks section ──────────────────────────────────────────

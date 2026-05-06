@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Read the current schema version from the database.
@@ -146,11 +146,19 @@ export function initializeDatabase(db: Database.Database): void {
         // ── queue_repo_state ────────────────────────────────────────
         db.exec(`
             CREATE TABLE IF NOT EXISTS queue_repo_state (
-                repo_id       TEXT PRIMARY KEY,
-                is_paused     INTEGER DEFAULT 0,
-                pause_reason  TEXT
+                repo_id                  TEXT PRIMARY KEY,
+                is_paused                INTEGER DEFAULT 0,
+                pause_reason             TEXT,
+                queue_paused             INTEGER DEFAULT 0,
+                queue_paused_until       INTEGER,
+                autopilot_paused         INTEGER DEFAULT 0,
+                autopilot_paused_until   INTEGER
             )
         `);
+        ensureColumn(db, 'queue_repo_state', 'queue_paused', 'INTEGER DEFAULT 0');
+        ensureColumn(db, 'queue_repo_state', 'queue_paused_until', 'INTEGER');
+        ensureColumn(db, 'queue_repo_state', 'autopilot_paused', 'INTEGER DEFAULT 0');
+        ensureColumn(db, 'queue_repo_state', 'autopilot_paused_until', 'INTEGER');
 
         // ── schedule_runs ────────────────────────────────────────────
         db.exec(`
@@ -302,6 +310,14 @@ export function initializeDatabase(db: Database.Database): void {
     });
 
     migrate();
+}
+
+function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (columns.some(existing => existing.name === column)) {
+        return;
+    }
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 /**

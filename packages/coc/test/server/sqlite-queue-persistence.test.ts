@@ -224,6 +224,21 @@ describe('SqliteQueuePersistence', () => {
             expect(state!.isPaused).toBe(false);
         });
 
+        it('persists queue and autopilot timed pause state', () => {
+            const queueUntil = Date.now() + 60_000;
+            const autopilotUntil = Date.now() + 120_000;
+
+            qm.pause(queueUntil);
+            qm.pauseAutopilot(autopilotUntil);
+
+            const state = store.getQueueRepoState(rId);
+            expect(state).toBeDefined();
+            expect(state!.queuePaused).toBe(true);
+            expect(state!.queuePausedUntil).toBe(queueUntil);
+            expect(state!.autopilotPaused).toBe(true);
+            expect(state!.autopilotPausedUntil).toBe(autopilotUntil);
+        });
+
         it('handles reordered event — upserts all queued tasks', () => {
             const id1 = qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId });
             const id2 = qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId });
@@ -303,6 +318,31 @@ describe('SqliteQueuePersistence', () => {
             expect(qm).toBeDefined();
             expect(qm!.isRepoPaused(rId)).toBe(true);
             expect(qm!.getPauseReason(rId)).toEqual({ taskId: 'x', displayName: 'failed', failedAt: '2024-01-01' });
+        });
+
+        it('restores queue and autopilot timed pause state', () => {
+            const rootPath = '/repo/timed-pause';
+            const rId = repoId(rootPath);
+            const queueUntil = Date.now() + 60_000;
+            const autopilotUntil = Date.now() + 120_000;
+            bridge.registerRepoId(rId, rootPath);
+
+            persistence = new SqliteQueuePersistence(bridge, db);
+            store.setQueueControlState(rId, {
+                queuePaused: true,
+                queuePausedUntil: queueUntil,
+                autopilotPaused: true,
+                autopilotPausedUntil: autopilotUntil,
+            });
+            db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(rId, rootPath);
+
+            persistence.restore();
+
+            const qm = registry.getQueueForRepo(rootPath);
+            expect(qm.getStats().isPaused).toBe(true);
+            expect(qm.getStats().pausedUntil).toBe(queueUntil);
+            expect(qm.getStats().isAutopilotPaused).toBe(true);
+            expect(qm.getStats().autopilotPausedUntil).toBe(autopilotUntil);
         });
 
         it('with running tasks + fail policy — removes from DB', () => {

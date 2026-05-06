@@ -105,12 +105,34 @@ export class SqliteQueuePersistence {
             const rootPath = this.repoIdToPath.get(repoId);
             if (!rootPath) continue;
 
-            if (state.isPaused) {
+            const now = Date.now();
+            const queuePauseActive = state.queuePaused === true
+                && (state.queuePausedUntil === undefined || state.queuePausedUntil > now);
+            const autopilotPauseActive = state.autopilotPaused === true
+                && (state.autopilotPausedUntil === undefined || state.autopilotPausedUntil > now);
+
+            if (state.isPaused || queuePauseActive || autopilotPauseActive) {
                 this.bridge.getOrCreateBridge(rootPath);
                 const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
                 if (queueManager) {
-                    queueManager.pauseRepo(repoId, state.pauseReason);
+                    if (state.isPaused) {
+                        queueManager.pauseRepo(repoId, state.pauseReason);
+                    }
+                    if (queuePauseActive) {
+                        queueManager.pause(state.queuePausedUntil);
+                    }
+                    if (autopilotPauseActive) {
+                        queueManager.pauseAutopilot(state.autopilotPausedUntil);
+                    }
                 }
+            }
+            if (state.queuePaused && !queuePauseActive || state.autopilotPaused && !autopilotPauseActive) {
+                this.store.setQueueControlState(repoId, {
+                    queuePaused: queuePauseActive,
+                    queuePausedUntil: queuePauseActive ? state.queuePausedUntil : undefined,
+                    autopilotPaused: autopilotPauseActive,
+                    autopilotPausedUntil: autopilotPauseActive ? state.autopilotPausedUntil : undefined,
+                });
             }
         }
 
@@ -255,7 +277,7 @@ export class SqliteQueuePersistence {
             case 'resumed':
             case 'autopilot-paused':
             case 'autopilot-resumed':
-                // Global pause/resume — no per-repo state change to persist
+                this.persistQueueControlState(repoId, rootPath);
                 break;
 
             case 'repo-paused':
@@ -292,6 +314,18 @@ export class SqliteQueuePersistence {
                 break;
             }
         }
+    }
+
+    private persistQueueControlState(repoId: string, rootPath: string): void {
+        const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
+        if (!queueManager) return;
+        const stats = queueManager.getStats();
+        this.store.setQueueControlState(repoId, {
+            queuePaused: stats.isPaused,
+            queuePausedUntil: stats.pausedUntil,
+            autopilotPaused: stats.isAutopilotPaused,
+            autopilotPausedUntil: stats.autopilotPausedUntil,
+        });
     }
 
     // ========================================================================

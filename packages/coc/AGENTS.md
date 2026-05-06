@@ -141,8 +141,8 @@ src/
 │   │   ├── process-history-handler.ts    # Conversation history listing & detail
 │   │   ├── process-resume-handler.ts     # Resume interrupted processes
 │   │   └── commit-chat-binding-store.ts  # SQLite store: commitHash → taskId
-│   ├── queue/                        # Queue layer (handler, bridges, blob store, partitioner)
-│   │   ├── queue-handler.ts                # /api/queue/* CRUD + validation
+│   ├── queue/                        # Queue layer (handler, timed queue/autopilot pause persistence, bridges, blob store, partitioner)
+│   │   ├── queue-handler.ts                # /api/queue/* CRUD + validation, pause/resume state
 │   │   ├── queue-executor-bridge.ts        # Bridges queue tasks to AI/workflow/script executors
 │   │   ├── multi-repo-queue-router.ts      # Routes queue operations across per-repo queues + repoId↔rootPath maps
 │   │   ├── image-blob-store.ts             # Externalizes base64 images from persistence to JSON

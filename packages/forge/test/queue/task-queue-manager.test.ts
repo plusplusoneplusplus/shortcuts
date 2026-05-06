@@ -829,6 +829,27 @@ describe('TaskQueueManager', () => {
 
             expect(listener).toHaveBeenCalledTimes(1);
         });
+
+        it('timed pause reports pausedUntil and auto-resumes after expiration', () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+            try {
+                const listener = vi.fn();
+                manager.on('resumed', listener);
+                const until = Date.now() + 60_000;
+
+                manager.pause(until);
+                expect(manager.getStats().isPaused).toBe(true);
+                expect(manager.getStats().pausedUntil).toBe(until);
+
+                vi.advanceTimersByTime(60_001);
+                expect(manager.isPaused()).toBe(false);
+                expect(manager.getStats().pausedUntil).toBeUndefined();
+                expect(listener).toHaveBeenCalledTimes(1);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
     });
 
     describe('autopilot pause/resume', () => {
@@ -881,6 +902,31 @@ describe('TaskQueueManager', () => {
             manager.resumeAutopilot();
 
             expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('timed pauseAutopilot reports autopilotPausedUntil and auto-resumes after expiration', () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+            try {
+                manager = createTaskQueueManager({ isExclusive: () => true });
+                const listener = vi.fn();
+                manager.on('autopilot-resumed', listener);
+                const until = Date.now() + 60_000;
+                const taskId = manager.enqueue(createTestTask());
+                manager.pauseAutopilot(until);
+                manager.admitTask(taskId);
+
+                expect(manager.getStats().isAutopilotPaused).toBe(true);
+                expect(manager.getStats().autopilotPausedUntil).toBe(until);
+
+                vi.advanceTimersByTime(60_001);
+                expect(manager.isAutopilotPaused()).toBe(false);
+                expect(manager.getStats().autopilotPausedUntil).toBeUndefined();
+                expect(manager.getTask(taskId)!.admitted).toBe(false);
+                expect(listener).toHaveBeenCalledTimes(1);
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('pauseAutopilot does not affect isPaused', () => {
@@ -970,7 +1016,8 @@ describe('TaskQueueManager', () => {
             manager.enqueue(createTestTask());
             manager.markStarted(manager.enqueue(createTestTask()));
             manager.markCompleted(id1);
-            manager.pause();
+            manager.pause(Date.now() + 60_000);
+            manager.pauseAutopilot(Date.now() + 60_000);
 
             manager.reset();
 
@@ -978,6 +1025,9 @@ describe('TaskQueueManager', () => {
             expect(manager.getRunning()).toHaveLength(0);
             expect(manager.getHistory()).toHaveLength(0);
             expect(manager.isPaused()).toBe(false);
+            expect(manager.getStats().pausedUntil).toBeUndefined();
+            expect(manager.isAutopilotPaused()).toBe(false);
+            expect(manager.getStats().autopilotPausedUntil).toBeUndefined();
         });
     });
 
