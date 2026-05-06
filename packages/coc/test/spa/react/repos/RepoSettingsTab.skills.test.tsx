@@ -1,9 +1,11 @@
 /**
- * Regression tests for RepoSettingsTab Agent Skills expansion behavior.
+ * Regression tests for RepoSettingsTab navigation behavior.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { useEffect } from 'react';
+import type { SettingsSection } from '../../../../src/server/spa/client/react/types/dashboard';
 
 const mockFetchApi = vi.hoisted(() => vi.fn());
 const mockClient = vi.hoisted(() => ({
@@ -41,6 +43,12 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
     useRepos: () => ({ repos: [] }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/repo-settings/NotesSettingsSection', () => ({
+    NotesSettingsSection: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="notes-settings-section">Notes settings for {workspaceId}</div>
+    ),
+}));
+
 const repo = {
     workspace: { id: 'ws-1', rootPath: 'C:\\repo', color: '#ccc', description: '' },
     gitInfo: { branch: 'main', dirty: false, ahead: 0, behind: 0 },
@@ -49,17 +57,45 @@ const repo = {
     taskCount: 0,
 };
 
-async function renderSettingsTab() {
+function makeRepo(workspaceId: string) {
+    return {
+        ...repo,
+        workspace: {
+            ...repo.workspace,
+            id: workspaceId,
+            rootPath: workspaceId === 'ws-1' ? repo.workspace.rootPath : '',
+        },
+    };
+}
+
+async function renderSettingsTab({
+    workspaceId = 'ws-1',
+    initialSection,
+}: {
+    workspaceId?: string;
+    initialSection?: SettingsSection;
+} = {}) {
     const { RepoSettingsTab } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
     );
-    const { AppProvider } = await import(
+    const { AppProvider, useApp } = await import(
         '../../../../src/server/spa/client/react/contexts/AppContext'
     );
 
+    function InitialSectionSetter() {
+        const { dispatch } = useApp();
+        useEffect(() => {
+            if (initialSection) {
+                dispatch({ type: 'SET_SETTINGS_SECTION', section: initialSection });
+            }
+        }, [dispatch, initialSection]);
+        return null;
+    }
+
     render(
         <AppProvider>
-            <RepoSettingsTab workspaceId="ws-1" repo={repo as any} />
+            <InitialSectionSetter />
+            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} />
         </AppProvider>
     );
 }
@@ -109,5 +145,35 @@ describe('RepoSettingsTab skill expansion', () => {
         await waitFor(() => expect(screen.queryByTestId('skill-detail-loading')).toBeNull());
         expect(screen.getByTestId('skill-detail-panel')).toBeTruthy();
         expect(screen.getByTestId('skill-detail-version').textContent).toContain('v2.0.0');
+    });
+
+    it('shows the Notes nav item and opens Notes settings for normal repos', async () => {
+        await act(async () => { await renderSettingsTab(); });
+        await waitFor(() => expect(screen.getByTestId('nav-item-notes')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-notes'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-settings-section')).toBeTruthy());
+        expect(location.hash).toBe('#repos/ws-1/settings/notes');
+    });
+
+    it.each(['my_work', 'my_life'])('hides the Notes nav item for virtual workspace %s', async (workspaceId) => {
+        await act(async () => { await renderSettingsTab({ workspaceId }); });
+        await waitFor(() => expect(screen.getByTestId('settings-sidebar')).toBeTruthy());
+
+        expect(screen.queryByTestId('nav-item-notes')).toBeNull();
+        expect(screen.queryByTestId('notes-settings-section')).toBeNull();
+    });
+
+    it.each(['my_work', 'my_life'])('redirects direct Notes settings links for virtual workspace %s to Info', async (workspaceId) => {
+        location.hash = `#repos/${workspaceId}/settings/notes`;
+
+        await act(async () => { await renderSettingsTab({ workspaceId, initialSection: 'notes' }); });
+
+        await waitFor(() => expect(location.hash).toBe(`#repos/${workspaceId}/settings/info`));
+        expect(screen.queryByTestId('nav-item-notes')).toBeNull();
+        expect(screen.queryByTestId('notes-settings-section')).toBeNull();
     });
 });

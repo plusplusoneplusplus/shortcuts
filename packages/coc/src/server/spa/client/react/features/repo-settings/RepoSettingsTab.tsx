@@ -44,6 +44,12 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'notes', label: 'Notes', icon: '📝' },
 ];
 
+const VIRTUAL_WORKSPACE_IDS = new Set(['my_work', 'my_life']);
+
+function isVirtualWorkspaceId(workspaceId: string): boolean {
+    return VIRTUAL_WORKSPACE_IDS.has(workspaceId);
+}
+
 // ── Info section types ──────────────────────────────────────────────────────
 
 const STATUS_ICON: Record<string, string> = {
@@ -331,6 +337,18 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
     // ── Sidebar navigation state ──────────────────────────────────────────────
     const activeSection = state.settingsSection;
+    const isVirtualWorkspace = isVirtualWorkspaceId(workspaceId);
+    const visibleNavItems = isVirtualWorkspace
+        ? NAV_ITEMS.filter(item => item.id !== 'notes')
+        : NAV_ITEMS;
+
+    useEffect(() => {
+        if (!isVirtualWorkspace || activeSection !== 'notes') {
+            return;
+        }
+        dispatch({ type: 'SET_SETTINGS_SECTION', section: 'info' });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/info';
+    }, [activeSection, dispatch, isVirtualWorkspace, workspaceId]);
 
     const setActiveSection = useCallback((section: ActiveSection) => {
         dispatch({ type: 'SET_SETTINGS_SECTION', section });
@@ -349,7 +367,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 className="flex-shrink-0 flex flex-row sm:flex-col border-b sm:border-b-0 sm:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[var(--vscode-sideBar-background,#f3f3f3)] dark:bg-[#252526] overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto sm:w-52"
                 data-testid="settings-sidebar"
             >
-                {NAV_ITEMS.map(item => {
+                {visibleNavItems.map(item => {
                     const isActive = activeSection === item.id;
                     let badge: React.ReactNode = null;
                     if (item.id === 'mcp' && !loading) {
@@ -521,7 +539,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 {activeSection === 'tasks' && (
                     <TasksSettingsSection workspaceId={workspaceId} />
                 )}
-                {activeSection === 'notes' && (
+                {activeSection === 'notes' && !isVirtualWorkspace && (
                     <NotesSettingsSection workspaceId={workspaceId} />
                 )}
             </div>
