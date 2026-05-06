@@ -2,10 +2,12 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
+import { ToastContext } from '../contexts/ToastContext';
 import { useTheme } from './ThemeProvider';
 import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
@@ -19,6 +21,13 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getHostname, isServersEnabled } from '../utils/config';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
+import {
+    mergeVisibleTopBarOrder,
+    moveTopBarItem,
+    moveTopBarItemToIndex,
+    resolveTopBarItemOrder,
+    type TopBarItemId,
+} from './topBarOrder';
 
 /** Set to `true` to re-enable the top-level Wiki tab in navigation. */
 export const SHOW_WIKI_TAB = false;
@@ -52,6 +61,31 @@ export interface TopBarProps {
     onLogsOpen?: () => void;
 }
 
+interface ReorderableTopBarItem {
+    id: TopBarItemId;
+    label: string;
+    tab?: DashboardTab;
+    icon: string;
+    desktopOnly?: boolean;
+    active: boolean;
+    onActivate?: () => void;
+}
+
+type DropIndicator = { targetId: TopBarItemId; position: 'before' | 'after' } | null;
+
+function getDropPosition(event: DragEvent<HTMLElement>): 'before' | 'after' {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+}
+
+function getDropPositionLabel(items: ReorderableTopBarItem[], index: number): string {
+    if (index <= 0) {
+        return 'before first item';
+    }
+    const previous = items[index - 1];
+    return previous ? `after ${previous.label}` : 'at the end';
+}
+
 export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { state: queueState } = useQueue();
@@ -66,6 +100,17 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const serversEnabled = isServersEnabled();
+    const toast = useContext(ToastContext);
+    const longPressTimer = useRef<number | null>(null);
+    const [savedTopBarOrder, setSavedTopBarOrder] = useState<string[] | undefined>();
+    const [customizeMode, setCustomizeMode] = useState(false);
+    const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [draggedId, setDraggedId] = useState<TopBarItemId | null>(null);
+    const [dropIndicator, setDropIndicator] = useState<DropIndicator>(null);
+    const [keyboardDragId, setKeyboardDragId] = useState<TopBarItemId | null>(null);
+    const [keyboardDropIndex, setKeyboardDropIndex] = useState<number | null>(null);
+    const [liveMessage, setLiveMessage] = useState('');
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -116,12 +161,260 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [dispatch, queueState.selectedTaskIdByRepo, state]);
 
     const isOnReposTab = state.activeTab === 'repos';
+    const visibleTopBarItems = useMemo<ReorderableTopBarItem[]>(() => {
+        const optionalTabs = TABS.map(({ label, tab }) => ({
+            id: tab as TopBarItemId,
+            label,
+            tab,
+            icon: label.slice(0, 1),
+            desktopOnly: true,
+            active: state.activeTab === tab,
+            onActivate: () => switchTab(tab),
+        }));
+
+        return [
+            ...optionalTabs,
+            {
+                id: 'skills',
+                label: 'Skills',
+                tab: 'skills',
+                icon: '\u26a1',
+                desktopOnly: true,
+                active: state.activeTab === 'skills',
+                onActivate: () => switchTab('skills'),
+            },
+            {
+                id: 'logs',
+                label: 'Logs',
+                tab: 'logs',
+                icon: '\ud83d\udccb',
+                desktopOnly: true,
+                active: false,
+                onActivate: onLogsOpen,
+            },
+            ...(SHOW_MEMORY_TAB ? [{
+                id: 'memory' as const,
+                label: 'Memory',
+                tab: 'memory' as const,
+                icon: '\ud83e\udde0',
+                desktopOnly: true,
+                active: state.activeTab === 'memory',
+                onActivate: () => switchTab('memory'),
+            }] : []),
+            {
+                id: 'stats',
+                label: 'Usage',
+                tab: 'stats',
+                icon: '\ud83d\udcca',
+                desktopOnly: true,
+                active: state.activeTab === 'stats',
+                onActivate: () => switchTab('stats'),
+            },
+            {
+                id: 'models',
+                label: 'Models',
+                tab: 'models',
+                icon: '\u269b',
+                desktopOnly: true,
+                active: state.activeTab === 'models',
+                onActivate: () => switchTab('models'),
+            },
+            ...(serversEnabled ? [{
+                id: 'servers' as const,
+                label: 'Servers',
+                tab: 'servers' as const,
+                icon: '\ud83d\udda5',
+                desktopOnly: true,
+                active: state.activeTab === 'servers',
+                onActivate: () => switchTab('servers'),
+            }] : []),
+            {
+                id: 'admin',
+                label: 'Admin',
+                tab: 'admin',
+                icon: '\u2699',
+                active: state.activeTab === 'admin',
+                onActivate: onAdminOpen,
+            },
+        ];
+    }, [onAdminOpen, onLogsOpen, serversEnabled, state.activeTab, switchTab]);
+
+    const visibleDefaultOrder = useMemo(
+        () => visibleTopBarItems.map(item => item.id),
+        [visibleTopBarItems],
+    );
+
+    const orderedTopBarItems = useMemo(() => {
+        const order = resolveTopBarItemOrder(visibleDefaultOrder, savedTopBarOrder);
+        return order
+            .map(id => visibleTopBarItems.find(item => item.id === id))
+            .filter((item): item is ReorderableTopBarItem => Boolean(item));
+    }, [savedTopBarOrder, visibleDefaultOrder, visibleTopBarItems]);
+
+    const orderedTopBarIds = useMemo(
+        () => orderedTopBarItems.map(item => item.id),
+        [orderedTopBarItems],
+    );
+
+    useEffect(() => {
+        let cancelled = false;
+        getSpaCocClient().preferences.getGlobal()
+            .then(prefs => {
+                if (cancelled) {
+                    return;
+                }
+                setSavedTopBarOrder(Array.isArray(prefs.topBarItemOrder) ? prefs.topBarItemOrder : undefined);
+            })
+            .catch(error => {
+                if (!cancelled) {
+                    toast?.addToast(getSpaCocClientErrorMessage(error, 'Failed to load top bar order'), 'error');
+                }
+            });
+        return () => { cancelled = true; };
+    }, [toast]);
+
+    const persistVisibleOrder = useCallback(async (nextVisibleOrder: TopBarItemId[]) => {
+        const nextSavedOrder = mergeVisibleTopBarOrder(savedTopBarOrder, nextVisibleOrder);
+        setSavedTopBarOrder(nextSavedOrder);
+        try {
+            await getSpaCocClient().preferences.patchGlobal({ topBarItemOrder: nextSavedOrder });
+        } catch (error) {
+            toast?.addToast(`${getSpaCocClientErrorMessage(error, 'Failed to save top bar order')}. The order will stay for this session and retry on the next reorder.`, 'error');
+        }
+    }, [savedTopBarOrder, toast]);
+
+    const resetTopBarOrder = useCallback(async () => {
+        setSavedTopBarOrder(undefined);
+        try {
+            const prefs = await getSpaCocClient().preferences.getGlobal();
+            const { topBarItemOrder: _topBarItemOrder, ...rest } = prefs;
+            await getSpaCocClient().preferences.replaceGlobal(rest);
+            setCustomizeMode(false);
+            setMobileSheetOpen(false);
+            setContextMenu(null);
+            toast?.addToast('Top bar order reset', 'success');
+        } catch (error) {
+            toast?.addToast(getSpaCocClientErrorMessage(error, 'Failed to reset top bar order'), 'error');
+        }
+    }, [toast]);
+
+    const enterCustomizeMode = useCallback(() => {
+        setContextMenu(null);
+        if (isMobile) {
+            setMobileSheetOpen(true);
+            return;
+        }
+        setCustomizeMode(true);
+    }, [isMobile]);
+
+    useEffect(() => {
+        const handler = () => enterCustomizeMode();
+        window.addEventListener('coc-customize-top-bar', handler);
+        return () => window.removeEventListener('coc-customize-top-bar', handler);
+    }, [enterCustomizeMode]);
+
+    useEffect(() => {
+        if (!customizeMode && !mobileSheetOpen && !keyboardDragId) {
+            return;
+        }
+        const handler = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            if (keyboardDragId) {
+                event.preventDefault();
+                setKeyboardDragId(null);
+                setKeyboardDropIndex(null);
+                setLiveMessage('Cancelled top bar drag.');
+                return;
+            }
+            setCustomizeMode(false);
+            setMobileSheetOpen(false);
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [customizeMode, keyboardDragId, mobileSheetOpen]);
+
+    const clearLongPress = useCallback(() => {
+        if (longPressTimer.current !== null) {
+            window.clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
+
+    const scheduleLongPressCustomize = useCallback(() => {
+        if (!isMobile) {
+            return;
+        }
+        clearLongPress();
+        longPressTimer.current = window.setTimeout(() => {
+            setMobileSheetOpen(true);
+            longPressTimer.current = null;
+        }, 500);
+    }, [clearLongPress, isMobile]);
+
+    const finishDrop = useCallback((nextOrder: TopBarItemId[]) => {
+        setDraggedId(null);
+        setDropIndicator(null);
+        void persistVisibleOrder(nextOrder);
+    }, [persistVisibleOrder]);
+
+    const handleKeyboardDrag = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, item: ReorderableTopBarItem, index: number) => {
+        if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault();
+            if (!keyboardDragId) {
+                setKeyboardDragId(item.id);
+                setKeyboardDropIndex(index);
+                setCustomizeMode(true);
+                setLiveMessage(`Picked up ${item.label}, position ${index + 1} of ${orderedTopBarItems.length}.`);
+                return;
+            }
+            if (keyboardDragId === item.id && keyboardDropIndex !== null) {
+                const nextOrder = moveTopBarItemToIndex(orderedTopBarIds, item.id, keyboardDropIndex);
+                setKeyboardDragId(null);
+                setKeyboardDropIndex(null);
+                const finalIndex = nextOrder.indexOf(item.id);
+                setLiveMessage(`Dropped ${item.label}, position ${finalIndex + 1} of ${nextOrder.length}.`);
+                void persistVisibleOrder(nextOrder);
+            }
+            return;
+        }
+
+        if (keyboardDragId !== item.id) {
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setKeyboardDragId(null);
+            setKeyboardDropIndex(null);
+            setLiveMessage('Cancelled top bar drag.');
+            return;
+        }
+
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            const maxIndex = orderedTopBarItems.length;
+            const current = keyboardDropIndex ?? index;
+            const nextIndex = event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                    ? maxIndex
+                    : Math.max(0, Math.min(maxIndex, current + (event.key === 'ArrowLeft' ? -1 : 1)));
+            setKeyboardDropIndex(nextIndex);
+            setLiveMessage(`Drop position ${getDropPositionLabel(orderedTopBarItems, nextIndex)}.`);
+        }
+    }, [keyboardDragId, keyboardDropIndex, orderedTopBarIds, orderedTopBarItems, persistVisibleOrder]);
 
     return (
         <>
         <header
             className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
+            onContextMenu={event => {
+                event.preventDefault();
+                setContextMenu({ x: event.clientX, y: event.clientY });
+            }}
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
@@ -188,27 +481,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                         onRefresh={fetchRepos}
                     />
                 )}
-                {TABS.length > 0 && (
-                <nav className="hidden md:flex items-center gap-1 min-w-0 flex-shrink-0" id="tab-bar">
-                    {TABS.map(({ label, tab }) => (
-                        <button
-                            key={tab}
-                            className={
-                                `h-8 px-3 rounded text-sm transition-colors ` +
-                                (state.activeTab === tab
-                                    ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]'
-                                    : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                            }
-                            data-tab={tab}
-                            onClick={() => switchTab(tab)}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </nav>
-                )}
+                {TABS.length > 0 && null}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 min-w-0 overflow-hidden">
                 <span
                     className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
                     title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
@@ -220,115 +495,94 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     />
                 </span>
                 <NotificationBell />
-                <button
-                    id="skills-toggle"
-                    data-tab="skills"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'skills'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Skills"
-                    title="Skills"
-                    onClick={() => switchTab('skills')}
-                >
-                    &#9889;
-                </button>
-                <button
-                    id="logs-toggle"
-                    data-tab="logs"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'logs'
-                            ? 'active bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Logs"
-                    title="Logs"
-                    onClick={onLogsOpen}
-                >
-                    &#128203;
-                </button>
-                {SHOW_MEMORY_TAB && (
-                    <button
-                        id="memory-toggle"
-                        data-tab="memory"
-                        className={
-                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                            (state.activeTab === 'memory'
+                <div className="flex items-center gap-1 min-w-0 overflow-hidden" data-testid="topbar-reorder-group">
+                    {orderedTopBarItems.map((item, index) => {
+                        const showBefore = dropIndicator?.targetId === item.id && dropIndicator.position === 'before';
+                        const showAfter = dropIndicator?.targetId === item.id && dropIndicator.position === 'after';
+                        const isPickedUp = keyboardDragId === item.id;
+                        const isDragging = draggedId === item.id;
+                        const className =
+                            `h-7 w-7 md:h-8 md:w-8 ${item.desktopOnly ? 'hidden md:inline-flex' : 'inline-flex'} items-center justify-center rounded touch-target text-base leading-none relative ` +
+                            (item.active
                                 ? 'bg-[#0078d4] text-white'
-                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                        }
-                        aria-label="Memory"
-                        title="Memory"
-                        onClick={() => switchTab('memory')}
-                    >
-                        &#129504;
-                    </button>
-                )}
-                <button
-                    id="stats-toggle"
-                    data-tab="stats"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'stats'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Usage"
-                    title="Usage"
-                    onClick={() => switchTab('stats')}
-                >
-                    &#128202;
-                </button>
-                <button
-                    id="models-toggle"
-                    data-tab="models"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'models'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Models"
-                    title="Models"
-                    onClick={() => switchTab('models')}
-                >
-                    ⚛
-                </button>
-                {serversEnabled && (
-                    <button
-                        id="servers-toggle"
-                        data-tab="servers"
-                        className={
-                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                            (state.activeTab === 'servers'
-                                ? 'bg-[#0078d4] text-white'
-                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                        }
-                        aria-label="Servers"
-                        title="Servers"
-                        onClick={() => switchTab('servers')}
-                    >
-                        &#128421;
-                    </button>
-                )}
-                <button
-                    id="admin-toggle"
-                    data-tab="admin"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
-                        (state.activeTab === 'admin'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Admin"
-                    title="Admin"
-                    onClick={onAdminOpen}
-                >
-                    &#9881;
-                </button>
+                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]') +
+                            (isPickedUp ? ' ring-2 ring-[#0078d4] dark:ring-[#60b4ff]' : '') +
+                            (isDragging ? ' opacity-50 outline outline-1 outline-dashed outline-[#8c8c8c]' : '');
+
+                        return (
+                            <div
+                                key={item.id}
+                                className="relative group flex-shrink-0"
+                                draggable={!isMobile}
+                                onDragStart={event => {
+                                    if (event.dataTransfer) {
+                                        event.dataTransfer.effectAllowed = 'move';
+                                        event.dataTransfer.setData('text/plain', item.id);
+                                    }
+                                    setDraggedId(item.id);
+                                    setCustomizeMode(true);
+                                }}
+                                onDragEnter={event => {
+                                    if (!draggedId || draggedId === item.id) return;
+                                    event.preventDefault();
+                                    setDropIndicator({ targetId: item.id, position: getDropPosition(event) });
+                                }}
+                                onDragOver={event => {
+                                    if (!draggedId || draggedId === item.id) return;
+                                    event.preventDefault();
+                                    setDropIndicator({ targetId: item.id, position: getDropPosition(event) });
+                                }}
+                                onDrop={event => {
+                                    event.preventDefault();
+                                    const sourceId = ((event.dataTransfer?.getData('text/plain') ?? '') || draggedId) as TopBarItemId | null;
+                                    if (!sourceId || sourceId === item.id) {
+                                        setDraggedId(null);
+                                        setDropIndicator(null);
+                                        return;
+                                    }
+                                    const position = dropIndicator?.targetId === item.id ? dropIndicator.position : getDropPosition(event);
+                                    finishDrop(moveTopBarItem(orderedTopBarIds, sourceId, item.id, position));
+                                }}
+                                onDragEnd={() => {
+                                    setDraggedId(null);
+                                    setDropIndicator(null);
+                                }}
+                            >
+                                {showBefore && <span className="absolute -left-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
+                                <button
+                                    id={`${item.id}-toggle`}
+                                    data-tab={item.tab}
+                                    data-topbar-item-id={item.id}
+                                    className={className}
+                                    aria-label={item.label}
+                                    aria-pressed={isPickedUp ? true : undefined}
+                                    title={item.label}
+                                    onPointerDown={scheduleLongPressCustomize}
+                                    onPointerUp={clearLongPress}
+                                    onPointerCancel={clearLongPress}
+                                    onPointerLeave={clearLongPress}
+                                    onKeyDown={event => handleKeyboardDrag(event, item, index)}
+                                    onClick={event => {
+                                        if (isPickedUp) {
+                                            event.preventDefault();
+                                            return;
+                                        }
+                                        item.onActivate?.();
+                                    }}
+                                >
+                                    <span
+                                        className={`absolute -left-1 top-0.5 text-[9px] leading-none text-[#616161] dark:text-[#999] ${customizeMode || isPickedUp ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                                        aria-hidden
+                                    >
+                                        ⠿
+                                    </span>
+                                    {item.icon}
+                                </button>
+                                {showAfter && <span className="absolute -right-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
+                            </div>
+                        );
+                    })}
+                </div>
                 <button
                     id="theme-toggle"
                     className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
@@ -339,6 +593,98 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
             </div>
         </header>
+        <div className="sr-only" aria-live="polite">{liveMessage}</div>
+        {contextMenu && (
+            <div
+                className="fixed z-[10000] min-w-44 rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-1 text-sm"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+                role="menu"
+            >
+                <button
+                    className="w-full text-left px-3 py-2 rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    role="menuitem"
+                    onClick={enterCustomizeMode}
+                >
+                    Customize top bar
+                </button>
+                <button
+                    className="w-full text-left px-3 py-2 rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    role="menuitem"
+                    onClick={() => void resetTopBarOrder()}
+                >
+                    Reset order
+                </button>
+            </div>
+        )}
+        {customizeMode && !mobileSheetOpen && (
+            <div className="fixed top-12 right-3 z-[9000] flex items-center gap-2 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow px-3 py-1 text-xs">
+                <span>Drag icons to reorder. Esc to finish.</span>
+                <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => void resetTopBarOrder()}>Reset order</button>
+                <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => setCustomizeMode(false)}>Done</button>
+            </div>
+        )}
+        {mobileSheetOpen && (
+            <div
+                className="fixed inset-0 z-[10000] bg-black/30 flex items-end"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Customize top bar"
+                onClick={() => setMobileSheetOpen(false)}
+            >
+                <div
+                    className="w-full rounded-t-2xl bg-white dark:bg-[#252526] border-t border-[#d0d0d0] dark:border-[#3c3c3c] shadow-2xl p-4 space-y-3"
+                    onClick={event => event.stopPropagation()}
+                >
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold">Customize top bar</h2>
+                        <button className="text-sm text-[#0078d4] dark:text-[#60b4ff]" onClick={() => setMobileSheetOpen(false)}>Done</button>
+                    </div>
+                    <div className="space-y-2" data-testid="topbar-reorder-sheet">
+                        {orderedTopBarItems.map(item => (
+                            <div
+                                key={item.id}
+                                draggable
+                                className={`flex items-center gap-3 rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#2d2d2d] px-3 py-2 text-sm ${draggedId === item.id ? 'shadow-lg opacity-80' : ''}`}
+                                onDragStart={event => {
+                                    if (event.dataTransfer) {
+                                        event.dataTransfer.effectAllowed = 'move';
+                                        event.dataTransfer.setData('text/plain', item.id);
+                                    }
+                                    setDraggedId(item.id);
+                                }}
+                                onDragOver={event => {
+                                    if (!draggedId || draggedId === item.id) return;
+                                    event.preventDefault();
+                                    setDropIndicator({ targetId: item.id, position: 'before' });
+                                }}
+                                onDrop={event => {
+                                    event.preventDefault();
+                                    const sourceId = ((event.dataTransfer?.getData('text/plain') ?? '') || draggedId) as TopBarItemId | null;
+                                    if (!sourceId || sourceId === item.id) {
+                                        setDraggedId(null);
+                                        setDropIndicator(null);
+                                        return;
+                                    }
+                                    finishDrop(moveTopBarItem(orderedTopBarIds, sourceId, item.id, 'before'));
+                                }}
+                                onDragEnd={() => {
+                                    setDraggedId(null);
+                                    setDropIndicator(null);
+                                }}
+                            >
+                                <span aria-hidden className="text-base">{item.icon}</span>
+                                <span className="flex-1">{item.label}</span>
+                                <span aria-hidden className="text-[#616161] dark:text-[#999]">⠿</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                        <button className="px-3 py-1.5 text-sm rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]" onClick={() => void resetTopBarOrder()}>Reset</button>
+                        <button className="px-3 py-1.5 text-sm rounded bg-[#0078d4] text-white" onClick={() => setMobileSheetOpen(false)}>Done</button>
+                    </div>
+                </div>
+            </div>
+        )}
         {isOnReposTab && (
             <RepoManagementPopover
                 open={popoverOpen}

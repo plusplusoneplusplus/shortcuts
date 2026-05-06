@@ -924,6 +924,20 @@ export function AdminPanel() {
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Top bar order</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Open drag handles for dashboard utility destinations.</div>
+                                        </div>
+                                        <button
+                                            className="px-3 py-1.5 text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                                            type="button"
+                                            onClick={() => window.dispatchEvent(new Event('coc-customize-top-bar'))}
+                                            data-testid="customize-topbar-button"
+                                        >
+                                            Customize top bar
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
                                             <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Inline HTML previews</div>
                                             <div className="text-xs text-[#616161] dark:text-[#999]">
                                                 Render local <span className="font-mono">.html</span> links titled <span className="font-mono">embed</span> as sandboxed chat previews.

@@ -777,6 +777,29 @@ describe('validateGlobalPreferences', () => {
         expect(result).toEqual({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
     });
 
+    // -- topBarItemOrder field --
+
+    it('accepts valid topBarItemOrder array of strings', () => {
+        const result = validateGlobalPreferences({ topBarItemOrder: ['models', 'skills', 'logs'] });
+        expect(result).toEqual({ topBarItemOrder: ['models', 'skills', 'logs'] });
+    });
+
+    it('rejects non-array topBarItemOrder', () => {
+        expect(validateGlobalPreferences({ topBarItemOrder: 'models' })).toEqual({});
+        expect(validateGlobalPreferences({ topBarItemOrder: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ topBarItemOrder: {} })).toEqual({});
+    });
+
+    it('filters out non-string and empty entries from topBarItemOrder', () => {
+        const result = validateGlobalPreferences({ topBarItemOrder: ['models', 42, '', null, 'skills'] });
+        expect(result.topBarItemOrder).toEqual(['models', 'skills']);
+    });
+
+    it('omits topBarItemOrder when all entries are invalid', () => {
+        const result = validateGlobalPreferences({ topBarItemOrder: [42, null, ''] });
+        expect(result.topBarItemOrder).toBeUndefined();
+    });
+
     // -- hasSeenWelcome field --
 
     it('accepts hasSeenWelcome boolean true', () => {
@@ -1274,6 +1297,32 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
+    });
+
+    // -- topBarItemOrder persistence via API --
+
+    it('PATCH persists topBarItemOrder', async () => {
+        const order = ['models', 'skills', 'logs'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { topBarItemOrder: order });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).topBarItemOrder).toEqual(order);
+    });
+
+    it('GET returns persisted topBarItemOrder', async () => {
+        const order = ['stats', 'models', 'admin'];
+        await patchJSON(`${baseUrl}/api/preferences`, { topBarItemOrder: order });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).topBarItemOrder).toEqual(order);
+    });
+
+    it('PATCH updates topBarItemOrder without affecting other global prefs', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const order = ['admin', 'skills'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { topBarItemOrder: order });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.theme).toBe('dark');
+        expect(body.topBarItemOrder).toEqual(order);
     });
 
     // -- hasSeenWelcome persistence via API --

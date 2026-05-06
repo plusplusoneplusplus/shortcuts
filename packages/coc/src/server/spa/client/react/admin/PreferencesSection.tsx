@@ -1,7 +1,7 @@
 /**
  * PreferencesSection — Admin panel card for viewing and editing user preferences.
  * Loads from GET /api/preferences and saves via PATCH /api/preferences.
- * Handles only global preferences: theme and reposSidebarCollapsed.
+ * Handles only global preferences: theme, layout, and reposSidebarCollapsed.
  * Per-repo preferences (lastModel, lastDepth, lastEffort, lastSkills, pinnedChats, archivedChats)
  * are managed via /api/workspaces/:id/preferences.
  */
@@ -14,6 +14,7 @@ interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     reposSidebarCollapsed?: boolean;
     uiLayoutMode?: 'classic' | 'dev-workflow';
+    topBarItemOrder?: string[];
 }
 
 interface PreferencesSectionProps {

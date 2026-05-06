@@ -84,6 +84,8 @@ export interface GlobalPreferences {
     reposSidebarCollapsed?: boolean;
     /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
     gitGroupOrder?: string[];
+    /** User-defined display order for reorderable dashboard top-bar destination IDs. */
+    topBarItemOrder?: string[];
 
     /** Whether the user has dismissed the welcome modal. */
     hasSeenWelcome?: boolean;
@@ -247,6 +249,15 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         );
         if (order.length > 0) {
             result.gitGroupOrder = order;
+        }
+    }
+
+    if (Array.isArray(obj.topBarItemOrder)) {
+        const order = (obj.topBarItemOrder as unknown[]).filter(
+            (k): k is string => typeof k === 'string' && k.length > 0
+        );
+        if (order.length > 0) {
+            result.topBarItemOrder = order;
         }
     }
 

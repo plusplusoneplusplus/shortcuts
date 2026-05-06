@@ -11,6 +11,7 @@ export interface GlobalPreferencePatch {
         myWorkExcludedTypes?: string[];
     };
     reposSidebarCollapsed?: boolean;
+    topBarItemOrder?: string[];
     htmlEmbed?: {
         enabled: boolean;
     };

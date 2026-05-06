@@ -2,6 +2,7 @@ export interface GlobalPreferences {
   theme?: 'light' | 'dark' | 'auto';
   reposSidebarCollapsed?: boolean;
   gitGroupOrder?: string[];
+  topBarItemOrder?: string[];
   hasSeenWelcome?: boolean;
   dismissedTips?: string[];
   uiLayoutMode?: 'classic' | 'dev-workflow';
