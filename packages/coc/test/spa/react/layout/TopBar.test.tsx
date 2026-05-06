@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { mockViewport } from '../../helpers/viewport-mock';
-import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
+import { SHOW_MEMORY_TAB, TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 
 // ── Mock AppContext ────────────────────────────────────────────────────
 
@@ -150,12 +150,12 @@ describe('TopBar responsive behavior', () => {
         expect(btn.className).toContain('md:inline-flex');
     });
 
-    it('memory button has hidden md:inline-flex classes (hidden on mobile)', () => {
+    it('does not render the memory button while SHOW_MEMORY_TAB is false', () => {
+        expect(SHOW_MEMORY_TAB).toBe(false);
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
-        const btn = document.getElementById('memory-toggle')!;
-        expect(btn.className).toContain('hidden');
-        expect(btn.className).toContain('md:inline-flex');
+        expect(document.getElementById('memory-toggle')).toBeNull();
+        expect(document.querySelector('[data-tab="memory"]')).toBeNull();
     });
 
     it('models button renders atom symbol icon', () => {

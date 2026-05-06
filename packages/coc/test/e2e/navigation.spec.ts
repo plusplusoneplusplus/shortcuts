@@ -6,7 +6,7 @@
  * Note: the legacy global "Processes" top-level tab was removed. Activity
  * (queue task list + chat detail) now lives under the per-repo `activity`
  * sub-tab. These tests assert the remaining top-level tabs (Repos, Skills,
- * Memory, Logs, Admin) and the legacy hash redirect behavior.
+ * Logs, Admin), the direct-routable Memory view, and legacy hash redirects.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -74,11 +74,11 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
-    test('Memory tab navigation switches to Memory view', async ({ page, serverUrl }) => {
+    test('Memory topbar icon is hidden', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        await page.click('[data-tab="memory"]');
-        await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#memory-toggle')).toHaveCount(0);
+        await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
     });
 
     test('admin gear icon navigates to admin view', async ({ page, serverUrl }) => {
@@ -139,7 +139,7 @@ test.describe('Navigation', () => {
     test('hash navigation routes to Memory tab', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#memory`);
 
-        await expect(page.locator('[data-tab="memory"]')).toHaveClass(/bg-\[#0078d4\]/);
+        await expect(page.locator('#memory-toggle')).toHaveCount(0);
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
     });
 

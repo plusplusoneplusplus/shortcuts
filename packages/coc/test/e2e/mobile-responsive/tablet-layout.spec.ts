@@ -26,12 +26,11 @@ test.describe('Tablet Layout', () => {
     test('tablet: TopBar tab buttons are visible', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // At tablet width (768px), TopBar icon-buttons should be visible.
-        // The global `processes` tab no longer exists; check memory and repos instead.
-        for (const tab of ['repos', 'memory']) {
-            const tabBtn = page.locator(`[data-tab="${tab}"]`);
-            await expect(tabBtn).toBeVisible({ timeout: 10000 });
-        }
+        // At tablet width (768px), visible TopBar entries remain available,
+        // while the Memory view stays direct-routable without a topbar icon.
+        await expect(page.locator('[data-tab="repos"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-tab="skills"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
     });
 
     test('tablet: no bottom navigation visible', async ({ page, serverUrl }) => {

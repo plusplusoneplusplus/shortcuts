@@ -28,8 +28,7 @@ import type { Page } from '@playwright/test';
 
 /** Navigate to the Memory tab and wait for the view to render. */
 async function gotoMemory(page: Page, serverUrl: string): Promise<void> {
-    await page.goto(serverUrl);
-    await page.click('[data-tab="memory"]');
+    await page.goto(`${serverUrl}/#memory`);
     await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10_000 });
 }
 

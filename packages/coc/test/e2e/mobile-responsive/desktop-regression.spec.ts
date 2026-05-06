@@ -76,14 +76,13 @@ test.describe('Desktop Regression', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });
 
-    test('desktop: TopBar shows text tab labels', async ({ page, serverUrl }) => {
+    test('desktop: TopBar shows available navigation entries', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // The global processes tab was removed; verify remaining top-level tabs.
-        for (const tab of ['memory']) {
-            const tabBtn = page.locator(`[data-tab="${tab}"]`);
-            await expect(tabBtn).toBeVisible();
-        }
+        // Memory remains directly routable, but its topbar icon is hidden by default.
+        await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
+        await expect(page.locator('[data-tab="skills"]')).toBeVisible();
+
         // repos tab link is visible as the brand name
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
 
@@ -132,8 +131,8 @@ test.describe('Desktop Regression', () => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
 
-        // The global `processes` tab was removed; navigate to memory and skills instead.
-        await page.click('[data-tab="memory"]');
+        // The global `processes` tab was removed; memory remains directly routable.
+        await page.goto(`${serverUrl}/#memory`);
         await expect(page.locator('#view-memory')).toBeVisible();
 
         await page.click('[data-tab="skills"]');

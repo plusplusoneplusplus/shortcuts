@@ -97,8 +97,7 @@ test.describe('PRL.2 — RepoTabStrip always visible in TopBar (desktop)', () =>
     });
 
     test('PRL.2.4 repo-tab-strip is visible on memory tab', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="memory"]');
+        await page.goto(`${serverUrl}/#memory`);
         await page.waitForTimeout(500);
 
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 8_000 });

@@ -22,6 +22,8 @@ import type { WsStatus } from '../hooks/useWebSocket';
 
 /** Set to `true` to re-enable the top-level Wiki tab in navigation. */
 export const SHOW_WIKI_TAB = false;
+/** Set to `true` to re-enable the topbar Memory icon. */
+export const SHOW_MEMORY_TAB = false;
 
 export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Wiki', tab: 'wiki' },
@@ -248,21 +250,23 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 >
                     &#128203;
                 </button>
-                <button
-                    id="memory-toggle"
-                    data-tab="memory"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'memory'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Memory"
-                    title="Memory"
-                    onClick={() => switchTab('memory')}
-                >
-                    &#129504;
-                </button>
+                {SHOW_MEMORY_TAB && (
+                    <button
+                        id="memory-toggle"
+                        data-tab="memory"
+                        className={
+                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
+                            (state.activeTab === 'memory'
+                                ? 'bg-[#0078d4] text-white'
+                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                        }
+                        aria-label="Memory"
+                        title="Memory"
+                        onClick={() => switchTab('memory')}
+                    >
+                        &#129504;
+                    </button>
+                )}
                 <button
                     id="stats-toggle"
                     data-tab="stats"

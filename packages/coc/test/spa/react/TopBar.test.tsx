@@ -3,7 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AppProvider, appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
-import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
+import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
@@ -91,6 +91,10 @@ describe('TABS constant', () => {
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
         expect(SHOW_WIKI_TAB).toBe(false);
+    });
+
+    it('SHOW_MEMORY_TAB is false (memory view remains direct-route only)', () => {
+        expect(SHOW_MEMORY_TAB).toBe(false);
     });
 
     it('ALL_TABS includes wiki entry but not skills (skills moved to icon button)', () => {
@@ -191,14 +195,6 @@ describe('TopBar — tab click updates location.hash', () => {
         expect(ALL_TABS.map(t => t.tab)).not.toContain('repos');
     });
 
-    it('sets hash to #memory when Memory icon button is clicked', () => {
-        renderTopBar();
-        act(() => {
-            fireEvent.click(document.getElementById('memory-toggle')!);
-        });
-        expect(location.hash).toBe('#memory');
-    });
-
     it('clicking the same icon tab still sets the hash', () => {
         location.hash = '#skills';
         renderTopBar();
@@ -215,9 +211,6 @@ describe('TopBar — tab click updates location.hash', () => {
 
         act(() => { fireEvent.click(document.getElementById('stats-toggle')!); });
         expect(location.hash).toBe('#stats');
-
-        act(() => { fireEvent.click(document.getElementById('memory-toggle')!); });
-        expect(location.hash).toBe('#memory');
     });
 });
 
@@ -237,23 +230,13 @@ describe('TopBar — active tab styling', () => {
         expect(skillsBtn.className).not.toContain('bg-[#0078d4]');
     });
 
-    it('memory icon button becomes active when clicked', () => {
-        renderTopBar();
-        act(() => {
-            fireEvent.click(document.getElementById('memory-toggle')!);
-        });
-        const memoryBtn = document.getElementById('memory-toggle')!;
-        expect(memoryBtn.className).toContain('bg-[#0078d4]');
-        expect(memoryBtn.className).toContain('text-white');
-    });
-
     it('active icon tab loses active class after clicking another icon', () => {
         renderTopBar();
         act(() => {
             fireEvent.click(document.getElementById('skills-toggle')!);
         });
-        const memoryBtn = document.getElementById('memory-toggle')!;
-        expect(memoryBtn.className).not.toContain('bg-[#0078d4]');
+        const statsBtn = document.getElementById('stats-toggle')!;
+        expect(statsBtn.className).not.toContain('bg-[#0078d4]');
     });
 });
 
@@ -486,38 +469,11 @@ describe('TopBar — skills icon button', () => {
 });
 
 describe('TopBar — memory icon button', () => {
-    it('renders a memory-toggle button', () => {
+    it('does not render a memory-toggle button while SHOW_MEMORY_TAB is false', () => {
         renderTopBar();
-        expect(document.getElementById('memory-toggle')).toBeTruthy();
-    });
-
-    it('memory-toggle has aria-label and title "Memory"', () => {
-        renderTopBar();
-        const btn = document.getElementById('memory-toggle')!;
-        expect(btn.getAttribute('aria-label')).toBe('Memory');
-        expect(btn.getAttribute('title')).toBe('Memory');
-    });
-
-    it('memory-toggle has touch-target class', () => {
-        renderTopBar();
-        const btn = document.getElementById('memory-toggle')!;
-        expect(btn.className).toContain('touch-target');
-    });
-
-    it('memory-toggle shows active style when activeTab is memory', () => {
-        renderTopBar();
-        act(() => {
-            fireEvent.click(document.getElementById('memory-toggle')!);
-        });
-        const btn = document.getElementById('memory-toggle')!;
-        expect(btn.className).toContain('bg-[#0078d4]');
-        expect(btn.className).toContain('text-white');
-    });
-
-    it('memory-toggle does not show active style when another tab is active', () => {
-        renderTopBar();
-        const btn = document.getElementById('memory-toggle')!;
-        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(SHOW_MEMORY_TAB).toBe(false);
+        expect(document.getElementById('memory-toggle')).toBeNull();
+        expect(document.querySelector('[data-tab="memory"]')).toBeNull();
     });
 
     it('"Memory" text tab is not rendered in the main nav', () => {
