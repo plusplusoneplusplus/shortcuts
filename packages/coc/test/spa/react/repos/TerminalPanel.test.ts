@@ -36,6 +36,11 @@ describe('TerminalPanel', () => {
             expect(source).toContain('isActive: boolean');
         });
 
+        it('accepts optional attach-mode props', () => {
+            expect(source).toContain('serverSessionId?: string');
+            expect(source).toContain("connectionMode?: 'create' | 'attach'");
+        });
+
         it('accepts optional onExit callback', () => {
             expect(source).toContain('onExit');
         });

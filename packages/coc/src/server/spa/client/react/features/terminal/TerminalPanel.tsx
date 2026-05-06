@@ -16,6 +16,8 @@ import type { ITheme } from '@xterm/xterm';
 
 export interface TerminalPanelProps {
     sessionId: string;
+    serverSessionId?: string;
+    connectionMode?: 'create' | 'attach';
     workspaceId: string;
     isActive: boolean;
     onExit?: (code: number) => void;
@@ -72,7 +74,15 @@ const LIGHT_THEME: ITheme = {
     brightWhite: '#ffffff',
 };
 
-export function TerminalPanel({ sessionId, workspaceId, isActive, onExit, onTitleChange }: TerminalPanelProps) {
+export function TerminalPanel({
+    sessionId,
+    serverSessionId,
+    connectionMode = 'create',
+    workspaceId,
+    isActive,
+    onExit,
+    onTitleChange,
+}: TerminalPanelProps) {
     const termRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -147,12 +157,20 @@ export function TerminalPanel({ sessionId, workspaceId, isActive, onExit, onTitl
     // Connect to WebSocket on mount
     useEffect(() => {
         if (!termRef.current || !fitAddonRef.current) return;
+        if (connectionMode === 'attach' && !serverSessionId) {
+            console.error('Cannot attach terminal without a server session id');
+            return;
+        }
         const fitAddon = fitAddonRef.current;
         fitAddon.fit();
         const { cols, rows } = xtermRef.current!;
-        connect(workspaceId, cols, rows);
+        if (connectionMode === 'attach') {
+            connect(workspaceId, cols, rows, { mode: 'attach', sessionId: serverSessionId });
+        } else {
+            connect(workspaceId, cols, rows, { mode: 'create' });
+        }
         return () => disconnect();
-    }, [workspaceId]);
+    }, [workspaceId, connectionMode, serverSessionId]);
 
     // User input → WebSocket
     useEffect(() => {

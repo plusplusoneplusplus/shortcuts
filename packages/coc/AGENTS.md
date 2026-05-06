@@ -301,6 +301,7 @@ src/
 │   ├── terminal/                     # WebSocket-based terminal (PTY layer)
 │   │   ├── types.ts                          # IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage
 │   │   ├── terminal-session-manager.ts       # PTY lifecycle (create, resize, destroy, idle cleanup; WSL roots launch bash via wsl.exe on Windows)
+│   │   ├── terminal-routes.ts                # REST session listing, destroy, and pin state endpoints
 │   │   └── terminal-ws-server.ts             # /ws/terminal — per-workspace create/attach, multi-session
 │   ├── memory/                       # Memory configuration + bounded-memory REST API
 │   │   ├── memory-config-handler.ts          # readMemoryConfig, writeMemoryConfig
@@ -332,6 +333,7 @@ src/
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
 │               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName. Notes sidebar update indicators compare tree node lastModifiedAt against localStorage key `coc-notes-seen-<workspaceId>`.
 │               ├── features/pull-requests/ # Pull request dashboard: attention groups, row selection, detail view, and BatchCommandPanel queueing `pr-batch` chat tasks from selected PRs
+│               ├── features/terminal/   # Terminal UI; TerminalView hydrates pinned server sessions through /api/workspaces/:id/terminals and restored tabs attach to existing PTYs
 │               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)

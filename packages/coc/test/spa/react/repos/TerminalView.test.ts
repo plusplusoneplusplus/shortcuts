@@ -4,19 +4,75 @@
  * structural contracts via string matching).
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { TerminalView } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
+
+vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel', async () => {
+    const React = await import('react');
+    return {
+        TerminalPanel: (props: {
+            sessionId: string;
+            serverSessionId?: string;
+            connectionMode?: 'create' | 'attach';
+            isActive: boolean;
+        }) => React.createElement('div', {
+            'data-testid': `mock-terminal-panel-${props.sessionId}`,
+            'data-server-session-id': props.serverSessionId ?? '',
+            'data-connection-mode': props.connectionMode ?? 'create',
+            'data-active': String(props.isActive),
+        }),
+    };
+});
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => '/api',
+}));
 
 const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'terminal', 'TerminalView.tsx'
 );
+
+const pinnedSession = {
+    id: 'sess-pinned',
+    workspaceId: 'ws-123',
+    cols: 80,
+    rows: 24,
+    createdAt: 1,
+    lastActivity: 2,
+    pid: 1234,
+    pinned: true,
+};
+
+const unpinnedSession = {
+    ...pinnedSession,
+    id: 'sess-unpinned',
+    pinned: false,
+};
+
+function mockFetchSessions(sessions: unknown[]) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: vi.fn().mockResolvedValue({ sessions }),
+    }));
+}
 
 describe('TerminalView', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
     });
 
     describe('exports', () => {
@@ -48,6 +104,11 @@ describe('TerminalView', () => {
         it('does not auto-create a terminal on mount', () => {
             // No useEffect auto-creates terminals; the component starts with an empty list
             expect(source).not.toMatch(/useEffect\([^)]*terminals\.length === 0/s);
+        });
+
+        it('tracks server session ids separately from UI tab ids', () => {
+            expect(source).toContain('serverSessionId?: string');
+            expect(source).toContain("connectionMode: 'create' | 'attach'");
         });
     });
 
@@ -90,6 +151,11 @@ describe('TerminalView', () => {
             expect(source).toContain('isActive={');
         });
 
+        it('passes attach mode fields to TerminalPanel', () => {
+            expect(source).toContain('serverSessionId={tab.serverSessionId}');
+            expect(source).toContain('connectionMode={tab.connectionMode}');
+        });
+
         it('has new terminal button', () => {
             expect(source).toContain('terminal-new-btn');
         });
@@ -116,6 +182,52 @@ describe('TerminalView', () => {
 
         it('handles onTitleChange', () => {
             expect(source).toContain('onTitleChange');
+        });
+    });
+
+    describe('pinned terminal hydration', () => {
+        it('fetches workspace terminal sessions and restores only pinned tabs in attach mode', async () => {
+            mockFetchSessions([pinnedSession, unpinnedSession]);
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws 123' }));
+
+            await waitFor(() => {
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws%20123/terminals');
+            });
+
+            const restoredPanel = await screen.findByTestId('mock-terminal-panel-server-sess-pinned');
+            expect(restoredPanel.getAttribute('data-server-session-id')).toBe('sess-pinned');
+            expect(restoredPanel.getAttribute('data-connection-mode')).toBe('attach');
+            expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
+        });
+
+        it('preserves the empty state when no pinned terminal sessions are returned', async () => {
+            mockFetchSessions([unpinnedSession]);
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+
+            await waitFor(() => {
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals');
+            });
+            expect(screen.getByTestId('terminal-empty-state')).toBeTruthy();
+            expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
+        });
+
+        it('keeps new terminal creation in create mode after hydration', async () => {
+            mockFetchSessions([]);
+            vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'client-tab-id') });
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            await waitFor(() => {
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals');
+            });
+
+            fireEvent.click(screen.getByTestId('terminal-new-btn'));
+
+            const createdPanel = screen.getByTestId('mock-terminal-panel-client-tab-id');
+            expect(createdPanel.getAttribute('data-server-session-id')).toBe('');
+            expect(createdPanel.getAttribute('data-connection-mode')).toBe('create');
+            expect(screen.getByTestId('terminal-tab-title-client-tab-id').textContent).toBe('Terminal 1');
         });
     });
 });

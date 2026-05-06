@@ -8,6 +8,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '../../ui/cn';
 import { TerminalPanel } from './TerminalPanel';
+import { getApiBase } from '../../utils/config';
+import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalViewProps {
     workspaceId: string;
@@ -15,8 +17,15 @@ export interface TerminalViewProps {
 
 interface TerminalTab {
     id: string;
+    serverSessionId?: string;
+    connectionMode: 'create' | 'attach';
+    workspaceId: string;
     title: string;
     pinned: boolean;
+}
+
+interface TerminalSessionsResponse {
+    sessions?: TerminalSessionInfo[];
 }
 
 export function TerminalView({ workspaceId }: TerminalViewProps) {
@@ -31,9 +40,66 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         counterRef.current += 1;
         const id = crypto.randomUUID();
         const title = `Terminal ${counterRef.current}`;
-        setTerminals(prev => [...prev, { id, title, pinned: false }]);
+        setTerminals(prev => [...prev, { id, connectionMode: 'create', workspaceId, title, pinned: false }]);
         setActiveId(id);
-    }, []);
+    }, [workspaceId]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function hydratePinnedTerminals() {
+            const response = await fetch(
+                `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/terminals`,
+            );
+            if (!response.ok) {
+                throw new Error(`Failed to load terminal sessions: ${response.status} ${response.statusText}`);
+            }
+
+            const body = await response.json() as TerminalSessionsResponse;
+            const pinnedSessions = (Array.isArray(body.sessions) ? body.sessions : [])
+                .filter(session => session.pinned);
+            if (cancelled) return;
+
+            setTerminals(prev => {
+                const pinnedSessionIds = new Set(pinnedSessions.map(session => session.id));
+                const retainedTabs = prev.filter(tab =>
+                    tab.workspaceId === workspaceId &&
+                    (tab.connectionMode !== 'attach' ||
+                        (tab.serverSessionId != null && pinnedSessionIds.has(tab.serverSessionId)))
+                );
+                const retainedServerSessionIds = new Set(
+                    retainedTabs
+                        .map(tab => tab.serverSessionId)
+                        .filter((id): id is string => id != null),
+                );
+                const hydratedTabs: TerminalTab[] = pinnedSessions
+                    .filter(session => !retainedServerSessionIds.has(session.id))
+                    .map(session => ({
+                        id: `server-${session.id}`,
+                        serverSessionId: session.id,
+                        connectionMode: 'attach',
+                        workspaceId,
+                        title: `Terminal ${session.id.slice(0, 6)}`,
+                        pinned: true,
+                    }));
+                const next = [...retainedTabs, ...hydratedTabs];
+                setActiveId(currentActiveId =>
+                    currentActiveId && next.some(tab => tab.id === currentActiveId)
+                        ? currentActiveId
+                        : next[0]?.id ?? '',
+                );
+                return next;
+            });
+        }
+
+        hydratePinnedTerminals().catch(err => {
+            console.error('Failed to hydrate pinned terminal sessions:', err);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [workspaceId]);
 
     const closeTerminal = useCallback((id: string) => {
         setTerminals(prev => {
@@ -186,6 +252,8 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                     >
                         <TerminalPanel
                             sessionId={tab.id}
+                            serverSessionId={tab.serverSessionId}
+                            connectionMode={tab.connectionMode}
                             workspaceId={workspaceId}
                             isActive={tab.id === activeId}
                             onExit={(code) => handleExit(tab.id, code)}

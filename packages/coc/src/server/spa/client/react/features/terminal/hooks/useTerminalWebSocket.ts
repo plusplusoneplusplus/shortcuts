@@ -14,6 +14,7 @@ type WsStatus = 'connecting' | 'open' | 'closed';
 // Client → Server (aligned with packages/coc/src/server/terminal/types.ts)
 export type TerminalClientMessage =
     | { type: 'terminal-create'; workspaceId: string; cols?: number; rows?: number }
+    | { type: 'terminal-attach'; sessionId: string }
     | { type: 'terminal-input'; sessionId: string; data: string }
     | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
     | { type: 'terminal-close'; sessionId: string }
@@ -49,12 +50,24 @@ export interface UseTerminalWebSocketOptions {
 
 export interface UseTerminalWebSocketReturn {
     status: WsStatus;
-    connect: (workspaceId: string, cols: number, rows: number) => void;
+    connect: (workspaceId: string, cols: number, rows: number, options?: TerminalConnectOptions) => void;
     disconnect: () => void;
     sendInput: (data: string) => void;
     sendResize: (cols: number, rows: number) => void;
     sendPin: (sessionId: string) => void;
     sendUnpin: (sessionId: string) => void;
+}
+
+export type TerminalConnectOptions =
+    | { mode?: 'create' }
+    | { mode: 'attach'; sessionId: string };
+
+interface ConnectParams {
+    workspaceId: string;
+    cols: number;
+    rows: number;
+    mode: 'create' | 'attach';
+    sessionId?: string;
 }
 
 export function useTerminalWebSocket({
@@ -74,7 +87,7 @@ export function useTerminalWebSocket({
     const onDisconnectRef = useRef(onDisconnect);
 
     // Store connect params for reconnect
-    const connectParamsRef = useRef<{ workspaceId: string; cols: number; rows: number } | null>(null);
+    const connectParamsRef = useRef<ConnectParams | null>(null);
 
     useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
     useEffect(() => { onConnectRef.current = onConnect; }, [onConnect]);
@@ -96,7 +109,7 @@ export function useTerminalWebSocket({
         if (!params) return;
 
         cleanup();
-        sessionIdRef.current = null;
+        sessionIdRef.current = params.mode === 'attach' ? params.sessionId ?? null : null;
         if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
             wsRef.current.close();
         }
@@ -112,13 +125,23 @@ export function useTerminalWebSocket({
         ws.onopen = () => {
             reconnectDelayRef.current = 1000;
             setStatus('open');
-            // Spawn a PTY session on the server
-            ws.send(JSON.stringify({
-                type: 'terminal-create',
-                workspaceId: params.workspaceId,
-                cols: params.cols,
-                rows: params.rows,
-            }));
+            if (params.mode === 'attach') {
+                if (!params.sessionId) {
+                    throw new Error('Cannot attach terminal WebSocket without a server session id');
+                }
+                ws.send(JSON.stringify({
+                    type: 'terminal-attach',
+                    sessionId: params.sessionId,
+                }));
+            } else {
+                // Spawn a PTY session on the server
+                ws.send(JSON.stringify({
+                    type: 'terminal-create',
+                    workspaceId: params.workspaceId,
+                    cols: params.cols,
+                    rows: params.rows,
+                }));
+            }
             pingIntervalRef.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'ping' }));
@@ -155,9 +178,14 @@ export function useTerminalWebSocket({
         ws.onerror = () => { /* handled by onclose */ };
     }, [cleanup]);
 
-    const connect = useCallback((workspaceId: string, cols: number, rows: number) => {
+    const connect = useCallback((workspaceId: string, cols: number, rows: number, options?: TerminalConnectOptions) => {
         manualCloseRef.current = false;
-        connectParamsRef.current = { workspaceId, cols, rows };
+        const mode = options?.mode ?? 'create';
+        if (mode === 'attach') {
+            connectParamsRef.current = { workspaceId, cols, rows, mode, sessionId: options.sessionId };
+        } else {
+            connectParamsRef.current = { workspaceId, cols, rows, mode };
+        }
         doConnect();
     }, [doConnect]);
 

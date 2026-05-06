@@ -123,6 +123,32 @@ describe('useTerminalWebSocket', () => {
         );
     });
 
+    it('sends terminal-attach message in attach mode and stores attached sessionId', () => {
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage: vi.fn() }),
+        );
+        act(() => {
+            result.current.connect('ws-123', 80, 24, { mode: 'attach', sessionId: 'sess-existing' });
+        });
+        act(() => { MockWebSocket.last._open(); });
+
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-attach', sessionId: 'sess-existing' })
+        );
+
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-existing', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234, pinned: true },
+            });
+        });
+        act(() => { result.current.sendInput('attached input'); });
+
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-input', sessionId: 'sess-existing', data: 'attached input' })
+        );
+    });
+
     it('stores sessionId from terminal-created response', () => {
         const onMessage = vi.fn();
         const { result } = renderHook(() =>
