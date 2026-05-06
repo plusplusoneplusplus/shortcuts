@@ -2,7 +2,7 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
@@ -102,10 +102,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const serversEnabled = isServersEnabled();
     const toast = useContext(ToastContext);
     const longPressTimer = useRef<number | null>(null);
+    const pointerDragId = useRef<TopBarItemId | null>(null);
+    const dropIndicatorRef = useRef<DropIndicator>(null);
+    const suppressNextClick = useRef(false);
     const [savedTopBarOrder, setSavedTopBarOrder] = useState<string[] | undefined>();
     const [customizeMode, setCustomizeMode] = useState(false);
-    const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const [draggedId, setDraggedId] = useState<TopBarItemId | null>(null);
     const [dropIndicator, setDropIndicator] = useState<DropIndicator>(null);
     const [keyboardDragId, setKeyboardDragId] = useState<TopBarItemId | null>(null);
@@ -256,6 +257,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         [orderedTopBarItems],
     );
 
+    const updateDropIndicator = useCallback((indicator: DropIndicator) => {
+        dropIndicatorRef.current = indicator;
+        setDropIndicator(indicator);
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
         getSpaCocClient().preferences.getGlobal()
@@ -290,8 +296,6 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
             const { topBarItemOrder: _topBarItemOrder, ...rest } = prefs;
             await getSpaCocClient().preferences.replaceGlobal(rest);
             setCustomizeMode(false);
-            setMobileSheetOpen(false);
-            setContextMenu(null);
             toast?.addToast('Top bar order reset', 'success');
         } catch (error) {
             toast?.addToast(getSpaCocClientErrorMessage(error, 'Failed to reset top bar order'), 'error');
@@ -299,13 +303,8 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [toast]);
 
     const enterCustomizeMode = useCallback(() => {
-        setContextMenu(null);
-        if (isMobile) {
-            setMobileSheetOpen(true);
-            return;
-        }
         setCustomizeMode(true);
-    }, [isMobile]);
+    }, []);
 
     useEffect(() => {
         const handler = () => enterCustomizeMode();
@@ -314,7 +313,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [enterCustomizeMode]);
 
     useEffect(() => {
-        if (!customizeMode && !mobileSheetOpen && !keyboardDragId) {
+        if (!customizeMode && !keyboardDragId) {
             return;
         }
         const handler = (event: KeyboardEvent) => {
@@ -329,11 +328,10 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 return;
             }
             setCustomizeMode(false);
-            setMobileSheetOpen(false);
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [customizeMode, keyboardDragId, mobileSheetOpen]);
+    }, [customizeMode, keyboardDragId]);
 
     const clearLongPress = useCallback(() => {
         if (longPressTimer.current !== null) {
@@ -342,22 +340,58 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         }
     }, []);
 
-    const scheduleLongPressCustomize = useCallback(() => {
-        if (!isMobile) {
-            return;
-        }
+    const scheduleLongPressCustomize = useCallback((item: ReorderableTopBarItem, event: ReactPointerEvent<HTMLButtonElement>) => {
         clearLongPress();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
         longPressTimer.current = window.setTimeout(() => {
-            setMobileSheetOpen(true);
+            setCustomizeMode(true);
+            setDraggedId(item.id);
+            pointerDragId.current = item.id;
+            suppressNextClick.current = true;
+            setLiveMessage(`Picked up ${item.label}, position ${orderedTopBarIds.indexOf(item.id) + 1} of ${orderedTopBarIds.length}.`);
             longPressTimer.current = null;
         }, 500);
-    }, [clearLongPress, isMobile]);
+    }, [clearLongPress, orderedTopBarIds]);
 
     const finishDrop = useCallback((nextOrder: TopBarItemId[]) => {
+        pointerDragId.current = null;
         setDraggedId(null);
-        setDropIndicator(null);
+        updateDropIndicator(null);
         void persistVisibleOrder(nextOrder);
-    }, [persistVisibleOrder]);
+    }, [persistVisibleOrder, updateDropIndicator]);
+
+    const updatePointerDropTarget = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+        const sourceId = pointerDragId.current;
+        if (!sourceId) {
+            return;
+        }
+        const element = document.elementFromPoint(event.clientX, event.clientY);
+        const target = element?.closest<HTMLElement>('[data-topbar-item-id]');
+        const targetId = target?.getAttribute('data-topbar-item-id') as TopBarItemId | null;
+        if (!targetId || targetId === sourceId || !orderedTopBarIds.includes(targetId)) {
+            updateDropIndicator(null);
+            return;
+        }
+        const rect = target.getBoundingClientRect();
+        const position = event.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+        updateDropIndicator({ targetId, position });
+    }, [orderedTopBarIds, updateDropIndicator]);
+
+    const finishPointerDrag = useCallback(() => {
+        clearLongPress();
+        const sourceId = pointerDragId.current;
+        const indicator = dropIndicatorRef.current;
+        if (!sourceId) {
+            return;
+        }
+        if (indicator && indicator.targetId !== sourceId) {
+            finishDrop(moveTopBarItem(orderedTopBarIds, sourceId, indicator.targetId, indicator.position));
+            return;
+        }
+        pointerDragId.current = null;
+        setDraggedId(null);
+        updateDropIndicator(null);
+    }, [clearLongPress, finishDrop, orderedTopBarIds, updateDropIndicator]);
 
     const handleKeyboardDrag = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, item: ReorderableTopBarItem, index: number) => {
         if (event.key === ' ' || event.key === 'Enter') {
@@ -411,10 +445,6 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         <header
             className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
-            onContextMenu={event => {
-                event.preventDefault();
-                setContextMenu({ x: event.clientX, y: event.clientY });
-            }}
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
@@ -523,21 +553,25 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                                     setCustomizeMode(true);
                                 }}
                                 onDragEnter={event => {
-                                    if (!draggedId || draggedId === item.id) return;
+                                    if (!draggedId || draggedId === item.id) {
+                                        return;
+                                    }
                                     event.preventDefault();
-                                    setDropIndicator({ targetId: item.id, position: getDropPosition(event) });
+                                    updateDropIndicator({ targetId: item.id, position: getDropPosition(event) });
                                 }}
                                 onDragOver={event => {
-                                    if (!draggedId || draggedId === item.id) return;
+                                    if (!draggedId || draggedId === item.id) {
+                                        return;
+                                    }
                                     event.preventDefault();
-                                    setDropIndicator({ targetId: item.id, position: getDropPosition(event) });
+                                    updateDropIndicator({ targetId: item.id, position: getDropPosition(event) });
                                 }}
                                 onDrop={event => {
                                     event.preventDefault();
                                     const sourceId = ((event.dataTransfer?.getData('text/plain') ?? '') || draggedId) as TopBarItemId | null;
                                     if (!sourceId || sourceId === item.id) {
                                         setDraggedId(null);
-                                        setDropIndicator(null);
+                                        updateDropIndicator(null);
                                         return;
                                     }
                                     const position = dropIndicator?.targetId === item.id ? dropIndicator.position : getDropPosition(event);
@@ -545,7 +579,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                                 }}
                                 onDragEnd={() => {
                                     setDraggedId(null);
-                                    setDropIndicator(null);
+                                    updateDropIndicator(null);
                                 }}
                             >
                                 {showBefore && <span className="absolute -left-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
@@ -557,12 +591,18 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                                     aria-label={item.label}
                                     aria-pressed={isPickedUp ? true : undefined}
                                     title={item.label}
-                                    onPointerDown={scheduleLongPressCustomize}
-                                    onPointerUp={clearLongPress}
-                                    onPointerCancel={clearLongPress}
+                                    onPointerDown={event => scheduleLongPressCustomize(item, event)}
+                                    onPointerMove={updatePointerDropTarget}
+                                    onPointerUp={finishPointerDrag}
+                                    onPointerCancel={finishPointerDrag}
                                     onPointerLeave={clearLongPress}
                                     onKeyDown={event => handleKeyboardDrag(event, item, index)}
                                     onClick={event => {
+                                        if (suppressNextClick.current) {
+                                            suppressNextClick.current = false;
+                                            event.preventDefault();
+                                            return;
+                                        }
                                         if (isPickedUp) {
                                             event.preventDefault();
                                             return;
@@ -594,95 +634,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
             </div>
         </header>
         <div className="sr-only" aria-live="polite">{liveMessage}</div>
-        {contextMenu && (
-            <div
-                className="fixed z-[10000] min-w-44 rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-1 text-sm"
-                style={{ left: contextMenu.x, top: contextMenu.y }}
-                role="menu"
-            >
-                <button
-                    className="w-full text-left px-3 py-2 rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
-                    role="menuitem"
-                    onClick={enterCustomizeMode}
-                >
-                    Customize top bar
-                </button>
-                <button
-                    className="w-full text-left px-3 py-2 rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
-                    role="menuitem"
-                    onClick={() => void resetTopBarOrder()}
-                >
-                    Reset order
-                </button>
-            </div>
-        )}
-        {customizeMode && !mobileSheetOpen && (
+        {customizeMode && (
             <div className="fixed top-12 right-3 z-[9000] flex items-center gap-2 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow px-3 py-1 text-xs">
-                <span>Drag icons to reorder. Esc to finish.</span>
+                <span>Drag icons to reorder. Long-press an icon to pick it up. Esc to finish.</span>
                 <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => void resetTopBarOrder()}>Reset order</button>
                 <button className="text-[#0078d4] dark:text-[#60b4ff] hover:underline" onClick={() => setCustomizeMode(false)}>Done</button>
-            </div>
-        )}
-        {mobileSheetOpen && (
-            <div
-                className="fixed inset-0 z-[10000] bg-black/30 flex items-end"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Customize top bar"
-                onClick={() => setMobileSheetOpen(false)}
-            >
-                <div
-                    className="w-full rounded-t-2xl bg-white dark:bg-[#252526] border-t border-[#d0d0d0] dark:border-[#3c3c3c] shadow-2xl p-4 space-y-3"
-                    onClick={event => event.stopPropagation()}
-                >
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-semibold">Customize top bar</h2>
-                        <button className="text-sm text-[#0078d4] dark:text-[#60b4ff]" onClick={() => setMobileSheetOpen(false)}>Done</button>
-                    </div>
-                    <div className="space-y-2" data-testid="topbar-reorder-sheet">
-                        {orderedTopBarItems.map(item => (
-                            <div
-                                key={item.id}
-                                draggable
-                                className={`flex items-center gap-3 rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#2d2d2d] px-3 py-2 text-sm ${draggedId === item.id ? 'shadow-lg opacity-80' : ''}`}
-                                onDragStart={event => {
-                                    if (event.dataTransfer) {
-                                        event.dataTransfer.effectAllowed = 'move';
-                                        event.dataTransfer.setData('text/plain', item.id);
-                                    }
-                                    setDraggedId(item.id);
-                                }}
-                                onDragOver={event => {
-                                    if (!draggedId || draggedId === item.id) return;
-                                    event.preventDefault();
-                                    setDropIndicator({ targetId: item.id, position: 'before' });
-                                }}
-                                onDrop={event => {
-                                    event.preventDefault();
-                                    const sourceId = ((event.dataTransfer?.getData('text/plain') ?? '') || draggedId) as TopBarItemId | null;
-                                    if (!sourceId || sourceId === item.id) {
-                                        setDraggedId(null);
-                                        setDropIndicator(null);
-                                        return;
-                                    }
-                                    finishDrop(moveTopBarItem(orderedTopBarIds, sourceId, item.id, 'before'));
-                                }}
-                                onDragEnd={() => {
-                                    setDraggedId(null);
-                                    setDropIndicator(null);
-                                }}
-                            >
-                                <span aria-hidden className="text-base">{item.icon}</span>
-                                <span className="flex-1">{item.label}</span>
-                                <span aria-hidden className="text-[#616161] dark:text-[#999]">⠿</span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                        <button className="px-3 py-1.5 text-sm rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]" onClick={() => void resetTopBarOrder()}>Reset</button>
-                        <button className="px-3 py-1.5 text-sm rounded bg-[#0078d4] text-white" onClick={() => setMobileSheetOpen(false)}>Done</button>
-                    </div>
-                </div>
             </div>
         )}
         {isOnReposTab && (

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 import { ToastContext } from '../../../../src/server/spa/client/react/contexts/ToastContext';
@@ -116,6 +116,8 @@ describe('TopBar reordering', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
         location.hash = '';
     });
 
@@ -188,27 +190,72 @@ describe('TopBar reordering', () => {
         expect(reorderGroupIds()).toEqual(['skills', 'stats', 'models', 'admin', 'logs']);
     });
 
-    it('opens customize mode from the top-bar context menu and exits with Escape', async () => {
+    it('enters direct reorder mode with long-press and drops between top-bar items', async () => {
+        renderTopBar();
+        await waitFor(() => expect(reorderGroupIds()[0]).toBe('skills'));
+
+        vi.useFakeTimers();
+        const group = screen.getByTestId('topbar-reorder-group');
+        const skills = within(group).getByLabelText('Skills');
+        const admin = within(group).getByLabelText('Admin');
+        Object.defineProperty(document, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => admin),
+        });
+        vi.spyOn(admin, 'getBoundingClientRect').mockReturnValue({
+            left: 0,
+            right: 20,
+            top: 0,
+            bottom: 20,
+            width: 20,
+            height: 20,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.pointerDown(skills, { pointerId: 1, clientX: 1, clientY: 1 });
+        act(() => {
+            vi.advanceTimersByTime(500);
+        });
+        expect(screen.getByText('Picked up Skills, position 1 of 5.')).toBeTruthy();
+        expect(screen.getByText('Drag icons to reorder. Long-press an icon to pick it up. Esc to finish.')).toBeTruthy();
+
+        fireEvent.pointerMove(skills, { pointerId: 1, clientX: 19, clientY: 1 });
+        fireEvent.pointerUp(skills, { pointerId: 1, clientX: 19, clientY: 1 });
+        vi.useRealTimers();
+
+        await waitFor(() => {
+            expect(mockPatchGlobal).toHaveBeenCalledWith({
+                topBarItemOrder: ['wiki', 'logs', 'stats', 'memory', 'models', 'admin', 'servers', 'skills'],
+            });
+        });
+        expect(reorderGroupIds()).toEqual(['logs', 'stats', 'models', 'admin', 'skills']);
+    });
+
+    it('does not open a right-click customization menu', async () => {
         renderTopBar();
         await waitFor(() => expect(reorderGroupIds()[0]).toBe('skills'));
 
         fireEvent.contextMenu(document.querySelector('header')!, { clientX: 20, clientY: 30 });
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Customize top bar' }));
 
-        expect(screen.getByText('Drag icons to reorder. Esc to finish.')).toBeTruthy();
-        fireEvent.keyDown(window, { key: 'Escape' });
-        await waitFor(() => expect(screen.queryByText('Drag icons to reorder. Esc to finish.')).toBeNull());
+        expect(screen.queryByRole('menuitem', { name: 'Customize top bar' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'Reset order' })).toBeNull();
     });
 
-    it('opens the touch reorder sheet on mobile customization', async () => {
+    it('uses the same direct long-press reorder path on mobile-sized layouts', async () => {
         mockIsMobile = true;
         renderTopBar();
         await waitFor(() => expect(reorderGroupIds()).toContain('admin'));
 
-        fireEvent.contextMenu(document.querySelector('header')!, { clientX: 20, clientY: 30 });
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Customize top bar' }));
+        vi.useFakeTimers();
+        const admin = screen.getByLabelText('Admin');
+        fireEvent.pointerDown(admin, { pointerId: 2, clientX: 1, clientY: 1 });
+        act(() => {
+            vi.advanceTimersByTime(500);
+        });
 
-        expect(screen.getByRole('dialog', { name: 'Customize top bar' })).toBeTruthy();
-        expect(screen.getByTestId('topbar-reorder-sheet')).toBeTruthy();
+        expect(screen.getByText('Picked up Admin, position 5 of 5.')).toBeTruthy();
+        expect(screen.queryByRole('dialog', { name: 'Customize top bar' })).toBeNull();
     });
 });
