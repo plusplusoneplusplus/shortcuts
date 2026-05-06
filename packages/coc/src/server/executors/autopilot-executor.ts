@@ -20,7 +20,6 @@ import type {
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import {
-    buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildCreateWorkItemAddon,
@@ -70,7 +69,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         );
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task), prompt);
+        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
 
         const disabledLlmTools = this.dataDir && payload.workspaceId
             ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)

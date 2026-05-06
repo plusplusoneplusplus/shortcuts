@@ -14,8 +14,8 @@
  * No execution-mode logic (chat, plan, autopilot, workflows, scripts) lives here.
  */
 
-import type { ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
-import { mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
+import type { GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
 
 // ============================================================================
@@ -106,6 +106,32 @@ export abstract class BaseExecutor {
     /** Look up the pending ask-user handles for a process (if any). */
     getAskUserHandles(processId: string): ProcessSessionState['pendingAskUser'] | undefined {
         return this.sessions.get(processId)?.pendingAskUser;
+    }
+
+    /**
+     * Persist the most recent system prompt on process metadata without
+     * blocking execution. Re-reads the process first so concurrent metadata
+     * updates are preserved.
+     */
+    protected persistSystemPromptAsync(processId: string, taskType: string, content: string | undefined): void {
+        if (!content) return;
+        void (async () => {
+            try {
+                const proc = await this.store.getProcess(processId);
+                if (!proc) return;
+                const metadata: GenericProcessMetadata = {
+                    type: proc.metadata?.type ?? taskType,
+                    ...(proc.metadata ?? {}),
+                    systemPrompt: content,
+                };
+                await this.store.updateProcess(processId, { metadata });
+            } catch (err) {
+                getLogger().debug(
+                    LogCategory.AI,
+                    `[BaseExecutor] Failed to persist system prompt for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
+        })();
     }
 
     // ========================================================================

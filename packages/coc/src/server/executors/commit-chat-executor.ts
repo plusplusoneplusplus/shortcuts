@@ -28,7 +28,6 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildModeSystemMessage,
-    buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -77,7 +76,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task), prompt);
+        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
             .withRepoInstructions(workingDirectory, 'ask')

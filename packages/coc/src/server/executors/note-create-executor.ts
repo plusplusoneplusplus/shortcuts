@@ -24,7 +24,6 @@ import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResult } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
-    buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -289,7 +288,7 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const wsId = payload.workspaceId;
 
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, this.buildCaptureContext(task), prompt);
+        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
         const systemMessage = await systemMessageBuilder()
             .appendMemory(boundedMemory)
             .build();

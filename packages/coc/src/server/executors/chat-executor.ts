@@ -12,28 +12,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type {
-    AgentMode,
-    ProcessStore,
-    QueuedTask,
-} from '@plusplusoneplusplus/forge';
+import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import type { ChatPayload } from '../tasks/task-types';
-import {
-    buildModeSystemMessage,
-    buildBoundedMemoryAddon,
-    buildFollowUpSuggestionsAddon,
-    buildSearchConversationsAddon,
-    buildAskUserAddon,
-    buildCreateWorkItemAddon,
-    buildTavilyWebSearchAddon,
-    applyLlmToolPreferences,
-} from './prompt-builder';
-import { systemMessageBuilder } from './system-message-builder';
-import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // ChatExecutor
@@ -56,74 +38,14 @@ export class ChatExecutor extends ChatBaseExecutor {
         prompt: string,
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
-        const payload = task.payload as unknown as ChatPayload;
-
-        let autoFolderContext = undefined;
-        if (workingDirectory) {
-            autoFolderContext = await this.buildAutoFolderContext(
-                workingDirectory,
-                payload.workspaceId,
-            );
-        }
-
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId, this.buildCaptureContext(task), prompt);
-        const notePath = payload.context?.noteChat?.notePath;
-        const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage('ask')?.content)
-            .withRepoInstructions(workingDirectory, 'ask')
-            .appendMemory(boundedMemory)
-            .appendAutoFolder(autoFolderContext)
-            .appendNoteFile(notePath)
-            .build();
-
-        const followUp = buildFollowUpSuggestionsAddon(
-            this.followUpSuggestions.enabled,
-            this.followUpSuggestions.count,
-        );
-        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, toQueueProcessId(task.id));
-        const createWorkItem = buildCreateWorkItemAddon(
-            this.dataDir,
-            payload.workspaceId,
+        return this.buildStandardModeOptions(
+            task,
+            prompt,
+            'ask',
+            workingDirectory,
             this.getWsServerFn
-                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event)
                 : undefined,
         );
-        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-
-        const processId = toQueueProcessId(task.id);
-        const askUser = buildAskUserAddon(false, {
-            emitQuestion: (questionPayload) => {
-                this.store.emitProcessEvent(processId, {
-                    type: 'ask-user',
-                    askUser: questionPayload,
-                });
-            },
-            computeTurnIndex: () => 1,
-        });
-        // Store ask-user handles on the session so API endpoint can resolve answers
-        const session = this.getOrCreateSession(processId);
-        session.pendingAskUser = {
-            answerQuestion: askUser.answerQuestion,
-            skipQuestion: askUser.skipQuestion,
-            cancelAll: askUser.cancelAll,
-            hasPending: askUser.hasPending,
-        };
-
-        const disabledLlmTools = this.dataDir && payload.workspaceId
-            ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)
-            : undefined;
-
-        const { tools, suffix } = applyLlmToolPreferences(
-            [followUp, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
-            disabledLlmTools,
-        );
-
-        return {
-            agentMode: 'interactive' as AgentMode,
-            systemMessage,
-            tools,
-            effectivePrompt: prompt + suffix,
-            dispose: boundedMemory.dispose,
-        };
     }
 }

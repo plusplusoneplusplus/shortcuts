@@ -15,15 +15,14 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type {
     AgentMode,
     Attachment,
     AutoFolderContext,
-    CopilotSDKService,
     MemoryToolCaptureContext,
+    CopilotSDKService,
     ProcessStore,
     QueuedTask,
     SystemMessageConfig,
@@ -44,11 +43,24 @@ import {
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
-import { resolveTaskRoot } from '../tasks/task-root-resolver';
-import { getRepoDataPath } from '../paths';
+import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { BaseExecutor } from './base-executor';
-import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';
-import { isValidTaskFolder } from './auto-folder-utils';
+import {
+    applyLlmToolPreferences,
+    assertNoAskUserConflict,
+    buildAskUserAddon,
+    buildBoundedMemoryAddon,
+    buildCreateWorkItemAddon,
+    buildFollowUpSuggestionsAddon,
+    buildModeSystemMessage,
+    buildSearchConversationsAddon,
+    buildTavilyWebSearchAddon,
+    prependSelectedSkillsDirective,
+} from './prompt-builder';
+import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import { resolveAutoFolderContext } from './auto-folder-utils';
+import { systemMessageBuilder } from './system-message-builder';
 
 // ============================================================================
 // Types
@@ -154,6 +166,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
     }
 
+    /** Build bounded-memory wiring for a workspace. */
+    protected buildMemoryAddon(
+        workspaceId: string | undefined,
+        captureContext?: MemoryToolCaptureContext,
+        recallQuery?: string,
+    ): Promise<BoundedMemoryAddon> {
+        return buildBoundedMemoryAddon(this.dataDir, workspaceId, captureContext, recallQuery);
+    }
+
     // ========================================================================
     // Shared helper — auto-folder context (used by ask and plan modes)
     // ========================================================================
@@ -168,30 +189,86 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected async buildAutoFolderContext(
         workingDirectory: string,
         workspaceId?: string,
-        isPlanMode?: boolean,
+        mode: 'ask' | 'plan' = 'ask',
     ): Promise<AutoFolderContext> {
-        const wsId = workspaceId || await this.resolveWorkspaceIdForPathFn(workingDirectory);
-        const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+        return resolveAutoFolderContext({
+            dataDir: this.dataDir,
+            workingDirectory,
+            workspaceId,
+            mode,
+            resolveWorkspaceIdForPath: this.resolveWorkspaceIdForPathFn,
+        });
+    }
 
-        let folderRoot: string;
-        if (isPlanMode) {
-            folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId, 'notes'), 'Plans');
-            await fs.promises.mkdir(folderRoot, { recursive: true });
-        } else {
-            folderRoot = resolveTaskRoot({
-                dataDir: effectiveDataDir,
-                rootPath: workingDirectory,
-                workspaceId: wsId,
-            }).absolutePath;
-        }
+    protected async buildStandardModeOptions(
+        task: QueuedTask,
+        prompt: string,
+        mode: 'ask' | 'plan',
+        workingDirectory: string | undefined,
+        broadcastWorkItem?: BroadcastWorkItemFn,
+    ): Promise<ChatModeAIOptions> {
+        const payload = task.payload as unknown as ChatPayload;
 
-        const entries = await fs.promises
-            .readdir(folderRoot, { withFileTypes: true })
-            .catch(() => [] as fs.Dirent[]);
-        const existingFolders = entries
-            .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
-            .map(e => e.name);
-        return { tasksRoot: folderRoot, existingFolders };
+        const autoFolderContext = workingDirectory
+            ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId, mode)
+            : undefined;
+
+        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
+        const notePath = payload.context?.noteChat?.notePath;
+        const systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage(mode)?.content)
+            .withRepoInstructions(workingDirectory, mode)
+            .appendMemory(boundedMemory)
+            .appendAutoFolder(autoFolderContext)
+            .appendNoteFile(notePath)
+            .build();
+
+        const followUp = buildFollowUpSuggestionsAddon(
+            this.followUpSuggestions.enabled,
+            this.followUpSuggestions.count,
+        );
+        const processId = toQueueProcessId(task.id);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId, processId);
+        const createWorkItem = buildCreateWorkItemAddon(
+            this.dataDir,
+            payload.workspaceId,
+            broadcastWorkItem,
+        );
+        const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
+
+        const askUser = buildAskUserAddon(mode === 'plan' && this.askUser.enabled, {
+            emitQuestion: (questionPayload) => {
+                this.store.emitProcessEvent(processId, {
+                    type: 'ask-user',
+                    askUser: questionPayload,
+                });
+            },
+            computeTurnIndex: () => 1,
+        });
+        const session = this.getOrCreateSession(processId);
+        session.pendingAskUser = {
+            answerQuestion: askUser.answerQuestion,
+            skipQuestion: askUser.skipQuestion,
+            cancelAll: askUser.cancelAll,
+            hasPending: askUser.hasPending,
+        };
+
+        const disabledLlmTools = this.dataDir && payload.workspaceId
+            ? readEffectiveDisabledLlmTools(this.dataDir, payload.workspaceId)
+            : undefined;
+
+        const { tools, suffix } = applyLlmToolPreferences(
+            [followUp, searchConversations, askUser, createWorkItem, tavilySearch, boundedMemory],
+            disabledLlmTools,
+        );
+
+        return {
+            agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
+            systemMessage,
+            tools,
+            effectivePrompt: prompt + suffix,
+            dispose: boundedMemory.dispose,
+        };
     }
 
     // ========================================================================
@@ -220,24 +297,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         let { agentMode, systemMessage, tools, effectivePrompt, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
 
-        // Persist system prompt to process metadata (fire-and-forget, non-blocking)
-        if (systemMessage?.content) {
-            const capturedContent = systemMessage.content;
-            (async () => {
-                try {
-                    const proc = await this.store.getProcess(processId);
-                    if (proc) {
-                        await this.store.updateProcess(processId, {
-                            metadata: {
-                                type: proc.metadata?.type ?? task.type,
-                                ...(proc.metadata ?? {}),
-                                systemPrompt: capturedContent,
-                            } as any,
-                        });
-                    }
-                } catch { /* non-fatal */ }
-            })();
-        }
+        this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));

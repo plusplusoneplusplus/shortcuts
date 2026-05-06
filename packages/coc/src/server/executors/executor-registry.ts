@@ -94,7 +94,7 @@ export class ExecutorRegistry {
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: options.defaultWorkingDirectory, approvePermissions: options.approvePermissions, aiService: options.aiService, followUpSuggestions: options.followUpSuggestions, resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath, resolveSkillConfig: options.resolveSkillConfig, onTitleNeeded: options.onTitleNeeded }, options.dataDir);
+        this.followUpExecutor = new FollowUpExecutor(store, { ...chatOpts, onTitleNeeded: options.onTitleNeeded }, options.dataDir);
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.planExecutor = new PlanExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);

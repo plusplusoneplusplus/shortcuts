@@ -57,10 +57,22 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     appendAutoFolderBlock: (msg: any, _ctx: any) => msg,
     appendBoundedMemoryContext: (msg: any, _addon: any) => msg,
     buildBoundedMemoryAddon: () => Promise.resolve({ systemMessageSuffix: undefined, tools: [], suffix: '' }),
+    buildAskUserAddon: () => ({
+        tools: [],
+        suffix: '',
+        answerQuestion: () => false,
+        skipQuestion: () => false,
+        cancelAll: () => {},
+        hasPending: () => false,
+    }),
+    buildCreateWorkItemAddon: () => ({ tools: [], suffix: '' }),
+    buildSearchConversationsAddon: () => ({ tools: [], suffix: '' }),
+    buildTavilyWebSearchAddon: () => ({ tools: [], suffix: '' }),
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
     applyLlmToolPreferences: (...args: any[]) => mockApplyLlmToolPreferences(...args),
+    assertNoAskUserConflict: () => {},
     prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
         selectedSkills && selectedSkills.length > 0
             ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
@@ -97,7 +109,9 @@ function makeExecutor(
 ) {
     return new FollowUpExecutor(store, {
         aiService: sdkMocks.service as any,
+        defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
+        toolCallCacheStore: { options: {} } as any,
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         ...overrides,
@@ -377,6 +391,34 @@ describe('FollowUpExecutor', () => {
         const executor = makeExecutor(store);
         await executor.executeFollowUp('proc-resume', 'msg');
 
+        expect(mockBuildConversationHistoryContext).not.toHaveBeenCalled();
+    });
+
+    it('prepends cold history to the system message when session cannot resume', async () => {
+        mockBuildConversationHistoryContext.mockReturnValue('HISTORY: prior turns');
+        const proc = makeProcess({ id: 'proc-cold-history', sdkSessionId: undefined });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-cold-history', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.sessionId).toBeUndefined();
+        expect(callArg.systemMessage.content).toContain('HISTORY: prior turns');
+        expect(callArg.systemMessage.content).toContain('system');
+    });
+
+    it('keeps resumable sessions on the SDK session without prepending history', async () => {
+        mockBuildConversationHistoryContext.mockReturnValue('HISTORY: prior turns');
+        const proc = makeProcess({ id: 'proc-warm-history', sdkSessionId: 'existing-session' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-warm-history', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.sessionId).toBe('existing-session');
+        expect(callArg.systemMessage.content).not.toContain('HISTORY: prior turns');
         expect(mockBuildConversationHistoryContext).not.toHaveBeenCalled();
     });
 

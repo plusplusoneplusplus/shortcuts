@@ -5,11 +5,10 @@
  * message to an in-progress or completed process, streaming the AI response back,
  * appending the assistant turn to conversationTurns, and updating process status.
  *
- * Extends BaseExecutor for shared streaming/cancellation/timeline plumbing.
+ * Extends ChatBaseExecutor for shared chat-mode helpers and streaming plumbing.
  * Must NOT create new processes — it appends to an existing one.
  */
 
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type {
@@ -17,9 +16,9 @@ import type {
     Attachment,
     AutoFolderContext,
     ConversationTurn,
-    CopilotSDKService,
     DeliveryMode,
     ProcessStore,
+    QueuedTask,
     SystemMessageConfig,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode } from '../tasks/task-types';
@@ -31,7 +30,6 @@ import {
 } from '@plusplusoneplusplus/forge';
 import {
     buildModeSystemMessage,
-    buildBoundedMemoryAddon,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
@@ -40,11 +38,9 @@ import {
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
 import { emitMessageSteering } from '../streaming/sse-handler';
-import { resolveTaskRoot } from '../tasks/task-root-resolver';
-import { getRepoDataPath } from '../paths';
-import { BaseExecutor } from './base-executor';
+import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
+import { ChatBaseExecutor } from './chat-base-executor';
 import { flushMemories } from '../memory/pre-compression-flush';
-import { isValidTaskFolder } from './auto-folder-utils';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 // ============================================================================
 // Types
@@ -61,24 +57,7 @@ function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
     return chatMode ? CHAT_MODE_TO_AGENT_MODE[chatMode] : undefined;
 }
 
-export interface SkillConfig {
-    skillDirectories?: string[];
-    disabledSkills?: string[];
-}
-
-export interface FollowUpExecutorOptions {
-    /** Default working directory for AI sessions */
-    workingDirectory?: string;
-    /** Whether to auto-approve AI permission requests (default: true) */
-    approvePermissions?: boolean;
-    /** The AI service instance to use for sending messages */
-    aiService: CopilotSDKService;
-    /** Follow-up suggestions configuration */
-    followUpSuggestions: { enabled: boolean; count: number };
-    /** Resolve workspace ID for a root path */
-    resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
-    /** Resolve skill configuration for a workspace */
-    resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
+export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
     /** Fire-and-forget title generation callback (optional) */
     onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
 }
@@ -87,24 +66,20 @@ export interface FollowUpExecutorOptions {
 // FollowUpExecutor
 // ============================================================================
 
-export class FollowUpExecutor extends BaseExecutor {
-    private readonly approvePermissions: boolean;
-    private readonly defaultWorkingDirectory?: string;
-    private readonly aiService: CopilotSDKService;
-    private readonly followUpSuggestions: { enabled: boolean; count: number };
-    private readonly _resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
-    private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
+export class FollowUpExecutor extends ChatBaseExecutor {
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
 
     constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
-        super(store, dataDir);
-        this.approvePermissions = options.approvePermissions !== false;
-        this.defaultWorkingDirectory = options.workingDirectory;
-        this.aiService = options.aiService;
-        this.followUpSuggestions = options.followUpSuggestions;
-        this._resolveWorkspaceIdForPath = options.resolveWorkspaceIdForPath;
-        this._resolveSkillConfig = options.resolveSkillConfig;
+        super(store, options, dataDir);
         this.onTitleNeeded = options.onTitleNeeded;
+    }
+
+    protected async buildModeOptions(
+        _task: QueuedTask,
+        _prompt: string,
+        _workingDirectory: string | undefined,
+    ): Promise<ChatModeAIOptions> {
+        throw new Error('FollowUpExecutor executes existing processes via executeFollowUp');
     }
 
     /**
@@ -185,23 +160,15 @@ export class FollowUpExecutor extends BaseExecutor {
         }
 
         let autoFolderContextForFollowUp: AutoFolderContext | undefined;
-        const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this._resolveWorkspaceIdForPath(workingDirectory) : undefined);
+        const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this.resolveWorkspaceIdForPathFn(workingDirectory) : undefined);
         if (workingDirectory) {
-            let folderRoot: string;
-            const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-            if (currentMode === 'plan') {
-                folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId!, 'notes'), 'Plans');
-                await fs.promises.mkdir(folderRoot, { recursive: true }).catch(() => {});
-            } else {
-                folderRoot = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
-            }
-            const entries = await fs.promises.readdir(folderRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-            const existingFolders = entries
-                .filter(e => e.isDirectory() && isValidTaskFolder(e.name))
-                .map(e => e.name);
-            autoFolderContextForFollowUp = { tasksRoot: folderRoot, existingFolders };
+            autoFolderContextForFollowUp = await this.buildAutoFolderContext(
+                workingDirectory,
+                wsId,
+                currentMode === 'plan' ? 'plan' : 'ask',
+            );
         }
-        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId, {
+        const boundedMemory = await this.buildMemoryAddon(wsId, {
             processId,
             turnIndex: process.conversationTurns?.length ?? 0,
         }, message);
@@ -214,25 +181,7 @@ export class FollowUpExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
-        // Persist most-recent system prompt to process metadata (fire-and-forget, non-blocking)
-        // Re-fetch the process to get the latest metadata (e.g. after any mode update above).
-        if (systemMessage?.content) {
-            const capturedContent = systemMessage.content;
-            (async () => {
-                try {
-                    const proc = await this.store.getProcess(processId);
-                    if (proc) {
-                        await this.store.updateProcess(processId, {
-                            metadata: {
-                                type: proc.metadata?.type ?? 'chat',
-                                ...(proc.metadata ?? {}),
-                                systemPrompt: capturedContent,
-                            } as any,
-                        });
-                    }
-                } catch { /* non-fatal */ }
-            })();
-        }
+        this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         let preEditContent: string | undefined;
@@ -241,7 +190,7 @@ export class FollowUpExecutor extends BaseExecutor {
             preEditContent = await readNoteContent(effectiveDataDir, wsId, notePath);
         }
 
-        const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);
+        const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
 
         const canResumeSession = !!process.sdkSessionId;
 
