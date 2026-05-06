@@ -3,6 +3,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { WelcomeModal } from '../../../../src/server/spa/client/react/welcome/WelcomeModal';
+import { ConceptTour } from '../../../../src/server/spa/client/react/welcome/ConceptTour';
+
+const WELCOME_DISMISS_PATCH = {
+    hasSeenWelcome: true,
+    onboardingProgress: {
+        hasRunWorkflow: false,
+        hasOpenedWiki: false,
+        hasUsedChat: false,
+        settingsVisited: false,
+        dismissed: false,
+        hasCompletedTour: true,
+    },
+};
 
 /**
  * Helper that dispatches SET_WELCOME_PREFERENCES on mount so the
@@ -28,6 +41,24 @@ function renderWelcomeModal(
         <AppProvider>
             <PrefsLoader prefs={prefs}>
                 <WelcomeModal {...props} />
+            </PrefsLoader>
+        </AppProvider>,
+    );
+}
+
+function renderWelcomeExperience(
+    prefs: Record<string, unknown> = {},
+    props: { onGetStarted?: () => void } = {},
+) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+    }));
+    return render(
+        <AppProvider>
+            <PrefsLoader prefs={prefs}>
+                <WelcomeModal {...props} />
+                <ConceptTour />
             </PrefsLoader>
         </AppProvider>,
     );
@@ -78,7 +109,38 @@ describe('WelcomeModal', () => {
         );
         expect(patchCalls.length).toBeGreaterThanOrEqual(1);
         const bodies = patchCalls.map(([, opts]) => JSON.parse((opts as any).body));
-        expect(bodies).toContainEqual({ hasSeenWelcome: true });
+        expect(bodies).toContainEqual(WELCOME_DISMISS_PATCH);
+    });
+
+    it('"Get Started" suppresses the concept tour in local and reloaded preferences', async () => {
+        const firstRender = renderWelcomeExperience({});
+        await waitFor(() => {
+            expect(screen.getByTestId('welcome-get-started')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('welcome-get-started'));
+
+        await waitFor(() => {
+            expect(document.getElementById('welcome-modal')).toBeNull();
+        });
+        expect(document.getElementById('concept-tour')).toBeNull();
+
+        const fetchMock = vi.mocked(global.fetch);
+        const patchCalls = fetchMock.mock.calls.filter(
+            ([, opts]) => (opts as any)?.method === 'PATCH',
+        );
+        const bodies = patchCalls.map(([, opts]) => JSON.parse((opts as any).body));
+        expect(bodies).toContainEqual(WELCOME_DISMISS_PATCH);
+
+        firstRender.unmount();
+        vi.unstubAllGlobals();
+        document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
+
+        renderWelcomeExperience(WELCOME_DISMISS_PATCH);
+        await waitFor(() => {
+            expect(document.getElementById('welcome-modal')).toBeNull();
+            expect(document.getElementById('concept-tour')).toBeNull();
+        });
     });
 
     it('"Get Started" calls onGetStarted callback', async () => {
@@ -142,7 +204,7 @@ describe('WelcomeModal', () => {
             ([, opts]) => (opts as any)?.method === 'PATCH',
         );
         const bodies = patchCalls.map(([, opts]) => JSON.parse((opts as any).body));
-        expect(bodies).toContainEqual({ hasSeenWelcome: true });
+        expect(bodies).toContainEqual(WELCOME_DISMISS_PATCH);
     });
 
     it('"Get Started" keeps the modal open when persistence fails', async () => {

@@ -34,9 +34,11 @@ export function useOnboardingPreferences(onFailure?: (message: string) => void) 
     }, [reportFailure]);
 
     const markWelcomeSeen = useCallback(async () => {
-        await persist({ hasSeenWelcome: true });
+        const onboardingProgress = { ...state.onboardingProgress, hasCompletedTour: true };
+        await persist({ hasSeenWelcome: true, onboardingProgress });
         dispatch({ type: 'DISMISS_WELCOME' });
-    }, [dispatch, persist]);
+        dispatch({ type: 'UPDATE_ONBOARDING', payload: { hasCompletedTour: true } });
+    }, [dispatch, persist, state.onboardingProgress]);
 
     const skipWelcomeTour = useCallback(async () => {
         const onboardingProgress = { ...state.onboardingProgress, dismissed: true };
