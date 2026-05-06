@@ -42,31 +42,36 @@ function linuxPathToWslUnc(distro: string, linuxPath: string): string {
     return segments.length > 0 ? path.win32.join(base, ...segments) : base;
 }
 
-function getDefaultWslHomeRoot(): BrowseRoot | null {
+function getDefaultWslRoots(): BrowseRoot[] {
     if (process.platform !== 'win32') {
-        return null;
+        return [];
     }
 
     const distro = getDefaultWslDistro();
     if (!distro) {
-        return null;
+        return [];
     }
+
+    const fallbackRoot: BrowseRoot = {
+        label: `WSL (${distro})`,
+        path: linuxPathToWslUnc(distro, '/'),
+    };
 
     try {
         const home = execFileSync(
             getWslExecutablePath(),
-            ['-d', distro, '--', 'sh', '-lc', 'printf %s "$HOME"'],
+            ['-d', distro, '--', 'sh', '-c', 'printf %s "$HOME"'],
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();
         if (!home.startsWith('/')) {
-            return null;
+            return [fallbackRoot];
         }
-        return {
+        return [{
             label: `WSL Home (${distro})`,
             path: linuxPathToWslUnc(distro, home),
-        };
+        }];
     } catch {
-        return null;
+        return [fallbackRoot];
     }
 }
 
@@ -90,7 +95,9 @@ export function listBrowseRoots(): BrowseRoot[] {
         roots.push(root);
     };
 
-    pushRoot(getDefaultWslHomeRoot());
+    for (const root of getDefaultWslRoots()) {
+        pushRoot(root);
+    }
     for (const drive of listWindowsDrives()) {
         pushRoot({ label: drive, path: drive });
     }

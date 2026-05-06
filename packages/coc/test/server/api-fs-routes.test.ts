@@ -45,4 +45,19 @@ describe('listBrowseRoots', () => {
             { label: 'S:\\', path: 'S:\\' },
         ]);
     });
+
+    it.runIf(process.platform === 'win32')('keeps a WSL distro root even when home lookup fails', () => {
+        vi.mocked(fs.existsSync).mockImplementation(pathLike => ['C:\\'].includes(String(pathLike)));
+        vi.mocked(forge.getDefaultWslDistro).mockReturnValue('Ubuntu-24.04');
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation(() => {
+            throw new Error('home lookup failed');
+        });
+
+        const roots = listBrowseRoots();
+
+        expect(roots).toEqual([
+            { label: 'WSL (Ubuntu-24.04)', path: String.raw`\\wsl$\Ubuntu-24.04` },
+            { label: 'C:\\', path: 'C:\\' },
+        ]);
+    });
 });
