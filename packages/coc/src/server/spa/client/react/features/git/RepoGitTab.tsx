@@ -638,6 +638,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [workspaceId, dispatch]);
 
     const handleMultiSelect = useCallback((selectedCommits: GitCommitItem[]) => {
+        if (selectedCommits.length === 0) {
+            setRightPanelView(null);
+            return;
+        }
         if (selectedCommits.length === 1) {
             handleSelect(selectedCommits[0]);
             return;

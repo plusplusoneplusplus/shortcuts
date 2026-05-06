@@ -20,6 +20,7 @@ import { computeDiffCommentKey } from '../../../../comments/diff-comment-utils';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from '../fixup-utils';
 import type { FixupGroupMap } from '../fixup-utils';
+import { useLongPress } from '../../../hooks/ui/useLongPress';
 
 export interface GitCommitItem {
     hash: string;
@@ -68,6 +69,9 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
+    const [isMobileSelecting, setIsMobileSelecting] = useState(false);
+    const longPressCommitHashRef = useRef<string | null>(null);
+    const suppressLongPressClickHashRef = useRef<string | null>(null);
     // Expanded file list state: hash -> files (cached)
     const [expandedHash, setExpandedHash] = useState<string | null>(null);
     const [fileCache, setFileCache] = useState<Record<string, FileChange[]>>({});
@@ -107,6 +111,43 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     // Detect dark mode for color palette selection
     const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const groupColors = isDarkMode ? FIXUP_GROUP_COLORS_DARK : FIXUP_GROUP_COLORS_LIGHT;
+    const touchOnly = isTouchOnly();
+
+    const selectedCommitList = useMemo(() => {
+        const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+        return commits.filter(c => currentSet.has(c.hash));
+    }, [commits, selectedHash, selectedHashes]);
+
+    const clearMobileSelection = useCallback(() => {
+        setIsMobileSelecting(false);
+        setAnchorHash(null);
+        onMultiSelect?.([]);
+    }, [onMultiSelect]);
+
+    const createSyntheticContextMenuEvent = useCallback((element: HTMLElement): React.MouseEvent => {
+        const rect = element.getBoundingClientRect();
+        return {
+            clientX: rect.left,
+            clientY: rect.bottom,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+        } as React.MouseEvent;
+    }, []);
+
+    const openContextMenuFromElement = useCallback((element: HTMLElement, commitHash: string) => {
+        onCommitContextMenu?.(createSyntheticContextMenuEvent(element), commitHash);
+    }, [createSyntheticContextMenuEvent, onCommitContextMenu]);
+
+    const mobileLongPress = useLongPress(() => {
+        if (!touchOnly || !onMultiSelect) return;
+        const hash = longPressCommitHashRef.current;
+        const commit = hash ? commits.find(c => c.hash === hash) : undefined;
+        if (!commit) return;
+        setIsMobileSelecting(true);
+        setAnchorHash(commit.hash);
+        suppressLongPressClickHashRef.current = commit.hash;
+        onMultiSelect([commit]);
+    });
 
     // Pre-compute storageKey → count lookup keyed by filePath for render-time access
     useEffect(() => {
@@ -191,6 +232,33 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
 
     // Expand/collapse file list and fetch files on first expand
     const handleCommitClick = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
+        const didLongPress = mobileLongPress.didLongPress();
+        if (didLongPress && suppressLongPressClickHashRef.current === commit.hash) {
+            suppressLongPressClickHashRef.current = null;
+            return;
+        }
+        if (didLongPress) {
+            suppressLongPressClickHashRef.current = null;
+        }
+
+        if (isMobileSelecting && onMultiSelect) {
+            const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+            const newSet = new Set(currentSet);
+            if (newSet.has(commit.hash)) {
+                newSet.delete(commit.hash);
+            } else {
+                newSet.add(commit.hash);
+            }
+            if (newSet.size === 0) {
+                setIsMobileSelecting(false);
+                setAnchorHash(null);
+            } else {
+                setAnchorHash(commit.hash);
+            }
+            onMultiSelect(commits.filter(c => newSet.has(c.hash)));
+            return;
+        }
+
         const isCtrl = e.ctrlKey || e.metaKey;
         const isShift = e.shiftKey;
 
@@ -240,7 +308,26 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                     .finally(() => setFilesLoading(null));
             }
         }
-    }, [expandedHash, fileCache, workspaceId, onSelect, onMultiSelect, selectedHashes, selectedHash, anchorHash, commits]);
+    }, [expandedHash, fileCache, workspaceId, onSelect, onMultiSelect, selectedHashes, selectedHash, anchorHash, commits, isMobileSelecting, mobileLongPress]);
+
+    const handleMobileSelectionActions = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const firstSelectedCommit = selectedCommitList[0];
+        if (!firstSelectedCommit) return;
+        openContextMenuFromElement(e.currentTarget, firstSelectedCommit.hash);
+    }, [openContextMenuFromElement, selectedCommitList]);
+
+    const handleCommitOverflowTouchStart = useCallback((e: React.TouchEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, []);
+
+    const handleCommitOverflowTouchEnd = useCallback((e: React.TouchEvent<HTMLButtonElement>, commitHash: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openContextMenuFromElement(e.currentTarget, commitHash);
+    }, [openContextMenuFromElement]);
 
     // Hover tooltip handlers with 1000ms delay
     const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
@@ -367,7 +454,45 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                             <div className="px-4 py-3 text-xs text-[#848484]" data-testid="commit-list-empty">No commits</div>
                         )
                     ) : (
-                <div ref={listRef} role="listbox" tabIndex={0} onKeyDown={handleKeyDown} className="outline-none">
+                <div
+                    ref={listRef}
+                    role="listbox"
+                    tabIndex={0}
+                    onKeyDown={handleKeyDown}
+                    onClick={(e) => {
+                        if (isMobileSelecting && e.target === e.currentTarget) {
+                            clearMobileSelection();
+                        }
+                    }}
+                    className="outline-none"
+                >
+                    {isMobileSelecting && selectedCommitList.length > 0 && (
+                        <div
+                            className="flex items-center gap-2 px-3 py-2 bg-[#f0f9ff] dark:bg-[#1a2733] border-b border-[#e0e0e0] dark:border-[#3c3c3c] sticky top-0 z-20"
+                            data-testid="commit-mobile-selection-bar"
+                        >
+                            <button
+                                type="button"
+                                className="w-7 h-7 rounded text-sm text-[#616161] dark:text-[#ccc] hover:bg-[#dbeafe] dark:hover:bg-[#243447]"
+                                aria-label="Clear commit selection"
+                                onClick={clearMobileSelection}
+                                data-testid="commit-mobile-selection-cancel"
+                            >
+                                ✕
+                            </button>
+                            <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#ccc]" data-testid="commit-mobile-selection-count">
+                                {selectedCommitList.length} selected
+                            </span>
+                            <button
+                                type="button"
+                                className="ml-auto px-2.5 py-1.5 rounded text-xs font-medium text-[#0078d4] dark:text-[#3794ff] hover:bg-[#dbeafe] dark:hover:bg-[#243447]"
+                                onClick={handleMobileSelectionActions}
+                                data-testid="commit-mobile-selection-actions"
+                            >
+                                ⋮ Actions
+                            </button>
+                        </div>
+                    )}
                     {commits.map((commit, index) => {
                         const isSelected = selectedHashes
                             ? selectedHashes.has(commit.hash)
@@ -394,12 +519,12 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         return (
                             <div
                                 key={commit.hash}
+                                className={`relative ${dragIndex === index ? 'opacity-40' : isDragOver ? 'border-t-2 border-t-[#007acc]' : ''}`}
                                 draggable={canDrag}
                                 onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
                                 onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
                                 onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
-                                className={dragIndex === index ? 'opacity-40' : isDragOver ? 'border-t-2 border-t-[#007acc]' : ''}
                             >
                                 {showSeparator && (
                                     <div
@@ -418,6 +543,9 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                     onClick={(e) => handleCommitClick(commit, e)}
                                     onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
+                                    onTouchStart={touchOnly && onMultiSelect ? (e) => { longPressCommitHashRef.current = commit.hash; mobileLongPress.onTouchStart(e); } : undefined}
+                                    onTouchEnd={touchOnly && onMultiSelect ? mobileLongPress.onTouchEnd : undefined}
+                                    onTouchMove={touchOnly && onMultiSelect ? mobileLongPress.onTouchMove : undefined}
                                     onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                     data-fixup-type={fixupEntry?.type}
@@ -425,6 +553,15 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                 >
                                     {canDrag && (
                                         <span className="text-[10px] mt-0.5 flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder">⠿</span>
+                                    )}
+                                    {isMobileSelecting && (
+                                        <span
+                                            className="text-[13px] mt-0.5 flex-shrink-0 text-[#0078d4] dark:text-[#3794ff]"
+                                            aria-hidden="true"
+                                            data-testid={`commit-mobile-select-indicator-${commit.shortHash}`}
+                                        >
+                                            {isSelected ? '☑' : '☐'}
+                                        </span>
                                     )}
                                     <span
                                         className="text-[10px] mt-0.5 flex-shrink-0"
@@ -479,6 +616,18 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         </div>
                                     </div>
                                 </button>
+                                {touchOnly && !isMobileSelecting && onCommitContextMenu && (
+                                    <button
+                                        type="button"
+                                        className="absolute right-2 top-1.5 w-7 h-7 rounded text-sm text-[#616161] dark:text-[#ccc] bg-transparent hover:bg-[#e8e8e8] dark:hover:bg-[#333] touch-manipulation"
+                                        aria-label={`Open actions for commit ${commit.shortHash}`}
+                                        onTouchStart={handleCommitOverflowTouchStart}
+                                        onTouchEnd={(e) => handleCommitOverflowTouchEnd(e, commit.hash)}
+                                        data-testid={`commit-mobile-actions-${commit.shortHash}`}
+                                    >
+                                        ⋮
+                                    </button>
+                                )}
                                 {/* Expanded file list */}
                                 {isExpanded && (
                                     <div className="pl-8 pr-3 py-1 bg-[#f8f8f8] dark:bg-[#1e1e1e] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid={`commit-files-${commit.shortHash}`}>

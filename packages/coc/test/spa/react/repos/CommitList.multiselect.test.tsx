@@ -11,8 +11,9 @@
  * - Source code shape checks for new props and anchorHash state.
  */
 
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import * as fs from 'fs';
 import * as path from 'path';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
@@ -95,6 +96,73 @@ beforeEach(() => {
 afterEach(() => {
     restoreViewport();
 });
+
+function makeMediaQueryList(query: string, matches: boolean): MediaQueryList {
+    return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(() => true),
+    };
+}
+
+function mockTouchOnly(touchOnly: boolean): () => void {
+    const original = window.matchMedia;
+    window.matchMedia = (query: string): MediaQueryList => {
+        if (query.includes('hover: none')) {
+            return makeMediaQueryList(query, touchOnly);
+        }
+        if (query.includes('prefers-color-scheme')) {
+            return makeMediaQueryList(query, false);
+        }
+        return original(query);
+    };
+    return () => {
+        window.matchMedia = original;
+    };
+}
+
+function fireTouchStart(element: Element, x = 10, y = 10): void {
+    fireEvent.touchStart(element, { touches: [{ clientX: x, clientY: y }] });
+}
+
+function fireTouchMove(element: Element, x = 30, y = 10): void {
+    fireEvent.touchMove(element, { touches: [{ clientX: x, clientY: y }] });
+}
+
+function longPress(element: Element): void {
+    fireTouchStart(element);
+    act(() => {
+        vi.advanceTimersByTime(500);
+    });
+}
+
+interface ControlledCommitListProps {
+    onMultiSelect?: (commits: GitCommitItem[]) => void;
+    onSelect?: (commit: GitCommitItem) => void;
+    onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void;
+}
+
+function ControlledCommitList({ onMultiSelect, onSelect, onCommitContextMenu }: ControlledCommitListProps) {
+    const [selected, setSelected] = useState<GitCommitItem[]>([]);
+    return (
+        <CommitList
+            title="History"
+            commits={COMMITS}
+            selectedHashes={new Set(selected.map(c => c.hash))}
+            onSelect={onSelect}
+            onMultiSelect={(next) => {
+                setSelected(next);
+                onMultiSelect?.(next);
+            }}
+            onCommitContextMenu={onCommitContextMenu}
+        />
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Source code shape checks
@@ -333,5 +401,139 @@ describe('CommitList — selectedHashes drives highlighting', () => {
 
         expect(rowA.className).not.toContain('bg-blue-50');
         expect(rowB.className).toContain('bg-blue-50');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile touch multi-select
+// ---------------------------------------------------------------------------
+
+describe('CommitList — mobile touch multi-select', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('enters selection mode and selects the long-pressed commit after 500 ms', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onMultiSelect = vi.fn();
+        try {
+            render(<ControlledCommitList onMultiSelect={onMultiSelect} />);
+
+            longPress(screen.getByTestId(`commit-row-${COMMIT_A.shortHash}`));
+
+            expect(onMultiSelect).toHaveBeenCalledWith([COMMIT_A]);
+            expect(screen.getByTestId('commit-mobile-selection-count').textContent).toContain('1 selected');
+            expect(screen.getByTestId(`commit-mobile-select-indicator-${COMMIT_A.shortHash}`).textContent).toBe('☑');
+            expect(screen.getByTestId(`commit-mobile-select-indicator-${COMMIT_B.shortHash}`).textContent).toBe('☐');
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('toggles additional commits without expanding rows while in selection mode', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onMultiSelect = vi.fn();
+        const onSelect = vi.fn();
+        try {
+            render(<ControlledCommitList onMultiSelect={onMultiSelect} onSelect={onSelect} />);
+
+            longPress(screen.getByTestId(`commit-row-${COMMIT_A.shortHash}`));
+            fireEvent.click(screen.getByTestId(`commit-row-${COMMIT_B.shortHash}`));
+
+            const selected: GitCommitItem[] = onMultiSelect.mock.calls.at(-1)![0];
+            expect(selected.map(c => c.hash)).toEqual([COMMIT_A.hash, COMMIT_B.hash]);
+            expect(screen.getByTestId('commit-mobile-selection-count').textContent).toContain('2 selected');
+            expect(screen.queryByTestId(`commit-files-${COMMIT_B.shortHash}`)).toBeNull();
+            expect(onSelect).not.toHaveBeenCalled();
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('opens the context menu from the selection bar for the selected commits', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onCommitContextMenu = vi.fn();
+        try {
+            render(<ControlledCommitList onCommitContextMenu={onCommitContextMenu} />);
+
+            longPress(screen.getByTestId(`commit-row-${COMMIT_A.shortHash}`));
+            fireEvent.click(screen.getByTestId(`commit-row-${COMMIT_B.shortHash}`));
+            fireEvent.click(screen.getByTestId('commit-mobile-selection-actions'));
+
+            expect(onCommitContextMenu).toHaveBeenCalledOnce();
+            expect(onCommitContextMenu.mock.calls[0][1]).toBe(COMMIT_A.hash);
+            expect(onCommitContextMenu.mock.calls[0][0].clientX).toEqual(expect.any(Number));
+            expect(onCommitContextMenu.mock.calls[0][0].clientY).toEqual(expect.any(Number));
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('clears mobile selection from the cancel button', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onMultiSelect = vi.fn();
+        try {
+            render(<ControlledCommitList onMultiSelect={onMultiSelect} />);
+
+            longPress(screen.getByTestId(`commit-row-${COMMIT_A.shortHash}`));
+            fireEvent.click(screen.getByTestId('commit-mobile-selection-cancel'));
+
+            expect(onMultiSelect.mock.calls.at(-1)![0]).toEqual([]);
+            expect(screen.queryByTestId('commit-mobile-selection-bar')).toBeNull();
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('does not enter selection mode when the touch moves like a scroll', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onMultiSelect = vi.fn();
+        try {
+            render(<ControlledCommitList onMultiSelect={onMultiSelect} />);
+            const row = screen.getByTestId(`commit-row-${COMMIT_A.shortHash}`);
+
+            fireTouchStart(row, 10, 10);
+            fireTouchMove(row, 25, 10);
+            act(() => {
+                vi.advanceTimersByTime(500);
+            });
+
+            expect(onMultiSelect).not.toHaveBeenCalled();
+            expect(screen.queryByTestId('commit-mobile-selection-bar')).toBeNull();
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('opens a single-commit context menu from the touch-only row overflow button', () => {
+        const restoreTouch = mockTouchOnly(true);
+        const onCommitContextMenu = vi.fn();
+        try {
+            render(<ControlledCommitList onCommitContextMenu={onCommitContextMenu} />);
+            const button = screen.getByTestId(`commit-mobile-actions-${COMMIT_A.shortHash}`);
+
+            fireEvent.touchStart(button, { touches: [{ clientX: 20, clientY: 20 }] });
+            fireEvent.touchEnd(button);
+
+            expect(onCommitContextMenu).toHaveBeenCalledOnce();
+            expect(onCommitContextMenu.mock.calls[0][1]).toBe(COMMIT_A.hash);
+        } finally {
+            restoreTouch();
+        }
+    });
+
+    it('does not render row overflow actions on non-touch viewports', () => {
+        const restoreTouch = mockTouchOnly(false);
+        try {
+            render(<ControlledCommitList onCommitContextMenu={vi.fn()} />);
+
+            expect(screen.queryByTestId(`commit-mobile-actions-${COMMIT_A.shortHash}`)).toBeNull();
+        } finally {
+            restoreTouch();
+        }
     });
 });
