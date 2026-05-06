@@ -447,8 +447,7 @@ export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders:
     const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
     return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`
 - Existing folder options: ${folderList}
-- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.
-- NEVER save to \`~/.copilot/session-state/\`, your session workspace, or any temporary directory.`;
+- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.`;
 }
 
 /**

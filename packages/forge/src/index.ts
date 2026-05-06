@@ -180,7 +180,6 @@ export {
     approveAllPermissions,
     denyAllPermissions,
     isPermissionApproved,
-    READ_ONLY_MARKER,
     READ_ONLY_SYSTEM_MESSAGE,
     ToolEvent,
     Tool,

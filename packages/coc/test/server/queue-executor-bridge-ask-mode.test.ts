@@ -320,21 +320,21 @@ describe('ask mode system message — follow-up transitions', () => {
 // ============================================================================
 
 describe('READ_ONLY_SYSTEM_MESSAGE constant', () => {
-    it('should contain the COC read-only marker', () => {
-        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('<!-- COC_READ_ONLY_MODE -->');
+    it('should be wrapped in the coc-read-only-mode tag', () => {
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('<coc-read-only-mode>');
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('</coc-read-only-mode>');
     });
 
     it('should mention read-only mode', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('read-only mode');
     });
 
-    it('should mention prohibited tool names', () => {
-        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('edit_file');
-        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('create_file');
-    });
-
     it('should allow plan file exception', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('plan file');
+    });
+
+    it('should mention the attached note file exception', () => {
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('attached note file');
     });
 });
 

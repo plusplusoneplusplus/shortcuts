@@ -65,6 +65,7 @@ describe('getBuiltInPrompts', () => {
         const prompts = getBuiltInPrompts();
         const p = prompts['read-only-mode'];
         expect(p.text).toContain('read-only mode');
-        expect(p.text).toContain('MUST NOT');
+        expect(p.text).toContain('<coc-read-only-mode>');
+        expect(p.text).toContain('plan file');
     });
 });

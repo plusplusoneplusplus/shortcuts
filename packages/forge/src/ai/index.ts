@@ -66,7 +66,6 @@ export {
     denyAllPermissions,
     isPermissionApproved,
     // Read-only mode constants
-    READ_ONLY_MARKER,
     READ_ONLY_SYSTEM_MESSAGE,
     // Tool event types
     ToolEvent,

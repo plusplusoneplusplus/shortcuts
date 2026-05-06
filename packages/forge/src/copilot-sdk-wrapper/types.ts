@@ -5,29 +5,23 @@
  * for features that extend or wrap the SDK's surface.
  */
 
-import { AIInvocationResult } from '../ai/types';
 import type { ToolCall } from '../ai/process-types';
+import { AIInvocationResult } from '../ai/types';
 
 // ============================================================================
 // SDK Tool Types — re-exported from @github/copilot-sdk
 // ============================================================================
 
 import type {
+    PermissionHandler as _PermissionHandler,
+    Tool as _Tool,
     ToolHandler as _ToolHandler,
     ZodSchema as _ZodSchema,
-    Tool as _Tool,
-    PermissionHandler as _PermissionHandler,
 } from '@github/copilot-sdk';
 
 export type {
-    ToolResultObject,
-    ToolInvocation,
-    ToolHandler,
-    ZodSchema,
-    Tool,
-    PermissionRequest,
-    PermissionRequestResult,
-    PermissionHandler,
+    PermissionHandler, PermissionRequest,
+    PermissionRequestResult, Tool, ToolHandler, ToolInvocation, ToolResultObject, ZodSchema
 } from '@github/copilot-sdk';
 
 /**
@@ -76,13 +70,10 @@ export type ToolResult = string | import('@github/copilot-sdk').ToolResultObject
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 // Re-export model types for convenience
-export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTRY,
-    getModelLabel, getModelDescription, getModelDefinition, getAllModels,
-    getActiveModels, isValidModelId, getModelCount, getModelsByTier
-} from './model-registry';
+export { AIModel, DEFAULT_MODEL_ID, getActiveModels, getAllModels, getModelCount, getModelDefinition, getModelDescription, getModelLabel, getModelsByTier, isValidModelId, MODEL_REGISTRY, ModelDefinition, VALID_MODELS } from './model-registry';
 
 // Re-export dynamic model info types
-export { ModelInfo, ModelPolicy, ModelBilling } from './model-info';
+export { ModelBilling, ModelInfo, ModelPolicy } from './model-info';
 
 // ============================================================================
 // MCP Server Configuration Types
@@ -545,18 +536,13 @@ export type DeliveryMode = 'immediate' | 'enqueue';
 // ============================================================================
 
 /**
- * Marker string embedded in the read-only system message for reliable detection
- * during filtering. Allows surgical add/remove of the read-only instruction
- * without affecting other system message content.
- */
-export const READ_ONLY_MARKER = '<!-- COC_READ_ONLY_MODE -->';
-
-/**
  * System message injected when the chat is in `ask` (read-only) mode.
  * Instructs the AI to avoid using any file-modification tools.
  */
-export const READ_ONLY_SYSTEM_MESSAGE = `${READ_ONLY_MARKER}
-You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file and the attached note file (if any). You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file or editing the attached note file).`;
+export const READ_ONLY_SYSTEM_MESSAGE = `
+<coc-read-only-mode>
+You are in read-only mode, with the exception of the plan file and the attached note file (if any). You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode.
+</coc-read-only-mode>`;
 
 // ============================================================================
 // Permission Handler Helpers

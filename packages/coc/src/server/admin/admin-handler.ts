@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { MEMORY_SCHEMA, MEMORY_GUIDANCE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
+import { MEMORY_SCHEMA, MEMORY_GUIDANCE, SECURITY_PATTERNS_DESCRIPTION, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, invalidJSON, badRequest, forbidden } from '../errors';
 import type { Route } from '../types';
@@ -1013,7 +1013,7 @@ export function getBuiltInPrompts(): Record<string, BuiltInPrompt> {
             group: 'Pipeline',
             source: 'forge/copilot-sdk-wrapper/types.ts',
             description: 'System message injected in ask/plan modes blocking file edits',
-            text: 'You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file).',
+            text: READ_ONLY_SYSTEM_MESSAGE,
         },
         'task-creation': {
             id: 'task-creation',
