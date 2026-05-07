@@ -9,11 +9,15 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { createExecutionServer } from '../src/server/index';
 import { createRequestHandler, readJsonBody, sendJson } from '@plusplusoneplusplus/coc-server';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { DEFAULT_SKILLS_SETTINGS, type ProcessStore } from '@plusplusoneplusplus/forge';
+import { MY_WORK_WORKSPACE_ID } from '../src/server/workspaces/my-work-workspace';
 
 // ============================================================================
 // Helpers
@@ -59,6 +63,16 @@ function request(
     });
 }
 
+async function waitFor(condition: () => boolean, timeoutMs = 1000): Promise<void> {
+    const started = Date.now();
+    while (!condition()) {
+        if (Date.now() - started > timeoutMs) {
+            throw new Error('Timed out waiting for condition');
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -87,6 +101,33 @@ describe('Server', () => {
         expect(body.status).toBe('ok');
         expect(body.uptime).toBeGreaterThanOrEqual(0);
         expect(body.processCount).toBe(0);
+    });
+
+    it('should seed My Work bundled skills into the My Work workspace', async () => {
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'server-my-work-skills-'));
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', dataDir });
+
+            const skillFile = path.join(
+                dataDir,
+                'repos',
+                MY_WORK_WORKSPACE_ID,
+                DEFAULT_SKILLS_SETTINGS.installPath,
+                'swe-1on1-notes',
+                'SKILL.md'
+            );
+            await waitFor(() => fs.existsSync(skillFile));
+
+            const globalSkillFile = path.join(dataDir, 'skills', 'swe-1on1-notes', 'SKILL.md');
+            expect(fs.existsSync(skillFile)).toBe(true);
+            expect(fs.existsSync(globalSkillFile)).toBe(false);
+        } finally {
+            if (server) {
+                await server.close();
+                server = undefined;
+            }
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        }
     });
 
     // ========================================================================

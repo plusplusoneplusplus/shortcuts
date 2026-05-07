@@ -5,7 +5,7 @@
  * browser open, signal handling, error handling, and config integration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -34,6 +34,7 @@ const mockStore = {
 };
 
 const mockCreateExecutionServer = vi.fn();
+let suiteLogDir: string;
 
 vi.mock('../../src/server/index', () => ({
     createExecutionServer: (...args: unknown[]) => mockCreateExecutionServer(...args),
@@ -76,7 +77,7 @@ function makeServerResult(overrides: Record<string, unknown> = {}) {
 async function runServeWithSigint(options: ServeCommandOptions, delayMs = 50): Promise<number> {
     const { executeServe } = await import('../../src/commands/serve');
     const timer = setTimeout(() => process.emit('SIGINT', 'SIGINT'), delayMs);
-    const exitCode = await executeServe(options);
+    const exitCode = await executeServe({ ...options, logDir: options.logDir ?? suiteLogDir });
     clearTimeout(timer);
     return exitCode;
 }
@@ -85,6 +86,10 @@ describe('Serve Command', () => {
     let stderrSpy: ReturnType<typeof vi.spyOn>;
     let tmpDir: string;
     let savedSigintListeners: Function[];
+
+    beforeAll(() => {
+        suiteLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-serve-logs-'));
+    });
 
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-serve-'));
@@ -119,7 +124,12 @@ describe('Serve Command', () => {
                 store.close();
             }
         }
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 });
+    });
+
+    afterAll(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        fs.rmSync(suiteLogDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     });
 
     // ========================================================================
@@ -284,7 +294,7 @@ describe('Serve Command', () => {
             );
 
             const { executeServe } = await import('../../src/commands/serve');
-            const exitCode = await executeServe({ dataDir: tmpDir, open: false });
+            const exitCode = await executeServe({ dataDir: tmpDir, logDir: suiteLogDir, open: false });
 
             expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
             const output = stderrSpy.mock.calls.map(c => String(c[0])).join('');

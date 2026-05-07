@@ -5,8 +5,9 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { BundledSkill, DiscoveredSkill, InstallResult, InstallDetail } from './types';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile } from '../utils';
+import { ensureDirectoryExists, safeExists } from '../utils';
 import { getLogger, LogCategory } from '../logger';
+import { copySkillDirectory } from './skill-copy';
 
 /**
  * Registry of bundled skills
@@ -151,7 +152,7 @@ export async function installBundledSkills(
                 fs.rmSync(targetPath, { recursive: true, force: true });
             }
 
-            await copyDirectory(skill.path, targetPath);
+            await copySkillDirectory(skill.path, targetPath);
 
             detail = {
                 name: skill.name,
@@ -176,40 +177,6 @@ export async function installBundledSkills(
     }
 
     return result;
-}
-
-/**
- * Copy a directory recursively
- */
-async function copyDirectory(sourcePath: string, targetPath: string): Promise<void> {
-    const logger = getLogger();
-
-    ensureDirectoryExists(targetPath);
-
-    const readResult = safeReadDir(sourcePath);
-    if (!readResult.success || !readResult.data) {
-        throw new Error(`Failed to read source directory: ${sourcePath}`);
-    }
-
-    for (const item of readResult.data) {
-        const itemSourcePath = path.join(sourcePath, item);
-        const itemTargetPath = path.join(targetPath, item);
-        const statsResult = safeStats(itemSourcePath);
-
-        if (!statsResult.success || !statsResult.data) {
-            continue;
-        }
-
-        if (statsResult.data.isDirectory()) {
-            await copyDirectory(itemSourcePath, itemTargetPath);
-        } else if (statsResult.data.isFile()) {
-            const copyResult = safeCopyFile(itemSourcePath, itemTargetPath);
-            if (!copyResult.success) {
-                throw new Error(`Failed to copy file ${item}: ${copyResult.error}`);
-            }
-            logger.debug(LogCategory.GENERAL, `Copied bundled skill file: ${item}`);
-        }
-    }
 }
 
 /**
@@ -330,7 +297,7 @@ export async function autoInstallDefaultSkills(
         }
 
         try {
-            await copyDirectory(skillSrc, targetPath);
+            await copySkillDirectory(skillSrc, targetPath);
             result.installed.push(name);
             logger.info(LogCategory.GENERAL, `Auto-installed default skill "${name}"`);
         } catch (error) {

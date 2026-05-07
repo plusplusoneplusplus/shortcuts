@@ -36,7 +36,7 @@ import { createTerminalInfrastructure } from './infrastructure/terminal-infrastr
 import { HeapMonitor } from './admin/heap-monitor';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
-import { autoUpdateBundledSkills, autoInstallDefaultSkills } from '@plusplusoneplusplus/forge';
+import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './processes/in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './core/hostname-utils';
@@ -202,6 +202,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
     const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
+    const myWorkSkillsDir = path.join(myWorkWorkspace.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
+    autoInstallMyWorkSkills(myWorkSkillsDir).then(result => {
+        for (const name of result.installed) {
+            process.stderr.write(`[skills] Auto-installed My Work skill "${name}"\n`);
+        }
+        for (const e of result.errors) {
+            process.stderr.write(`[skills] Failed to install My Work skill "${e.name}": ${e.error}\n`);
+        }
+    }).catch(() => { /* best-effort — never block startup */ });
     bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
 
     const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
