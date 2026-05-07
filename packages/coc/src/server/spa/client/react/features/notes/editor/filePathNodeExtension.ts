@@ -18,9 +18,11 @@ const FILE_PATH_EXTENSIONS = 'md|ts|tsx|js|jsx|json|yaml|yml|txt|py|go|sh|rs|css
  * Regex that matches `path/to/file.ext` in pasted text.
  * Requires at least one `/` separator and a known extension.
  * Negative lookbehind prevents matching inside URLs or other link contexts.
+ * Negative lookahead `(?!\])` prevents matching file paths inside `[[note:...]]`
+ * wiki-link syntax, where the path is immediately followed by `]]`.
  */
 export const FILE_PATH_PASTE_RE = new RegExp(
-    `(?<![a-zA-Z0-9/:@#."'])([a-zA-Z0-9_.-]+(?:\\/[a-zA-Z0-9_.-]+)+\\.(?:${FILE_PATH_EXTENSIONS}))`,
+    `(?<![a-zA-Z0-9/:@#."'])([a-zA-Z0-9_.-]+(?:\\/[a-zA-Z0-9_.-]+)+\\.(?:${FILE_PATH_EXTENSIONS}))(?!\\])`,
     'g',
 );
 

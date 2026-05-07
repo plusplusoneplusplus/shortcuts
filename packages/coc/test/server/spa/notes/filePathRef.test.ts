@@ -208,4 +208,31 @@ describe('FILE_PATH_PASTE_RE — paste regex', () => {
         expect(matches).toHaveLength(1);
         expect(matches[0].filePath).toBe('my-pkg/src_dir/the-file.ts');
     });
+
+    it('does not match a file path that is the target of a [[note:...]] wiki-link', () => {
+        // Regression: FILE_PATH_PASTE_RE was consuming the path segment inside
+        // [[note:...]] before the note-link paste rule could match the full token.
+        // e.g. pasting [[note:New Features/Remote.md]] rendered as [[note:New ]]
+        // with a stray file-ref chip for "Features/Remote.md".
+        const matches = allMatches('[[note:Features/Remote.md]]');
+        expect(matches).toHaveLength(0);
+    });
+
+    it('does not match a file path inside a note link with a heading', () => {
+        const matches = allMatches('[[note:Section/Page.md#Intro]]');
+        expect(matches).toHaveLength(0);
+    });
+
+    it('does not match a file path immediately before ] (markdown link label context)', () => {
+        // Also blocked: [tasks/coc/plan.md] — path in square-bracket label
+        const matches = allMatches('[tasks/coc/plan.md]');
+        expect(matches).toHaveLength(0);
+    });
+
+    it('matches a file path followed by a closing parenthesis', () => {
+        // Paths inside (...) are fine — they don't involve ] lookahead
+        const matches = allMatches('(tasks/coc/plan.md)');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].filePath).toBe('tasks/coc/plan.md');
+    });
 });
