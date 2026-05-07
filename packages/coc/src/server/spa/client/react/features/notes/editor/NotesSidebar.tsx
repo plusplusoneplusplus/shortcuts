@@ -37,9 +37,11 @@ export interface NotesSidebarProps {
     onGoBack?: () => void;
     /** Called once the notes root path is resolved from the server. */
     onNotesRootReady?: (notesRoot: string) => void;
+    /** Restores the active note editor after focus-preserving copy actions. */
+    onRestoreEditorFocus?: () => void;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus }: NotesSidebarProps) {
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
@@ -229,6 +231,12 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         onNoteDeleted?.(path);
     }, [deleteNode, onNoteDeleted]);
 
+    const copyTextAndRestoreFocus = useCallback((text: string | null) => {
+        if (text !== null) void navigator.clipboard.writeText(text);
+        closeContextMenu();
+        onRestoreEditorFocus?.();
+    }, [closeContextMenu, onRestoreEditorFocus]);
+
     /**
      * Handle a drop in the notes tree.
      *
@@ -339,9 +347,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
         if (isFolder) {
             const items: ContextMenuItem[] = [
-                { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
-                { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}/]]`); closeContextMenu(); } },
-                { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
+                { label: 'Copy Path', onClick: () => copyTextAndRestoreFocus(node.path) },
+                { label: 'Copy Link', onClick: () => copyTextAndRestoreFocus(`[[note:${node.path}/]]`) },
+                { label: 'Copy Absolute Path', onClick: () => copyTextAndRestoreFocus(notesRoot ? notesRoot + '/' + node.path : null) },
                 { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
                 { label: 'Create Section', onClick: () => openDialog('create-section', node) },
@@ -356,9 +364,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             return items;
         }
         return [
-            { label: 'Copy Path', onClick: () => { void navigator.clipboard.writeText(node.path); closeContextMenu(); } },
-            { label: 'Copy Link', onClick: () => { void navigator.clipboard.writeText(`[[note:${node.path}]]`); closeContextMenu(); } },
-            { label: 'Copy Absolute Path', onClick: () => { if (notesRoot) void navigator.clipboard.writeText(notesRoot + '/' + node.path); closeContextMenu(); } },
+            { label: 'Copy Path', onClick: () => copyTextAndRestoreFocus(node.path) },
+            { label: 'Copy Link', onClick: () => copyTextAndRestoreFocus(`[[note:${node.path}]]`) },
+            { label: 'Copy Absolute Path', onClick: () => copyTextAndRestoreFocus(notesRoot ? notesRoot + '/' + node.path : null) },
             { separator: true, label: '', onClick: () => {} },
             { label: 'Rename', onClick: () => openDialog('rename', node) },
             { label: 'Delete', onClick: () => openDialog('delete', node) },

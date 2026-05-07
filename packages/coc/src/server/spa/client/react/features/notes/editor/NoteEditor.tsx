@@ -430,6 +430,13 @@ export function NoteEditor({
     const handleSourcePaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
         const items = e.clipboardData?.items;
         if (!items) return;
+        const textarea = sourceTextareaRef.current;
+        const pasteTarget = e.target as Node | null;
+        const isTextareaPaste = !!textarea && pasteTarget === textarea;
+
+        if (textarea && !isTextareaPaste) {
+            textarea.focus();
+        }
 
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
@@ -474,6 +481,28 @@ export function NoteEditor({
                 reader.readAsDataURL(file);
                 return;
             }
+        }
+
+        if (textarea && !isTextareaPaste) {
+            const pastedText = e.clipboardData.getData('text/plain');
+            if (!pastedText) return;
+            e.preventDefault();
+            const currentMd = rawMarkdownRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const newContent = currentMd.slice(0, start) + pastedText + currentMd.slice(end);
+            setRawMarkdown(newContent);
+            pendingSourceContentRef.current = newContent;
+            setSourceDirty(true);
+            setDirty(true);
+            scheduleSourceSave();
+            const restoreSelection = () => {
+                textarea.focus();
+                const nextPos = start + pastedText.length;
+                textarea.setSelectionRange(nextPos, nextPos);
+            };
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreSelection);
+            else setTimeout(restoreSelection, 0);
         }
     }, [rawMarkdown]);
 
@@ -522,6 +551,7 @@ export function NoteEditor({
             let html = markdownToHtml(richMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
+            ed.commands.setTextSelection?.(1);
 
             // Cancel any save triggered by setContent
             pendingContentRef.current = null;
@@ -664,6 +694,7 @@ export function NoteEditor({
                 const ed = editorRef.current;
                 if (ed && !ed.isDestroyed) {
                     ed.commands.setContent(html, { emitUpdate: false });
+                    ed.commands.setTextSelection?.(1);
                     pendingContentRef.current = null;
                     if (saveTimerRef.current) {
                         clearTimeout(saveTimerRef.current);

@@ -115,6 +115,7 @@ function SubmenuItem({
                 role="menuitem"
                 aria-haspopup="true"
                 aria-expanded={open}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                     e.stopPropagation();
                     setOpen(prev => !prev);
@@ -160,6 +161,7 @@ function SubmenuItem({
                                         onClose();
                                     }
                                 }}
+                                onMouseDown={(e) => e.preventDefault()}
                                 disabled={child.disabled}
                                 role="menuitem"
                                 data-testid={`context-submenu-${idx}-item-${ci}`}
@@ -306,6 +308,7 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                                 onClose();
                             }
                         }}
+                        onMouseDown={(e) => e.preventDefault()}
                         disabled={item.disabled}
                         role="menuitem"
                         data-testid={`context-menu-item-${idx}`}

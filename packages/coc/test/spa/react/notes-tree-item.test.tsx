@@ -98,6 +98,28 @@ describe('NotesTreeItem', () => {
         expect(onCtx).toHaveBeenCalledWith(node, 100, 200);
     });
 
+    it('prevents right-button mousedown so sidebar context menus do not steal editor focus', () => {
+        const node = makeNode({ path: 'x', name: 'X' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+
+        expect(fireEvent.mouseDown(getByTestId('notes-tree-item-X'), { button: 2 })).toBe(false);
+    });
+
+    it('does not prevent left-button or shift right-button mousedown', () => {
+        const node = makeNode({ path: 'x', name: 'X' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const item = getByTestId('notes-tree-item-X');
+
+        expect(fireEvent.mouseDown(item, { button: 0 })).toBe(true);
+        expect(fireEvent.mouseDown(item, { button: 2, shiftKey: true })).toBe(true);
+    });
+
     it('fires onSelectPage on page click', () => {
         const onSelect = vi.fn();
         const node = makeNode({ path: 'nb/page1', name: 'page1', type: 'page' });

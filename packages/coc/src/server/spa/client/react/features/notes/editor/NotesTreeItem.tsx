@@ -73,6 +73,12 @@ export function NotesTreeItem({
         onContextMenu(node, e.clientX, e.clientY);
     };
 
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 2 && !e.shiftKey) {
+            e.preventDefault();
+        }
+    };
+
     const showInsideFolderHighlight = isDragOver && folder && dropPosition === 'inside';
     const showBeforeIndicator = isDragOver && dropPosition === 'before';
     const showAfterIndicator = isDragOver && dropPosition === 'after';
@@ -98,6 +104,7 @@ export function NotesTreeItem({
                 data-testid={`notes-tree-item-${node.name}`}
                 data-node-path={node.path}
                 onClick={handleClick}
+                onMouseDown={handleMouseDown}
                 onContextMenu={handleContextMenu}
                 role="treeitem"
                 aria-selected={selected}

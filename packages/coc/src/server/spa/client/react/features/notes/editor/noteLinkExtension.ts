@@ -11,8 +11,8 @@
 
 import { Node, mergeAttributes, nodePasteRule } from '@tiptap/core';
 
-/** Regex that matches `[[note:path]]` or `[[note:path#heading]]` in pasted text. */
-export const NOTE_LINK_PASTE_RE = /\[\[(?:[^\]|]+\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/g;
+/** Create a regex that matches `[[note:path]]` or `[[note:path#heading]]` in pasted text. */
+export const NOTE_LINK_PASTE_RE = () => /\[\[(?:[^\]|]+\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/g;
 
 /**
  * Derive a display label from a note path.
@@ -56,7 +56,7 @@ export const NoteLinkExtension = Node.create({
     addPasteRules() {
         return [
             nodePasteRule({
-                find: NOTE_LINK_PASTE_RE,
+                find: NOTE_LINK_PASTE_RE(),
                 type: this.type,
                 getAttributes: (match) => ({
                     path: match[1],

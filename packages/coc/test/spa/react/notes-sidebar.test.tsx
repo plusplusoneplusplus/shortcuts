@@ -26,6 +26,7 @@ const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
 const mockCreateWithAI = vi.fn();
+const mockClipboardWriteText = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -76,6 +77,10 @@ describe('NotesSidebar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText: mockClipboardWriteText },
+        });
         mockGetTree.mockResolvedValue({ tree: SAMPLE_TREE, notesRoot: '/mock/notes' });
         mockCreateNode.mockResolvedValue({ path: 'new', type: 'page' });
         mockRenameNode.mockResolvedValue({ oldPath: 'x', newPath: 'y' });
@@ -220,6 +225,31 @@ describe('NotesSidebar', () => {
             expect(labels).toContain('Rename');
             expect(labels).toContain('Delete');
         });
+    });
+
+    it('copy link writes a note link and asks the parent to restore editor focus', async () => {
+        const onRestoreEditorFocus = vi.fn();
+        render(
+            <NotesSidebar
+                workspaceId="ws1"
+                selectedPath={null}
+                onSelectPage={vi.fn()}
+                onRestoreEditorFocus={onRestoreEditorFocus}
+            />,
+        );
+
+        const notebook = await screen.findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(notebook);
+        const page = await screen.findByTestId('notes-tree-item-TopPage');
+        fireEvent.contextMenu(page, { clientX: 50, clientY: 50 });
+
+        await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        const copyLinkBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'Copy Link') as HTMLElement;
+        fireEvent.click(copyLinkBtn);
+
+        expect(mockClipboardWriteText).toHaveBeenCalledWith('[[note:Notebook1/TopPage]]');
+        expect(onRestoreEditorFocus).toHaveBeenCalledOnce();
     });
 
     it('opens create-page dialog from context menu', async () => {

@@ -30,8 +30,9 @@ vi.mock('../../../../../../src/server/spa/client/react/contexts/QueueContext', (
 // to prevent infinite useEffect re-fires.
 const mockSetContent = vi.fn();
 const mockClearContent = vi.fn();
+const mockSetTextSelection = vi.fn();
 const stableMockEditor = {
-    commands: { setContent: mockSetContent, clearContent: mockClearContent },
+    commands: { setContent: mockSetContent, clearContent: mockClearContent, setTextSelection: mockSetTextSelection },
     chain: () => ({ focus: () => ({ run: vi.fn() }) }),
     getHTML: () => '<p>hello</p>',
     state: { selection: { empty: true }, doc: { descendants: vi.fn() } },
@@ -144,6 +145,14 @@ describe('NoteEditor — Source Mode', () => {
     // ── Toggle to source mode ───────────────────────────────────────────────
 
     describe('switching to source mode', () => {
+        it('places the Tiptap cursor at the start after loading a note', async () => {
+            await renderAndWaitForLoad();
+
+            await waitFor(() => {
+                expect(mockSetTextSelection).toHaveBeenCalledWith(1);
+            });
+        });
+
         it('shows raw markdown in source editor', async () => {
             await renderAndWaitForLoad();
             await switchToSource();
@@ -228,6 +237,7 @@ describe('NoteEditor — Source Mode', () => {
             await switchToSource();
 
             mockSetContent.mockClear();
+            mockSetTextSelection.mockClear();
 
             await act(async () => {
                 fireEvent.click(screen.getByTestId('note-mode-rich'));
@@ -235,6 +245,31 @@ describe('NoteEditor — Source Mode', () => {
 
             await waitFor(() => {
                 expect(mockSetContent).toHaveBeenCalled();
+            });
+            expect(mockSetTextSelection).toHaveBeenCalledWith(1);
+        });
+    });
+
+    describe('source mode paste', () => {
+        it('inserts text pasted on the source container at the textarea cursor', async () => {
+            await renderAndWaitForLoad();
+            await switchToSource();
+
+            const textarea = getSourceTextarea();
+            textarea.focus();
+            textarea.setSelectionRange(8, 8);
+
+            await act(async () => {
+                fireEvent.paste(screen.getByTestId('note-source-container'), {
+                    clipboardData: {
+                        items: [],
+                        getData: (type: string) => type === 'text/plain' ? '[[note:Other.md]]' : '',
+                    },
+                });
+            });
+
+            await waitFor(() => {
+                expect(textarea.value).toBe('# Hello\n[[note:Other.md]]\nWorld\n');
             });
         });
     });

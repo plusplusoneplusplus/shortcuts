@@ -187,7 +187,7 @@ describe('noteLinkLabel', () => {
 
 describe('NOTE_LINK_PASTE_RE — paste regex regression', () => {
     function allMatches(text: string) {
-        const re = new RegExp(NOTE_LINK_PASTE_RE.source, NOTE_LINK_PASTE_RE.flags);
+        const re = NOTE_LINK_PASTE_RE();
         const results: Array<{ full: string; path: string; heading?: string }> = [];
         let m;
         while ((m = re.exec(text)) !== null) {
@@ -244,5 +244,14 @@ describe('NOTE_LINK_PASTE_RE — paste regex regression', () => {
         const matches = allMatches('[[note:Page.md#my-long-heading]]');
         expect(matches).toHaveLength(1);
         expect(matches[0].heading).toBe('my-long-heading');
+    });
+
+    it('returns independent regex instances for repeated paste handling', () => {
+        const first = NOTE_LINK_PASTE_RE();
+        const second = NOTE_LINK_PASTE_RE();
+
+        expect(first.exec('[[note:A.md]]')?.[1]).toBe('A.md');
+        expect(first.lastIndex).toBeGreaterThan(0);
+        expect(second.exec('[[note:B.md]]')?.[1]).toBe('B.md');
     });
 });

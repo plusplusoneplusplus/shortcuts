@@ -342,6 +342,13 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         }
     }, [selectedPath, dispatch, updateHash]);
 
+    const handleRestoreEditorFocus = useCallback(() => {
+        if (noteViewMode !== 'rich') return;
+        const editor = editorRef.current;
+        if (!editor || editor.isDestroyed) return;
+        editor.commands.focus();
+    }, [noteViewMode]);
+
     // ── Render ──────────────────────────────────────────────────────────────
 
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
@@ -371,6 +378,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     canGoBack={canGoBack}
                     onGoBack={handleGoBack}
                     onNotesRootReady={setNotesRoot}
+                    onRestoreEditorFocus={handleRestoreEditorFocus}
                 />
             </ResponsiveSidebar>
 

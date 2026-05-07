@@ -51,6 +51,18 @@ describe('ContextMenu', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
+    it('prevents menu item mousedown so clicking actions preserves editor focus', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[{ label: 'Action', onClick: vi.fn() }]}
+                onClose={vi.fn()}
+            />
+        );
+
+        expect(fireEvent.mouseDown(screen.getByTestId('context-menu-item-0'))).toBe(false);
+    });
+
     it('does not call onClick when a disabled item is clicked', () => {
         const onClick = vi.fn();
         const onClose = vi.fn();
