@@ -157,7 +157,7 @@ describe('ServerCard — local vs remote footer', () => {
         expect(screen.queryByTestId('server-card-menu')).toBeNull();
         fireEvent.click(btn);
         expect(screen.getByTestId('server-card-menu')).toBeTruthy();
-        expect(screen.getByText('Edit label')).toBeTruthy();
+        expect(screen.getByText('Edit server')).toBeTruthy();
         expect(screen.getByText('Copy URL')).toBeTruthy();
         expect(screen.getByText('Remove')).toBeTruthy();
     });

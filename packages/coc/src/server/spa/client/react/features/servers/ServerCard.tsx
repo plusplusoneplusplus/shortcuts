@@ -121,7 +121,7 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                                     className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
                                     onClick={() => { setMenuOpen(false); onEdit?.(health.server.id); }}
                                 >
-                                    Edit label
+                                    Edit server
                                 </button>
                                 <button
                                     type="button"

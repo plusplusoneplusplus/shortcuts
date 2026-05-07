@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../../ui';
-import { testRemoteServer, type RemoteServerInput } from '../../utils/serverRegistry';
+import { testRemoteServer, type RemoteServer, type RemoteServerInput } from '../../utils/serverRegistry';
 
 export interface AddServerDialogProps {
     open: boolean;
@@ -8,10 +8,18 @@ export interface AddServerDialogProps {
     onAdd: (fields: RemoteServerInput) => void | Promise<void>;
 }
 
+export interface EditServerDialogProps {
+    open: boolean;
+    server?: RemoteServer;
+    onClose: () => void;
+    onSave: (fields: RemoteServerInput) => void | Promise<void>;
+}
+
 const DEBOUNCE_MS = 600;
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
 type ConnectionKind = RemoteServerInput['kind'];
+type DialogMode = 'add' | 'edit';
 
 function stripTrailingSlash(url: string): string {
     return url.replace(/\/+$/, '');
@@ -32,33 +40,63 @@ function buildInput(kind: ConnectionKind, label: string, url: string, tunnelId: 
     return { kind, label: label.trim() || cleanedTunnelId, tunnelId: cleanedTunnelId };
 }
 
-export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) {
-    const [kind, setKind] = useState<ConnectionKind>('url');
-    const [label, setLabel] = useState('');
-    const [url, setUrl] = useState('');
-    const [tunnelId, setTunnelId] = useState('');
+function inputFromServer(server?: RemoteServer): RemoteServerInput | undefined {
+    if (!server) {
+        return undefined;
+    }
+    return server.kind === 'url'
+        ? { kind: 'url', label: server.label, url: server.url }
+        : { kind: 'devtunnel', label: server.label, tunnelId: server.tunnelId };
+}
+
+interface ServerFormDialogProps {
+    open: boolean;
+    mode: DialogMode;
+    initialInput?: RemoteServerInput;
+    onClose: () => void;
+    onSubmit: (fields: RemoteServerInput) => void | Promise<void>;
+}
+
+function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: ServerFormDialogProps) {
+    const initialKind = initialInput?.kind ?? 'url';
+    const initialLabel = initialInput?.label ?? '';
+    const initialUrl = initialInput?.kind === 'url' ? initialInput.url : '';
+    const initialTunnelId = initialInput?.kind === 'devtunnel' ? initialInput.tunnelId : '';
+    const [kind, setKind] = useState<ConnectionKind>(initialKind);
+    const [label, setLabel] = useState(initialLabel);
+    const [url, setUrl] = useState(initialUrl);
+    const [tunnelId, setTunnelId] = useState(initialTunnelId);
     const [testState, setTestState] = useState<TestState>('idle');
     const [testLabel, setTestLabel] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const testIdPrefix = mode === 'add' ? 'add' : 'edit';
+    const title = mode === 'add' ? 'Add Server' : 'Edit Server';
+    const submitLabel = mode === 'add' ? 'Add Server' : 'Save Changes';
+    const submittingLabel = mode === 'add' ? 'Adding...' : 'Saving...';
+
+    useEffect(() => {
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+            debounceRef.current = null;
+        }
+
+        setKind(open ? initialKind : 'url');
+        setLabel(open ? initialLabel : '');
+        setUrl(open ? initialUrl : '');
+        setTunnelId(open ? initialTunnelId : '');
+        setTestState('idle');
+        setTestLabel('');
+        setSubmitting(false);
+        setSubmitError('');
+    }, [open, initialKind, initialLabel, initialUrl, initialTunnelId]);
 
     useEffect(() => {
         if (!open) {
-            setKind('url');
-            setLabel('');
-            setUrl('');
-            setTunnelId('');
-            setTestState('idle');
-            setTestLabel('');
-            setSubmitting(false);
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current);
-                debounceRef.current = null;
-            }
+            return;
         }
-    }, [open]);
 
-    useEffect(() => {
         if (debounceRef.current) {
             clearTimeout(debounceRef.current);
             debounceRef.current = null;
@@ -102,7 +140,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                 debounceRef.current = null;
             }
         };
-    }, [kind, label, url, tunnelId]);
+    }, [open, kind, label, url, tunnelId]);
 
     const input = buildInput(kind, label, url, tunnelId);
     const submitDisabled = !input || submitting;
@@ -110,9 +148,12 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
     const handleSubmit = async () => {
         if (!input) { return; }
         setSubmitting(true);
+        setSubmitError('');
         try {
-            await onAdd(input);
+            await onSubmit(input);
             onClose();
+        } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Unable to save server');
         } finally {
             setSubmitting(false);
         }
@@ -120,55 +161,62 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
 
     return (
         <Dialog
-            id="add-server-dialog"
+            id={`${testIdPrefix}-server-dialog`}
             open={open}
             onClose={onClose}
-            title="Add Server"
+            title={title}
             footer={
                 <>
                     <Button
                         variant="secondary"
                         size="sm"
-                        data-testid="add-server-cancel-btn"
+                        data-testid={`${testIdPrefix}-server-cancel-btn`}
                         onClick={onClose}
+                        disabled={submitting}
                     >
                         Cancel
                     </Button>
                     <Button
                         variant="primary"
                         size="sm"
-                        data-testid="add-server-submit-btn"
+                        data-testid={`${testIdPrefix}-server-submit-btn`}
                         disabled={submitDisabled}
                         onClick={() => { void handleSubmit(); }}
                     >
-                        Add Server
+                        {submitting ? submittingLabel : submitLabel}
                     </Button>
                 </>
             }
         >
             <div className="flex flex-col gap-4">
+                {submitError && (
+                    <div className="px-3 py-2 rounded border border-[#f14c4c]/40 bg-[#f14c4c]/10 text-xs text-[#f14c4c]" data-testid={`${testIdPrefix}-server-submit-error`}>
+                        {submitError}
+                    </div>
+                )}
+
                 <fieldset className="flex flex-col gap-2">
                     <legend className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Connection type</legend>
                     <div className="flex gap-3 text-sm text-[#1e1e1e] dark:text-[#cccccc]">
                         <label className="inline-flex items-center gap-1.5">
                             <input
                                 type="radio"
-                                name="server-kind"
+                                name={`${testIdPrefix}-server-kind`}
                                 value="url"
                                 checked={kind === 'url'}
                                 onChange={() => setKind('url')}
-                                data-testid="add-server-kind-url"
+                                data-testid={`${testIdPrefix}-server-kind-url`}
                             />
                             Direct URL
                         </label>
                         <label className="inline-flex items-center gap-1.5">
                             <input
                                 type="radio"
-                                name="server-kind"
+                                name={`${testIdPrefix}-server-kind`}
                                 value="devtunnel"
                                 checked={kind === 'devtunnel'}
                                 onChange={() => setKind('devtunnel')}
-                                data-testid="add-server-kind-devtunnel"
+                                data-testid={`${testIdPrefix}-server-kind-devtunnel`}
                             />
                             DevTunnel ID
                         </label>
@@ -182,7 +230,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                         </label>
                         <input
                             type="url"
-                            data-testid="add-server-url-input"
+                            data-testid={`${testIdPrefix}-server-url-input`}
                             value={url}
                             onChange={e => setUrl(e.target.value)}
                             placeholder="http://remote-host:4000"
@@ -197,7 +245,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                         </label>
                         <input
                             type="text"
-                            data-testid="add-server-tunnel-id-input"
+                            data-testid={`${testIdPrefix}-server-tunnel-id-input`}
                             value={tunnelId}
                             onChange={e => setTunnelId(e.target.value)}
                             placeholder="my-remote-coc"
@@ -208,7 +256,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                 )}
 
                 {input && (
-                    <div className="text-xs" data-testid="add-server-test-indicator">
+                    <div className="text-xs" data-testid={`${testIdPrefix}-server-test-indicator`}>
                         {testState === 'testing' && (
                             <span className="text-[#848484] dark:text-[#999]">○ {kind === 'devtunnel' ? 'Connecting tunnel...' : 'Testing...'}</span>
                         )}
@@ -227,7 +275,7 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                     </label>
                     <input
                         type="text"
-                        data-testid="add-server-label-input"
+                        data-testid={`${testIdPrefix}-server-label-input`}
                         value={label}
                         onChange={e => setLabel(e.target.value)}
                         placeholder="dev-vm"
@@ -239,5 +287,28 @@ export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) 
                 </div>
             </div>
         </Dialog>
+    );
+}
+
+export function AddServerDialog({ open, onClose, onAdd }: AddServerDialogProps) {
+    return (
+        <ServerFormDialog
+            open={open}
+            mode="add"
+            onClose={onClose}
+            onSubmit={onAdd}
+        />
+    );
+}
+
+export function EditServerDialog({ open, server, onClose, onSave }: EditServerDialogProps) {
+    return (
+        <ServerFormDialog
+            open={open && !!server}
+            mode="edit"
+            initialInput={inputFromServer(server)}
+            onClose={onClose}
+            onSubmit={onSave}
+        />
     );
 }

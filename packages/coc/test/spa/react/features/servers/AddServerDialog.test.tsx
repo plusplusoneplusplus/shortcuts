@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
-import { AddServerDialog } from '../../../../../src/server/spa/client/react/features/servers/AddServerDialog';
+import { AddServerDialog, EditServerDialog } from '../../../../../src/server/spa/client/react/features/servers/AddServerDialog';
+import type { RemoteServer } from '../../../../../src/server/spa/client/react/utils/serverRegistry';
 
 const registryMocks = vi.hoisted(() => ({
     testRemoteServer: vi.fn(),
@@ -244,5 +245,39 @@ describe('AddServerDialog', () => {
         expect((screen.getByTestId('add-server-url-input') as HTMLInputElement).value).toBe('');
         expect((screen.getByTestId('add-server-label-input') as HTMLInputElement).value).toBe('');
         expect(screen.queryByTestId('add-server-test-indicator')).toBeNull();
+    });
+
+    it('EditServerDialog shows save errors without closing or losing edits', async () => {
+        const server: RemoteServer = {
+            id: 'r1',
+            kind: 'url',
+            label: 'Box A',
+            url: 'https://a.example.com',
+            addedAt: 1,
+            updatedAt: 1,
+        };
+        const onClose = vi.fn();
+        const onSave = vi.fn().mockRejectedValue(new Error('update failed'));
+        render(<EditServerDialog open={true} server={server} onClose={onClose} onSave={onSave} />);
+
+        fireEvent.change(screen.getByTestId('edit-server-url-input'), {
+            target: { value: 'https://edited.example.com/' },
+        });
+        fireEvent.change(screen.getByTestId('edit-server-label-input'), {
+            target: { value: 'Edited Box' },
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('edit-server-submit-btn'));
+        });
+
+        expect(onSave).toHaveBeenCalledWith({
+            kind: 'url',
+            label: 'Edited Box',
+            url: 'https://edited.example.com',
+        });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('edit-server-submit-error').textContent).toContain('update failed');
+        expect((screen.getByTestId('edit-server-url-input') as HTMLInputElement).value).toBe('https://edited.example.com/');
     });
 });

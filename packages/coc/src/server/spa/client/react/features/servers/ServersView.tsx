@@ -4,13 +4,15 @@ import {
     addRemoteServer,
     listRemoteServers,
     removeRemoteServer,
+    updateRemoteServer,
     type RemoteServer,
     type RemoteServerInput,
+    type RemoteServerPatch,
 } from '../../utils/serverRegistry';
 import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
 import { getApiBase, getHostname } from '../../utils/config';
 import { ServerCard, type ServerCardHealth } from './ServerCard';
-import { AddServerDialog } from './AddServerDialog';
+import { AddServerDialog, EditServerDialog } from './AddServerDialog';
 
 const LOCAL_POLL_INTERVAL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 5_000;
@@ -26,9 +28,16 @@ interface LocalHealthState {
     error?: string;
 }
 
+function inputToPatch(input: RemoteServerInput): RemoteServerPatch {
+    return input.kind === 'url'
+        ? { kind: 'url', label: input.label, url: input.url }
+        : { kind: 'devtunnel', label: input.label, tunnelId: input.tunnelId };
+}
+
 export function ServersView() {
     const [servers, setServers] = useState<RemoteServer[]>([]);
     const [addOpen, setAddOpen] = useState(false);
+    const [editServerId, setEditServerId] = useState<string | undefined>();
     const [loadError, setLoadError] = useState<string | undefined>();
 
     useEffect(() => {
@@ -49,6 +58,7 @@ export function ServersView() {
     }, []);
 
     const remoteHealthStates = useRemoteServerHealth(servers);
+    const editServer = editServerId ? servers.find(server => server.id === editServerId) : undefined;
 
     const [localHealth, setLocalHealth] = useState<LocalHealthState>(() => ({
         server: { id: 'local', label: 'This Server', url: '' },
@@ -122,6 +132,14 @@ export function ServersView() {
         setServers(await listRemoteServers());
     };
 
+    const handleEdit = async (fields: RemoteServerInput) => {
+        if (!editServer) {
+            throw new Error('Remote server is no longer available');
+        }
+        await updateRemoteServer(editServer.id, inputToPatch(fields));
+        setServers(await listRemoteServers());
+    };
+
     const localHealthForCard: ServerCardHealth = localHealth;
 
     return (
@@ -152,6 +170,7 @@ export function ServersView() {
                         health={hs}
                         isLocal={false}
                         onRemove={handleRemove}
+                        onEdit={setEditServerId}
                     />
                 ))}
             </div>
@@ -160,6 +179,12 @@ export function ServersView() {
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
                 onAdd={handleAdd}
+            />
+            <EditServerDialog
+                open={!!editServer}
+                server={editServer}
+                onClose={() => setEditServerId(undefined)}
+                onSave={handleEdit}
             />
         </div>
     );

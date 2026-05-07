@@ -6,6 +6,7 @@ import type { RemoteServer } from '../../../../../src/server/spa/client/react/ut
 const registryMocks = vi.hoisted(() => ({
     listRemoteServers: vi.fn(),
     addRemoteServer: vi.fn(),
+    updateRemoteServer: vi.fn(),
     removeRemoteServer: vi.fn(),
     testRemoteServer: vi.fn(),
 }));
@@ -16,6 +17,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async
         ...actual,
         listRemoteServers: registryMocks.listRemoteServers,
         addRemoteServer: registryMocks.addRemoteServer,
+        updateRemoteServer: registryMocks.updateRemoteServer,
         removeRemoteServer: registryMocks.removeRemoteServer,
         testRemoteServer: registryMocks.testRemoteServer,
     };
@@ -75,6 +77,7 @@ const TUNNEL_REMOTE: RemoteServer = {
 beforeEach(() => {
     registryMocks.listRemoteServers.mockResolvedValue([]);
     registryMocks.addRemoteServer.mockResolvedValue(URL_REMOTE);
+    registryMocks.updateRemoteServer.mockResolvedValue(URL_REMOTE);
     registryMocks.removeRemoteServer.mockResolvedValue(undefined);
     registryMocks.testRemoteServer.mockResolvedValue({ serverId: 'test', kind: 'url', status: 'online', lastChecked: 1 });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -168,6 +171,86 @@ describe('ServersView', () => {
 
         expect(registryMocks.removeRemoteServer).toHaveBeenCalledWith('a');
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(1));
+    });
+
+    it('clicking Edit server opens a prefilled edit dialog for a Direct URL server', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-edit'));
+
+        expect(screen.getByText('Edit Server')).toBeTruthy();
+        expect((screen.getByTestId('edit-server-kind-url') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('edit-server-url-input') as HTMLInputElement).value).toBe('https://a.example.com');
+        expect((screen.getByTestId('edit-server-label-input') as HTMLInputElement).value).toBe('Box A');
+        expect((screen.getByTestId('edit-server-submit-btn') as HTMLButtonElement).textContent).toContain('Save Changes');
+    });
+
+    it('editing a Direct URL server calls update and refreshes the list', async () => {
+        registryMocks.listRemoteServers
+            .mockResolvedValueOnce([URL_REMOTE])
+            .mockResolvedValueOnce([{ ...URL_REMOTE, label: 'Box A Edited', url: 'https://edited.example.com' }]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-edit'));
+        fireEvent.change(screen.getByTestId('edit-server-url-input'), {
+            target: { value: 'https://edited.example.com/' },
+        });
+        fireEvent.change(screen.getByTestId('edit-server-label-input'), {
+            target: { value: 'Box A Edited' },
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('edit-server-submit-btn'));
+        });
+
+        await waitFor(() => expect(registryMocks.updateRemoteServer).toHaveBeenCalledWith('a', {
+            kind: 'url',
+            label: 'Box A Edited',
+            url: 'https://edited.example.com',
+        }));
+        await waitFor(() => expect(screen.queryByTestId('edit-server-url-input')).toBeNull());
+        expect(screen.getAllByTestId('server-card')[1].textContent).toContain('Box A Edited');
+    });
+
+    it('editing a DevTunnel server preloads and saves the tunnel ID', async () => {
+        registryMocks.listRemoteServers
+            .mockResolvedValueOnce([TUNNEL_REMOTE])
+            .mockResolvedValueOnce([{ ...TUNNEL_REMOTE, label: 'Box C', tunnelId: 'box-c' }]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-edit'));
+
+        expect((screen.getByTestId('edit-server-kind-devtunnel') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('edit-server-tunnel-id-input') as HTMLInputElement).value).toBe('box-b');
+
+        fireEvent.change(screen.getByTestId('edit-server-tunnel-id-input'), {
+            target: { value: 'box-c' },
+        });
+        fireEvent.change(screen.getByTestId('edit-server-label-input'), {
+            target: { value: 'Box C' },
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('edit-server-submit-btn'));
+        });
+
+        await waitFor(() => expect(registryMocks.updateRemoteServer).toHaveBeenCalledWith('b', {
+            kind: 'devtunnel',
+            label: 'Box C',
+            tunnelId: 'box-c',
+        }));
+        await waitFor(() => expect(screen.queryByTestId('edit-server-tunnel-id-input')).toBeNull());
+        expect(screen.getAllByTestId('server-card')[1].textContent).toContain('Tunnel: box-c');
     });
 
     it('local card displays "Current — You\'re here" and no menu button', () => {
