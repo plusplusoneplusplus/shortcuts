@@ -49,6 +49,18 @@ describe('ModelMetadataStore', () => {
         expect(modelMetadataStore.getContextWindow('model-x')).toBe(300_000);
     });
 
+    it('returns cached model metadata by ID', async () => {
+        const metadata = makeModel('model-x', 300_000);
+        mockGetService.mockReturnValue({
+            listModels: vi.fn().mockResolvedValue([metadata]),
+        });
+
+        await modelMetadataStore.initialize();
+
+        expect(modelMetadataStore.getModel('model-x')).toBe(metadata);
+        expect(modelMetadataStore.getModel('missing-model')).toBeUndefined();
+    });
+
     it('falls back to static registry when model not in SDK', async () => {
         mockGetService.mockReturnValue({
             listModels: vi.fn().mockResolvedValue([]),

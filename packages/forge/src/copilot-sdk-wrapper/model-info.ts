@@ -20,6 +20,7 @@ export interface ModelInfo {
         supports: {
             vision: boolean;
             reasoningEffort: boolean;
+            reasoning_effort?: string[];
         };
         limits: {
             max_context_window_tokens: number;
@@ -28,4 +29,6 @@ export interface ModelInfo {
     };
     policy?: ModelPolicy;
     billing?: ModelBilling;
+    supportedReasoningEfforts?: string[];
+    defaultReasoningEffort?: string;
 }

@@ -106,6 +106,11 @@ export {
     modelMetadataStore,
 } from './model-metadata-store';
 
+export {
+    resolveReasoningEffort,
+    ResolveReasoningEffortOptions,
+} from './model-reasoning';
+
 // MCP Config Loader
 export {
     MCPConfigFile,

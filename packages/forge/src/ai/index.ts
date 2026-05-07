@@ -82,6 +82,8 @@ export {
     BackgroundTasksInfo,
     // Model Metadata Store
     modelMetadataStore,
+    resolveReasoningEffort,
+    ResolveReasoningEffortOptions,
     ModelInfo,
     // MCP Config Loader
     MCPConfigFile,

@@ -2,12 +2,12 @@
  * Queue Executor Bridge — reasoningEffort Wiring Tests
  *
  * Regression tests ensuring that:
- * - executeWithAI() passes task.config.reasoningEffort ?? 'high' to sendMessage
- * - executeFollowUp() always passes 'high' to sendMessage
+ * - executeWithAI() resolves reasoningEffort from live model metadata
+ * - executeFollowUp() resolves reasoningEffort from process/task model metadata
  * - A custom reasoningEffort in task.config overrides the default
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -19,7 +19,8 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 
-import type { QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
@@ -62,7 +63,35 @@ vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
 // Helpers
 // ============================================================================
 
-function chatTask(reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): QueuedTask {
+function modelInfo(
+    id: string,
+    options: {
+        rawEfforts?: string[];
+        supportedEfforts?: string[];
+        defaultEffort?: string;
+        supportsReasoning?: boolean;
+    },
+): ModelInfo {
+    const supportsReasoning = options.supportsReasoning
+        ?? (options.supportedEfforts !== undefined || options.rawEfforts !== undefined);
+
+    return {
+        id,
+        name: id,
+        capabilities: {
+            supports: {
+                vision: false,
+                reasoningEffort: supportsReasoning,
+                ...(options.rawEfforts ? { reasoning_effort: options.rawEfforts } : {}),
+            },
+            limits: { max_context_window_tokens: 200_000 },
+        },
+        ...(options.supportedEfforts ? { supportedReasoningEfforts: options.supportedEfforts } : {}),
+        ...(options.defaultEffort ? { defaultReasoningEffort: options.defaultEffort } : {}),
+    };
+}
+
+function chatTask(reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', model?: string): QueuedTask {
     return {
         id: 'task-re-1',
         type: 'chat',
@@ -70,19 +99,19 @@ function chatTask(reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Queued
         status: 'running',
         createdAt: Date.now(),
         payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello' },
-        config: { timeoutMs: 30000, ...(reasoningEffort ? { reasoningEffort } : {}) },
+        config: { timeoutMs: 30000, ...(reasoningEffort ? { reasoningEffort } : {}), ...(model ? { model } : {}) },
         displayName: 'Hello',
     };
 }
 
-function followUpTask(processId: string): QueuedTask {
+function followUpTask(processId: string, model?: string): QueuedTask {
     return {
         id: 'fu-task-re-1',
         type: 'chat',
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
-        payload: { kind: 'chat', processId, prompt: 'follow up' },
+        payload: { kind: 'chat', processId, prompt: 'follow up', ...(model ? { model } : {}) },
         config: {},
         displayName: 'follow up',
     };
@@ -94,10 +123,12 @@ function followUpTask(processId: string): QueuedTask {
 
 describe('reasoningEffort wiring in queue executor bridge', () => {
     let store: ReturnType<typeof createMockProcessStore>;
+    let getModelSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
+        getModelSpy = vi.spyOn(modelMetadataStore, 'getModel').mockReturnValue(undefined);
         mockLoadImages.mockReset();
         mockLoadImages.mockResolvedValue([]);
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -108,22 +139,32 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         });
     });
 
+    afterEach(() => {
+        getModelSpy.mockRestore();
+    });
+
     // -------------------------------------------------------------------------
-    it('executeWithAI() defaults reasoningEffort to "high" when not set in config', async () => {
+    it('executeWithAI() omits reasoningEffort when no model metadata is available', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
-        const task = chatTask(); // no reasoningEffort in config
+        const task = chatTask();
 
         await executor.execute(task);
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
-        expect(call.reasoningEffort).toBe('high');
+        expect(call.reasoningEffort).toBeUndefined();
     });
 
     // -------------------------------------------------------------------------
     it('executeWithAI() uses task.config.reasoningEffort when explicitly set', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'low-model'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high'] })
+                : undefined,
+        );
+
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
-        const task = chatTask('low');
+        const task = chatTask('low', 'low-model');
 
         await executor.execute(task);
 
@@ -134,8 +175,14 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
     // -------------------------------------------------------------------------
     it('executeWithAI() passes "xhigh" when explicitly set', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'xhigh-model'
+                ? modelInfo(id, { supportedEfforts: ['xhigh'] })
+                : undefined,
+        );
+
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
-        const task = chatTask('xhigh');
+        const task = chatTask('xhigh', 'xhigh-model');
 
         await executor.execute(task);
 
@@ -145,9 +192,74 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
     });
 
     // -------------------------------------------------------------------------
-    it('executeFollowUp() always passes reasoningEffort "high"', async () => {
+    it('executeWithAI() sends the only supported effort from model metadata', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'claude-opus-4.7-high'
+                ? modelInfo(id, {
+                    rawEfforts: ['high'],
+                    supportedEfforts: ['medium'],
+                    defaultEffort: 'medium',
+                })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask(undefined, 'claude-opus-4.7-high');
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() sends medium for a medium-only model instead of blindly defaulting to high', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'medium-only'
+                ? modelInfo(id, { supportedEfforts: ['medium'] })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask(undefined, 'medium-only');
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('medium');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() omits reasoningEffort when no model metadata is available', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-re-1', 'sess-re-1');
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-re-1');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBeUndefined();
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() resolves reasoningEffort from process model metadata', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'claude-opus-4.7-high'
+                ? modelInfo(id, {
+                    rawEfforts: ['high'],
+                    supportedEfforts: ['medium'],
+                    defaultEffort: 'medium',
+                })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-re-1', 'sess-re-1');
+        proc.metadata = { type: 'chat', model: 'claude-opus-4.7-high' };
         await store.addProcess(proc);
 
         const task = followUpTask('proc-re-1');

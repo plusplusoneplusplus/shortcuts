@@ -1,6 +1,6 @@
 # Copilot SDK Wrapper — AGENTS.md
 
-Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lifecycle, MCP server configuration, model registry, and folder trust.
+Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, and folder trust.
 
 ## Files
 
@@ -19,6 +19,7 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
+| `model-reasoning.ts` | Metadata-aware reasoning-effort resolver; raw `capabilities.supports.reasoning_effort` values override top-level SDK contract fields when present |
 | `mcp-config-loader.ts` | Loads/merges MCP server config from `~/.copilot/mcp-config.json` |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` to skip trust dialog |
 | `image-converter.ts` | Image file -> data-URL conversion for inline dashboard rendering |

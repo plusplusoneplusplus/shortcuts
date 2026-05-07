@@ -255,11 +255,11 @@ src/
 │   │   └── tavily-web-search-tool.ts         # Tavily web search tool
 │   ├── executors/                    # AI chat execution layer (process lifecycle, prompt building)
 │   │   ├── base-executor.ts          # Abstract base: streaming, throttling, tool-event capture, system-prompt/output persistence
-│   │   ├── chat-base-executor.ts     # Abstract chat executor: AI call lifecycle, shared memory/auto-folder/options helpers
+│   │   ├── chat-base-executor.ts     # Abstract chat executor: AI call lifecycle, shared memory/auto-folder/options helpers, metadata-aware reasoning-effort selection
 │   │   ├── chat-executor.ts          # Ask-mode executor (interactive)
 │   │   ├── plan-executor.ts          # Plan-mode executor
 │   │   ├── autopilot-executor.ts     # Autopilot-mode executor
-│   │   ├── follow-up-executor.ts     # Follow-up message executor using shared chat-mode lifecycle helpers
+│   │   ├── follow-up-executor.ts     # Follow-up message executor using shared chat-mode lifecycle helpers and metadata-aware reasoning-effort selection
 │   │   ├── note-chat-executor.ts     # Note chat executor
 │   │   ├── note-create-executor.ts   # Note create executor
 │   │   ├── commit-chat-executor.ts   # Commit chat executor

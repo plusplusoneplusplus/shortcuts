@@ -43,6 +43,14 @@ class ModelMetadataStore {
     }
 
     /**
+     * Cached SDK metadata for modelId. Undefined until initialize() has fetched
+     * this model, or when the SDK cannot provide metadata for it.
+     */
+    getModel(modelId: string): ModelInfo | undefined {
+        return this.cache.get(modelId);
+    }
+
+    /**
      * All cached ModelInfo entries. Empty until initialize() resolves.
      */
     getCachedModels(): ModelInfo[] {

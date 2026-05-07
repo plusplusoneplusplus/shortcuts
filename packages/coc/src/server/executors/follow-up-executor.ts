@@ -27,6 +27,8 @@ import {
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
+    modelMetadataStore,
+    resolveReasoningEffort,
 } from '@plusplusoneplusplus/forge';
 import {
     buildModeSystemMessage,
@@ -256,6 +258,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : systemMessage;
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
+            const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
+            const reasoningModel = model ?? processModel;
+            const reasoningEffort = resolveReasoningEffort({
+                modelId: reasoningModel,
+                model: reasoningModel ? modelMetadataStore.getModel(reasoningModel) : undefined,
+            });
 
             const sendOptions = {
                 prompt: followUpMessage,
@@ -263,7 +271,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(model ? { model } : {}),
                 mode: agentMode,
                 workingDirectory,
-                reasoningEffort: 'high' as const,
+                ...(reasoningEffort ? { reasoningEffort } : {}),
                 infiniteSessions: { enabled: true } as const,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
