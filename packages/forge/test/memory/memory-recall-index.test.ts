@@ -160,4 +160,27 @@ describe('MemoryRecallIndex', () => {
         expect(recalled.map(entry => entry.content)).toEqual(['Repo uses Vitest']);
         expect(recalled.every(entry => entry.scope === 'repo')).toBe(true);
     });
+
+    it('lists entries for exact lookup without crossing scopes', () => {
+        index.syncEntries({
+            namespace: 'ws-test',
+            scope: 'repo',
+            entries: ['Repo first', 'Repo second'],
+        });
+        index.syncEntries({
+            namespace: 'ws-test',
+            scope: 'system',
+            entries: ['System first'],
+        });
+
+        const listed = index.listEntries({
+            namespace: 'ws-test',
+            scopes: ['repo'],
+        });
+
+        expect(listed.map(entry => entry.content)).toEqual(['Repo first', 'Repo second']);
+        expect(listed.map(entry => entry.ordinal)).toEqual([0, 1]);
+        expect(listed.every(entry => entry.scope === 'repo')).toBe(true);
+        expect(listed.every(entry => /^[a-f0-9]{64}$/.test(entry.id))).toBe(true);
+    });
 });

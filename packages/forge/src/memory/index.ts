@@ -23,6 +23,7 @@ export type { MemoryPromptBuilderOptions, MemoryPromptRecallOptions } from './me
 export { MemoryRecallIndex } from './memory-recall-index';
 export type {
     MemoryRecallIndexOptions,
+    MemoryRecallListQuery,
     MemoryRecallQuery,
     MemoryRecallResultEntry,
     MemoryRecallScope,

@@ -31,6 +31,9 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     const [enabled, setEnabled] = useState(false);
     const [prefCharLimit, setPrefCharLimit] = useState<number | undefined>(undefined);
     const [writeFrequency, setWriteFrequency] = useState<'low' | 'medium' | 'high'>('medium');
+    const [readToolsEnabled, setReadToolsEnabled] = useState(false);
+    const [readToolsSaving, setReadToolsSaving] = useState(false);
+    const [readToolsError, setReadToolsError] = useState<string | null>(null);
     const [toggleSaving, setToggleSaving] = useState(false);
     const [toggleError, setToggleError] = useState<string | null>(null);
 
@@ -71,6 +74,7 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
             setCharLimit(data.charLimit);
             setLastModified(data.lastModified);
             setEnabled(prefs.boundedMemory?.enabled === true);
+            setReadToolsEnabled(prefs.boundedMemory?.readTools?.enabled === true);
             setPrefCharLimit(
                 typeof prefs.boundedMemory?.charLimit === 'number' && prefs.boundedMemory.charLimit > 0
                     ? prefs.boundedMemory.charLimit
@@ -125,6 +129,39 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
             toastCtx?.addToast(message, 'error');
         } finally {
             setToggleSaving(false);
+        }
+    };
+
+    const handleToggleReadTools = async () => {
+        const nextEnabled = !readToolsEnabled;
+        const prevEnabled = readToolsEnabled;
+        setReadToolsEnabled(nextEnabled);
+        setReadToolsSaving(true);
+        setReadToolsError(null);
+
+        try {
+            const current = await getWorkspacePreferences(repoId).catch((): PerRepoPrefsClient => ({}));
+            await patchWorkspacePreferences(repoId, {
+                boundedMemory: {
+                    ...current.boundedMemory,
+                    enabled,
+                    readTools: {
+                        ...current.boundedMemory?.readTools,
+                        enabled: nextEnabled,
+                    },
+                },
+            });
+            toastCtx?.addToast(
+                nextEnabled ? 'Memory read tools enabled' : 'Memory read tools disabled',
+                'success'
+            );
+        } catch (e: any) {
+            const message = e?.message ?? 'Failed to save memory read tools setting';
+            setReadToolsEnabled(prevEnabled);
+            setReadToolsError(message);
+            toastCtx?.addToast(message, 'error');
+        } finally {
+            setReadToolsSaving(false);
         }
     };
 
@@ -305,6 +342,44 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* Read tools toggle */}
+                <div className={`mt-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-3 ${!enabled ? 'opacity-50 pointer-events-none' : ''}`} data-testid="memory-read-tools-section">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <label className="block text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1">
+                                Read Tools
+                            </label>
+                            <p className="text-xs text-[#616161] dark:text-[#999]">
+                                Let the AI use memory_search and memory_get to recall repo facts on demand.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={readToolsEnabled}
+                            onClick={handleToggleReadTools}
+                            disabled={!enabled || readToolsSaving}
+                            className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                                readToolsEnabled
+                                    ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4]'
+                                    : 'border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#616161] dark:text-[#999]'
+                            }`}
+                            data-testid="memory-read-tools-toggle"
+                        >
+                            <span>{readToolsEnabled ? 'On' : 'Off'}</span>
+                            <span
+                                className={`h-2.5 w-2.5 rounded-full ${readToolsEnabled ? 'bg-[#0078d4]' : 'bg-[#999]'}`}
+                                aria-hidden="true"
+                            />
+                        </button>
+                    </div>
+                    {readToolsError && (
+                        <p className="mt-2 text-xs text-red-500" data-testid="memory-read-tools-error">
+                            {readToolsError}
+                        </p>
+                    )}
                 </div>
             </div>
 

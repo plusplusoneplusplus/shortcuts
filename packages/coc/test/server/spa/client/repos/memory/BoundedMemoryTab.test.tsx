@@ -293,3 +293,64 @@ describe('BoundedMemoryTab — write frequency selector', () => {
         expect(section.className).toContain('opacity-50');
     });
 });
+
+// ---------------------------------------------------------------------------
+// Memory read tools toggle
+// ---------------------------------------------------------------------------
+
+describe('BoundedMemoryTab — memory read tools toggle', () => {
+    it('renders disabled by default and patches readTools.enabled on toggle', async () => {
+        const { getWorkspacePreferences, patchWorkspacePreferences } = await import(
+            '../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi'
+        );
+        (getWorkspacePreferences as any).mockResolvedValue({
+            boundedMemory: {
+                enabled: true,
+                writeFrequency: 'medium',
+                readTools: {
+                    enabled: false,
+                    maxResults: 5,
+                },
+            },
+        });
+
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('memory-read-tools-toggle')).toBeTruthy();
+        });
+
+        const toggle = screen.getByTestId('memory-read-tools-toggle');
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+        await act(async () => {
+            await userEvent.click(toggle);
+        });
+
+        expect(patchWorkspacePreferences).toHaveBeenCalledWith('repo-1', {
+            boundedMemory: expect.objectContaining({
+                enabled: true,
+                readTools: {
+                    enabled: true,
+                    maxResults: 5,
+                },
+            }),
+        });
+    });
+
+    it('dims read tools settings when memory is disabled', async () => {
+        const { getWorkspacePreferences } = await import(
+            '../../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi'
+        );
+        (getWorkspacePreferences as any).mockResolvedValue({ boundedMemory: { enabled: false } });
+
+        render(<BoundedMemoryTab repoId="repo-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('memory-read-tools-section')).toBeTruthy();
+        });
+
+        expect(screen.getByTestId('memory-read-tools-section').className).toContain('opacity-50');
+        expect((screen.getByTestId('memory-read-tools-toggle') as HTMLButtonElement).disabled).toBe(true);
+    });
+});

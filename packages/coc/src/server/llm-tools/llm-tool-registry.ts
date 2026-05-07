@@ -69,6 +69,18 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'memory_search',
+        label: 'Memory Search',
+        description: 'Searches repo-scoped memory entries on demand.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'memory_get',
+        label: 'Memory Get',
+        description: 'Fetches an exact repo-scoped memory entry by id or ordinal.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',

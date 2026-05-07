@@ -9,6 +9,7 @@ import {
     buildAskUserAddon,
     buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
+    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
 } from './prompt-builder';
@@ -32,6 +33,7 @@ export interface ChatToolBundleOptions {
     includeSearchConversations?: boolean;
     includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
+    includeMemoryReadTools?: boolean;
     excludeTools?: string[];
 }
 
@@ -76,6 +78,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.includeTavilyWebSearch !== false) {
         addons.push(buildTavilyWebSearchAddon(options.dataDir));
+    }
+
+    if (options.includeMemoryReadTools !== false) {
+        addons.push(buildMemoryReadToolsAddon(options.dataDir, options.workspaceId));
     }
 
     if (options.boundedMemory) {

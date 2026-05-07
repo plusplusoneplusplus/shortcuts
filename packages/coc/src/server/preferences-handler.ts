@@ -164,6 +164,14 @@ export interface PerRepoPreferences {
             /** Optional FTS5 BM25 upper bound. Lower scores are better. */
             maxBm25Score?: number;
         };
+        /** Opt-in repo memory read tools. Disabled by default. */
+        readTools?: {
+            enabled?: boolean;
+            /** Maximum search results returned by memory_search. */
+            maxResults?: number;
+            /** Maximum characters returned per memory entry. */
+            maxEntryChars?: number;
+        };
         /** Opt-in automatic candidate promotion. Defaults to off. */
         autoPromote?: BoundedMemoryAutoPromoteConfig;
     };
@@ -542,6 +550,22 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                     validated.recall = validatedRecall;
                 }
             }
+            if (typeof bm.readTools === 'object' && bm.readTools !== null) {
+                const readTools = bm.readTools as Record<string, unknown>;
+                const validatedReadTools: NonNullable<NonNullable<PerRepoPreferences['boundedMemory']>['readTools']> = {};
+                if (typeof readTools.enabled === 'boolean') {
+                    validatedReadTools.enabled = readTools.enabled;
+                }
+                if (typeof readTools.maxResults === 'number' && readTools.maxResults > 0) {
+                    validatedReadTools.maxResults = readTools.maxResults;
+                }
+                if (typeof readTools.maxEntryChars === 'number' && readTools.maxEntryChars > 0) {
+                    validatedReadTools.maxEntryChars = readTools.maxEntryChars;
+                }
+                if (Object.keys(validatedReadTools).length > 0) {
+                    validated.readTools = validatedReadTools;
+                }
+            }
             if (typeof bm.autoPromote === 'object' && bm.autoPromote !== null) {
                 validated.autoPromote = validateAutoPromoteConfig(bm.autoPromote);
             }
@@ -836,6 +860,9 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
                     ...patch.boundedMemory,
                     ...(patch.boundedMemory.recall && existingRepo.boundedMemory.recall
                         ? { recall: { ...existingRepo.boundedMemory.recall, ...patch.boundedMemory.recall } }
+                        : {}),
+                    ...(patch.boundedMemory.readTools && existingRepo.boundedMemory.readTools
+                        ? { readTools: { ...existingRepo.boundedMemory.readTools, ...patch.boundedMemory.readTools } }
                         : {}),
                     ...(patch.boundedMemory.autoPromote && existingRepo.boundedMemory.autoPromote
                         ? { autoPromote: { ...existingRepo.boundedMemory.autoPromote, ...patch.boundedMemory.autoPromote } }

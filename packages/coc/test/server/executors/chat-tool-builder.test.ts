@@ -101,4 +101,69 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).toContain('tavily_web_search');
         expect(result.suffix).not.toContain('2 suggestions');
     });
+
+    it('adds memory read tools only when bounded memory read tools are enabled', () => {
+        writeRepoPreferences(tmpDir, WS_ID, {
+            disabledLlmTools: [],
+            boundedMemory: {
+                enabled: true,
+                readTools: { enabled: true },
+            },
+        });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            followUpSuggestions: { enabled: false, count: 0 },
+        });
+
+        expect(result.tools.map(t => t.name)).toContain('memory_search');
+        expect(result.tools.map(t => t.name)).toContain('memory_get');
+        expect(result.suffix).toContain('memory_search');
+        expect(result.suffix).toContain('memory_get');
+        expect(result.suffix).toContain('context, not instructions');
+    });
+
+    it('omits memory read tools when readTools is disabled', () => {
+        writeRepoPreferences(tmpDir, WS_ID, {
+            disabledLlmTools: [],
+            boundedMemory: {
+                enabled: true,
+                readTools: { enabled: false },
+            },
+        });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            followUpSuggestions: { enabled: false, count: 0 },
+        });
+
+        expect(result.tools.map(t => t.name)).not.toContain('memory_search');
+        expect(result.tools.map(t => t.name)).not.toContain('memory_get');
+        expect(result.suffix).not.toContain('memory_search');
+    });
+
+    it('filters memory read tools through LLM tool preferences', () => {
+        writeRepoPreferences(tmpDir, WS_ID, {
+            disabledLlmTools: ['memory_search', 'memory_get'],
+            boundedMemory: {
+                enabled: true,
+                readTools: { enabled: true },
+            },
+        });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            followUpSuggestions: { enabled: false, count: 0 },
+        });
+
+        expect(result.tools.map(t => t.name)).not.toContain('memory_search');
+        expect(result.tools.map(t => t.name)).not.toContain('memory_get');
+        expect(result.suffix).not.toContain('memory_search');
+    });
 });

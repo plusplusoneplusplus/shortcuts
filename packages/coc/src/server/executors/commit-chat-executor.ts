@@ -29,6 +29,7 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildModeSystemMessage,
     buildFollowUpSuggestionsAddon,
+    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
@@ -111,13 +112,14 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
+        const memoryReadTools = buildMemoryReadToolsAddon(this.dataDir, wsId);
 
         const disabledLlmTools = this.dataDir && wsId
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools: filteredTools, suffix: filteredSuffix } = applyLlmToolPreferences(
-            [followUp, searchConversations, tavilySearch, boundedMemory],
+            [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
             disabledLlmTools,
         );
 

@@ -46,6 +46,11 @@ export interface MemoryRecallQuery {
     recalledAt?: string;
 }
 
+export interface MemoryRecallListQuery {
+    namespace: string;
+    scopes?: MemoryRecallScope[];
+}
+
 export interface MemoryRecallResultEntry {
     id: string;
     namespace: string;
@@ -241,6 +246,21 @@ export class MemoryRecallIndex {
         }
 
         return selected;
+    }
+
+    listEntries(options: MemoryRecallListQuery): MemoryRecallResultEntry[] {
+        const namespace = normalizeNamespace(options.namespace);
+        const scopes = normalizeScopes(options.scopes);
+        const rows = this.db.prepare(`
+            SELECT *, NULL AS bm25_score
+            FROM memory_recall_entries
+            WHERE namespace = @namespace
+            ORDER BY ordinal ASC, id ASC
+        `).all({ namespace }) as EntryRow[];
+
+        return rows
+            .filter(row => scopes.includes(normalizeScope(row.scope)))
+            .map(rowToResultEntry);
     }
 
     recordRecall(entries: MemoryRecallResultEntry[], query: string, recalledAt = new Date().toISOString()): void {

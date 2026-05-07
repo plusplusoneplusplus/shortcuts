@@ -15,6 +15,11 @@ export interface PerRepoPrefsClient extends PerRepoPreferences {
     enabled?: boolean;
     charLimit?: number;
     writeFrequency?: 'low' | 'medium' | 'high';
+    readTools?: {
+      enabled?: boolean;
+      maxResults?: number;
+      maxEntryChars?: number;
+    };
     autoPromote?: {
       mode: 'off' | 'threshold' | 'cron' | 'cron+threshold';
       cron?: string;
