@@ -29,6 +29,7 @@ export interface RemoteServerRuntime {
     status: RemoteServerRuntimeStatus;
     tunnelId?: string;
     localPort?: number;
+    publicUrl?: string;
     lastChecked?: number;
     lastError?: string;
 }
@@ -55,6 +56,7 @@ export interface RemoteServerHealth {
     processCount?: number;
     tunnelId?: string;
     localPort?: number;
+    publicUrl?: string;
     lastChecked: number;
     error?: string;
 }
@@ -63,6 +65,7 @@ export interface DevTunnelConnectionState {
     tunnelId: string;
     port?: number;
     effectiveUrl?: string;
+    publicUrl?: string;
     status: RemoteServerRuntimeStatus;
     lastError?: string;
     startedAt?: number;

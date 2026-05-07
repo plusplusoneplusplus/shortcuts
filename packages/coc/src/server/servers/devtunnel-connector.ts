@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
-import { parseDevTunnelHttpPort } from './devtunnel-port-parser';
+import { parseDevTunnelHttpPortInfo } from './devtunnel-port-parser';
 import type { DevTunnelConnectionState, RemoteServer } from './remote-server-types';
 
 export type DevTunnelCommandRunner = (command: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -169,7 +169,7 @@ export class DevTunnelConnector {
 
         try {
             const { stdout, stderr } = await this.commandRunner('devtunnel', ['port', 'list', tunnelId]);
-            const port = parseDevTunnelHttpPort(`${stdout}\n${stderr}`);
+            const { port, publicUrl } = parseDevTunnelHttpPortInfo(`${stdout}\n${stderr}`);
             const effectiveUrl = `http://127.0.0.1:${port}`;
 
             if (!entry.child) {
@@ -203,6 +203,7 @@ export class DevTunnelConnector {
                 tunnelId,
                 port,
                 effectiveUrl,
+                publicUrl,
                 status: 'online',
                 startedAt: entry.state.startedAt ?? Date.now(),
                 lastChecked: Date.now(),

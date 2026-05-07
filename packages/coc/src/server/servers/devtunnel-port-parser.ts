@@ -10,9 +10,15 @@ export class DevTunnelPortParseError extends Error {
     }
 }
 
+export interface ParsedHttpPort {
+    port: number;
+    publicUrl?: string;
+}
+
 interface ParsedPortRow {
     port: number;
     protocol: string;
+    portUri?: string;
 }
 
 function parseJsonRows(output: string): ParsedPortRow[] | undefined {
@@ -39,7 +45,10 @@ function parseJsonRows(output: string): ParsedPortRow[] | undefined {
                 : typeof protocolValue === 'string'
                     ? protocolValue
                     : '';
-            return Number.isInteger(port) && port > 0 && protocol ? [{ port, protocol }] : [];
+            const portUri = typeof item.portUri === 'string' ? item.portUri
+                : typeof item.uri === 'string' ? item.uri
+                    : undefined;
+            return Number.isInteger(port) && port > 0 && protocol ? [{ port, protocol, portUri }] : [];
         });
     } catch {
         return undefined;
@@ -48,7 +57,21 @@ function parseJsonRows(output: string): ParsedPortRow[] | undefined {
 
 function parseTextRows(output: string): ParsedPortRow[] {
     const rows: ParsedPortRow[] = [];
-    for (const rawLine of output.split(/\r?\n/)) {
+    const lines = output.split(/\r?\n/);
+
+    // Detect header to find Port URI column position
+    let uriColStart = -1;
+    for (const rawLine of lines) {
+        if (/port/i.test(rawLine) && /protocol/i.test(rawLine)) {
+            const uriMatch = rawLine.match(/Port\s+URI/i);
+            if (uriMatch && uriMatch.index !== undefined) {
+                uriColStart = uriMatch.index;
+            }
+            break;
+        }
+    }
+
+    for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line || /^[-\s|+]+$/.test(line) || /port/i.test(line) && /protocol/i.test(line)) {
             continue;
@@ -63,14 +86,27 @@ function parseTextRows(output: string): ParsedPortRow[] {
         }
         const rest = line.slice(leadingPort[0].length).trim();
         const protocol = (rest.match(/\b(https?|tcp|ssh)\b/i)?.[0] ?? rest.split(/\s+/)[0] ?? '').toLowerCase();
+
+        // Extract URI from fixed column position if header was found
+        let portUri: string | undefined;
+        if (uriColStart >= 0 && rawLine.length > uriColStart) {
+            const uriCandidate = rawLine.slice(uriColStart).trim();
+            if (uriCandidate.startsWith('https://')) {
+                portUri = uriCandidate.split(/\s/)[0];
+            }
+        }
+
         if (protocol) {
-            rows.push({ port, protocol });
+            rows.push({ port, protocol, portUri });
         }
     }
     return rows;
 }
 
-export function parseDevTunnelHttpPort(output: string): number {
+/**
+ * Parse devtunnel port list output and return the HTTP port along with its public URL if available.
+ */
+export function parseDevTunnelHttpPortInfo(output: string): ParsedHttpPort {
     const trimmed = output.trim();
     if (!trimmed) {
         throw new DevTunnelPortParseError('unparsable-output', 'devtunnel port list returned no output');
@@ -81,15 +117,24 @@ export function parseDevTunnelHttpPort(output: string): number {
         throw new DevTunnelPortParseError('unparsable-output', 'Unable to parse devtunnel port list output');
     }
 
-    const httpPorts = rows
-        .filter(row => row.protocol.split(/[,\s]+/).some(protocol => protocol.toLowerCase() === 'http'))
-        .map(row => row.port);
-    const unique = Array.from(new Set(httpPorts));
-    if (unique.length === 0) {
+    const httpRows = rows
+        .filter(row => row.protocol.split(/[,\s]+/).some(protocol => protocol.toLowerCase() === 'http'));
+    const uniquePorts = Array.from(new Set(httpRows.map(row => row.port)));
+    if (uniquePorts.length === 0) {
         throw new DevTunnelPortParseError('zero-http-ports', 'No HTTP ports are configured for this DevTunnel');
     }
-    if (unique.length > 1) {
+    if (uniquePorts.length > 1) {
         throw new DevTunnelPortParseError('multiple-http-ports', 'Multiple HTTP ports are configured for this DevTunnel');
     }
-    return unique[0];
+
+    const matchingRow = httpRows.find(r => r.portUri);
+    return {
+        port: uniquePorts[0],
+        publicUrl: matchingRow?.portUri,
+    };
+}
+
+/** Compat wrapper — returns only the port number. */
+export function parseDevTunnelHttpPort(output: string): number {
+    return parseDevTunnelHttpPortInfo(output).port;
 }

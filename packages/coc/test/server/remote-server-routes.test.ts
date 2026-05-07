@@ -100,8 +100,11 @@ describe('remote server routes', () => {
     }
 
     it('creates, lists, patches, and deletes URL and DevTunnel entries', async () => {
+        const portListJson = JSON.stringify({
+            ports: [{ portNumber: 4000, protocol: 'http', portUri: 'https://my-remote-coc-4000.usw2.devtunnels.ms' }],
+        });
         const connector = new DevTunnelConnector({
-            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            commandRunner: async () => ({ stdout: portListJson, stderr: '' }),
             processStarter: () => new FakeChild(),
             healthChecker: async () => true,
             readinessPollMs: 1,
@@ -114,7 +117,13 @@ describe('remote server routes', () => {
 
         const tunnelCreate = await request(baseUrl, 'POST', '/api/servers', { kind: 'devtunnel', label: 'VM', tunnelId: 'my-remote-coc' });
         expect(tunnelCreate.status).toBe(201);
-        expect(tunnelCreate.body).toMatchObject({ kind: 'devtunnel', tunnelId: 'my-remote-coc', effectiveUrl: 'http://127.0.0.1:4000', localPort: 4000 });
+        expect(tunnelCreate.body).toMatchObject({
+            kind: 'devtunnel',
+            tunnelId: 'my-remote-coc',
+            effectiveUrl: 'http://127.0.0.1:4000',
+            localPort: 4000,
+            publicUrl: 'https://my-remote-coc-4000.usw2.devtunnels.ms',
+        });
 
         const list = await request(baseUrl, 'GET', '/api/servers');
         expect(list.status).toBe(200);
@@ -152,8 +161,11 @@ describe('remote server routes', () => {
     it('uses the DevTunnel effective local URL for health', async () => {
         const remoteBase = await startRemoteCoc();
         const port = new URL(remoteBase).port;
+        const portListJson = JSON.stringify({
+            ports: [{ portNumber: Number(port), protocol: 'http', portUri: `https://my-remote-coc-${port}.usw2.devtunnels.ms` }],
+        });
         const connector = new DevTunnelConnector({
-            commandRunner: async () => ({ stdout: `${port} http coc`, stderr: '' }),
+            commandRunner: async () => ({ stdout: portListJson, stderr: '' }),
             processStarter: () => new FakeChild(),
             healthChecker: async () => true,
             readinessPollMs: 1,
@@ -170,6 +182,7 @@ describe('remote server routes', () => {
             effectiveUrl: remoteBase,
             tunnelId: 'my-remote-coc',
             localPort: Number(port),
+            publicUrl: `https://my-remote-coc-${port}.usw2.devtunnels.ms`,
         });
     });
 

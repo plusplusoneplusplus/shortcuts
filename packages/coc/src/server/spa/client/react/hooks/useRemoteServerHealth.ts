@@ -34,6 +34,7 @@ async function checkServer(server: RemoteServer): Promise<ServerHealthState> {
             processCount: body.processCount,
             tunnelId: body.tunnelId,
             localPort: body.localPort,
+            publicUrl: body.publicUrl,
             lastChecked: body.lastChecked,
             error: body.error,
         };

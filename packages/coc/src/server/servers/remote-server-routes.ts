@@ -33,6 +33,7 @@ function toRuntime(server: RemoteServer, connector: DevTunnelConnector): RemoteS
         status: state.status,
         tunnelId: server.tunnelId,
         localPort: state.port,
+        publicUrl: state.publicUrl,
         lastChecked: state.lastChecked,
         lastError: state.lastError,
     };
@@ -46,6 +47,7 @@ function decorate(server: RemoteServer, connector: DevTunnelConnector): RemoteSe
         status: runtime.status,
         tunnelId: server.kind === 'devtunnel' ? server.tunnelId : runtime.tunnelId,
         localPort: runtime.localPort,
+        publicUrl: runtime.publicUrl,
         lastChecked: runtime.lastChecked,
         lastError: runtime.lastError,
     } as RemoteServerWithRuntime;
@@ -81,6 +83,7 @@ async function healthForServer(server: RemoteServer, connector: DevTunnelConnect
         baseUrl,
         tunnelId: server.kind === 'devtunnel' ? server.tunnelId : undefined,
         localPort: runtime.localPort,
+        publicUrl: runtime.publicUrl,
     });
 }
 

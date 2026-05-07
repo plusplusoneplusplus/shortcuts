@@ -15,6 +15,7 @@ export interface BaseRemoteServer {
     effectiveUrl?: string;
     status?: RemoteServerRuntimeStatus;
     localPort?: number;
+    publicUrl?: string;
     lastChecked?: number;
     lastError?: string;
 }
@@ -51,6 +52,7 @@ export interface RemoteServerHealth {
     processCount?: number;
     tunnelId?: string;
     localPort?: number;
+    publicUrl?: string;
     lastChecked: number;
     error?: string;
 }

@@ -16,6 +16,7 @@ export interface ServerCardHealth {
     effectiveUrl?: string;
     tunnelId?: string;
     localPort?: number;
+    publicUrl?: string;
 }
 
 export interface ServerCardProps {
@@ -92,6 +93,18 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
         }
     };
 
+    const handleCopyPublicUrl = () => {
+        setMenuOpen(false);
+        if (!health.publicUrl) {
+            return;
+        }
+        try {
+            void navigator.clipboard?.writeText(health.publicUrl);
+        } catch {
+            // best-effort
+        }
+    };
+
     return (
         <Card className="p-0 flex flex-col" data-testid="server-card">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
@@ -131,6 +144,16 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                                 >
                                     Copy URL
                                 </button>
+                                {health.publicUrl && (
+                                    <button
+                                        type="button"
+                                        data-testid="server-card-menu-copy-public"
+                                        className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        onClick={handleCopyPublicUrl}
+                                    >
+                                        Copy public URL
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     data-testid="server-card-menu-remove"
@@ -161,6 +184,19 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                         <div className="truncate" data-testid="server-card-tunnel-id">
                             Tunnel: {health.server.tunnelId}
                         </div>
+                        {health.publicUrl && (
+                            <div className="truncate" data-testid="server-card-public-url">
+                                Public:{' '}
+                                <a
+                                    href={health.publicUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                >
+                                    {health.publicUrl}
+                                </a>
+                            </div>
+                        )}
                         {health.localPort !== undefined && (
                             <div data-testid="server-card-local-port">
                                 Local: localhost:{health.localPort}

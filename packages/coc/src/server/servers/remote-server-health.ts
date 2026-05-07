@@ -8,6 +8,7 @@ interface HealthTarget {
     baseUrl?: string;
     tunnelId?: string;
     localPort?: number;
+    publicUrl?: string;
 }
 
 async function fetchOptionalServerName(baseUrl: string): Promise<string | undefined> {
@@ -33,6 +34,7 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
             status: 'offline',
             tunnelId: target.tunnelId,
             localPort: target.localPort,
+            publicUrl: target.publicUrl,
             lastChecked,
             error: 'No effective endpoint is available',
         };
@@ -55,6 +57,7 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
                 effectiveUrl: target.baseUrl,
                 tunnelId: target.tunnelId,
                 localPort: target.localPort,
+                publicUrl: target.publicUrl,
                 lastChecked: Date.now(),
                 error: `HTTP ${status}`,
             };
@@ -75,6 +78,7 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
             processCount: typeof health.processCount === 'number' ? health.processCount : undefined,
             tunnelId: target.tunnelId,
             localPort: target.localPort,
+            publicUrl: target.publicUrl,
             lastChecked: Date.now(),
         };
     } catch (error) {
@@ -86,6 +90,7 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
             effectiveUrl: target.baseUrl,
             tunnelId: target.tunnelId,
             localPort: target.localPort,
+            publicUrl: target.publicUrl,
             lastChecked: Date.now(),
             error: error instanceof Error ? error.message : String(error),
         };

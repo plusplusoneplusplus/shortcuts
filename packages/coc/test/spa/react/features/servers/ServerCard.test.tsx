@@ -45,6 +45,23 @@ const DEVTUNNEL_BASE: ServerCardHealth = {
     localPort: 4000,
 };
 
+const DEVTUNNEL_WITH_PUBLIC_URL: ServerCardHealth = {
+    server: {
+        id: 'd2',
+        kind: 'devtunnel',
+        label: 'remote-vm-public',
+        tunnelId: 'my-remote-coc',
+        effectiveUrl: 'http://127.0.0.1:4000',
+        localPort: 4000,
+        addedAt: 1,
+        updatedAt: 1,
+    },
+    status: 'online',
+    effectiveUrl: 'http://127.0.0.1:4000',
+    localPort: 4000,
+    publicUrl: 'https://my-remote-coc-4000.usw2.devtunnels.ms',
+};
+
 afterEach(() => {
     cleanup();
 });
@@ -291,6 +308,59 @@ describe('ServerCard — stats rendering', () => {
         const online: ServerCardHealth = { ...REMOTE_BASE, status: 'online' };
         render(<ServerCard health={online} isLocal={false} />);
         expect(screen.queryByTestId('server-card-last-seen')).toBeNull();
+    });
+});
+
+describe('ServerCard — public URL', () => {
+    it('renders public URL row with link when publicUrl is present', () => {
+        render(<ServerCard health={DEVTUNNEL_WITH_PUBLIC_URL} isLocal={false} />);
+        const row = screen.getByTestId('server-card-public-url');
+        expect(row.textContent).toContain('Public:');
+        const link = row.querySelector('a') as HTMLAnchorElement;
+        expect(link).toBeTruthy();
+        expect(link.getAttribute('href')).toBe('https://my-remote-coc-4000.usw2.devtunnels.ms');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('does not render public URL row when publicUrl is absent', () => {
+        render(<ServerCard health={DEVTUNNEL_BASE} isLocal={false} />);
+        expect(screen.queryByTestId('server-card-public-url')).toBeNull();
+    });
+
+    it('shows "Copy public URL" menu item when publicUrl is present', () => {
+        render(<ServerCard health={DEVTUNNEL_WITH_PUBLIC_URL} isLocal={false} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        expect(screen.getByTestId('server-card-menu-copy-public')).toBeTruthy();
+        expect(screen.getByTestId('server-card-menu-copy-public').textContent).toBe('Copy public URL');
+    });
+
+    it('hides "Copy public URL" menu item when publicUrl is absent', () => {
+        render(<ServerCard health={DEVTUNNEL_BASE} isLocal={false} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        expect(screen.queryByTestId('server-card-menu-copy-public')).toBeNull();
+    });
+
+    it('Copy public URL writes the public URL to navigator.clipboard', () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        const original = (navigator as any).clipboard;
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+            writable: true,
+        });
+        try {
+            render(<ServerCard health={DEVTUNNEL_WITH_PUBLIC_URL} isLocal={false} />);
+            fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+            fireEvent.click(screen.getByTestId('server-card-menu-copy-public'));
+            expect(writeText).toHaveBeenCalledWith('https://my-remote-coc-4000.usw2.devtunnels.ms');
+        } finally {
+            Object.defineProperty(navigator, 'clipboard', {
+                value: original,
+                configurable: true,
+                writable: true,
+            });
+        }
     });
 });
 

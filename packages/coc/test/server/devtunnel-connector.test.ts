@@ -51,6 +51,37 @@ describe('DevTunnelConnector', () => {
         expect(state.effectiveUrl).toBe('http://127.0.0.1:4173');
     });
 
+    it('populates publicUrl when port list includes portUri', async () => {
+        const portListJson = JSON.stringify({
+            ports: [{ portNumber: 4000, protocol: 'http', portUri: 'https://my-tunnel-4000.usw2.devtunnels.ms' }],
+        });
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: portListJson, stderr: '' }),
+            processStarter: () => new FakeChild(),
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+
+        const state = await connector.connect('my-tunnel');
+        expect(state.status).toBe('online');
+        expect(state.publicUrl).toBe('https://my-tunnel-4000.usw2.devtunnels.ms');
+        expect(state.port).toBe(4000);
+        expect(state.effectiveUrl).toBe('http://127.0.0.1:4000');
+    });
+
+    it('publicUrl is undefined when port list lacks portUri', async () => {
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            processStarter: () => new FakeChild(),
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+
+        const state = await connector.connect('my-tunnel');
+        expect(state.status).toBe('online');
+        expect(state.publicUrl).toBeUndefined();
+    });
+
     it('reports missing CLI and auth failures explicitly', async () => {
         const missing = new DevTunnelConnector({
             commandRunner: async () => { throw Object.assign(new Error('spawn devtunnel ENOENT'), { code: 'ENOENT' }); },
