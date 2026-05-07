@@ -193,6 +193,64 @@ describe('remote server routes', () => {
         expect((await request(baseUrl, 'POST', `/api/servers/${created.body.id}/connect`)).status).toBe(400);
         expect((await request(baseUrl, 'POST', `/api/servers/${created.body.id}/disconnect`)).status).toBe(400);
     });
+
+    it('reconnect returns 404 for missing server', async () => {
+        const baseUrl = await startApi(new DevTunnelConnector());
+        const res = await request(baseUrl, 'POST', '/api/servers/nonexistent/reconnect');
+        expect(res.status).toBe(404);
+    });
+
+    it('reconnect returns 400 for URL servers', async () => {
+        const baseUrl = await startApi(new DevTunnelConnector());
+        const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Lab', url: 'http://lab.example.com' });
+        const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/reconnect`);
+        expect(res.status).toBe(400);
+    });
+
+    it('reconnect returns runtime with online status on success', async () => {
+        const portListJson = JSON.stringify({
+            ports: [{ portNumber: 4000, protocol: 'http', portUri: 'https://t-4000.usw2.devtunnels.ms' }],
+        });
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: portListJson, stderr: '' }),
+            processStarter: () => new FakeChild(),
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+        const baseUrl = await startApi(connector);
+
+        const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'devtunnel', label: 'VM', tunnelId: 'my-remote-coc' });
+        expect(created.body.status).toBe('online');
+
+        const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/reconnect`);
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({
+            serverId: created.body.id,
+            kind: 'devtunnel',
+            status: 'online',
+            effectiveUrl: 'http://127.0.0.1:4000',
+            publicUrl: 'https://t-4000.usw2.devtunnels.ms',
+        });
+    });
+
+    it('reconnect returns runtime with failed status when connect fails', async () => {
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            processStarter: () => new FakeChild(),
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+        const baseUrl = await startApi(connector);
+
+        const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'devtunnel', label: 'VM', tunnelId: 'my-remote-coc' });
+
+        // Now make reconnect fail
+        (connector as any).commandRunner = async () => { throw Object.assign(new Error('boom'), { code: 'ENOENT' }); };
+
+        const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/reconnect`);
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ status: 'failed' });
+    });
 });
 
 describe('createExecutionServer remote server lifecycle', () => {

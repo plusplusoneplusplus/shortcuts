@@ -3,6 +3,7 @@ import { Button } from '../../ui';
 import {
     addRemoteServer,
     listRemoteServers,
+    reconnectServer,
     removeRemoteServer,
     updateRemoteServer,
     type RemoteServer,
@@ -38,6 +39,7 @@ export function ServersView() {
     const [servers, setServers] = useState<RemoteServer[]>([]);
     const [addOpen, setAddOpen] = useState(false);
     const [editServerId, setEditServerId] = useState<string | undefined>();
+    const [reconnectingId, setReconnectingId] = useState<string | undefined>();
     const [loadError, setLoadError] = useState<string | undefined>();
 
     useEffect(() => {
@@ -132,6 +134,16 @@ export function ServersView() {
         setServers(await listRemoteServers());
     };
 
+    const handleReconnect = async (id: string) => {
+        setReconnectingId(id);
+        try {
+            await reconnectServer(id);
+            setServers(await listRemoteServers());
+        } finally {
+            setReconnectingId(undefined);
+        }
+    };
+
     const handleEdit = async (fields: RemoteServerInput) => {
         if (!editServer) {
             throw new Error('Remote server is no longer available');
@@ -171,6 +183,8 @@ export function ServersView() {
                         isLocal={false}
                         onRemove={handleRemove}
                         onEdit={setEditServerId}
+                        onReconnect={handleReconnect}
+                        reconnecting={reconnectingId === hs.server.id}
                     />
                 ))}
             </div>

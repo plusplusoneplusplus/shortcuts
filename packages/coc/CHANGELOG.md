@@ -5,6 +5,7 @@
 ### Minor Changes
 
 - Migrate the storage to SQLite
+- Add Reconnect action for DevTunnel servers (connector, route, and UI)
 
 ### Patch Changes
 

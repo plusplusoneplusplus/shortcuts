@@ -24,6 +24,8 @@ export interface ServerCardProps {
     isLocal: boolean;
     onRemove?: (id: string) => void | Promise<void>;
     onEdit?: (id: string) => void;
+    onReconnect?: (id: string) => void | Promise<void>;
+    reconnecting?: boolean;
 }
 
 function isRemoteServer(server: CardServer): server is RemoteServer {
@@ -63,7 +65,7 @@ export function timeAgo(ts: number, now: number = Date.now()): string {
     return `${Math.floor(diff / 3600)}h ago`;
 }
 
-export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProps) {
+export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, reconnecting }: ServerCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuWrapRef = useRef<HTMLDivElement | null>(null);
     const endpoint = isRemoteServer(health.server)
@@ -152,6 +154,17 @@ export function ServerCard({ health, isLocal, onRemove, onEdit }: ServerCardProp
                                         onClick={handleCopyPublicUrl}
                                     >
                                         Copy public URL
+                                    </button>
+                                )}
+                                {isRemoteServer(health.server) && health.server.kind === 'devtunnel' && onReconnect && (
+                                    <button
+                                        type="button"
+                                        data-testid="server-card-menu-reconnect"
+                                        className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        disabled={reconnecting}
+                                        onClick={() => { setMenuOpen(false); void onReconnect(health.server.id); }}
+                                    >
+                                        {reconnecting ? 'Reconnecting…' : 'Reconnect'}
                                     </button>
                                 )}
                                 <button

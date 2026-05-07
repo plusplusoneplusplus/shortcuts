@@ -135,6 +135,33 @@ export class DevTunnelConnector {
         return Promise.all(tunnelIds.map(tunnelId => this.connect(tunnelId).catch(() => this.getState(tunnelId))));
     }
 
+    async reconnect(tunnelId: string): Promise<DevTunnelConnectionState> {
+        const entry = this.getConnection(tunnelId);
+
+        // Tear down any existing child — same as disconnect but we stay in `connecting`.
+        entry.intentionalStop = true;
+        if (entry.child) {
+            entry.child.kill();
+            entry.child = undefined;
+        }
+
+        // Drop any in-flight connect promise so we start fresh.
+        entry.pending = undefined;
+
+        // Reset state, keeping tunnelId.
+        entry.state = {
+            tunnelId,
+            status: 'connecting',
+            lastChecked: Date.now(),
+        };
+
+        // Re-run the full connect path (port list + spawn + health).
+        entry.pending = this.connectInternal(tunnelId, entry).finally(() => {
+            entry.pending = undefined;
+        });
+        return entry.pending;
+    }
+
     disconnect(tunnelId: string): DevTunnelConnectionState {
         const entry = this.getConnection(tunnelId);
         entry.intentionalStop = true;
@@ -174,9 +201,10 @@ export class DevTunnelConnector {
 
             if (!entry.child) {
                 entry.intentionalStop = false;
-                entry.child = this.processStarter('devtunnel', ['connect', tunnelId]);
-                entry.child.once('exit', (code, signal) => {
-                    if (entry.intentionalStop) {
+                const child = this.processStarter('devtunnel', ['connect', tunnelId]);
+                entry.child = child;
+                child.once('exit', (code, signal) => {
+                    if (entry.intentionalStop || entry.child !== child) {
                         return;
                     }
                     entry.child = undefined;
@@ -187,7 +215,10 @@ export class DevTunnelConnector {
                         lastChecked: Date.now(),
                     };
                 });
-                entry.child.once('error', (error) => {
+                child.once('error', (error) => {
+                    if (entry.child !== child) {
+                        return;
+                    }
                     entry.child = undefined;
                     entry.state = {
                         ...entry.state,

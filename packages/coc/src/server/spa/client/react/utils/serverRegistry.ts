@@ -57,6 +57,18 @@ export interface RemoteServerHealth {
     error?: string;
 }
 
+export interface RemoteServerRuntime {
+    serverId: string;
+    kind: RemoteServerKind;
+    effectiveUrl?: string;
+    status: RemoteServerRuntimeStatus;
+    tunnelId?: string;
+    localPort?: number;
+    publicUrl?: string;
+    lastChecked?: number;
+    lastError?: string;
+}
+
 interface LegacyRemoteServer {
     id?: string;
     label?: string;
@@ -203,6 +215,12 @@ export async function testRemoteServer(input: RemoteServerInput): Promise<Remote
     return requestJson<RemoteServerHealth>('/servers/test', {
         method: 'POST',
         body: JSON.stringify(input),
+    });
+}
+
+export async function reconnectServer(id: string): Promise<RemoteServerRuntime> {
+    return requestJson<RemoteServerRuntime>(`/servers/${encodeURIComponent(id)}/reconnect`, {
+        method: 'POST',
     });
 }
 

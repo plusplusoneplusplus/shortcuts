@@ -230,6 +230,29 @@ export function registerRemoteServerRoutes(
     });
 
     routes.push({
+        method: 'POST',
+        pattern: /^\/api\/servers\/([^/]+)\/reconnect$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const server = store.get(id);
+            if (!server) {
+                send404(res, `Remote server not found: ${id}`);
+                return;
+            }
+            if (server.kind !== 'devtunnel') {
+                sendError(res, 400, 'Direct URL servers do not support reconnect');
+                return;
+            }
+            try {
+                await connector.reconnect(server.tunnelId);
+            } catch {
+                // The failed state is stored on the connector and returned below.
+            }
+            sendJson(res, toRuntime(server, connector));
+        },
+    });
+
+    routes.push({
         method: 'GET',
         pattern: /^\/api\/servers\/([^/]+)\/health$/,
         handler: async (_req, res, match) => {
