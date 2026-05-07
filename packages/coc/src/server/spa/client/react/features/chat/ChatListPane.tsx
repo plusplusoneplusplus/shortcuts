@@ -318,6 +318,7 @@ export function ChatListPane({
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const pauseMenuRef = useRef<HTMLDivElement>(null);
 
     const setSearchQuery = useCallback((q: string) => {
         setSearchQueryRaw(q);
@@ -346,6 +347,21 @@ export function ChatListPane({
         }
         setPauseMenuScope(null);
     }, [onPauseResume, onPauseResumeAutopilot]);
+
+    useEffect(() => {
+        if (!pauseMenuScope) return;
+        function handleOutsideInteraction(e: MouseEvent | TouchEvent) {
+            if (pauseMenuRef.current && !pauseMenuRef.current.contains(e.target as Node)) {
+                setPauseMenuScope(null);
+            }
+        }
+        document.addEventListener('mousedown', handleOutsideInteraction);
+        document.addEventListener('touchstart', handleOutsideInteraction);
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideInteraction);
+            document.removeEventListener('touchstart', handleOutsideInteraction);
+        };
+    }, [pauseMenuScope]);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
@@ -1229,7 +1245,7 @@ export function ChatListPane({
                             </span>
                         )}
                     </Button>
-                    <div className="relative">
+                    <div className="relative" ref={pauseMenuRef}>
                         <div
                             className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
                             data-testid="pause-toggle-group"

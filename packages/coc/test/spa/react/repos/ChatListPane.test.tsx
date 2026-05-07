@@ -328,6 +328,16 @@ describe('ChatListPane', () => {
             expect(onPauseResume).toHaveBeenCalledWith({ durationHours: 2 });
         });
 
+        it('closes the all-tasks duration menu on outside click', () => {
+            renderPane({ history: [makeHistoryTask()] });
+
+            fireEvent.click(screen.getByTestId('repo-pause-resume-btn'));
+            expect(screen.getByTestId('pause-duration-menu-all')).toBeTruthy();
+
+            fireEvent.mouseDown(document.body);
+            expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
+        });
+
         it('opens duration menu and pauses autopilot tasks for selected hours', () => {
             const onPauseResumeAutopilot = vi.fn();
             renderPane({
@@ -340,6 +350,19 @@ describe('ChatListPane', () => {
 
             fireEvent.click(screen.getByTestId('pause-duration-autopilot-3h'));
             expect(onPauseResumeAutopilot).toHaveBeenCalledWith({ durationHours: 3 });
+        });
+
+        it('closes the autopilot duration menu on outside click', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: vi.fn(),
+            });
+
+            fireEvent.click(screen.getByTestId('autopilot-pause-resume-btn'));
+            expect(screen.getByTestId('pause-duration-menu-autopilot')).toBeTruthy();
+
+            fireEvent.mouseDown(document.body);
+            expect(screen.queryByTestId('pause-duration-menu-autopilot')).toBeNull();
         });
 
         it('shows timed pause remaining in banners and toolbar labels', () => {
