@@ -278,25 +278,41 @@
 
 /* ── Note cross-links ──────────────────────────────────────────────── */
 
-.note-editor .ProseMirror .note-link {
+.note-editor .ProseMirror .note-link,
+.markdown-body .note-link {
     color: var(--vscode-textLink-foreground, #4ea6ea);
-    text-decoration: underline;
+    text-decoration: none;
     cursor: pointer;
-    border-radius: 3px;
-    padding: 0 2px;
-    transition: background-color 0.15s;
+    background-color: rgba(78, 166, 234, 0.10);
+    border: 1px solid rgba(78, 166, 234, 0.45);
+    border-radius: 4px;
+    padding: 1px 6px 1px 4px;
+    font-weight: 500;
+    transition: background-color 0.15s, border-color 0.15s;
 }
 
-.note-editor .ProseMirror .note-link:hover {
-    background-color: rgba(78, 166, 234, 0.12);
+.note-editor .ProseMirror .note-link::before,
+.markdown-body .note-link::before {
+    content: "⎋ ";
 }
 
-.dark .note-editor .ProseMirror .note-link {
+.note-editor .ProseMirror .note-link:hover,
+.markdown-body .note-link:hover {
+    background-color: rgba(78, 166, 234, 0.16);
+    border-color: rgba(78, 166, 234, 0.65);
+}
+
+.dark .note-editor .ProseMirror .note-link,
+.dark .markdown-body .note-link {
     color: var(--vscode-textLink-foreground, #4ea6ea);
+    background-color: rgba(78, 166, 234, 0.14);
+    border-color: rgba(78, 166, 234, 0.40);
 }
 
-.dark .note-editor .ProseMirror .note-link:hover {
-    background-color: rgba(78, 166, 234, 0.18);
+.dark .note-editor .ProseMirror .note-link:hover,
+.dark .markdown-body .note-link:hover {
+    background-color: rgba(78, 166, 234, 0.20);
+    border-color: rgba(78, 166, 234, 0.65);
 }
 
 /* ── File-path references ──────────────────────────────────────────── */
