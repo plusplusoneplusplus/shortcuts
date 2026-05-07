@@ -17,6 +17,7 @@ export interface ModelInfo {
     id: string;
     name: string;
     capabilities: {
+        family?: string;
         supports: {
             vision: boolean;
             reasoningEffort: boolean;

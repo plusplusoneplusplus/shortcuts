@@ -38,7 +38,7 @@ import {
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
-    resolveReasoningEffort,
+    resolveReasoningSelection,
     TASK_FILTER,
     ToolCallCapture,
     rewriteLargePrompt,
@@ -365,7 +365,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // The SDK's native onUserInputRequest must NOT be set at the same time.
             assertNoAskUserConflict({ tools: sendTools });
 
-            const reasoningEffort = resolveReasoningEffort({
+            const reasoningSelection = resolveReasoningSelection({
                 modelId: task.config.model,
                 requestedEffort: task.config.reasoningEffort,
                 model: await this.getModelMetadataForReasoning(task.config.model),
@@ -374,8 +374,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const sendOptions = {
                 prompt: effectivePrompt,
                 mode: agentMode,
-                model: task.config.model,
-                ...(reasoningEffort ? { reasoningEffort } : {}),
+                model: reasoningSelection.modelId,
+                ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 infiniteSessions: { enabled: true } as const,
                 workingDirectory,
                 timeoutMs,

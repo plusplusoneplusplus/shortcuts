@@ -108,6 +108,8 @@ export {
 
 export {
     resolveReasoningEffort,
+    resolveReasoningSelection,
+    ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
 } from './model-reasoning';
 

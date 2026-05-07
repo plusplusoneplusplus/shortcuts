@@ -2825,7 +2825,38 @@ describe('CopilotSDKService - reasoningEffort session option', () => {
         resetCopilotSDKService();
     });
 
-    it('forwards reasoningEffort to createSession when provided', async () => {
+    it('sets model with reasoningEffort after session creation when model is provided', async () => {
+        const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+            model: 'claude-opus-4.7-high',
+            reasoningEffort: 'high',
+        });
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+        dispatchEvent({ type: 'assistant.message', data: { content: 'reply', messageId: 'm1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const sessionOptions = mockClient.createSession.mock.calls[0][0];
+        expect(sessionOptions.model).toBeUndefined();
+        expect(sessionOptions.reasoningEffort).toBeUndefined();
+        expect(sessions[0].session.setModel).toHaveBeenCalledWith('claude-opus-4.7-high', { reasoningEffort: 'high' });
+    });
+
+    it('forwards reasoningEffort to createSession when no model is provided', async () => {
         const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
         const serviceAny = service as any;
         createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
@@ -2851,6 +2882,7 @@ describe('CopilotSDKService - reasoningEffort session option', () => {
 
         const sessionOptions = mockClient.createSession.mock.calls[0][0];
         expect(sessionOptions.reasoningEffort).toBe('high');
+        expect(sessions[0].session.setModel).not.toHaveBeenCalled();
     });
 
     it('does not set reasoningEffort on session when not provided', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelInfo } from '../../src/copilot-sdk-wrapper/model-info';
-import { resolveReasoningEffort } from '../../src/copilot-sdk-wrapper/model-reasoning';
+import { resolveReasoningEffort, resolveReasoningSelection } from '../../src/copilot-sdk-wrapper/model-reasoning';
 
 function model(
     id: string,
@@ -9,6 +9,7 @@ function model(
         supportedEfforts?: string[];
         defaultEffort?: string;
         supportsReasoning?: boolean;
+        family?: string;
     },
 ): ModelInfo {
     const supportsReasoning = options.supportsReasoning
@@ -18,6 +19,7 @@ function model(
         id,
         name: id,
         capabilities: {
+            ...(options.family ? { family: options.family } : {}),
             supports: {
                 vision: false,
                 reasoningEffort: supportsReasoning,
@@ -71,6 +73,21 @@ describe('resolveReasoningEffort', () => {
                 defaultEffort: 'medium',
             }),
         })).toBe('high');
+    });
+
+    it('uses the base model family for raw-effort variant models', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-high',
+            model: model('claude-opus-4.7-high', {
+                family: 'claude-opus-4.7',
+                rawEfforts: ['high'],
+                supportedEfforts: ['medium'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'high',
+        });
     });
 
     it('throws for an explicitly requested unsupported effort', () => {

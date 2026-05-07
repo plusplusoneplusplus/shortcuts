@@ -19,6 +19,7 @@ export interface MockSession {
     sessionId: string;
     sendAndWait: ReturnType<typeof vi.fn>;
     destroy: ReturnType<typeof vi.fn>;
+    setModel: ReturnType<typeof vi.fn>;
 }
 
 /** Shape of a streaming mock session (extends MockSession with event support) */
@@ -76,6 +77,7 @@ export function createMockSession(overrides?: Partial<{
                 overrides?.sendAndWaitResponse ?? { data: { content: 'mock response' } }
             ),
         destroy: vi.fn().mockResolvedValue(undefined),
+        setModel: vi.fn().mockResolvedValue(undefined),
     };
 }
 
@@ -92,6 +94,7 @@ export function createStreamingMockSession(sessionId?: string): StreamingMockSes
         sessionId: sid,
         sendAndWait: vi.fn(),
         destroy: vi.fn().mockResolvedValue(undefined),
+        setModel: vi.fn().mockResolvedValue(undefined),
         on: vi.fn().mockImplementation((handler: (event: any) => void) => {
             handlers.push(handler);
             return () => {
@@ -128,6 +131,7 @@ export function createMockSDKModule(sessionOrFactory?: any): MockSDKModule {
                 sessionId: 'test-session',
                 sendAndWait: vi.fn().mockResolvedValue('response'),
                 destroy: vi.fn().mockResolvedValue(undefined),
+                setModel: vi.fn().mockResolvedValue(undefined),
             })
             : typeof sessionOrFactory === 'function'
                 ? vi.fn().mockImplementation(() => Promise.resolve(sessionOrFactory()))

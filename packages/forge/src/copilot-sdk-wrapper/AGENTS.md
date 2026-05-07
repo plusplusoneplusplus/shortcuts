@@ -19,7 +19,7 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
-| `model-reasoning.ts` | Metadata-aware reasoning-effort resolver; raw `capabilities.supports.reasoning_effort` values override top-level SDK contract fields when present |
+| `model-reasoning.ts` | Metadata-aware model/reasoning resolver; raw `capabilities.supports.reasoning_effort` values override top-level SDK contract fields when present, and variant IDs with a `capabilities.family` base are sent to the SDK as the base model plus resolved reasoning effort |
 | `mcp-config-loader.ts` | Loads/merges MCP server config from `~/.copilot/mcp-config.json` |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` to skip trust dialog |
 | `image-converter.ts` | Image file -> data-URL conversion for inline dashboard rendering |
@@ -65,12 +65,13 @@ Each `sendMessage()` call in `RequestRunner.send()`:
 2. createClient(cwd) -> spawn fresh child process
 3. Build ISessionOptions (model, streaming, tools, MCP config, permissions)
 4. Session creation or resume (falls back to create on resume failure)
-5. onSessionCreated callback fires
-6. Attach optional `AbortSignal` listener that aborts/destroys the session on cancellation
-7. sessionManager.track(session)
-8. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
-9. Empty-response handling (turnCount>0 = success)
-10. FINALLY: remove abort listener, sessionManager.untrack + session.destroy + client.stop
+5. For model + reasoning-effort requests, call `session.setModel(model, { reasoningEffort })` after session creation/resume instead of passing both fields to `createSession`
+6. onSessionCreated callback fires
+7. Attach optional `AbortSignal` listener that aborts/destroys the session on cancellation
+8. sessionManager.track(session)
+9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
+10. Empty-response handling (turnCount>0 = success)
+11. FINALLY: remove abort listener, sessionManager.untrack + session.destroy + client.stop
 ```
 
 ## Streaming Internals (`StreamingSession.run()`)

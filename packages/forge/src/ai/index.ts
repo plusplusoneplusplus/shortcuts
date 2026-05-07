@@ -83,6 +83,8 @@ export {
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,
+    resolveReasoningSelection,
+    ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
     ModelInfo,
     // MCP Config Loader

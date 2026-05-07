@@ -10,6 +10,11 @@ export interface ResolveReasoningEffortOptions {
     model?: ModelInfo;
 }
 
+export interface ResolvedReasoningSelection {
+    modelId?: string;
+    reasoningEffort?: ReasoningEffort;
+}
+
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
     return typeof value === 'string' && (KNOWN_REASONING_EFFORTS as readonly string[]).includes(value);
 }
@@ -99,4 +104,22 @@ export function resolveReasoningEffort(options: ResolveReasoningEffortOptions): 
     }
 
     return supportedEfforts[0];
+}
+
+export function resolveReasoningSelection(options: ResolveReasoningEffortOptions): ResolvedReasoningSelection {
+    const reasoningEffort = resolveReasoningEffort(options);
+    const rawCapabilityEfforts = normalizeReasoningEffortList(options.model?.capabilities?.supports?.reasoning_effort);
+    const family = options.model?.capabilities?.family;
+    const modelId = reasoningEffort
+        && rawCapabilityEfforts?.includes(reasoningEffort)
+        && typeof family === 'string'
+        && family.length > 0
+        && family !== options.modelId
+        ? family
+        : options.modelId;
+
+    return {
+        modelId,
+        reasoningEffort,
+    };
 }

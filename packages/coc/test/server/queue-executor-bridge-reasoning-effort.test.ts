@@ -70,6 +70,7 @@ function modelInfo(
         supportedEfforts?: string[];
         defaultEffort?: string;
         supportsReasoning?: boolean;
+        family?: string;
     },
 ): ModelInfo {
     const supportsReasoning = options.supportsReasoning
@@ -79,6 +80,7 @@ function modelInfo(
         id,
         name: id,
         capabilities: {
+            ...(options.family ? { family: options.family } : {}),
             supports: {
                 vision: false,
                 reasoningEffort: supportsReasoning,
@@ -202,6 +204,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         getModelSpy.mockImplementation((id: string) =>
             id === 'claude-opus-4.7-high'
                 ? modelInfo(id, {
+                    family: 'claude-opus-4.7',
                     rawEfforts: ['high'],
                     supportedEfforts: ['medium'],
                     defaultEffort: 'medium',
@@ -216,6 +219,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('claude-opus-4.7');
         expect(call.reasoningEffort).toBe('high');
     });
 
@@ -229,6 +233,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         getModelSpy.mockImplementation((id: string) =>
             warmed && id === 'claude-opus-4.7-high'
                 ? modelInfo(id, {
+                    family: 'claude-opus-4.7',
                     rawEfforts: ['high'],
                     supportedEfforts: ['medium'],
                     defaultEffort: 'medium',
@@ -244,6 +249,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         expect(initializeSpy).toHaveBeenCalledWith(sdkMocks.service);
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('claude-opus-4.7');
         expect(call.reasoningEffort).toBe('high');
     });
 
@@ -284,6 +290,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         getModelSpy.mockImplementation((id: string) =>
             id === 'claude-opus-4.7-high'
                 ? modelInfo(id, {
+                    family: 'claude-opus-4.7',
                     rawEfforts: ['high'],
                     supportedEfforts: ['medium'],
                     defaultEffort: 'medium',
@@ -301,6 +308,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('claude-opus-4.7');
         expect(call.reasoningEffort).toBe('high');
     });
 });

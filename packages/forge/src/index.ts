@@ -160,6 +160,8 @@ export {
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,
+    resolveReasoningSelection,
+    ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
     ModelInfo,
     // SDK types

@@ -126,11 +126,13 @@ export class RequestRunner {
                 },
             };
 
-            if (options.model) sessionOptions.model = options.model;
+            const switchModelAfterSessionCreate = !!(options.model && options.reasoningEffort);
+
+            if (options.model && !switchModelAfterSessionCreate) sessionOptions.model = options.model;
             if (options.streaming) sessionOptions.streaming = options.streaming;
             if (options.tools) sessionOptions.tools = options.tools;
             if (options.systemMessage) sessionOptions.systemMessage = options.systemMessage;
-            if (options.reasoningEffort) sessionOptions.reasoningEffort = options.reasoningEffort;
+            if (options.reasoningEffort && !switchModelAfterSessionCreate) sessionOptions.reasoningEffort = options.reasoningEffort;
             if (options.availableTools) sessionOptions.availableTools = options.availableTools;
             if (options.excludedTools) sessionOptions.excludedTools = options.excludedTools;
             if (options.skillDirectories?.length) sessionOptions.skillDirectories = options.skillDirectories;
@@ -189,6 +191,11 @@ export class RequestRunner {
 
             const sessionLog = createSessionLogger(session.sessionId);
             options.onSessionCreated?.(session.sessionId);
+
+            if (switchModelAfterSessionCreate) {
+                await session.setModel(options.model!, { reasoningEffort: options.reasoningEffort });
+                sessionLog.debug({ model: options.model, reasoningEffort: options.reasoningEffort }, 'Model set after session creation');
+            }
 
             const abortSession = () => {
                 sessionLog.debug('Abort signal received — destroying session');
