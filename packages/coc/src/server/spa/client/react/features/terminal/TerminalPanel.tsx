@@ -89,6 +89,7 @@ export function TerminalPanel({
     const termRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
+    const attachSessionId = connectionMode === 'attach' ? serverSessionId : undefined;
 
     const { connect, disconnect, sendInput, sendResize } = useTerminalWebSocket({
         onMessage: (msg) => {
@@ -160,7 +161,7 @@ export function TerminalPanel({
     // Connect to WebSocket on mount
     useEffect(() => {
         if (!termRef.current || !fitAddonRef.current) return;
-        if (connectionMode === 'attach' && !serverSessionId) {
+        if (connectionMode === 'attach' && !attachSessionId) {
             console.error('Cannot attach terminal without a server session id');
             return;
         }
@@ -168,12 +169,12 @@ export function TerminalPanel({
         fitAddon.fit();
         const { cols, rows } = xtermRef.current!;
         if (connectionMode === 'attach') {
-            connect(workspaceId, cols, rows, { mode: 'attach', sessionId: serverSessionId });
+            connect(workspaceId, cols, rows, { mode: 'attach', sessionId: attachSessionId });
         } else {
             connect(workspaceId, cols, rows, { mode: 'create' });
         }
         return () => disconnect();
-    }, [workspaceId, connectionMode, serverSessionId]);
+    }, [workspaceId, connectionMode, attachSessionId, connect, disconnect]);
 
     // User input → WebSocket
     useEffect(() => {
