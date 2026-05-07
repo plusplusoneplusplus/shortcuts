@@ -1220,6 +1220,42 @@ describe('Queue Handler', () => {
             expect(repoTwo).toBeDefined();
             expect(repoTwo.isPaused).toBe(true);
         });
+
+        it('pause per-repo returns 200 even when no task has been enqueued yet', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-no-queue', name: 'nq', rootPath: '/repo/no-queue' });
+
+            const res = await postJSON(`${srv.url}/api/queue/pause?repoId=ws-no-queue`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.paused).toBe(true);
+            expect(body.stats.isPaused).toBe(true);
+        });
+
+        it('resume per-repo returns 200 even when no task has been enqueued yet', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-no-queue-r', name: 'nqr', rootPath: '/repo/no-queue-r' });
+
+            // pause first so resume has something to clear
+            await postJSON(`${srv.url}/api/queue/pause?repoId=ws-no-queue-r`, {});
+            const res = await postJSON(`${srv.url}/api/queue/resume?repoId=ws-no-queue-r`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.paused).toBe(false);
+            expect(body.stats.isPaused).toBe(false);
+        });
+
+        it('unknown repoId returns 404 for pause', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/pause?repoId=completely-unknown`, {});
+            expect(res.status).toBe(404);
+        });
+
+        it('unknown repoId returns 404 for resume', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/resume?repoId=completely-unknown`, {});
+            expect(res.status).toBe(404);
+        });
     });
 
     // ========================================================================
@@ -1299,6 +1335,67 @@ describe('Queue Handler', () => {
             expect(body.repoId).toBe(repoId);
             expect(body.isAutopilotPaused).toBe(true);
             expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('pause-autopilot for repo with zero queued tasks returns 200', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-empty-ap', name: 'empty', rootPath: '/repo/empty-ap' });
+
+            const res = await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=ws-empty-ap`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.repoId).toBe('ws-empty-ap');
+            expect(body.isAutopilotPaused).toBe(true);
+            expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('resume-autopilot for repo with zero queued tasks returns 200', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-empty-ra', name: 'emptyra', rootPath: '/repo/empty-ra' });
+
+            // pause first
+            await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=ws-empty-ra`, {});
+            const res = await postJSON(`${srv.url}/api/queue/resume-autopilot?repoId=ws-empty-ra`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isAutopilotPaused).toBe(false);
+            expect(body.stats.isAutopilotPaused).toBe(false);
+        });
+
+        it('GET /api/queue/stats reflects isAutopilotPaused after pause-autopilot on empty repo', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-stats-empty', name: 'statsempty', rootPath: '/repo/stats-empty' });
+
+            await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=ws-stats-empty`, {});
+
+            // stats endpoint uses read-only lookup; manager was materialised above so it must find it
+            const statsRes = await request(`${srv.url}/api/queue/stats?repoId=ws-stats-empty`);
+            expect(statsRes.status).toBe(200);
+            const stats = JSON.parse(statsRes.body).stats;
+            expect(stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('pause-autopilot then enqueue keeps task in queued state', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-pause-enq', name: 'pauseenq', rootPath: '/repo/pause-enq' });
+
+            // Pause autopilot before any task is enqueued
+            const pauseRes = await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=ws-pause-enq`, {});
+            expect(pauseRes.status).toBe(200);
+
+            // Enqueue a task for that repo
+            const enqRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'hello', workingDirectory: '/repo/pause-enq' },
+            }));
+            expect(enqRes.status).toBe(201);
+            const task = JSON.parse(enqRes.body).task;
+            expect(task.status).toBe('queued');
+
+            // No running tasks for the repo
+            const listRes = await request(`${srv.url}/api/queue?repoId=ws-pause-enq`);
+            const listBody = JSON.parse(listRes.body);
+            expect(listBody.running).toHaveLength(0);
+            expect(listBody.queued.length).toBeGreaterThanOrEqual(1);
         });
 
         it('GET /api/queue/:id guard — pause-autopilot and resume-autopilot should not match task ID route', async () => {

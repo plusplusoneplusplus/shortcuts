@@ -30,6 +30,7 @@ import * as url from 'url';
 import {
     getAggregateStats,
     getManagerByRepoIdentifier,
+    getOrCreateManagerByRepoIdentifier,
     getRepoIdentifierFromQuery,
     type QueueRouteContext,
 } from './queue-shared';
@@ -86,7 +87,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             if (repoId) {
-                const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -118,7 +119,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
-                const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -152,7 +153,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             if (repoId) {
-                const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -184,7 +185,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             const repoId = getRepoIdentifierFromQuery(parsed.query);
 
             if (repoId) {
-                const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }

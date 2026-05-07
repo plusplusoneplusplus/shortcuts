@@ -482,6 +482,56 @@ export async function getManagerByRepoIdentifier(
 }
 
 /**
+ * Resolve or lazily create a manager for the given repoId.
+ *
+ * Unlike `getManagerByRepoIdentifier`, this helper will materialise a new
+ * per-repo `TaskQueueManager` when the repoId maps to a registered workspace
+ * but no queue exists yet. Global pause / autopilot-pause state is applied to
+ * the freshly created manager so existing global semantics are honoured.
+ *
+ * Returns `undefined` only when the repoId is genuinely unknown (not registered
+ * in the process store). Callers should still return 404 in that case.
+ */
+export async function getOrCreateManagerByRepoIdentifier(
+    repoId: string,
+    bridge: MultiRepoQueueRouter,
+    store: ProcessStore | undefined,
+    state: QueueGlobalState
+): Promise<TaskQueueManager | undefined> {
+    // Fast path: manager already exists.
+    const existing = await getManagerByRepoIdentifier(repoId, bridge, store);
+    if (existing) {
+        return existing;
+    }
+
+    // Slow path: workspace is registered but queue hasn't been materialised yet.
+    if (!store) {
+        return undefined;
+    }
+    const workspaces = await store.getWorkspaces();
+    const workspace = workspaces.find((ws: any) => ws.id === repoId);
+    if (!workspace?.rootPath) {
+        return undefined;
+    }
+
+    // Materialise the queue (get-or-create) and wire up the executor bridge.
+    const rootPath = workspace.rootPath;
+    bridge.getOrCreateBridge(rootPath);
+    const manager = bridge.registry.getQueueForRepo(rootPath);
+
+    // Mirror current global pause / autopilot-pause state onto the new manager.
+    normalizeGlobalQueueState(state);
+    if (state.globalPaused && !manager.getStats().isPaused) {
+        manager.pause(state.globalPausedUntil);
+    }
+    if (state.globalAutopilotPaused && !manager.getStats().isAutopilotPaused) {
+        manager.pauseAutopilot(state.globalAutopilotPausedUntil);
+    }
+
+    return manager;
+}
+
+/**
  * Build a context prompt from prior conversation turns for cold session resume.
  */
 export function buildContextPrompt(turns: ConversationTurn[]): string {
