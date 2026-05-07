@@ -8,27 +8,26 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { MEMORY_GUIDANCE, MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
-import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { MEMORY_SCHEMA, MEMORY_GUIDANCE, SECURITY_PATTERNS_DESCRIPTION, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody } from '../core/api-handler';
-import { handleAPIError, invalidJSON, badRequest, forbidden } from '../errors';
-import type { Route } from '../types';
-import { DataWiper } from '../storage/data-wiper';
+import { parseBody, sendJSON } from '../core/api-handler';
+import { badRequest, forbidden, handleAPIError, invalidJSON } from '../errors';
 import { exportAllData } from '../storage/data-exporter';
 import { importData } from '../storage/data-importer';
-import { validateExportPayload } from '../storage/export-import-types';
-import type { CoCExportPayload, ImportMode } from '../storage/export-import-types';
-import type { ProcessWebSocketServer } from '../streaming/websocket';
-import type { QueuePersistence, CLIConfig } from '../storage/export-import-types';
-import { sendSSE } from '../wiki/ask-handler';
-import { StorageMigrationEngine } from '../storage/storage-migration';
-import type { MigrationProgress } from '../storage/storage-migration';
-import { DirectoryHistoryImporter } from '../storage/directory-history-importer';
+import { DataWiper } from '../storage/data-wiper';
 import type { ImportProgress } from '../storage/directory-history-importer';
+import { DirectoryHistoryImporter } from '../storage/directory-history-importer';
+import type { CLIConfig, CoCExportPayload, ImportMode, QueuePersistence } from '../storage/export-import-types';
+import { validateExportPayload } from '../storage/export-import-types';
+import type { MigrationProgress } from '../storage/storage-migration';
+import { StorageMigrationEngine } from '../storage/storage-migration';
+import type { ProcessWebSocketServer } from '../streaming/websocket';
+import type { Route } from '../types';
+import { sendSSE } from '../wiki/ask-handler';
 
 // ============================================================================
 // Token Management
@@ -104,14 +103,7 @@ function resetMigrateToken() { migrateTokenManager.reset(); }
 
 function resetDirectoryImportToken() { directoryImportTokenManager.reset(); }
 
-export {
-    TokenManager, TOKEN_EXPIRY_MS,
-    generateWipeToken, validateWipeToken, resetWipeToken,
-    generateImportToken, validateImportToken, resetImportToken,
-    generateMigrateToken, validateMigrateToken, resetMigrateToken,
-    resetDirectoryImportToken,
-    wipeTokenManager, importTokenManager, migrateTokenManager, directoryImportTokenManager,
-};
+export { directoryImportTokenManager, generateImportToken, generateMigrateToken, generateWipeToken, importTokenManager, migrateTokenManager, resetDirectoryImportToken, resetImportToken, resetMigrateToken, resetWipeToken, TOKEN_EXPIRY_MS, TokenManager, validateImportToken, validateMigrateToken, validateWipeToken, wipeTokenManager };
 
 // ============================================================================
 // Route Registration
@@ -1036,7 +1028,7 @@ export function getBuiltInPrompts(): Record<string, BuiltInPrompt> {
             group: 'Pipeline',
             source: 'forge/tasks/task-prompt-builder.ts',
             description: 'System message governing plan document structure and output location',
-            text: `You are a plan generator. Your sole responsibility is to produce a single .plan.md file.
+            text: `You are a plan generator. Your sole responsibility is to produce a .plan.md file(s).
 
 ## Output Rules
 \${locationBlock}

@@ -421,7 +421,7 @@ export function buildPlanGenerationSystemPrompt(options: PlanSystemPromptOptions
         ? buildAutoFolderLocationBlock(toForwardSlashes(tasksRoot), existingFolders || [])
         : buildFixedLocationBlock(targetPath);
 
-    return `You are a plan generator. Your sole responsibility is to produce a single .plan.md file.
+    return `You are a plan generator. Your sole responsibility is to produce a .plan.md file(s).
 
 ## Output Rules
 ${locationBlock}
