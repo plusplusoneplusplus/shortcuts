@@ -55,6 +55,13 @@ export {
     type HtmlEmbedOptions,
 } from './html-embed';
 
+export {
+    DEFAULT_MAP_EMBED_HEIGHT,
+    MAX_MAP_EMBED_HEIGHT,
+    MIN_MAP_EMBED_HEIGHT,
+    isEmbeddableMapUrl,
+} from './map-embed';
+
 // Cursor management
 export {
     CursorPosition,

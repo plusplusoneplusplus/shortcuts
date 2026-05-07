@@ -7,10 +7,63 @@
 
 import { marked } from 'marked';
 import TurndownService from 'turndown';
+import { isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
 marked.setOptions({ gfm: true, breaks: true });
+
+function escapeAttr(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+    return value
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+}
+
+function plainLinkLabel(renderedText: string, fallback: string): string {
+    const withoutTags = renderedText.replace(/<[^>]*>/g, '');
+    return decodeBasicHtmlEntities(withoutTags).trim() || fallback;
+}
+
+function escapeMarkdownLinkLabel(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+}
+
+function escapeHtmlText(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function renderDefaultLink(href: string, title: string | null | undefined, text: string): string {
+    const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+    return `<a href="${escapeAttr(href ?? '')}"${titleAttr}>${text}</a>`;
+}
+
+const mapLinkRenderer: marked.MarkedExtension = {
+    renderer: {
+        link(href: string, title: string | null | undefined, text: string): string {
+            if (isEmbeddableMapUrl(href)) {
+                const label = plainLinkLabel(text, href);
+                return `<div class="md-map-embed" data-map-url="${escapeAttr(href)}" data-map-label="${escapeAttr(label)}"></div>`;
+            }
+            return renderDefaultLink(href, title, text);
+        },
+    },
+};
+marked.use(mapLinkRenderer);
 
 // Add [[note:...]] wiki-link syntax support to marked
 const noteLinkExtension: marked.MarkedExtension = {
@@ -150,6 +203,24 @@ turndown.addRule('resizableImage', {
         const width = el.getAttribute('width') ?? '';
         const altAttr = alt ? ` alt="${alt}"` : '';
         return `<img src="${src}"${altAttr} width="${width}" />`;
+    },
+});
+
+// Google Maps embeds serialize back to ordinary markdown links.
+turndown.addRule('mapEmbed', {
+    filter(node) {
+        return (
+            node.nodeName === 'DIV' &&
+            (node as Element).classList.contains('md-map-embed') &&
+            node.hasAttribute('data-map-url')
+        );
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const url = el.getAttribute('data-map-url') ?? '';
+        if (!url) return '';
+        const label = el.getAttribute('data-map-label')?.trim() || url;
+        return `[${escapeMarkdownLinkLabel(label)}](${url})`;
     },
 });
 
@@ -336,6 +407,24 @@ function unwrapSingleParagraphListItems(html: string): string {
     );
 }
 
+function getHtmlAttr(attrs: string, name: string): string {
+    const re = new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i');
+    const match = re.exec(attrs);
+    return match ? decodeBasicHtmlEntities(match[2]) : '';
+}
+
+function serializeMapEmbedPlaceholders(html: string): string {
+    return html.replace(
+        /<div\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bmd-map-embed\b[^"']*\1)([^>]*)>\s*<\/div>/gi,
+        (_match, _quote: string, attrs: string) => {
+            const url = getHtmlAttr(attrs, 'data-map-url');
+            if (!url) return '';
+            const label = getHtmlAttr(attrs, 'data-map-label').trim() || url;
+            return `<p><a href="${escapeAttr(url)}">${escapeHtmlText(label)}</a></p>`;
+        },
+    );
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -360,7 +449,7 @@ export function htmlToMarkdown(html: string): string {
     if (!html) return '';
     // Tiptap returns `<p></p>` for an empty document
     if (/^<p>\s*<\/p>$/i.test(html.trim())) return '';
-    let md = turndown.turndown(unwrapSingleParagraphListItems(html));
+    let md = turndown.turndown(unwrapSingleParagraphListItems(serializeMapEmbedPlaceholders(html)));
     // Ensure single trailing newline
     md = md.replace(/\n*$/, '\n');
     return md;

@@ -95,6 +95,22 @@ describe('noteMarkdown', () => {
             expect(html).toContain('text');
         });
 
+        it('converts allowlisted Google Maps links to map embed placeholders', () => {
+            const url = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
+            const html = markdownToHtml(`[Lake Chelan](${url})`);
+            expect(html).toContain('class="md-map-embed"');
+            expect(html).toContain(`data-map-url="${url}"`);
+            expect(html).toContain('data-map-label="Lake Chelan"');
+            expect(html).not.toContain('<a href');
+        });
+
+        it('leaves Google Maps share links as normal hyperlinks', () => {
+            const html = markdownToHtml('[Shared map](https://maps.app.goo.gl/example)');
+            expect(html).toContain('<a');
+            expect(html).toContain('href="https://maps.app.goo.gl/example"');
+            expect(html).not.toContain('md-map-embed');
+        });
+
         it('converts horizontal rules', () => {
             const html = markdownToHtml('---');
             expect(html).toContain('<hr');
@@ -187,6 +203,12 @@ describe('noteMarkdown', () => {
             expect(norm(md)).toContain('graph TD');
             expect(norm(md)).toContain('A --> B');
             expect(norm(md)).toContain('```');
+        });
+
+        it('converts map embed placeholders back to plain markdown links', () => {
+            const url = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
+            const md = htmlToMarkdown(`<div class="md-map-embed" data-map-url="${url}" data-map-label="Lake Chelan"></div>`);
+            expect(md).toBe(`[Lake Chelan](${url})\n`);
         });
     });
 
@@ -281,6 +303,11 @@ describe('noteMarkdown', () => {
             const rt = norm(roundTrip(md));
             expect(rt).toContain('[text]');
             expect(rt).toContain('https://example.com');
+        });
+
+        it('allowlisted Google Maps link', () => {
+            const md = '[Lake Chelan](https://www.google.com/maps/embed?pb=!1m18!1m12)';
+            expect(norm(roundTrip(md))).toBe(md);
         });
 
         it('horizontal rule', () => {

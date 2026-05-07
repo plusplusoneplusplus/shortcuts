@@ -18,6 +18,7 @@ import { useMermaid } from '../hooks/ui/useMermaid';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
+import { mountMapEmbeds } from './mapEmbedMount';
 
 export interface MarkdownSectionData {
     heading: string;
@@ -55,6 +56,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         }
         if (!hideSectionCopy) {
             mountHtmlEmbeds(containerRef.current);
+            mountMapEmbeds(containerRef.current);
         }
     }, [html, hideSectionCopy]);
 

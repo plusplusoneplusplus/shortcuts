@@ -12,6 +12,7 @@ export type { InteractiveTableProps } from './InteractiveTable';
 export { extractTablesFromHtml, MIN_ROWS, MIN_COLS } from './extractTablesFromHtml';
 export type { ExtractedTable, ExtractedTableData, ColumnAlignment } from './extractTablesFromHtml';
 export { mountHtmlEmbeds } from './htmlEmbedMount';
+export { mountMapEmbeds } from './mapEmbedMount';
 export { SourceEditor } from './SourceEditor';
 export type { SourceEditorProps } from './SourceEditor';
 export { RunSkillPanel } from './RunSkillPanel';

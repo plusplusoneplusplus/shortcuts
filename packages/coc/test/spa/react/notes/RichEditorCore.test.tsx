@@ -10,6 +10,7 @@ const mockGetHTML = vi.fn(() => '<p>content</p>');
 let capturedOnUpdate: ((payload: { editor: unknown }) => void) | null = null;
 let capturedEditorProps: any = null;
 let capturedLinkConfig: any = null;
+let capturedExtensions: unknown[] = [];
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -24,9 +25,10 @@ const mockEditor = {
 };
 
 vi.mock('@tiptap/react', () => ({
-    useEditor: (config: { onUpdate?: (payload: { editor: unknown }) => void; editorProps?: any }) => {
+    useEditor: (config: { onUpdate?: (payload: { editor: unknown }) => void; editorProps?: any; extensions?: unknown[] }) => {
         if (config?.onUpdate) capturedOnUpdate = config.onUpdate;
         if (config?.editorProps) capturedEditorProps = config.editorProps;
+        capturedExtensions = config?.extensions ?? [];
         return mockEditor;
     },
     EditorContent: ({ editor }: { editor: unknown }) =>
@@ -57,6 +59,11 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock',
     () => ({ MermaidBlock: {} }),
 );
+const mockMapBlock = vi.hoisted(() => ({}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock',
+    () => ({ MapBlock: mockMapBlock }),
+);
 vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
     () => ({ CommentExtension: { configure: () => ({}) } }),
@@ -73,6 +80,7 @@ describe('RichEditorCore', () => {
         capturedOnUpdate = null;
         capturedEditorProps = null;
         capturedLinkConfig = null;
+        capturedExtensions = [];
     });
 
     afterEach(() => {
@@ -168,6 +176,12 @@ describe('RichEditorCore', () => {
             target: '_blank',
             title: getLinkOpenTitle(),
         });
+    });
+
+    it('registers the map block before StarterKit so map placeholders parse as atom blocks', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedExtensions[0]).toBe(mockMapBlock);
     });
 
     it('uses the Command key in link tooltips on macOS platforms', () => {

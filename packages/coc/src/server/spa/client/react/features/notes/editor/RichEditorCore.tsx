@@ -21,6 +21,7 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { Highlight } from '@tiptap/extension-highlight';
 import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
+import { MapBlock } from './extensions/mapBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
@@ -85,6 +86,7 @@ export function RichEditorCore({
     const editor = useEditor({
         shouldRerenderOnTransaction: true,
         extensions: [
+            MapBlock,
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
