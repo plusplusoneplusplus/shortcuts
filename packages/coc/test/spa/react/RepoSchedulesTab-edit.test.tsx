@@ -63,6 +63,10 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
+    useWorkflowsEnabled: () => true,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>

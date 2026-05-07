@@ -7,13 +7,16 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockFeatureFlags } = vi.hoisted(() => ({
     mockSchedulesClient: {
         create: vi.fn(),
         update: vi.fn(),
     },
     mockModelsClient: {
         list: vi.fn(),
+    },
+    mockFeatureFlags: {
+        workflowsEnabled: true,
     },
 }));
 
@@ -27,6 +30,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
+    useWorkflowsEnabled: () => mockFeatureFlags.workflowsEnabled,
 }));
 
 const mockFetch = vi.fn().mockResolvedValue({
@@ -58,6 +65,7 @@ beforeEach(() => {
     mockSchedulesClient.update.mockResolvedValue({});
     mockModelsClient.list.mockResolvedValue([]);
     mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
+    mockFeatureFlags.workflowsEnabled = true;
 });
 
 describe('CreateScheduleForm — default progressive UI', () => {
@@ -65,6 +73,7 @@ describe('CreateScheduleForm — default progressive UI', () => {
         await renderForm();
 
         expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
+        expect(screen.getByTestId('schedule-action-workflow')).toBeTruthy();
         expect(screen.getByTestId('schedule-action-prompt')).toBeTruthy();
         expect(screen.getByTestId('schedule-preset-picker')).toBeTruthy();
         expect(screen.getByTestId('schedule-summary')).toBeTruthy();
@@ -91,6 +100,37 @@ describe('CreateScheduleForm — default progressive UI', () => {
         await waitFor(() => {
             expect(screen.getByTestId('target-workflow-input')).toBeTruthy();
         });
+    });
+
+    it('hides Workflow action and description text when workflows are disabled', async () => {
+        mockFeatureFlags.workflowsEnabled = false;
+
+        await renderForm();
+
+        expect(screen.queryByTestId('schedule-action-workflow')).toBeNull();
+        expect(screen.getByText('Automate a prompt, script, or notes task. Start simple; open Advanced for model, cron, output, and failure settings.')).toBeTruthy();
+        expect(screen.queryByText(/Automate a prompt, workflow/i)).toBeNull();
+    });
+
+    it('falls back to Prompt when editing a workflow-backed schedule while workflows are disabled', async () => {
+        mockFeatureFlags.workflowsEnabled = false;
+
+        await renderForm({
+            mode: 'edit',
+            scheduleId: 'sched-workflow',
+            initialValues: {
+                name: 'Existing Workflow Schedule',
+                target: 'workflows/daily-report/pipeline.yaml',
+                targetType: 'prompt',
+                cron: '0 9 * * *',
+                params: { pipeline: 'workflows/daily-report/pipeline.yaml' },
+            },
+        });
+
+        expect(screen.queryByTestId('schedule-action-workflow')).toBeNull();
+        expect(screen.getByTestId('schedule-action-prompt').textContent).toContain('Selected');
+        expect(screen.queryByTestId('target-workflow-input')).toBeNull();
+        expect((screen.getByTestId('target-input') as HTMLTextAreaElement).value).toBe('');
     });
 
     it('shows prompt fields and hides script controls for Prompt', async () => {

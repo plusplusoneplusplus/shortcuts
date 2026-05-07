@@ -78,6 +78,10 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
+    useWorkflowsEnabled: () => true,
+}));
+
 // Default breakpoint mock — desktop
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),

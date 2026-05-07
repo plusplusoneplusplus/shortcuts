@@ -8,6 +8,7 @@ import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import type { WorkflowDefinition } from '@plusplusoneplusplus/coc-client';
+import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 
 type ActionKind = 'workflow' | 'prompt' | 'script' | 'notes-auto-commit';
 type SchedulePreset = 'every-30-minutes' | 'hourly' | 'daily-9' | 'weekdays-9' | 'custom-interval' | 'custom-cron';
@@ -194,16 +195,23 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     scheduleId?: string;
     initialValues?: ScheduleFormInitialValues;
 }) {
-    const initialActionKind = inferActionKind(initialValues);
+    const workflowsEnabled = useWorkflowsEnabled();
+    const inferredActionKind = inferActionKind(initialValues);
+    const workflowActionBlocked = !workflowsEnabled && inferredActionKind === 'workflow';
+    const initialActionKind = workflowActionBlocked ? 'prompt' : inferredActionKind;
     const initialPreset = inferSchedulePreset(initialValues?.cron);
     const cronParsed = initialValues?.cron ? parseCronToInterval(initialValues.cron) : null;
     const initialTemplateId = templateIdForAction(initialActionKind);
     const initialCron = initialValues?.cron ?? cronForPreset(initialPreset) ?? DEFAULT_CRON;
+    const initialTarget = workflowActionBlocked ? '' : initialValues?.target ?? '';
+    const initialParams = workflowActionBlocked
+        ? {}
+        : initialValues?.params ? { ...initialValues.params } : applyTemplateParams(initialTemplateId);
 
     const [actionKind, setActionKind] = useState<ActionKind>(initialActionKind);
     const [schedulePreset, setSchedulePreset] = useState<SchedulePreset>(initialPreset);
     const [name, setName] = useState(initialValues?.name ?? defaultNameForAction(initialActionKind));
-    const [target, setTarget] = useState(initialValues?.target ?? '');
+    const [target, setTarget] = useState(initialTarget);
     const [targetType, setTargetType] = useState<TargetType>(initialValues?.targetType ?? (initialActionKind === 'script' || initialActionKind === 'notes-auto-commit' ? 'script' : 'prompt'));
     const [mode, setMode] = useState<TimingMode>(initialPreset === 'custom-interval' ? 'interval' : 'cron');
     const [cron, setCron] = useState(initialCron);
@@ -217,11 +225,24 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(initialTemplateId);
-    const [params, setParams] = useState<Record<string, string>>(initialValues?.params ? { ...initialValues.params } : applyTemplateParams(initialTemplateId));
+    const [params, setParams] = useState<Record<string, string>>(initialParams);
     const [pipelines, setPipelines] = useState<WorkflowDefinition[]>([]);
     const [pipelinesLoading, setPipelinesLoading] = useState(false);
     const [manualPipeline, setManualPipeline] = useState(false);
     const [advancedOpen, setAdvancedOpen] = useState(hasAdvancedValues(initialValues, workspaceId, initialPreset));
+
+    useEffect(() => {
+        if (workflowsEnabled || actionKind !== 'workflow') {
+            return;
+        }
+        setActionKind('prompt');
+        setSelectedTemplate(null);
+        setTarget('');
+        setTargetType('prompt');
+        setParams({});
+        setManualPipeline(false);
+        setName(prev => prev === defaultNameForAction('workflow') ? defaultNameForAction('prompt') : prev);
+    }, [workflowsEnabled, actionKind]);
 
     useEffect(() => {
         if (selectedTemplate !== TaskDefs.runWorkflow.kind) {
@@ -381,6 +402,12 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     };
 
     const selectedTemplateDef = selectedTemplate ? getTemplate(selectedTemplate) : null;
+    const visibleActionCards = ACTION_CARDS.filter(card => card.kind !== 'workflow' || workflowsEnabled);
+    const formDescription = formMode === 'edit'
+        ? 'Update what runs, when it runs, or advanced execution options.'
+        : workflowsEnabled
+            ? 'Automate a prompt, workflow, script, or notes task. Start simple; open Advanced for model, cron, output, and failure settings.'
+            : 'Automate a prompt, script, or notes task. Start simple; open Advanced for model, cron, output, and failure settings.';
     const rawCronVisible = mode === 'cron';
     const summary = buildScheduleSummary(
         actionKind,
@@ -403,16 +430,14 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
             <div className="flex flex-col gap-1">
                 <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{formMode === 'edit' ? 'Edit Schedule' : 'New Schedule'}</div>
                 <div className="text-[11px] text-[#616161] dark:text-[#999]">
-                    {formMode === 'edit'
-                        ? 'Update what runs, when it runs, or advanced execution options.'
-                        : 'Automate a prompt, workflow, script, or notes task. Start simple; open Advanced for model, cron, output, and failure settings.'}
+                    {formDescription}
                 </div>
             </div>
 
             <section className="flex flex-col gap-2" aria-label="What should run?">
                 <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">What should run?</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="schedule-action-cards">
-                    {ACTION_CARDS.map(card => {
+                    {visibleActionCards.map(card => {
                         const selected = actionKind === card.kind;
                         return (
                             <button
