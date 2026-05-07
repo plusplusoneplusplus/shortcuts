@@ -14,7 +14,6 @@ interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     reposSidebarCollapsed?: boolean;
     uiLayoutMode?: 'classic' | 'dev-workflow';
-    topBarItemOrder?: string[];
 }
 
 interface PreferencesSectionProps {

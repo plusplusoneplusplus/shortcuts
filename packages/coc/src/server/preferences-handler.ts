@@ -86,9 +86,6 @@ export interface GlobalPreferences {
     gitGroupOrder?: string[];
     /** User-defined display order of individual repository tabs by workspace ID. */
     repoTabOrder?: string[];
-    /** User-defined display order for reorderable dashboard top-bar destination IDs. */
-    topBarItemOrder?: string[];
-
     /** Whether the user has dismissed the welcome modal. */
     hasSeenWelcome?: boolean;
 
@@ -260,15 +257,6 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         );
         if (order.length > 0) {
             result.repoTabOrder = order;
-        }
-    }
-
-    if (Array.isArray(obj.topBarItemOrder)) {
-        const order = (obj.topBarItemOrder as unknown[]).filter(
-            (k): k is string => typeof k === 'string' && k.length > 0
-        );
-        if (order.length > 0) {
-            result.topBarItemOrder = order;
         }
     }
 
