@@ -74,6 +74,16 @@ describe('noteEditor.css theme consistency', () => {
         expect(preCode![0]).toContain('color: inherit');
     });
 
+    // --- Links ---
+
+    it('note editor links always use a pointer cursor', () => {
+        const linkRule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+a\s*\{[^}]+\}/,
+        );
+        expect(linkRule).not.toBeNull();
+        expect(linkRule![0]).toContain('cursor: pointer');
+    });
+
     // --- Mermaid block toolbar button ---
 
     it('mermaid toolbar button has a visible border at rest', () => {

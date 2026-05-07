@@ -9,6 +9,7 @@ const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');
 let capturedOnUpdate: ((payload: { editor: unknown }) => void) | null = null;
 let capturedEditorProps: any = null;
+let capturedLinkConfig: any = null;
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -35,7 +36,14 @@ vi.mock('@tiptap/react', () => ({
 vi.mock('@tiptap/starter-kit', () => ({ StarterKit: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
 vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-link', () => ({ Link: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-link', () => ({
+    Link: {
+        configure: (config: any) => {
+            capturedLinkConfig = config;
+            return {};
+        },
+    },
+}));
 vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-table', () => ({ Table: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
@@ -54,7 +62,7 @@ vi.mock(
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 
-import { RichEditorCore } from '../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore';
+import { getLinkOpenTitle, RichEditorCore } from '../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +72,7 @@ describe('RichEditorCore', () => {
         mockClearContent.mockReset();
         capturedOnUpdate = null;
         capturedEditorProps = null;
+        capturedLinkConfig = null;
     });
 
     afterEach(() => {
@@ -147,6 +156,28 @@ describe('RichEditorCore', () => {
         render(<RichEditorCore />);
         expect(capturedEditorProps).toBeDefined();
         expect(typeof capturedEditorProps.handleClick).toBe('function');
+    });
+
+    it('configures note links with a platform-aware modifier-click tooltip', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedLinkConfig).toBeDefined();
+        expect(capturedLinkConfig.openOnClick).toBe(false);
+        expect(capturedLinkConfig.HTMLAttributes).toMatchObject({
+            rel: 'noopener noreferrer',
+            target: '_blank',
+            title: getLinkOpenTitle(),
+        });
+    });
+
+    it('uses the Command key in link tooltips on macOS platforms', () => {
+        expect(getLinkOpenTitle('MacIntel')).toBe('⌘+Click to open link');
+        expect(getLinkOpenTitle('iPhone')).toBe('⌘+Click to open link');
+    });
+
+    it('uses the Control key in link tooltips on non-macOS platforms', () => {
+        expect(getLinkOpenTitle('Win32')).toBe('Ctrl+Click to open link');
+        expect(getLinkOpenTitle('Linux x86_64')).toBe('Ctrl+Click to open link');
     });
 
     it('handleClick opens link when Ctrl is held', () => {

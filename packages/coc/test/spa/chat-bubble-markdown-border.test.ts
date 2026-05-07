@@ -38,6 +38,14 @@ describe('chat-message-content .markdown-body border styles', () => {
         expect(body).toContain('background:');
     });
 
+    it('uses a pointer cursor on hovered chat markdown links', () => {
+        const linkHoverRule = css.match(
+            /\.chat-message-content\s+\.markdown-body\s+a:hover\s*\{([^}]+)\}/,
+        );
+        expect(linkHoverRule).toBeTruthy();
+        expect(linkHoverRule![1]).toContain('cursor: pointer');
+    });
+
     it('does not alter the base .markdown-body rule (no border)', () => {
         // The base .markdown-body rule should NOT contain border properties.
         // Match the standalone rule (not preceded by .chat-message-content).

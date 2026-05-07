@@ -45,6 +45,12 @@ export interface RichEditorCoreProps {
     handlePaste?: (view: any, event: ClipboardEvent) => boolean;
 }
 
+export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
+    return /Mac|iPhone|iPad|iPod/i.test(platform)
+        ? '⌘+Click to open link'
+        : 'Ctrl+Click to open link';
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function RichEditorCore({
@@ -88,7 +94,11 @@ export function RichEditorCore({
             TaskItem.configure({ nested: true }),
             Link.configure({
                 openOnClick: false,
-                HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+                HTMLAttributes: {
+                    rel: 'noopener noreferrer',
+                    target: '_blank',
+                    title: getLinkOpenTitle(),
+                },
             }),
             Placeholder.configure({ placeholder }),
             Table.configure({ resizable: false }),

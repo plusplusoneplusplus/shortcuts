@@ -1675,6 +1675,7 @@
 }
 
 .chat-message-content .markdown-body a:hover {
+    cursor: pointer;
     text-decoration: underline;
 }
 
