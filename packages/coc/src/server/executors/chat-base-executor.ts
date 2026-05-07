@@ -22,6 +22,7 @@ import type {
     Attachment,
     AutoFolderContext,
     MemoryToolCaptureContext,
+    ModelInfo,
     CopilotSDKService,
     ProcessStore,
     QueuedTask,
@@ -131,6 +132,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
+    }
+
+    protected async getModelMetadataForReasoning(modelId: string | undefined): Promise<ModelInfo | undefined> {
+        if (!modelId) {
+            return undefined;
+        }
+
+        let model = modelMetadataStore.getModel(modelId);
+        if (!model && !modelMetadataStore.isInitialized()) {
+            await modelMetadataStore.initialize(this.aiService);
+            model = modelMetadataStore.getModel(modelId);
+        }
+        return model;
     }
 
     // ========================================================================
@@ -354,7 +368,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const reasoningEffort = resolveReasoningEffort({
                 modelId: task.config.model,
                 requestedEffort: task.config.reasoningEffort,
-                model: task.config.model ? modelMetadataStore.getModel(task.config.model) : undefined,
+                model: await this.getModelMetadataForReasoning(task.config.model),
             });
 
             const sendOptions = {

@@ -274,15 +274,18 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
+    try {
+        await modelMetadataStore.initialize(resolvedAiService);
+    } catch (err) {
+        process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
+    }
+
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
     try {
         void remoteServerConnector.connectConfigured(remoteServerStore.list());
     } catch (error) {
         process.stderr.write(`[servers] Failed to start DevTunnel connectors: ${error instanceof Error ? error.message : String(error)}\n`);
     }
-    modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
-        process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
-    });
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
 
     const address = server.address();

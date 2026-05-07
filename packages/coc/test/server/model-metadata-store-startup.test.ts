@@ -1,9 +1,8 @@
 /**
  * ModelMetadataStore warm-up at server startup
  *
- * Verifies that createExecutionServer() triggers modelMetadataStore.initialize()
- * as a fire-and-forget side-effect, passing the resolved AI service, and that
- * a rejection from initialize() never prevents the server from starting.
+ * Verifies that createExecutionServer() warms model metadata before listening,
+ * passes the resolved AI service, and still starts when initialization rejects.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -40,11 +39,8 @@ describe('ModelMetadataStore warm-up at server startup', () => {
         }
     });
 
-    it('calls initialize() once after startServer resolves', async () => {
+    it('calls initialize() once before startServer resolves', async () => {
         executionServer = await createExecutionServer({ port: 0, host: 'localhost' });
-
-        // Allow the microtask queue to drain so the fire-and-forget call runs
-        await Promise.resolve();
 
         expect(mockInitialize).toHaveBeenCalledTimes(1);
     });
@@ -52,8 +48,6 @@ describe('ModelMetadataStore warm-up at server startup', () => {
     it('passes resolvedAiService to initialize()', async () => {
         const mockAiService = { listModels: vi.fn().mockResolvedValue([]) } as any;
         executionServer = await createExecutionServer({ port: 0, host: 'localhost', aiService: mockAiService });
-
-        await Promise.resolve();
 
         expect(mockInitialize).toHaveBeenCalledWith(mockAiService);
     });
@@ -64,9 +58,6 @@ describe('ModelMetadataStore warm-up at server startup', () => {
         const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         try {
             executionServer = await createExecutionServer({ port: 0, host: 'localhost' });
-
-            // Let the rejection propagate through the .catch() handler
-            await new Promise((r) => setTimeout(r, 10));
 
             expect(executionServer.server.listening).toBe(true);
         } finally {
@@ -85,8 +76,6 @@ describe('ModelMetadataStore warm-up at server startup', () => {
 
         try {
             executionServer = await createExecutionServer({ port: 0, host: 'localhost' });
-
-            await new Promise((r) => setTimeout(r, 10));
 
             const combined = stderrWrites.join('');
             expect(combined).toContain('[ModelMetadataStore]');

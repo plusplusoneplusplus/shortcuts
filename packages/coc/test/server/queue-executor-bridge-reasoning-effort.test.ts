@@ -124,11 +124,15 @@ function followUpTask(processId: string, model?: string): QueuedTask {
 describe('reasoningEffort wiring in queue executor bridge', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let getModelSpy: ReturnType<typeof vi.spyOn>;
+    let isInitializedSpy: ReturnType<typeof vi.spyOn>;
+    let initializeSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         getModelSpy = vi.spyOn(modelMetadataStore, 'getModel').mockReturnValue(undefined);
+        isInitializedSpy = vi.spyOn(modelMetadataStore, 'isInitialized').mockReturnValue(true);
+        initializeSpy = vi.spyOn(modelMetadataStore, 'initialize').mockResolvedValue(undefined);
         mockLoadImages.mockReset();
         mockLoadImages.mockResolvedValue([]);
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -141,6 +145,8 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
     afterEach(() => {
         getModelSpy.mockRestore();
+        isInitializedSpy.mockRestore();
+        initializeSpy.mockRestore();
     });
 
     // -------------------------------------------------------------------------
@@ -208,6 +214,34 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
         await executor.execute(task);
 
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() initializes model metadata before resolving reasoning effort', async () => {
+        let warmed = false;
+        isInitializedSpy.mockReturnValue(false);
+        initializeSpy.mockImplementation(async () => {
+            warmed = true;
+        });
+        getModelSpy.mockImplementation((id: string) =>
+            warmed && id === 'claude-opus-4.7-high'
+                ? modelInfo(id, {
+                    rawEfforts: ['high'],
+                    supportedEfforts: ['medium'],
+                    defaultEffort: 'medium',
+                })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask(undefined, 'claude-opus-4.7-high');
+
+        await executor.execute(task);
+
+        expect(initializeSpy).toHaveBeenCalledWith(sdkMocks.service);
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
         expect(call.reasoningEffort).toBe('high');

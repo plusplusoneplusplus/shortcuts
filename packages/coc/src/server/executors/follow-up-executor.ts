@@ -27,7 +27,6 @@ import {
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
-    modelMetadataStore,
     resolveReasoningEffort,
 } from '@plusplusoneplusplus/forge';
 import {
@@ -262,7 +261,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const reasoningModel = model ?? processModel;
             const reasoningEffort = resolveReasoningEffort({
                 modelId: reasoningModel,
-                model: reasoningModel ? modelMetadataStore.getModel(reasoningModel) : undefined,
+                model: await this.getModelMetadataForReasoning(reasoningModel),
             });
 
             const sendOptions = {
