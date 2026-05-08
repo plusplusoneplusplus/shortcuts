@@ -307,7 +307,7 @@ export function InteractiveTable({
                                         <th
                                             key={header.id}
                                             className={`table-cell interactive-table-th ${ALIGN_CLASS[align]} ${
-                                                header.column.getCanSort() ? 'cursor-pointer select-none' : ''
+                                                header.column.getCanSort() ? 'cursor-pointer' : ''
                                             }`}
                                             onClick={header.column.getToggleSortingHandler()}
                                         >

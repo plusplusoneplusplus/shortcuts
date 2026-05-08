@@ -126,6 +126,24 @@ describe('InteractiveTable', () => {
         expect(tfoot).toBeNull();
     });
 
+    describe('header text selection', () => {
+        it('does not apply select-none to sortable headers so text can be selected', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const ths = container.querySelectorAll('th');
+            ths.forEach(th => {
+                expect(th.classList.contains('select-none')).toBe(false);
+            });
+        });
+
+        it('applies cursor-pointer to sortable headers', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const ths = container.querySelectorAll('th');
+            ths.forEach(th => {
+                expect(th.classList.contains('cursor-pointer')).toBe(true);
+            });
+        });
+    });
+
     describe('sorting', () => {
         it('sorts ascending on first click', () => {
             const { container } = render(<InteractiveTable {...defaultProps} />);
