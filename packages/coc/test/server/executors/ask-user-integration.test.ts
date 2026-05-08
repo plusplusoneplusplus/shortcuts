@@ -110,15 +110,15 @@ describe('ask_user tool injection in chat-mode executors', () => {
         });
     });
 
-    it('ChatExecutor (ask) does NOT include ask_user tool (disabled in chat mode)', async () => {
-        // ask_user is intentionally disabled in ChatExecutor to prevent timeout-related stalls.
+    it('ChatExecutor (ask) includes ask_user tool with overridesBuiltInTool', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
         await executor.execute(makeChatTask('ask'), 'Hello');
 
         const askTool = capturedOptions?.tools?.find(t => t.name === 'ask_user');
-        expect(askTool).toBeUndefined();
+        expect(askTool).toBeDefined();
+        expect(askTool!.overridesBuiltInTool).toBe(true);
     });
 
     it('PlanExecutor (plan) includes ask_user tool with overridesBuiltInTool', async () => {
@@ -253,9 +253,8 @@ describe('ask_user built-in name collision regression', () => {
         );
     });
 
-    it('ChatExecutor (ask) does not inject ask_user regardless of askUser.enabled', () => {
-        // ask_user is permanently disabled for ChatExecutor to avoid timeout-related stalls.
-        // PlanExecutor is the executor that uses ask_user (when enabled).
+    it('ChatExecutor (ask) injects ask_user tool when askUser.enabled is true', () => {
+        // ask_user is enabled for both ChatExecutor (ask mode) and PlanExecutor (plan mode).
         const store = createMockProcessStore();
         const sdkM = createMockSDKService();
         sdkM.mockIsAvailable.mockResolvedValue({ available: true });
@@ -277,7 +276,8 @@ describe('ask_user built-in name collision regression', () => {
 
         return executor.execute(makeChatTask('ask'), 'Hello').then(() => {
             const askTool = capturedTools?.find((t: any) => t.name === 'ask_user');
-            expect(askTool).toBeUndefined();
+            expect(askTool).toBeDefined();
+            expect(askTool!.overridesBuiltInTool).toBe(true);
         });
     });
 });

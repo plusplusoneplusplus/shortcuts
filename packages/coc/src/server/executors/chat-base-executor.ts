@@ -244,7 +244,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             broadcastWorkItem,
             boundedMemory,
             askUser: {
-                enabled: mode === 'plan' && this.askUser.enabled,
+                enabled: (mode === 'plan' || mode === 'ask') && this.askUser.enabled,
                 deps: {
                     emitQuestion: async (questionPayload) => {
                         await this.store.updateProcess(processId, { pendingAskUser: questionPayload });
