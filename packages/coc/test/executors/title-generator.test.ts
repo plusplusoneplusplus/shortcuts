@@ -40,28 +40,28 @@ describe('title-generator idempotency', () => {
         expect(block).toContain('return;');
     });
 
-    it('only calls transform when no title exists', () => {
-        // The transform call must come after the guard
+    it('only sends the title request when no title exists', () => {
+        // The title send call must come after the guard
         const guardIdx = source.indexOf('if (existing?.title)');
-        const transformIdx = source.indexOf('.transform(');
-        expect(transformIdx).toBeGreaterThan(guardIdx);
+        const sendIdx = source.indexOf('.sendMessage({', guardIdx);
+        expect(sendIdx).toBeGreaterThan(guardIdx);
     });
 
     it('stores the generated title in the process store', () => {
-        expect(source).toContain("await store.updateProcess(processId, { title })");
+        expect(source).toContain('await this.options.store.updateProcess(processId, { title })');
     });
 
     it('syncs title to queue task displayName', () => {
-        expect(source).toContain("queueManager.updateTask(taskId, { displayName: title })");
+        expect(source).toContain('this.queueManager.updateTask(toTaskId(processId), { displayName: title })');
     });
 
     it('re-syncs existing title to displayName on subsequent calls', () => {
         // When title exists, it still updates the displayName to stay in sync
-        expect(source).toContain("queueManager.updateTask(taskId, { displayName: existing.title })");
+        expect(source).toContain('this.syncQueueDisplayName(processId, existing.title)');
     });
 
     it('catches errors without throwing', () => {
-        expect(source).toContain('catch (err)');
+        expect(source).toContain('.catch((err)');
         expect(source).toContain('logger.warn');
     });
 

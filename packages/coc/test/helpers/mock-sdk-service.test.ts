@@ -17,9 +17,10 @@ describe('mock-sdk-service helpers', () => {
         it('should return object with all SDK mocks and resetAll', () => {
             const result = createMockSDKService();
             expect(result.mockSendMessage).toBeDefined();
+            expect(result.mockTitleSendMessage).toBeDefined();
             expect(result.mockIsAvailable).toBeDefined();
             expect(result.resetAll).toBeInstanceOf(Function);
-            expect(result.service.sendMessage).toBe(result.mockSendMessage);
+            expect(result.service.sendMessage).toBeDefined();
             expect(result.service.isAvailable).toBe(result.mockIsAvailable);
         });
 
@@ -30,6 +31,16 @@ describe('mock-sdk-service helpers', () => {
 
             const msg = await result.mockSendMessage();
             expect(msg).toEqual({ success: true, response: 'AI response text', sessionId: 'session-123' });
+        });
+
+        it('should route title-generation prompts to the dedicated title mock', async () => {
+            const result = createMockSDKService();
+            const response = await result.service.sendMessage({
+                prompt: 'Summarise the following conversation as a short title (max 8 words, no punctuation).',
+            } as any);
+            expect(response).toEqual({ success: true, response: 'Generated Title', sessionId: 'title-session' });
+            expect(result.mockTitleSendMessage).toHaveBeenCalledOnce();
+            expect(result.mockSendMessage).not.toHaveBeenCalled();
         });
 
         it('should configure isAvailable to return { available: false }', async () => {

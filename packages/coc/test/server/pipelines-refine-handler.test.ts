@@ -126,6 +126,8 @@ describe('Workflows Refine Handler', () => {
         } = options;
 
         mockService.mockIsAvailable.mockResolvedValue({ available });
+        mockService.service.sendMessage.mockClear();
+        mockService.mockSendMessage.mockClear();
         mockService.mockSendMessage.mockImplementation(async () => {
             if (throwError) { throw throwError; }
             return { success, response, error };

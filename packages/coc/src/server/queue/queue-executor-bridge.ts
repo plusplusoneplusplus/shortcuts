@@ -7,7 +7,7 @@ import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, get
 import * as path from 'path';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
-import { generateTitleIfNeeded as generateTitleIfNeededFn } from '../executors/title-generator';
+import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
 import type { MemoryPromoteConfig } from '../memory/memory-promote';
@@ -64,12 +64,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private queueManager?: TaskQueueManager;
     private queueExecutor?: QueueExecutor;
     private readonly executors: ExecutorRegistry;
+    private readonly titleGenerationService: TitleGenerationService;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService ?? getCopilotSDKService();
+        this.titleGenerationService = new TitleGenerationService({
+            store,
+            aiService: this.aiService,
+            defaultWorkingDirectory: this.defaultWorkingDirectory,
+        });
         const cacheStore = new FileToolCallCacheStore(resolveToolCallCacheOptions(options.workingDirectory, this.dataDir ? path.join(this.dataDir, 'memory') : undefined));
         const skillCfg = (wsId: string | undefined, workDir?: string) => resolveSkillConfig(store, this.dataDir, wsId, workDir);
         this.executors = new ExecutorRegistry(store, {
@@ -90,9 +96,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
     }
 
-    setQueueManager(qm: TaskQueueManager): void { this.queueManager = qm; }
+    setQueueManager(qm: TaskQueueManager): void {
+        this.queueManager = qm;
+        this.titleGenerationService.setQueueManager(qm);
+    }
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
-    private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { generateTitleIfNeededFn(processId, turns, this.store, this.aiService, this.defaultWorkingDirectory, this.queueManager); }
+    private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { this.titleGenerationService.generateIfNeeded(processId, turns); }
     private enqueueBackgroundReview(processId: string, workspaceId: string, turns: ConversationTurn[]): void {
         if (!this.queueManager) return;
         const payload = shouldEnqueueReview(processId, workspaceId, turns, DEFAULT_REVIEW_CONFIG);

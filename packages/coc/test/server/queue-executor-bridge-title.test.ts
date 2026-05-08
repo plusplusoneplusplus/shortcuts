@@ -22,21 +22,18 @@ vi.mock('fs', async (importOriginal) => {
 
 import {
     TaskQueueManager,
-    QueueExecutor,
-    createQueueExecutor,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
-import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 // ============================================================================
 // Mock CopilotSDKService
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockTransform } = sdkMocks;
+const { mockSendMessage, mockTitleSendMessage, mockCreateClient } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -70,6 +67,19 @@ vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function mockChatAndTitleResponses(chatResponse = 'AI response text', titleResponse = 'Generated Title'): void {
+    mockSendMessage.mockResolvedValue({ success: true, response: chatResponse, sessionId: 'session-123' });
+    mockTitleSendMessage.mockResolvedValue({ success: true, response: titleResponse, sessionId: 'title-session' });
+}
+
+function getTitleSendCalls(): any[][] {
+    return mockTitleSendMessage.mock.calls;
+}
+
+function getTitleSendOptions(): any {
+    return getTitleSendCalls()[0]?.[0];
 }
 
 function makeChatTask(id: string, prompt: string): QueuedTask {
@@ -109,15 +119,11 @@ describe('CLITaskExecutor — Title Generation', () => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         mockLoadImages.mockReset().mockResolvedValue([]);
-        mockSendMessage.mockResolvedValue({
-            success: true,
-            response: 'AI response text',
-            sessionId: 'session-123',
-        });
+        mockChatAndTitleResponses();
     });
 
     it('should generate title after first task execution', async () => {
-        mockTransform.mockResolvedValue('Mock Title');
+        mockChatAndTitleResponses('AI response text', 'Mock Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-1', 'How do I fix this bug in my authentication module?');
@@ -126,19 +132,22 @@ describe('CLITaskExecutor — Title Generation', () => {
         // Allow fire-and-forget to complete
         await delay(50);
 
-        expect(mockTransform).toHaveBeenCalledOnce();
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        expect(getTitleSendCalls()).toHaveLength(1);
+        const titleOptions = getTitleSendOptions();
+        const promptArg = titleOptions.prompt as string;
         // Should include user message
         expect(promptArg).toContain('How do I fix this bug');
         // Should include assistant response (mockSendMessage returns 'AI response text')
         expect(promptArg).toContain('AI response text');
         // Should use conversation-style prompt when assistant content is present
         expect(promptArg).toContain('Focus on what was actually done or discussed');
-        expect(mockTransform).toHaveBeenCalledWith(
-            expect.any(String),
-            expect.any(Function),
-            expect.objectContaining({ model: 'gpt-4.1' }),
-        );
+        expect(titleOptions).toEqual(expect.objectContaining({
+            model: 'gpt-4.1',
+            loadDefaultMcpConfig: false,
+            onPermissionRequest: expect.any(Function),
+            client: { __mockClient: true },
+        }));
+        expect(mockCreateClient).toHaveBeenCalledWith(undefined);
 
         // Verify title was persisted
         expect(store.updateProcess).toHaveBeenCalledWith(
@@ -148,29 +157,40 @@ describe('CLITaskExecutor — Title Generation', () => {
     });
 
     it('should not regenerate title when already set', async () => {
-        mockTransform.mockResolvedValue('New Title');
+        mockChatAndTitleResponses('AI response text', 'New Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+        const mockQueueManager = {
+            updateTask: vi.fn(),
+        } as unknown as TaskQueueManager;
+        executor.setQueueManager(mockQueueManager);
 
-        const task = makeChatTask('title-2', 'Some prompt');
-        await executor.execute(task);
-
-        // Manually set a title on the process before fire-and-forget resolves
         const processId = 'queue_title-2';
-        const process = store.processes.get(processId);
-        if (process) {
-            process.title = 'Existing Title';
-        }
+        store.processes.set(processId, {
+            id: processId,
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            title: 'Existing Title',
+            turns: [],
+        } as any);
 
-        // Allow fire-and-forget to complete
+        (executor as any).generateTitleIfNeeded(processId, [
+            { role: 'user', content: 'Some prompt', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Some reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+        ]);
+
         await delay(50);
 
-        // transform may or may not have been called, but title should NOT be overwritten
-        const finalProcess = store.processes.get(processId);
-        expect(finalProcess?.title).toBe('Existing Title');
+        expect(getTitleSendCalls()).toHaveLength(0);
+        expect(store.processes.get(processId)?.title).toBe('Existing Title');
+        expect(mockQueueManager.updateTask).toHaveBeenCalledWith(
+            'title-2',
+            expect.objectContaining({ displayName: 'Existing Title' }),
+        );
     });
 
     it('should not throw when title generation fails', async () => {
-        mockTransform.mockRejectedValue(new Error('AI unavailable'));
+        mockSendMessage.mockResolvedValue({ success: true, response: 'AI response text', sessionId: 'session-123' });
+        mockTitleSendMessage.mockResolvedValue({ success: false, error: 'AI unavailable', sessionId: 'title-session' });
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-3', 'Some prompt');
@@ -188,7 +208,7 @@ describe('CLITaskExecutor — Title Generation', () => {
     });
 
     it('should truncate long prompts to 400 characters for title generation', async () => {
-        mockTransform.mockResolvedValue('Short Title');
+        mockChatAndTitleResponses('AI response text', 'Short Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const longPrompt = 'A'.repeat(500);
@@ -197,7 +217,7 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        const promptArg = getTitleSendOptions().prompt as string;
         // User content should be truncated to 400 chars
         expect(promptArg).not.toContain('A'.repeat(500));
         expect(promptArg).toContain('A'.repeat(400));
@@ -207,12 +227,7 @@ describe('CLITaskExecutor — Title Generation', () => {
 
     it('should truncate long assistant response to 400 characters', async () => {
         const longResponse = 'B'.repeat(500);
-        mockSendMessage.mockResolvedValue({
-            success: true,
-            response: longResponse,
-            sessionId: 'session-123',
-        });
-        mockTransform.mockResolvedValue('Short Title');
+        mockChatAndTitleResponses(longResponse, 'Short Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-4b', 'Some prompt');
@@ -220,18 +235,14 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        const promptArg = getTitleSendOptions().prompt as string;
         // Assistant content should be truncated to 400 chars
         expect(promptArg).not.toContain('B'.repeat(500));
         expect(promptArg).toContain('B'.repeat(400));
     });
 
     it('should skip title generation when no user content', async () => {
-        mockSendMessage.mockResolvedValue({
-            success: true,
-            response: 'AI response',
-            sessionId: 'session-123',
-        });
+        mockChatAndTitleResponses('AI response', 'Fix Auth Bug');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-5', '');
@@ -242,14 +253,13 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        // transform should not be called with empty content
+        // title generation should not be called with empty content
         // (the prompt extraction may still produce some text, but if empty, should skip)
+        expect(getTitleSendCalls()).toHaveLength(0);
     });
 
     it('should parse title with trim and punctuation removal', async () => {
-        mockTransform.mockImplementation(async (_prompt: string, parse: (raw: string) => string) => {
-            return parse('  "Fix authentication bug."  ');
-        });
+        mockChatAndTitleResponses('AI response text', '  "Fix authentication bug."  ');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-6', 'Fix the authentication bug');
@@ -264,7 +274,7 @@ describe('CLITaskExecutor — Title Generation', () => {
     });
 
     it('should generate title from user message for ask-mode chat', async () => {
-        mockTransform.mockResolvedValue('Fix Auth Bug');
+        mockChatAndTitleResponses('AI response text', 'Fix Auth Bug');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const userMessage = 'How do I fix the authentication bug?';
@@ -273,13 +283,13 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        expect(mockTransform).toHaveBeenCalledOnce();
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        expect(getTitleSendCalls()).toHaveLength(1);
+        const promptArg = getTitleSendOptions().prompt as string;
         expect(promptArg).toContain(userMessage);
     });
 
     it('should propagate generated title to queue task displayName', async () => {
-        mockTransform.mockResolvedValue('AI Generated Title');
+        mockChatAndTitleResponses('AI response text', 'AI Generated Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const mockQueueManager = {
@@ -299,7 +309,7 @@ describe('CLITaskExecutor — Title Generation', () => {
     });
 
     it('should not call updateTask when queueManager is not set', async () => {
-        mockTransform.mockResolvedValue('Some Title');
+        mockChatAndTitleResponses('AI response text', 'Some Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
         // No setQueueManager call
 
@@ -318,12 +328,10 @@ describe('CLITaskExecutor — Title Generation', () => {
     it('should generate outcome-based title for delegation prompts', async () => {
         // Simulate a delegation-style prompt where the user just says "Follow plan X"
         // and the assistant describes what was actually done
-        mockSendMessage.mockResolvedValue({
-            success: true,
-            response: 'I moved the flat/tree toggle from the inline git tab to repo-level preferences and updated the settings UI.',
-            sessionId: 'session-123',
-        });
-        mockTransform.mockResolvedValue('Move files view toggle to preferences');
+        mockChatAndTitleResponses(
+            'I moved the flat/tree toggle from the inline git tab to repo-level preferences and updated the settings UI.',
+            'Move files view toggle to preferences',
+        );
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         const task = makeChatTask('title-delegation-1', 'Follow the instruction C:\\Users\\User\\.copilot\\plan.md');
@@ -331,7 +339,7 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        const promptArg = getTitleSendOptions().prompt as string;
         // Should include both user delegation and assistant outcome
         expect(promptArg).toContain('Follow the instruction');
         expect(promptArg).toContain('moved the flat/tree toggle');
@@ -342,7 +350,7 @@ describe('CLITaskExecutor — Title Generation', () => {
     it('should skip title generation when no assistant response', async () => {
         // The title generator requires at least one assistant response before
         // generating a title. When only user turns are present it returns early.
-        mockTransform.mockResolvedValue('Fix Auth Bug');
+        mockChatAndTitleResponses('AI response text', 'Fix Auth Bug');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
         // Create a process first so the store has it
@@ -361,15 +369,15 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         await delay(50);
 
-        // Should NOT call transform — title generation requires an assistant response
-        expect(mockTransform).not.toHaveBeenCalled();
+        // Should NOT call title generation — an assistant response is required
+        expect(getTitleSendCalls()).toHaveLength(0);
     });
 
     it('should re-sync persisted AI title to displayName on follow-up turns', async () => {
         // Simulate the scenario where requeueForFollowUp overwrites displayName
         // with the follow-up message text. generateTitleIfNeeded must restore the
         // AI-generated title each turn.
-        mockTransform.mockResolvedValue('AI Generated Title');
+        mockChatAndTitleResponses('AI response text', 'AI Generated Title');
 
         const mockQueueManager = {
             updateTask: vi.fn(),
@@ -404,13 +412,93 @@ describe('CLITaskExecutor — Title Generation', () => {
         ]);
         await delay(50);
 
-        // transform must NOT be called again (title already exists)
-        expect(mockTransform).toHaveBeenCalledTimes(1);
+        // title generation must NOT be called again (title already exists)
+        expect(getTitleSendCalls()).toHaveLength(1);
 
         // displayName must be restored to the AI-generated title, not the follow-up text
         expect(mockQueueManager.updateTask).toHaveBeenCalledWith(
             'title-resync-1',
             expect.objectContaining({ displayName: 'AI Generated Title' }),
         );
+    });
+
+    it('should reuse one warm client across title generations handled by the executor', async () => {
+        mockChatAndTitleResponses('AI response text', 'Reusable Client Title');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        for (const processId of ['queue_title-warm-1', 'queue_title-warm-2']) {
+            store.processes.set(processId, {
+                id: processId,
+                status: 'completed',
+                startedAt: new Date().toISOString(),
+                turns: [],
+            } as any);
+            (executor as any).generateTitleIfNeeded(processId, [
+                { role: 'user', content: `Prompt for ${processId}`, timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Assistant reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ]);
+            await delay(50);
+        }
+
+        expect(getTitleSendCalls()).toHaveLength(2);
+        expect(mockCreateClient).toHaveBeenCalledTimes(1);
+        expect(getTitleSendCalls().map(([options]) => options.client)).toEqual([
+            { __mockClient: true },
+            { __mockClient: true },
+        ]);
+    });
+
+    it('should fall back to sendMessage without a warm client when createClient is unavailable', async () => {
+        mockChatAndTitleResponses('AI response text', 'No Warm Client Title');
+        const serviceWithoutCreateClient = { ...sdkMocks.service, createClient: undefined };
+        const executor = new CLITaskExecutor(store, { aiService: serviceWithoutCreateClient as any });
+        const processId = 'queue_title-no-client';
+        store.processes.set(processId, {
+            id: processId,
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            turns: [],
+        } as any);
+
+        (executor as any).generateTitleIfNeeded(processId, [
+            { role: 'user', content: 'Prompt without warm client', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Assistant reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+        ]);
+        await delay(50);
+
+        expect(getTitleSendCalls()).toHaveLength(1);
+        expect(getTitleSendOptions()).not.toHaveProperty('client');
+        expect(store.processes.get(processId)?.title).toBe('No Warm Client Title');
+    });
+
+    it('should suppress duplicate in-flight title generation for the same process', async () => {
+        let resolveTitle!: (value: any) => void;
+        const titleResponse = new Promise(resolve => { resolveTitle = resolve; });
+        mockSendMessage.mockResolvedValue({ success: true, response: 'AI response text', sessionId: 'session-123' });
+        mockTitleSendMessage.mockImplementation(() => titleResponse);
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+        const processId = 'queue_title-dedupe';
+        store.processes.set(processId, {
+            id: processId,
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            turns: [],
+        } as any);
+        const turns = [
+            { role: 'user', content: 'Explain warm client reuse', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Warm clients reuse the SDK process only', timestamp: new Date(), turnIndex: 1, timeline: [] },
+        ];
+
+        (executor as any).generateTitleIfNeeded(processId, turns);
+        (executor as any).generateTitleIfNeeded(processId, turns);
+        await delay(10);
+
+        expect(getTitleSendCalls()).toHaveLength(1);
+
+        resolveTitle({ success: true, response: 'Warm Client Reuse', sessionId: 'title-session' });
+        await delay(50);
+
+        expect(store.processes.get(processId)?.title).toBe('Warm Client Reuse');
+        expect(getTitleSendCalls()).toHaveLength(1);
     });
 });

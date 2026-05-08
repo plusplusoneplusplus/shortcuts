@@ -19,6 +19,7 @@ import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-
 export interface MockCopilotSDKService {
     sendMessage: ReturnType<typeof vi.fn>;
     isAvailable: ReturnType<typeof vi.fn>;
+    createClient: ReturnType<typeof vi.fn>;
     transform: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
     steerSession: ReturnType<typeof vi.fn>;
@@ -41,7 +42,9 @@ export interface MockSDKServiceOptions {
 export interface MockSDKServiceResult {
     service: MockCopilotSDKService;
     mockSendMessage: ReturnType<typeof vi.fn>;
+    mockTitleSendMessage: ReturnType<typeof vi.fn>;
     mockIsAvailable: ReturnType<typeof vi.fn>;
+    mockCreateClient: ReturnType<typeof vi.fn>;
     mockTransform: ReturnType<typeof vi.fn>;
     mockAbortSession: ReturnType<typeof vi.fn>;
     mockSteerSession: ReturnType<typeof vi.fn>;
@@ -72,14 +75,23 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     };
 
     const mockSendMessage = vi.fn().mockResolvedValue(sendMessageResponse);
+    const mockTitleSendMessage = vi.fn().mockResolvedValue({ success: true, response: 'Generated Title', sessionId: 'title-session' });
+    const sendMessageRouter = vi.fn((messageOptions: any) => {
+        if (typeof messageOptions?.prompt === 'string' && messageOptions.prompt.startsWith('Summarise the following conversation')) {
+            return mockTitleSendMessage(messageOptions);
+        }
+        return mockSendMessage(messageOptions);
+    });
     const mockIsAvailable = vi.fn().mockResolvedValue(availableResult);
+    const mockCreateClient = vi.fn().mockResolvedValue({ __mockClient: true });
     const mockTransform = vi.fn().mockResolvedValue('Generated Title');
     const mockAbortSession = vi.fn().mockResolvedValue(true);
     const mockSteerSession = vi.fn().mockResolvedValue(true);
 
     const service: MockCopilotSDKService = {
-        sendMessage: mockSendMessage,
+        sendMessage: sendMessageRouter,
         isAvailable: mockIsAvailable,
+        createClient: mockCreateClient,
         transform: mockTransform,
         abortSession: mockAbortSession,
         steerSession: mockSteerSession,
@@ -87,7 +99,15 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
 
     const resetAll = () => {
         mockSendMessage.mockReset().mockResolvedValue(sendMessageResponse);
+        mockTitleSendMessage.mockReset().mockResolvedValue({ success: true, response: 'Generated Title', sessionId: 'title-session' });
+        sendMessageRouter.mockReset().mockImplementation((messageOptions: any) => {
+            if (typeof messageOptions?.prompt === 'string' && messageOptions.prompt.startsWith('Summarise the following conversation')) {
+                return mockTitleSendMessage(messageOptions);
+            }
+            return mockSendMessage(messageOptions);
+        });
         mockIsAvailable.mockReset().mockResolvedValue(availableResult);
+        mockCreateClient.mockReset().mockResolvedValue({ __mockClient: true });
         mockTransform.mockReset().mockResolvedValue('Generated Title');
         mockAbortSession.mockReset().mockResolvedValue(true);
         mockSteerSession.mockReset().mockResolvedValue(true);
@@ -96,7 +116,9 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     return {
         service,
         mockSendMessage,
+        mockTitleSendMessage,
         mockIsAvailable,
+        mockCreateClient,
         mockTransform,
         mockAbortSession,
         mockSteerSession,
