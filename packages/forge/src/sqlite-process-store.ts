@@ -24,6 +24,8 @@ import {
     StorageStats,
     SearchFilter,
     ConversationSearchResult,
+    PromptAutocompleteContext,
+    PromptAutocompleteHistoryItem,
 } from './process-store';
 import {
     AIProcess,
@@ -106,6 +108,14 @@ interface TurnRow {
     deleted_at: string | null;
     pinned_at: string | null;
     archived: number;
+}
+
+interface PromptAutocompleteHistoryRow {
+    text: string;
+    source: 'initial' | 'follow-up';
+    workspaceId: string;
+    processId: string;
+    timestamp: string;
 }
 
 interface WorkspaceRow {
@@ -1633,6 +1643,219 @@ export class SqliteProcessStore implements ProcessStore {
             logger.warn('searchConversations', `FTS5 query failed for "${sanitized}": ${String(err)}`);
             return empty;
         }
+    }
+
+    // ========================================================================
+    // Prompt Autocomplete
+    // ========================================================================
+
+    /**
+     * Find the single best inline-completion suffix for the given user prefix.
+     *
+     * Searches both initial prompts (`processes.full_prompt`) and user
+     * follow-up turns (`conversation_turns.content WHERE role='user'`),
+     * scoped globally (no workspace filter). Returns only the *suffix* the
+     * client should append after the typed text, or `null` when nothing useful
+     * matches.
+     *
+     * Ranking: most-frequent matching historical text wins, then most recent,
+     * then shortest completion.
+     */
+    getBestPromptCompletion(
+        rawPrefix: string,
+        opts?: { minPrefixLen?: number },
+    ): { completion: string; source: 'initial' | 'follow-up' } | null {
+        const minLen = opts?.minPrefixLen ?? 3;
+        // Strip leading whitespace; we match historical text from its start.
+        const trimmed = (rawPrefix ?? '').replace(/^\s+/, '');
+        if (trimmed.length < minLen) return null;
+        if (trimmed.length > 500) return null;
+
+        // Escape SQL LIKE wildcards in the user-supplied prefix.
+        const escaped = trimmed.replace(/[\\%_]/g, c => '\\' + c);
+        const likePattern = escaped + '%';
+        const prefLen = trimmed.length;
+
+        const sql = `
+            WITH candidates AS (
+                SELECT p.full_prompt AS text, p.start_time AS ts, 'initial' AS src
+                FROM processes p
+                WHERE p.archived = 0
+                  AND p.full_prompt IS NOT NULL
+                  AND p.full_prompt LIKE ? ESCAPE '\\'
+                  AND length(p.full_prompt) > ?
+                UNION ALL
+                SELECT ct.content AS text, ct.timestamp AS ts, 'follow-up' AS src
+                FROM conversation_turns ct
+                WHERE ct.role = 'user'
+                  AND ct.deleted_at IS NULL
+                  AND COALESCE(ct.archived, 0) = 0
+                  AND ct.content IS NOT NULL
+                  AND ct.content LIKE ? ESCAPE '\\'
+                  AND length(ct.content) > ?
+            )
+            SELECT text, COUNT(*) AS cnt, MAX(ts) AS max_ts, MIN(src) AS src
+            FROM candidates
+            GROUP BY text COLLATE NOCASE
+            ORDER BY cnt DESC, max_ts DESC, length(text) ASC
+            LIMIT 1
+        `;
+
+        try {
+            const row = this.db
+                .prepare(sql)
+                .get(likePattern, prefLen, likePattern, prefLen) as
+                | { text: string; cnt: number; max_ts: string; src: string }
+                | undefined;
+            if (!row) return null;
+            // Strip exactly the prefix length from the historical text.
+            // We matched LIKE which is case-insensitive in SQLite for ASCII,
+            // so the historical text's first `prefLen` characters may differ
+            // in case from the user's typed prefix. We always return the
+            // historical text's suffix verbatim.
+            const completion = row.text.slice(prefLen);
+            if (!completion) return null;
+            return { completion, source: row.src as 'initial' | 'follow-up' };
+        } catch (err) {
+            logger.warn(
+                'getBestPromptCompletion',
+                `Query failed for prefix "${trimmed.slice(0, 32)}…": ${String(err)}`,
+            );
+            return null;
+        }
+    }
+
+    getPromptAutocompleteContext(
+        rawPrefix: string,
+        opts?: {
+            workspaceId?: string;
+            processId?: string;
+            limit?: number;
+            includeGlobalHistory?: boolean;
+        },
+    ): PromptAutocompleteContext {
+        const trimmed = (rawPrefix ?? '').replace(/^\s+/, '');
+        const limit = Math.max(1, Math.min(opts?.limit ?? 12, 50));
+        const includeGlobalHistory = opts?.includeGlobalHistory === true;
+        const workspaceId = opts?.workspaceId;
+        const processId = opts?.processId;
+        const scoped = includeGlobalHistory || !!workspaceId;
+
+        if (!scoped) {
+            return {
+                exactPrefixMatches: [],
+                recentWorkspacePrompts: [],
+                recentProcessTurns: [],
+                historyFingerprint: '0::0',
+            };
+        }
+
+        const escaped = trimmed.replace(/[\\%_]/g, c => '\\' + c);
+        const likePattern = escaped + '%';
+        const params = { workspaceId: workspaceId ?? '', processId: processId ?? '', likePattern, limit };
+        const processScope = includeGlobalHistory ? '' : 'AND p.workspace_id = @workspaceId';
+        const turnProcessScope = includeGlobalHistory ? '' : 'AND p.workspace_id = @workspaceId';
+
+        const exactPrefixMatches = this.mapPromptAutocompleteRows(
+            this.db.prepare(`
+                SELECT p.full_prompt AS text, 'initial' AS source, p.workspace_id AS workspaceId,
+                       p.id AS processId, p.start_time AS timestamp
+                FROM processes p
+                WHERE p.archived = 0
+                  AND p.full_prompt IS NOT NULL
+                  AND length(trim(p.full_prompt)) > 0
+                  AND p.full_prompt LIKE @likePattern ESCAPE '\\'
+                  ${processScope}
+                UNION ALL
+                SELECT ct.content AS text, 'follow-up' AS source, p.workspace_id AS workspaceId,
+                       ct.process_id AS processId, ct.timestamp AS timestamp
+                FROM conversation_turns ct
+                JOIN processes p ON p.id = ct.process_id
+                WHERE p.archived = 0
+                  AND ct.role = 'user'
+                  AND ct.deleted_at IS NULL
+                  AND COALESCE(ct.archived, 0) = 0
+                  AND ct.content IS NOT NULL
+                  AND length(trim(ct.content)) > 0
+                  AND ct.content LIKE @likePattern ESCAPE '\\'
+                  ${turnProcessScope}
+                ORDER BY timestamp DESC
+                LIMIT @limit
+            `).all(params) as PromptAutocompleteHistoryRow[],
+            trimmed,
+        );
+
+        const recentWorkspacePrompts = this.mapPromptAutocompleteRows(
+            this.db.prepare(`
+                SELECT p.full_prompt AS text, 'initial' AS source, p.workspace_id AS workspaceId,
+                       p.id AS processId, p.start_time AS timestamp
+                FROM processes p
+                WHERE p.archived = 0
+                  AND p.full_prompt IS NOT NULL
+                  AND length(trim(p.full_prompt)) > 0
+                  ${processScope}
+                ORDER BY p.start_time DESC
+                LIMIT @limit
+            `).all(params) as PromptAutocompleteHistoryRow[],
+            trimmed,
+        );
+
+        const recentProcessTurns = processId
+            ? this.mapPromptAutocompleteRows(
+                this.db.prepare(`
+                    SELECT ct.content AS text, 'follow-up' AS source, p.workspace_id AS workspaceId,
+                           ct.process_id AS processId, ct.timestamp AS timestamp
+                    FROM conversation_turns ct
+                    JOIN processes p ON p.id = ct.process_id
+                    WHERE p.archived = 0
+                      AND ct.process_id = @processId
+                      AND ct.role = 'user'
+                      AND ct.deleted_at IS NULL
+                      AND COALESCE(ct.archived, 0) = 0
+                      AND ct.content IS NOT NULL
+                      AND length(trim(ct.content)) > 0
+                      ${turnProcessScope}
+                    ORDER BY ct.timestamp DESC
+                    LIMIT @limit
+                `).all(params) as PromptAutocompleteHistoryRow[],
+                trimmed,
+            )
+            : [];
+
+        const allItems = [
+            ...exactPrefixMatches,
+            ...recentWorkspacePrompts,
+            ...recentProcessTurns,
+        ];
+        const latest = allItems.reduce(
+            (max, item) => item.timestamp > max ? item.timestamp : max,
+            '',
+        );
+        const prefixCount = allItems.filter(item => item.prefixMatch).length;
+
+        return {
+            exactPrefixMatches,
+            recentWorkspacePrompts,
+            recentProcessTurns,
+            historyFingerprint: `${allItems.length}:${latest}:${prefixCount}`,
+        };
+    }
+
+    private mapPromptAutocompleteRows(
+        rows: PromptAutocompleteHistoryRow[],
+        prefix: string,
+    ): PromptAutocompleteHistoryItem[] {
+        const normalizedPrefix = prefix.toLocaleLowerCase();
+        return rows.map(row => ({
+            text: row.text,
+            source: row.source,
+            workspaceId: row.workspaceId || undefined,
+            processId: row.processId || undefined,
+            timestamp: row.timestamp,
+            prefixMatch: normalizedPrefix.length > 0
+                ? row.text.toLocaleLowerCase().startsWith(normalizedPrefix)
+                : false,
+        }));
     }
 
     // ========================================================================

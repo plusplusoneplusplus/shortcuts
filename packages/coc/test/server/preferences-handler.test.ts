@@ -121,6 +121,36 @@ describe('readPreferences / writePreferences', () => {
         expect(result.global?.htmlEmbed).toEqual({ enabled: true });
     });
 
+    it('round-trips AI prompt autocomplete preferences', () => {
+        writePreferences(tmpDir, {
+            global: {
+                promptAutocomplete: {
+                    enabled: true,
+                    ai: {
+                        enabled: true,
+                        debounceMs: 500,
+                        timeoutMs: 900,
+                        maxHistoryItems: 12,
+                        maxCompletionChars: 160,
+                        includeGlobalHistory: false,
+                    },
+                },
+            },
+        });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.promptAutocomplete).toEqual({
+            enabled: true,
+            ai: {
+                enabled: true,
+                debounceMs: 500,
+                timeoutMs: 900,
+                maxHistoryItems: 12,
+                maxCompletionChars: 160,
+                includeGlobalHistory: false,
+            },
+        });
+    });
+
     it('round-trips global preferences', () => {
         const data: PreferencesFile = { global: { theme: 'dark' } };
         writePreferences(tmpDir, data);
@@ -236,6 +266,38 @@ describe('readPreferences / writePreferences', () => {
         fs.writeFileSync(path.join(tmpDir, PREFERENCES_FILE_NAME), JSON.stringify({ global: { htmlEmbed: { enabled: 'yes' } } }), 'utf-8');
         const prefs = readPreferences(tmpDir);
         expect(prefs.global).toBeUndefined();
+    });
+
+    it('strips invalid AI prompt autocomplete preference fields during read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({
+                global: {
+                    promptAutocomplete: {
+                        enabled: true,
+                        ai: {
+                            enabled: true,
+                            debounceMs: 10,
+                            timeoutMs: 'slow',
+                            maxHistoryItems: 500,
+                            maxCompletionChars: 160,
+                            includeGlobalHistory: false,
+                            unknown: true,
+                        },
+                    },
+                },
+            }),
+            'utf-8',
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.global?.promptAutocomplete).toEqual({
+            enabled: true,
+            ai: {
+                enabled: true,
+                maxCompletionChars: 160,
+                includeGlobalHistory: false,
+            },
+        });
     });
 
     it('strips unknown keys in global during read', () => {

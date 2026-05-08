@@ -85,6 +85,24 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ModelCommandMenu'
     ModelCommandMenu: () => null,
 }));
 
+// Hoisted mock state for the prompt-autocomplete hook so individual tests
+// can inject a fake completion to verify Tab acceptance / Escape dismissal.
+const { mockAutocomplete } = vi.hoisted(() => ({
+    mockAutocomplete: {
+        completion: '' as string,
+        accept: vi.fn(() => ''),
+        dismiss: vi.fn(),
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/usePromptAutocomplete', () => ({
+    usePromptAutocomplete: () => mockAutocomplete,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/usePromptAutocompleteEnabled', () => ({
+    usePromptAutocompleteEnabled: () => true,
+}));
+
 // Minimal RichTextInput mock
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
     const R = await import('react');
@@ -120,6 +138,9 @@ beforeEach(() => {
     mockModelCommand.modelOverride = null;
     mockModelCommand.modelMenuVisible = false;
     mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
+    mockAutocomplete.completion = '';
+    mockAutocomplete.accept = vi.fn(() => '');
+    mockAutocomplete.dismiss = vi.fn();
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -479,6 +500,43 @@ describe('NewChatArea', () => {
 
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
             expect(dropdown.value).toBe('plan');
+        });
+    });
+
+    describe('inline ghost-text autocomplete', () => {
+        it('Tab accepts the ghost-text completion into the input', () => {
+            mockAutocomplete.completion = 'world';
+            mockAutocomplete.accept = vi.fn(() => 'Hello world');
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello ' } });
+            fireEvent.keyDown(input, { key: 'Tab' });
+
+            expect(mockAutocomplete.accept).toHaveBeenCalled();
+            expect(mockAutocomplete.dismiss).toHaveBeenCalled();
+            expect(input.value).toBe('Hello world');
+        });
+
+        it('Escape dismisses an active ghost-text completion', () => {
+            mockAutocomplete.completion = 'world';
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello ' } });
+            fireEvent.keyDown(input, { key: 'Escape' });
+
+            expect(mockAutocomplete.dismiss).toHaveBeenCalled();
+        });
+
+        it('Tab without an active completion does not call accept', () => {
+            mockAutocomplete.completion = '';
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.keyDown(input, { key: 'Tab' });
+
+            expect(mockAutocomplete.accept).not.toHaveBeenCalled();
         });
     });
 });

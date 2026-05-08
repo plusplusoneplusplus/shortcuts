@@ -237,6 +237,8 @@ export {
     StorageStats,
     ConversationSearchResult,
     SearchFilter,
+    PromptAutocompleteHistoryItem,
+    PromptAutocompleteContext,
 } from './process-store';
 
 export {

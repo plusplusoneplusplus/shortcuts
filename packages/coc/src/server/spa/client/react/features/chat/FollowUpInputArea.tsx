@@ -9,6 +9,8 @@ import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
+import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
+import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
@@ -149,6 +151,22 @@ export function FollowUpInputArea({
             richTextRef.current.setValue(followUpInput);
         }
     }, [followUpInput]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Inline ghost-text autocomplete ──
+    const [followUpCursorPos, setFollowUpCursorPos] = useState(0);
+    const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
+    const autocomplete = usePromptAutocomplete({
+        text: followUpInput,
+        cursorPos: followUpCursorPos,
+        enabled:
+            promptAutocompleteEnabled
+            && !inputDisabled
+            && !slashCommands.menuVisible
+            && !(modelCommand?.modelMenuVisible ?? false),
+        workspaceId: task?.metadata?.workspaceId,
+        processId: task?.id,
+        surface: 'follow-up',
+    });
 
     return (
         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
@@ -292,6 +310,8 @@ export function FollowUpInputArea({
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}
+                        value={followUpInput}
+                        ghostText={autocomplete.completion}
                         placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Send a message... (type / for commands)'}
                         className={cn(
                             'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
@@ -300,6 +320,7 @@ export function FollowUpInputArea({
                         )}
                         onChange={(val, cursorPos) => {
                             setFollowUpInput(val);
+                            setFollowUpCursorPos(cursorPos);
                             if (modelCommand?.modelMenuVisible) {
                                 // Route typing to model filter when model picker is open
                                 modelCommand.setModelFilter(val);
@@ -339,6 +360,27 @@ export function FollowUpInputArea({
                                         }
                                     }
                                 }
+                                return;
+                            }
+                            // Priority 3: inline ghost-text accept (Tab, no modifiers).
+                            // Only fires when neither menu is visible (handled above).
+                            if (
+                                e.key === 'Tab'
+                                && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+                                && autocomplete.completion
+                            ) {
+                                e.preventDefault();
+                                const next = autocomplete.accept();
+                                skipNextSyncRef.current = true;
+                                setFollowUpInput(next);
+                                richTextRef.current?.setValue(next, next.length);
+                                setFollowUpCursorPos(next.length);
+                                autocomplete.dismiss();
+                                return;
+                            }
+                            if (e.key === 'Escape' && autocomplete.completion) {
+                                e.preventDefault();
+                                autocomplete.dismiss();
                                 return;
                             }
                             if (e.key === 'Tab' && e.shiftKey) {

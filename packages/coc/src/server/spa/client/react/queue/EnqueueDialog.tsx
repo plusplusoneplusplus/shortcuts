@@ -26,6 +26,8 @@ import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import type { PostAction } from '../../../task-types';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
+import { usePromptAutocomplete } from '../hooks/usePromptAutocomplete';
+import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnabled';
 
 interface HookEntry {
     id: string;
@@ -116,6 +118,15 @@ export function EnqueueDialog() {
     const [contextFiles, setContextFiles] = useState<string[]>([]);
     const isBulkMode = queueState.dialogBulkMode && contextFiles.length > 1;
     const hasContextFiles = contextFiles.length > 0;
+    const [promptCursorPos, setPromptCursorPos] = useState(0);
+    const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
+    const autocomplete = usePromptAutocomplete({
+        text: prompt,
+        cursorPos: promptCursorPos,
+        enabled: promptAutocompleteEnabled && !submitting && !slashCommands.menuVisible,
+        workspaceId: workspaceId || undefined,
+        surface: 'queue',
+    });
 
     // Track previous dialog mode to detect mode switches
     const prevModeRef = useRef(isAskMode);
@@ -418,11 +429,30 @@ export function EnqueueDialog() {
             }
             return;
         }
+        // Inline ghost-text acceptance — only when slash menu is hidden.
+        if (
+            e.key === 'Tab'
+            && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+            && autocomplete.completion
+        ) {
+            e.preventDefault();
+            const next = autocomplete.accept();
+            setPrompt(next);
+            richTextRef.current?.setValue(next, next.length);
+            setPromptCursorPos(next.length);
+            autocomplete.dismiss();
+            return;
+        }
+        if (e.key === 'Escape' && autocomplete.completion) {
+            e.preventDefault();
+            autocomplete.dismiss();
+            return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {
             e.preventDefault();
             handleSubmit();
         }
-    }, [submitting, handleSubmit, slashCommands, handleSlashSelect]);
+    }, [submitting, handleSubmit, slashCommands, handleSlashSelect, autocomplete]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -572,8 +602,10 @@ export function EnqueueDialog() {
                         <RichTextInput
                             ref={richTextRef}
                             value={prompt}
+                            ghostText={autocomplete.completion}
                             onChange={(text, cursorPos) => {
                                 setPrompt(text);
+                                setPromptCursorPos(cursorPos);
                                 slashCommands.handleInputChange(text, cursorPos);
                             }}
                             onPaste={submitting ? undefined : addFromPaste}

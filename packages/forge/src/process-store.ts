@@ -46,6 +46,22 @@ export interface SearchFilter {
     offset?: number;
 }
 
+export interface PromptAutocompleteHistoryItem {
+    text: string;
+    source: 'initial' | 'follow-up';
+    workspaceId?: string;
+    processId?: string;
+    timestamp: string;
+    prefixMatch: boolean;
+}
+
+export interface PromptAutocompleteContext {
+    exactPrefixMatches: PromptAutocompleteHistoryItem[];
+    recentWorkspacePrompts: PromptAutocompleteHistoryItem[];
+    recentProcessTurns: PromptAutocompleteHistoryItem[];
+    historyFingerprint: string;
+}
+
 /**
  * Output event emitted during process execution.
  * Used by SSE streaming to push real-time output to clients.
@@ -333,6 +349,23 @@ export interface ProcessStore {
      * Much cheaper than getAllProcesses().length for endpoints that only need a count.
      */
     getProcessCount(filter?: ProcessFilter): Promise<number>;
+
+    /** Optional fast deterministic prompt autocomplete suffix lookup. */
+    getBestPromptCompletion?(
+        prefix: string,
+        opts?: { minPrefixLen?: number },
+    ): { completion: string; source: 'initial' | 'follow-up' } | null;
+
+    /** Optional bounded user-history retrieval for AI-generated prompt autocomplete. */
+    getPromptAutocompleteContext?(
+        prefix: string,
+        opts?: {
+            workspaceId?: string;
+            processId?: string;
+            limit?: number;
+            includeGlobalHistory?: boolean;
+        },
+    ): PromptAutocompleteContext;
 
     /** Return aggregate storage statistics. */
     getStorageStats(): Promise<StorageStats>;

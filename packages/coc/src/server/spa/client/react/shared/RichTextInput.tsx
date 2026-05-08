@@ -18,6 +18,12 @@ export interface RichTextInputProps {
     className?: string;
     id?: string;
     'data-testid'?: string;
+    /**
+     * VS Code-style inline ghost-text suffix rendered after the cursor in
+     * gray italic. Pure visual; does not affect the input's value or events.
+     * Hidden when `disabled` or empty.
+     */
+    ghostText?: string;
 }
 
 export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>(
@@ -97,26 +103,69 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         };
 
         return (
-            <div
-                ref={divRef}
-                contentEditable={props.disabled ? 'false' : 'true'}
-                aria-disabled={props.disabled || undefined}
-                data-placeholder={props.placeholder}
-                data-rich-input=""
-                onInput={handleInput}
-                onKeyDown={props.onKeyDown}
-                onPaste={handlePaste}
-                className={cn(
-                    'w-full min-h-[34px] max-h-28 overflow-y-auto resize-y rounded border',
-                    'whitespace-pre-wrap',
-                    'bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc]',
-                    'focus:outline-none focus:ring-2',
-                    props.disabled && 'opacity-60 cursor-not-allowed',
-                    props.className,
-                )}
-                id={props.id}
-                data-testid={props['data-testid']}
-            />
+            <div className="relative w-full">
+                <div
+                    ref={divRef}
+                    contentEditable={props.disabled ? 'false' : 'true'}
+                    aria-disabled={props.disabled || undefined}
+                    data-placeholder={props.placeholder}
+                    data-rich-input=""
+                    onInput={handleInput}
+                    onKeyDown={props.onKeyDown}
+                    onPaste={handlePaste}
+                    className={cn(
+                        'w-full min-h-[34px] max-h-28 overflow-y-auto resize-y rounded border',
+                        'whitespace-pre-wrap',
+                        'bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc]',
+                        'focus:outline-none focus:ring-2',
+                        'relative',
+                        props.disabled && 'opacity-60 cursor-not-allowed',
+                        props.className,
+                    )}
+                    id={props.id}
+                    data-testid={props['data-testid']}
+                />
+                {!props.disabled && props.ghostText && props.value !== undefined ? (
+                    // Overlay rendered ABOVE the contenteditable. The typed
+                    // value is repeated here in fully-transparent text so the
+                    // ghost suffix lines up exactly after the caret. The
+                    // contenteditable below remains the source of truth and
+                    // renders the user's actual text in normal color (the
+                    // overlay's transparent text passes through to it).
+                    <div
+                        aria-hidden="true"
+                        data-testid={
+                            props['data-testid']
+                                ? `${props['data-testid']}-ghost`
+                                : 'rich-input-ghost'
+                        }
+                        className={cn(
+                            'pointer-events-none absolute inset-0 z-10 overflow-hidden',
+                            'rounded border border-transparent',
+                            'whitespace-pre-wrap break-words',
+                            'px-2 py-1.5 text-sm',
+                            props.className,
+                        )}
+                        style={{
+                            color: 'transparent',
+                            background: 'transparent',
+                        }}
+                    >
+                        <span style={{ color: 'transparent' }}>{props.value}</span>
+                        <span
+                            className="italic"
+                            style={{ color: '#9e9e9e' }}
+                            data-testid={
+                                props['data-testid']
+                                    ? `${props['data-testid']}-ghost-suffix`
+                                    : 'rich-input-ghost-suffix'
+                            }
+                        >
+                            {props.ghostText}
+                        </span>
+                    </div>
+                ) : null}
+            </div>
         );
     }
 );

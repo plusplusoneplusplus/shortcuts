@@ -654,6 +654,52 @@ describe('AdminPanel', () => {
             expect(capturedBody.htmlEmbed).toEqual({ enabled: true });
         });
 
+        it('persists prompt autocomplete AI toggles as global preferences from Appearance', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (options?.method === 'PATCH' && url.includes('/preferences')) {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { taskCardDensity: 'compact' }, sources: {} }),
+                    });
+                }
+                if (url.includes('/preferences')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            theme: 'auto',
+                            reposSidebarCollapsed: false,
+                            uiLayoutMode: 'classic',
+                            htmlEmbed: { enabled: true },
+                            promptAutocomplete: { enabled: true, ai: { enabled: false } },
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('pref-prompt-autocomplete-ai-enabled')).toBeDefined());
+            capturedBody = null;
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pref-prompt-autocomplete-ai-enabled'));
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-appearance-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.promptAutocomplete).toEqual({
+                enabled: true,
+                ai: { enabled: true },
+            });
+        });
+
         it('cancel reverts to previous value', async () => {
             mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {

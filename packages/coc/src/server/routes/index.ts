@@ -45,6 +45,7 @@ import { registerStatsRoutes } from '../admin/stats-handler';
 import { registerDbBrowserRoutes } from '../admin/db-browser-handler';
 import { registerHeapRoutes } from '../admin/heap-monitor';
 import { registerSeenStateRoutes } from '../processes/seen-state-handler';
+import { registerPromptSuggestionRoutes } from '../processes/prompt-suggestion-handler';
 import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
 import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
@@ -174,6 +175,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
+    registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
     registerPinArchiveRoutes(routes, store as any);
     registerTurnActionRoutes(routes, store as any, getWsServer);
     registerProcessHistoryRoutes(routes, store as any);

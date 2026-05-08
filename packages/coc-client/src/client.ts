@@ -1,4 +1,4 @@
-import { AdminClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, StatsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SkillsClient, StatsClient, SuggestionsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -21,6 +21,7 @@ export class CocClient {
   readonly seenState: SeenStateClient;
   readonly skills: SkillsClient;
   readonly stats: StatsClient;
+  readonly suggestions: SuggestionsClient;
   readonly tasks: TasksClient;
   readonly templates: TemplatesClient;
   readonly wiki: WikiClient;
@@ -51,6 +52,7 @@ export class CocClient {
     this.seenState = new SeenStateClient(this.transport);
     this.skills = new SkillsClient(this.transport);
     this.stats = new StatsClient(this.transport);
+    this.suggestions = new SuggestionsClient(this.transport);
     this.tasks = new TasksClient(this.transport);
     this.templates = new TemplatesClient(this.transport);
     this.wiki = new WikiClient(this.transport, this.options);

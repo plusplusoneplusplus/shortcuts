@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Queue Task autocomplete**: VS Code-style inline ghost-text suggestions in the Queue Task dialog and chat follow-up input. As you type, the single best completion (derived from past initial prompts and follow-up messages across all workspaces) appears as gray italic text after the cursor. Press **Tab** to accept or **Esc** to dismiss. Slash-command menus continue to own Tab when visible. Default enabled; disable via `promptAutocomplete.enabled = false` in global preferences.
+
 ### Changed
 - **BREAKING**: VS Code UI renamed from "Pipelines" to "Workflows". Command IDs changed from `pipelinesViewer.*` to `workflowsViewer.*`. Config keys changed from `workspaceShortcuts.pipelinesViewer.*` to `workspaceShortcuts.workflowsViewer.*`. Custom editor viewType changed from `pipelinePreviewEditor` to `workflowPreviewEditor`.
 - CLI descriptions updated: "pipeline" → "workflow" in help text and output messages.

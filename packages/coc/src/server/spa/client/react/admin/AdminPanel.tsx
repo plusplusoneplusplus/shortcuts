@@ -96,6 +96,8 @@ export function AdminPanel() {
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
     const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(true);
+    const [promptAutocompleteEnabled, setPromptAutocompleteEnabled] = useState(true);
+    const [promptAutocompleteAiEnabled, setPromptAutocompleteAiEnabled] = useState(false);
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
@@ -109,7 +111,16 @@ export function AdminPanel() {
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({ theme: 'auto' as string, reposSidebarCollapsed: false, uiLayoutMode: 'classic' as string, htmlEmbedEnabled: true, taskCardDensity: 'compact' as 'compact' | 'dense', historyGrouping: true });
+    const [appearanceSnapshot, setAppearanceSnapshot] = useState({
+        theme: 'auto' as string,
+        reposSidebarCollapsed: false,
+        uiLayoutMode: 'classic' as string,
+        htmlEmbedEnabled: true,
+        promptAutocompleteEnabled: true,
+        promptAutocompleteAiEnabled: false,
+        taskCardDensity: 'compact' as 'compact' | 'dense',
+        historyGrouping: true,
+    });
     const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false });
 
     // Export
@@ -219,11 +230,23 @@ export function AdminPanel() {
             const r = data.reposSidebarCollapsed ?? false;
             const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
             const h = data.htmlEmbed?.enabled !== false;
+            const pae = data.promptAutocomplete?.enabled !== false;
+            const paai = data.promptAutocomplete?.ai?.enabled === true;
             setTheme(t);
             setReposSidebarCollapsed(r);
             setUiLayoutMode(u);
             setHtmlEmbedEnabled(h);
-            setAppearanceSnapshot(prev => ({ ...prev, theme: t, reposSidebarCollapsed: r, uiLayoutMode: u, htmlEmbedEnabled: h }));
+            setPromptAutocompleteEnabled(pae);
+            setPromptAutocompleteAiEnabled(paai);
+            setAppearanceSnapshot(prev => ({
+                ...prev,
+                theme: t,
+                reposSidebarCollapsed: r,
+                uiLayoutMode: u,
+                htmlEmbedEnabled: h,
+                promptAutocompleteEnabled: pae,
+                promptAutocompleteAiEnabled: paai,
+            }));
         } catch { /* ignore */ }
     }, []);
 
@@ -252,6 +275,8 @@ export function AdminPanel() {
         reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
         uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
         htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled ||
+        promptAutocompleteEnabled !== appearanceSnapshot.promptAutocompleteEnabled ||
+        promptAutocompleteAiEnabled !== appearanceSnapshot.promptAutocompleteAiEnabled ||
         taskCardDensity !== appearanceSnapshot.taskCardDensity ||
         historyGrouping !== appearanceSnapshot.historyGrouping;
 
@@ -347,9 +372,20 @@ export function AdminPanel() {
             const prefsChanged = theme !== appearanceSnapshot.theme ||
                 reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
                 uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
-                htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled;
+                htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled ||
+                promptAutocompleteEnabled !== appearanceSnapshot.promptAutocompleteEnabled ||
+                promptAutocompleteAiEnabled !== appearanceSnapshot.promptAutocompleteAiEnabled;
             if (prefsChanged) {
-                await getSpaCocClient().preferences.patchGlobal({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed: { enabled: htmlEmbedEnabled } });
+                await getSpaCocClient().preferences.patchGlobal({
+                    theme,
+                    reposSidebarCollapsed,
+                    uiLayoutMode,
+                    htmlEmbed: { enabled: htmlEmbedEnabled },
+                    promptAutocomplete: {
+                        enabled: promptAutocompleteEnabled,
+                        ai: { enabled: promptAutocompleteAiEnabled },
+                    },
+                });
             }
             // Save config (taskCardDensity, historyGrouping)
             const configChanged = taskCardDensity !== appearanceSnapshot.taskCardDensity || historyGrouping !== appearanceSnapshot.historyGrouping;
@@ -359,19 +395,30 @@ export function AdminPanel() {
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
             invalidateHtmlEmbedPreference();
-            setAppearanceSnapshot({ theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, taskCardDensity, historyGrouping });
+            setAppearanceSnapshot({
+                theme,
+                reposSidebarCollapsed,
+                uiLayoutMode,
+                htmlEmbedEnabled,
+                promptAutocompleteEnabled,
+                promptAutocompleteAiEnabled,
+                taskCardDensity,
+                historyGrouping,
+            });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setAppearanceSaving(false);
         }
-    }, [theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
+    }, [theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, promptAutocompleteEnabled, promptAutocompleteAiEnabled, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
 
     const handleCancelAppearance = useCallback(() => {
         setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
         setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
         setUiLayoutMode(appearanceSnapshot.uiLayoutMode as 'classic' | 'dev-workflow');
         setHtmlEmbedEnabled(appearanceSnapshot.htmlEmbedEnabled);
+        setPromptAutocompleteEnabled(appearanceSnapshot.promptAutocompleteEnabled);
+        setPromptAutocompleteAiEnabled(appearanceSnapshot.promptAutocompleteAiEnabled);
         setTaskCardDensity(appearanceSnapshot.taskCardDensity);
         setHistoryGrouping(appearanceSnapshot.historyGrouping);
     }, [appearanceSnapshot]);
@@ -938,6 +985,43 @@ export function AdminPanel() {
                                                 data-testid="pref-html-embed-enabled"
                                             />
                                             <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Prompt ghost text</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">
+                                                Show inline autocomplete in Queue Task and follow-up inputs.
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={promptAutocompleteEnabled}
+                                                onChange={e => setPromptAutocompleteEnabled(e.target.checked)}
+                                                data-testid="pref-prompt-autocomplete-enabled"
+                                            />
+                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">AI prompt ghost text</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">
+                                                Generate ghost text with AI using workspace-scoped user history. Disabled by default.
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={promptAutocompleteAiEnabled}
+                                                disabled={!promptAutocompleteEnabled}
+                                                onChange={e => setPromptAutocompleteAiEnabled(e.target.checked)}
+                                                data-testid="pref-prompt-autocomplete-ai-enabled"
+                                            />
+                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-disabled:opacity-50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                         </label>
                                     </div>
                                     <div className="flex items-center justify-between">

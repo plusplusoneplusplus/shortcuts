@@ -14,6 +14,7 @@ export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
 export { SkillsClient } from './skills';
 export { StatsClient } from './stats';
+export { SuggestionsClient } from './suggestions';
 export { TasksClient } from './tasks';
 export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';

@@ -21,6 +21,8 @@ import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
+import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
+import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -29,6 +31,7 @@ export interface NewChatAreaProps {
 
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
+    const [cursorPos, setCursorPos] = useState(0);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -51,6 +54,20 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
+
+    // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
+    const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
+    const autocomplete = usePromptAutocomplete({
+        text: input,
+        cursorPos,
+        enabled:
+            promptAutocompleteEnabled
+            && !sending
+            && !slashCommands.menuVisible
+            && !modelCommand.modelMenuVisible,
+        workspaceId,
+        surface: 'queue',
+    });
 
     async function handleSend() {
         const trimmed = input.trim();
@@ -191,18 +208,21 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         <RichTextInput
                             ref={richTextRef}
                             disabled={sending}
+                            value={input}
+                            ghostText={autocomplete.completion}
                             placeholder="Send a message... (type / for commands)"
                             className={cn(
                                 'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
                                 MODE_BORDER_COLORS[selectedMode].border,
                                 MODE_BORDER_COLORS[selectedMode].ring,
                             )}
-                            onChange={(val, cursorPos) => {
+                            onChange={(val, pos) => {
                                 setInput(val);
+                                setCursorPos(pos);
                                 if (modelCommand.modelMenuVisible) {
                                     modelCommand.setModelFilter(val);
                                 } else {
-                                    slashCommands.handleInputChange(val, cursorPos);
+                                    slashCommands.handleInputChange(val, pos);
                                 }
                             }}
                             onKeyDown={(e) => {
@@ -234,6 +254,25 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                             modelCommand.showModelMenu();
                                         }
                                     }
+                                    return;
+                                }
+                                // Priority 3: inline ghost-text accept (Tab, no modifiers).
+                                if (
+                                    e.key === 'Tab'
+                                    && !e.ctrlKey && !e.metaKey && !e.altKey
+                                    && autocomplete.completion
+                                ) {
+                                    e.preventDefault();
+                                    const next = autocomplete.accept();
+                                    setInput(next);
+                                    richTextRef.current?.setValue(next, next.length);
+                                    setCursorPos(next.length);
+                                    autocomplete.dismiss();
+                                    return;
+                                }
+                                if (e.key === 'Escape' && autocomplete.completion) {
+                                    e.preventDefault();
+                                    autocomplete.dismiss();
                                     return;
                                 }
                                 if (e.key === 'Enter' && !e.shiftKey) {

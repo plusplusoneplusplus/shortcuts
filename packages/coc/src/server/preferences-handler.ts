@@ -123,6 +123,27 @@ export interface GlobalPreferences {
     htmlEmbed?: {
         enabled: boolean;
     };
+
+    /** VS Code-style inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
+    promptAutocomplete?: {
+        /** Enabled by default. Set to false to disable client-side suggestions. */
+        enabled: boolean;
+        /** AI-generated ghost-text settings. Disabled by default when absent. */
+        ai?: {
+            enabled?: boolean;
+            /**
+             * AI model id used for ghost-text generation.
+             * Defaults to a fast/cheap model — override here to use a different one.
+             * Examples: 'gpt-5-mini', 'gpt-5.4-mini', 'claude-haiku-4.5', 'gpt-4.1'.
+             */
+            model?: string;
+            debounceMs?: number;
+            timeoutMs?: number;
+            maxHistoryItems?: number;
+            maxCompletionChars?: number;
+            includeGlobalHistory?: boolean;
+        };
+    };
 }
 
 /** Per-repository UI preferences. */
@@ -327,6 +348,37 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         const he = obj.htmlEmbed as Record<string, unknown>;
         if (typeof he.enabled === 'boolean') {
             result.htmlEmbed = { enabled: he.enabled };
+        }
+    }
+
+    if (typeof obj.promptAutocomplete === 'object' && obj.promptAutocomplete !== null) {
+        const pa = obj.promptAutocomplete as Record<string, unknown>;
+        if (typeof pa.enabled === 'boolean') {
+            result.promptAutocomplete = { enabled: pa.enabled };
+            if (typeof pa.ai === 'object' && pa.ai !== null && !Array.isArray(pa.ai)) {
+                const ai = pa.ai as Record<string, unknown>;
+                const validatedAi: NonNullable<NonNullable<GlobalPreferences['promptAutocomplete']>['ai']> = {};
+                if (typeof ai.enabled === 'boolean') validatedAi.enabled = ai.enabled;
+                if (typeof ai.model === 'string' && ai.model.length > 0 && ai.model.length <= 100) {
+                    validatedAi.model = ai.model;
+                }
+                if (typeof ai.debounceMs === 'number' && Number.isInteger(ai.debounceMs) && ai.debounceMs >= 100 && ai.debounceMs <= 5000) {
+                    validatedAi.debounceMs = ai.debounceMs;
+                }
+                if (typeof ai.timeoutMs === 'number' && Number.isInteger(ai.timeoutMs) && ai.timeoutMs >= 100 && ai.timeoutMs <= 10000) {
+                    validatedAi.timeoutMs = ai.timeoutMs;
+                }
+                if (typeof ai.maxHistoryItems === 'number' && Number.isInteger(ai.maxHistoryItems) && ai.maxHistoryItems >= 1 && ai.maxHistoryItems <= 50) {
+                    validatedAi.maxHistoryItems = ai.maxHistoryItems;
+                }
+                if (typeof ai.maxCompletionChars === 'number' && Number.isInteger(ai.maxCompletionChars) && ai.maxCompletionChars >= 20 && ai.maxCompletionChars <= 500) {
+                    validatedAi.maxCompletionChars = ai.maxCompletionChars;
+                }
+                if (typeof ai.includeGlobalHistory === 'boolean') validatedAi.includeGlobalHistory = ai.includeGlobalHistory;
+                if (Object.keys(validatedAi).length > 0) {
+                    result.promptAutocomplete.ai = validatedAi;
+                }
+            }
         }
     }
 
@@ -772,6 +824,15 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing workspace/typeFilter values.
             if (patch.activityFilters && existing.global?.activityFilters) {
                 merged.activityFilters = { ...existing.global.activityFilters, ...patch.activityFilters };
+            }
+            if (patch.promptAutocomplete && existing.global?.promptAutocomplete) {
+                merged.promptAutocomplete = {
+                    ...existing.global.promptAutocomplete,
+                    ...patch.promptAutocomplete,
+                    ai: patch.promptAutocomplete.ai || existing.global.promptAutocomplete.ai
+                        ? { ...(existing.global.promptAutocomplete.ai ?? {}), ...(patch.promptAutocomplete.ai ?? {}) }
+                        : undefined,
+                };
             }
 
             writePreferences(dataDir, { ...existing, global: merged });

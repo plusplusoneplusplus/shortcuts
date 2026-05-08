@@ -9,6 +9,17 @@ export interface GlobalPreferences {
   htmlEmbed?: {
     enabled?: boolean;
   };
+  promptAutocomplete?: {
+    enabled?: boolean;
+    ai?: {
+      enabled?: boolean;
+      debounceMs?: number;
+      timeoutMs?: number;
+      maxHistoryItems?: number;
+      maxCompletionChars?: number;
+      includeGlobalHistory?: boolean;
+    };
+  };
   [key: string]: unknown;
 }
 
