@@ -13,8 +13,8 @@
  * bound to the store instance, avoiding cross-request contamination.
  */
 
+import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
 import { defineTool } from '@plusplusoneplusplus/forge';
-import type { ProcessIndexEntry, ProcessStore, ConversationTurn } from '@plusplusoneplusplus/forge';
 
 export interface SearchConversationsArgs {
     query?: string;
@@ -196,7 +196,7 @@ export function createSearchConversationsTool(
 
     const tool = defineTool<SearchConversationsArgs>('search_conversations', {
         description:
-            'Search your conversation history in this workspace, or browse recent sessions. ' +
+            'Search your conversation history in this workspace, or browse recent sessions. This is not a Teams or Slack chat history search tool. ' +
             'TWO MODES: (1) Recent sessions — call with no query to list metadata-only sessions, optionally scoped by workspaceId and since/until activity window. ' +
             '(2) Keyword search — search for specific topics across all past sessions, optionally with AI-generated summaries. ' +
             'For periodic tasks, use no query plus workspaceId + since/until to discover candidate processIds, then call get_conversation only for selected sessions. ' +
