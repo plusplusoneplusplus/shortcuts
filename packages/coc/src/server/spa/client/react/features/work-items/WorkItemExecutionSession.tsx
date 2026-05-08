@@ -393,6 +393,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                         onMoveToTop={() => {}}
                         variant="inline"
                         taskId={taskId}
+                        processId={processId ?? undefined}
                         wsId={workspaceId}
                         onDeleteTurn={handleDeleteTurn}
                         onPinTurn={handlePinTurn}

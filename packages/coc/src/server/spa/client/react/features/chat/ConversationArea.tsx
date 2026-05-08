@@ -257,7 +257,7 @@ export function ConversationArea({
                         {pendingQuestion && (task?.status === 'running' || task?.status === 'queued') && (
                             <AskUserInline
                                 question={pendingQuestion}
-                                processId={taskId.startsWith('q-') ? taskId : `q-${taskId}`}
+                                processId={processId ?? taskId}
                                 onAnswered={onAskUserAnswered ?? (() => {})}
                             />
                         )}
