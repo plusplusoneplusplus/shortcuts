@@ -94,7 +94,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext',
 
 // useChatSSE
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE', () => ({
-    useChatSSE: () => ({ stopStreaming: mockState.stopStreaming }),
+    useChatSSE: (opts: any) => {
+        (globalThis as any).__useChatSSE_opts = opts;
+        return { stopStreaming: mockState.stopStreaming };
+    },
 }));
 
 // useSendMessage
@@ -1101,6 +1104,17 @@ describe('ChatDetail', () => {
             await waitFor(() => {
                 expect((globalThis as any).__useSendMessage_opts?.isActiveGeneration).toBe(true);
                 expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+            });
+        });
+
+        it('uses running process status for SSE streaming when queue task status is stale', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'running', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect((globalThis as any).__useSendMessage_opts?.isActiveGeneration).toBe(true);
+                expect((globalThis as any).__useChatSSE_opts?.shouldStream).toBe(true);
             });
         });
 

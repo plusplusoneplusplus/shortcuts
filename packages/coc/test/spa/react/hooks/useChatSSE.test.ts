@@ -113,6 +113,38 @@ describe('useChatSSE', () => {
         expect(MockEventSource.instances).toHaveLength(0);
     });
 
+    it('opens EventSource when derived active generation state is true despite stale task status', () => {
+        renderHook(() =>
+            useChatSSE(makeOptions({
+                task: { status: 'completed' },
+                shouldStream: true,
+            } as Partial<UseChatSSEOptions>)),
+        );
+        expect(MockEventSource.instances).toHaveLength(1);
+        expect(MockEventSource.last.url).toBe('/api/processes/pid-1/stream');
+    });
+
+    it('renders server-confirmed pending follow-up when derived active generation state is true', () => {
+        const setPendingQueue = vi.fn();
+        renderHook(() =>
+            useChatSSE(makeOptions({
+                task: { status: 'completed' },
+                shouldStream: true,
+                setPendingQueue,
+            } as Partial<UseChatSSEOptions>)),
+        );
+
+        act(() => {
+            MockEventSource.last._emit('pending-message-added', {
+                pendingMessage: { id: 'pm-1', content: 'queued msg', createdAt: '2024-01-01' },
+            });
+        });
+
+        expect(setPendingQueue).toHaveBeenCalled();
+        const updater = setPendingQueue.mock.calls[0][0];
+        expect(updater([])).toEqual([{ id: 'pm-1', content: 'queued msg', status: 'queued' }]);
+    });
+
     it('does not close SSE on a single onerror (allows native auto-reconnect)', () => {
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setIsStreaming })));
