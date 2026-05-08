@@ -38,8 +38,6 @@ export interface UseChatSSEOptions {
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
-    /** Whether this process should have an active stream attached. Defaults to task.status === 'running'. */
-    shouldStream?: boolean;
     /** Called when the server emits an `ask-user` SSE event. */
     onAskUserQuestion?: (question: AskUserQuestion) => void;
 }
@@ -59,7 +57,6 @@ export function useChatSSE({
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
-    shouldStream,
     onAskUserQuestion,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -75,8 +72,7 @@ export function useChatSSE({
             eventSourceRef.current.close();
             eventSourceRef.current = null;
         }
-        const shouldAttachStream = shouldStream ?? task?.status === 'running';
-        if (!taskId || !shouldAttachStream || !processId) return;
+        if (!taskId || task?.status !== 'running' || !processId) return;
         if (typeof EventSource === 'undefined') return;
 
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
@@ -288,7 +284,7 @@ export function useChatSSE({
         });
 
         return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, shouldStream, processId, refreshConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, processId, refreshConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { stopStreaming };
 }

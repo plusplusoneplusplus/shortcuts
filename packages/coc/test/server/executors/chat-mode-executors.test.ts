@@ -383,10 +383,10 @@ describe('PlanExecutor system message content', () => {
 });
 
 // ============================================================================
-// ChatExecutor does NOT inject ask_user tool
+// ChatExecutor injects ask_user tool when enabled
 // ============================================================================
 
-describe('ChatExecutor ask_user disabled', () => {
+describe('ChatExecutor ask_user enabled', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
@@ -396,7 +396,7 @@ describe('ChatExecutor ask_user disabled', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
     });
 
-    it('does not include ask_user tool even when askUser option is enabled', async () => {
+    it('includes ask_user tool when askUser option is enabled', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
@@ -406,7 +406,7 @@ describe('ChatExecutor ask_user disabled', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).not.toContain('ask_user');
+        expect(toolNames).toContain('ask_user');
     });
 
     it('does not include ask_user prompt suffix', async () => {
