@@ -185,10 +185,11 @@ export class ExecutorRegistry {
 
     /**
      * Look up the pending ask-user handles for a process across all executors
-     * that support the ask_user tool (chat and plan modes).
+     * that support the ask_user tool (chat, plan, and follow-up modes).
      */
     getAskUserHandles(processId: string): ReturnType<typeof this.chatExecutor.getAskUserHandles> {
         return this.chatExecutor.getAskUserHandles(processId)
-            ?? this.planExecutor.getAskUserHandles(processId);
+            ?? this.planExecutor.getAskUserHandles(processId)
+            ?? this.followUpExecutor.getAskUserHandles(processId);
     }
 }
