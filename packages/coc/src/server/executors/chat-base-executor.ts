@@ -246,7 +246,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             askUser: {
                 enabled: mode === 'plan' && this.askUser.enabled,
                 deps: {
-                    emitQuestion: (questionPayload) => {
+                    emitQuestion: async (questionPayload) => {
+                        await this.store.updateProcess(processId, { pendingAskUser: questionPayload });
                         this.store.emitProcessEvent(processId, {
                             type: 'ask-user',
                             askUser: questionPayload,
@@ -436,6 +437,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             modeDispose?.();
             // Cancel any pending ask-user questions before cleanup
             this.sessions.get(processId)?.pendingAskUser?.cancelAll();
+            try {
+                await this.clearPendingAskUser(processId);
+            } catch (err) {
+                getLogger().debug(
+                    LogCategory.AI,
+                    `[ChatModeExecutor] Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

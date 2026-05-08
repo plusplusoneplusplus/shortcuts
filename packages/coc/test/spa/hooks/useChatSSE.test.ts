@@ -204,6 +204,25 @@ describe('useChatSSE', () => {
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
+    it('rehydrates a pending ask-user question from SSE replay', () => {
+        const onAskUserQuestion = vi.fn();
+        const question = {
+            questionId: 'ask-1',
+            question: 'Choose an option',
+            type: 'select',
+            options: [{ value: 'a', label: 'Option A' }],
+            defaultValue: 'a',
+            turnIndex: 1,
+        };
+
+        renderHook(() => useChatSSE(makeOptions({ onAskUserQuestion })));
+        act(() => {
+            MockEventSource.latest().emit('ask-user', question);
+        });
+
+        expect(onAskUserQuestion).toHaveBeenCalledWith(question);
+    });
+
     it('calls setTask to mark completed on "done" event', () => {
         const setTask = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTask })));

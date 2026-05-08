@@ -262,17 +262,17 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /** Answer a pending ask-user question across all per-repo bridges. */
-    answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): boolean {
+    async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
         for (const { bridge } of this.bridges.values()) {
-            if (bridge.answerAskUserQuestion?.(processId, questionId, answer)) return true;
+            if (await bridge.answerAskUserQuestion?.(processId, questionId, answer)) return true;
         }
         return false;
     }
 
     /** Skip a pending ask-user question across all per-repo bridges. */
-    skipAskUserQuestion(processId: string, questionId: string): boolean {
+    async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
         for (const { bridge } of this.bridges.values()) {
-            if (bridge.skipAskUserQuestion?.(processId, questionId)) return true;
+            if (await bridge.skipAskUserQuestion?.(processId, questionId)) return true;
         }
         return false;
     }

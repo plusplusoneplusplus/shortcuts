@@ -58,9 +58,9 @@ export interface QueueExecutorBridge {
     /** Unsubscribe from queue change events. */
     off?(event: 'queueChange', listener: (event: Record<string, unknown>) => void): void;
     /** Answer a pending ask-user question. Returns true if the question was found and answered. */
-    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): boolean;
+    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
-    skipAskUserQuestion?(processId: string, questionId: string): boolean;
+    skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
 }
 
 // ============================================================================

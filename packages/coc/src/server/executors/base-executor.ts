@@ -89,6 +89,10 @@ export abstract class BaseExecutor {
         this.sessions.delete(processId);
     }
 
+    protected async clearPendingAskUser(processId: string): Promise<void> {
+        await this.store.updateProcess(processId, { pendingAskUser: undefined });
+    }
+
     /**
      * Reset streaming state for a process so a retry starts with a clean slate.
      * Clears the output buffer, timeline, suggestions, and throttle counters

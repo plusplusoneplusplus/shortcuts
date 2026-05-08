@@ -829,6 +829,34 @@ describe('SqliteProcessStore — Metadata envelope', () => {
         const result = await store.getProcess('meta-pm');
         expect(result!.pendingMessages).toHaveLength(1);
     });
+
+    it('folds, unfolds, and clears pendingAskUser', async () => {
+        await store.addProcess(makeProcess('meta-ask-user', {
+            pendingAskUser: {
+                questionId: 'q1',
+                question: 'Pick one',
+                type: 'select',
+                options: [{ value: 'a', label: 'Option A' }],
+                defaultValue: 'a',
+                turnIndex: 1,
+            },
+        }));
+
+        const stored = await store.getProcess('meta-ask-user');
+        expect(stored!.pendingAskUser).toEqual({
+            questionId: 'q1',
+            question: 'Pick one',
+            type: 'select',
+            options: [{ value: 'a', label: 'Option A' }],
+            defaultValue: 'a',
+            turnIndex: 1,
+        });
+
+        await store.updateProcess('meta-ask-user', { pendingAskUser: undefined });
+
+        const cleared = await store.getProcess('meta-ask-user');
+        expect(cleared!.pendingAskUser).toBeUndefined();
+    });
 });
 
 // ============================================================================

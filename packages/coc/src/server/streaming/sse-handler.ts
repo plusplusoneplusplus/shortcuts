@@ -144,6 +144,10 @@ export async function handleProcessStream(
     // 4. Replay persisted conversation history as a structured snapshot
     replayConversationTurns(res, process);
 
+    if ((process.status === 'running' || process.status === 'queued') && process.pendingAskUser) {
+        sendEvent(res, 'ask-user', process.pendingAskUser);
+    }
+
     // 5. If already completed/failed/cancelled, send final status + close
     if (process.status !== 'running' && process.status !== 'queued') {
         sendEvent(res, 'status', {

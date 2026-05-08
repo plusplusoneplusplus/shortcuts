@@ -734,12 +734,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             let resolved: boolean;
             if (skipped) {
-                resolved = bridge.skipAskUserQuestion?.(id, questionId) ?? false;
+                resolved = await bridge.skipAskUserQuestion?.(id, questionId) ?? false;
             } else {
                 if (body.answer === undefined) {
                     return handleAPIError(res, missingFields(['answer']));
                 }
-                resolved = bridge.answerAskUserQuestion?.(id, questionId, body.answer as string | string[] | boolean) ?? false;
+                resolved = await bridge.answerAskUserQuestion?.(id, questionId, body.answer as string | string[] | boolean) ?? false;
             }
 
             if (!resolved) {

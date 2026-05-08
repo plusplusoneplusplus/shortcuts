@@ -382,7 +382,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        shouldStream: effectiveStatus === 'running' || effectiveStatus === 'cancelling',
+        shouldStream: effectiveStatus === 'running' || effectiveStatus === 'queued' || effectiveStatus === 'cancelling',
         onAskUserQuestion: setPendingAskUserQuestion,
     });
 

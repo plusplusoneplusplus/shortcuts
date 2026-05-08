@@ -52,7 +52,7 @@ export interface AskUserSSEPayload {
 }
 
 export interface AskUserToolDeps {
-    emitQuestion: (payload: AskUserSSEPayload) => void;
+    emitQuestion: (payload: AskUserSSEPayload) => void | Promise<void>;
     computeTurnIndex: () => number;
 }
 
@@ -114,19 +114,25 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         handler: async (args: AskUserArgs): Promise<AskUserResponse> => {
             const questionId = randomUUID();
             const turnIndex = deps.computeTurnIndex();
-
-            deps.emitQuestion({
-                questionId,
-                question: args.question,
-                type: args.type,
-                options: args.options,
-                defaultValue: args.defaultValue,
-                turnIndex,
-            });
-
-            return new Promise<AskUserResponse>((resolve) => {
+            const responsePromise = new Promise<AskUserResponse>((resolve) => {
                 pending.set(questionId, { resolve });
             });
+
+            try {
+                await deps.emitQuestion({
+                    questionId,
+                    question: args.question,
+                    type: args.type,
+                    options: args.options,
+                    defaultValue: args.defaultValue,
+                    turnIndex,
+                });
+            } catch (err) {
+                pending.delete(questionId);
+                throw err;
+            }
+
+            return responsePromise;
         },
     });
 

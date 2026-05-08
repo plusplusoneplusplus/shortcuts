@@ -33,9 +33,9 @@ export interface QueueExecutorBridge {
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
     /** Answer a pending ask-user question. Returns true if the question was found and answered. */
-    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): boolean;
+    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
-    skipAskUserQuestion?(processId: string, questionId: string): boolean;
+    skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
 }
 
 function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
@@ -203,16 +203,24 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): boolean {
+    async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
-        return handles.answerQuestion(questionId, answer);
+        const resolved = handles.answerQuestion(questionId, answer);
+        if (resolved) {
+            await this.store.updateProcess(processId, { pendingAskUser: undefined });
+        }
+        return resolved;
     }
 
-    skipAskUserQuestion(processId: string, questionId: string): boolean {
+    async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
-        return handles.skipQuestion(questionId);
+        const resolved = handles.skipQuestion(questionId);
+        if (resolved) {
+            await this.store.updateProcess(processId, { pendingAskUser: undefined });
+        }
+        return resolved;
     }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void> {

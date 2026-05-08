@@ -154,6 +154,7 @@ interface MetadataEnvelope {
     __discoveryMetadata?: unknown;
     __codeReviewGroupMetadata?: unknown;
     __pendingMessages?: unknown;
+    __pendingAskUser?: unknown;
 }
 
 // ============================================================================
@@ -283,16 +284,18 @@ function deserializeTimelineItem(raw: Record<string, unknown>): TimelineItem {
 // ============================================================================
 
 function processToRow(process: AIProcess): Record<string, unknown> {
-    // Fold legacy metadata + pendingMessages into the metadata JSON blob
+    // Fold legacy metadata + process-runtime state into the metadata JSON blob
     const envelope: MetadataEnvelope = { ...(process.metadata ?? {}) };
     if (process.codeReviewMetadata) envelope.__codeReviewMetadata = process.codeReviewMetadata;
     if (process.discoveryMetadata) envelope.__discoveryMetadata = process.discoveryMetadata;
     if (process.codeReviewGroupMetadata) envelope.__codeReviewGroupMetadata = process.codeReviewGroupMetadata;
     if (process.pendingMessages && process.pendingMessages.length > 0) envelope.__pendingMessages = process.pendingMessages;
+    if (process.pendingAskUser) envelope.__pendingAskUser = process.pendingAskUser;
 
     const hasMetadataContent = process.metadata || process.codeReviewMetadata ||
         process.discoveryMetadata || process.codeReviewGroupMetadata ||
-        (process.pendingMessages && process.pendingMessages.length > 0);
+        (process.pendingMessages && process.pendingMessages.length > 0) ||
+        process.pendingAskUser;
 
     return {
         id: process.id,
@@ -334,14 +337,16 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
     let discoveryMetadata: AIProcess['discoveryMetadata'] | undefined;
     let codeReviewGroupMetadata: AIProcess['codeReviewGroupMetadata'] | undefined;
     let pendingMessages: AIProcess['pendingMessages'] | undefined;
+    let pendingAskUser: AIProcess['pendingAskUser'] | undefined;
 
     if (envelope) {
-        const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...rest } = envelope;
+        const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, __pendingAskUser, ...rest } = envelope;
         metadata = Object.keys(rest).length > 0 ? rest as AIProcess['metadata'] : undefined;
         codeReviewMetadata = __codeReviewMetadata as AIProcess['codeReviewMetadata'];
         discoveryMetadata = __discoveryMetadata as AIProcess['discoveryMetadata'];
         codeReviewGroupMetadata = __codeReviewGroupMetadata as AIProcess['codeReviewGroupMetadata'];
         pendingMessages = __pendingMessages as AIProcess['pendingMessages'];
+        pendingAskUser = __pendingAskUser as AIProcess['pendingAskUser'];
     }
 
     const process: AIProcess = {
@@ -373,6 +378,7 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         stale: intToBool(row.stale),
         dataFilePath: row.data_file_path ?? undefined,
         pendingMessages,
+        pendingAskUser,
         lastEventAt: isoToDate(row.last_event_at),
         pinnedAt: row.pinned_at ?? undefined,
         archived: intToBool(row.archived),
@@ -888,24 +894,26 @@ export class SqliteProcessStore implements ProcessStore {
         // Handle metadata envelope rebuild when any metadata field changes
         if ('metadata' in updates || 'codeReviewMetadata' in updates ||
             'discoveryMetadata' in updates || 'codeReviewGroupMetadata' in updates ||
-            'pendingMessages' in updates) {
+            'pendingMessages' in updates || 'pendingAskUser' in updates) {
             // Re-read existing process to merge metadata
             const existing = this.getProcessStmt.get(id) as ProcessRow | undefined;
             if (existing) {
                 const existingEnvelope = jsonParse<MetadataEnvelope>(existing.metadata) ?? {};
-                const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...existingMeta } = existingEnvelope;
+                const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, __pendingAskUser, ...existingMeta } = existingEnvelope;
 
                 const newMeta = 'metadata' in updates ? (updates.metadata ?? {}) : existingMeta;
                 const newCrm = 'codeReviewMetadata' in updates ? updates.codeReviewMetadata : __codeReviewMetadata;
                 const newDm = 'discoveryMetadata' in updates ? updates.discoveryMetadata : __discoveryMetadata;
                 const newCrgm = 'codeReviewGroupMetadata' in updates ? updates.codeReviewGroupMetadata : __codeReviewGroupMetadata;
                 const newPm = 'pendingMessages' in updates ? updates.pendingMessages : __pendingMessages;
+                const newAskUser = 'pendingAskUser' in updates ? updates.pendingAskUser : __pendingAskUser;
 
                 const envelope: MetadataEnvelope = { ...(newMeta as object) };
                 if (newCrm) envelope.__codeReviewMetadata = newCrm;
                 if (newDm) envelope.__discoveryMetadata = newDm;
                 if (newCrgm) envelope.__codeReviewGroupMetadata = newCrgm;
                 if (newPm && (newPm as unknown[]).length > 0) envelope.__pendingMessages = newPm;
+                if (newAskUser) envelope.__pendingAskUser = newAskUser;
 
                 const hasContent = Object.keys(envelope).length > 0;
                 setClauses.push('metadata = ?');
@@ -1829,21 +1837,23 @@ export class SqliteProcessStore implements ProcessStore {
         // Handle metadata envelope if any metadata-related fields are updated
         if ('metadata' in updates || 'codeReviewMetadata' in updates ||
             'discoveryMetadata' in updates || 'codeReviewGroupMetadata' in updates ||
-            'pendingMessages' in updates) {
+            'pendingMessages' in updates || 'pendingAskUser' in updates) {
             const existingEnvelope = jsonParse<MetadataEnvelope>(existingRow.metadata) ?? {};
-            const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...existingMeta } = existingEnvelope;
+            const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, __pendingAskUser, ...existingMeta } = existingEnvelope;
 
             const newMeta = 'metadata' in updates ? (updates.metadata ?? {}) : existingMeta;
             const newCrm = 'codeReviewMetadata' in updates ? updates.codeReviewMetadata : __codeReviewMetadata;
             const newDm = 'discoveryMetadata' in updates ? updates.discoveryMetadata : __discoveryMetadata;
             const newCrgm = 'codeReviewGroupMetadata' in updates ? updates.codeReviewGroupMetadata : __codeReviewGroupMetadata;
             const newPm = 'pendingMessages' in updates ? updates.pendingMessages : __pendingMessages;
+            const newAskUser = 'pendingAskUser' in updates ? updates.pendingAskUser : __pendingAskUser;
 
             const envelope: MetadataEnvelope = { ...(newMeta as object) };
             if (newCrm) envelope.__codeReviewMetadata = newCrm;
             if (newDm) envelope.__discoveryMetadata = newDm;
             if (newCrgm) envelope.__codeReviewGroupMetadata = newCrgm;
             if (newPm && (newPm as unknown[]).length > 0) envelope.__pendingMessages = newPm;
+            if (newAskUser) envelope.__pendingAskUser = newAskUser;
 
             const hasContent = Object.keys(envelope).length > 0;
             setClauses.push('metadata = ?');

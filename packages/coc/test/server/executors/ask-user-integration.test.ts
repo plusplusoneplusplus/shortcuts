@@ -166,6 +166,68 @@ describe('ask_user tool injection in chat-mode executors', () => {
             expect(capturedOptions?.onUserInputRequest).toBeUndefined();
         }
     });
+
+    it('persists pending ask_user payload and clears it after answer', async () => {
+        const processId = 'queue_task-ask-user';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hello',
+            fullPrompt: 'Hello',
+        });
+
+        const executor = new PlanExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: SendMessageOptions) => {
+            const askTool = opts.tools?.find(t => t.name === 'ask_user');
+            expect(askTool).toBeDefined();
+
+            const responsePromise = askTool!.handler({
+                question: 'Pick a path',
+                type: 'select',
+                options: [{ value: 'a', label: 'Option A' }],
+                defaultValue: 'a',
+            } as any);
+
+            await vi.waitFor(() => {
+                expect(store.processes.get(processId)?.pendingAskUser).toMatchObject({
+                    question: 'Pick a path',
+                    type: 'select',
+                    options: [{ value: 'a', label: 'Option A' }],
+                    defaultValue: 'a',
+                    turnIndex: 1,
+                });
+            });
+            await vi.waitFor(() => {
+                expect(executor.getAskUserHandles(processId)?.hasPending()).toBe(true);
+            });
+
+            const questionId = store.processes.get(processId)!.pendingAskUser!.questionId;
+            expect(executor.getAskUserHandles(processId)?.answerQuestion(questionId, 'a')).toBe(true);
+            await expect(responsePromise).resolves.toMatchObject({
+                questionId,
+                answer: 'a',
+                skipped: false,
+            });
+
+            return { success: true, response: 'ok', sessionId: 'sess-1', toolCalls: [] };
+        });
+
+        await executor.execute(makeChatTask('plan', 'task-ask-user'), 'Hello');
+
+        expect(store.processes.get(processId)?.pendingAskUser).toBeUndefined();
+        expect(store.emitProcessEvent).toHaveBeenCalledWith(processId, {
+            type: 'ask-user',
+            askUser: expect.objectContaining({
+                question: 'Pick a path',
+                type: 'select',
+            }),
+        });
+    });
 });
 
 // ============================================================================

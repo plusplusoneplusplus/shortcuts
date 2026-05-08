@@ -368,6 +368,57 @@ describe('SSE replay', () => {
         expect(snapshotTurns[5].streaming).toBe(true);
     });
 
+    it('replays pending ask-user after the conversation snapshot for running processes', async () => {
+        store.onProcessOutput = vi.fn(() => () => {});
+        const pendingAskUser = {
+            questionId: 'ask-1',
+            question: 'Which option?',
+            type: 'select' as const,
+            options: [{ value: 'a', label: 'Option A' }],
+            defaultValue: 'a',
+            turnIndex: 1,
+        };
+        const process = createProcessFixture({
+            id: 'p-ask-running',
+            status: 'running',
+            conversationTurns: [makeTurn('user', 'Plan this', 0)],
+            pendingAskUser,
+        });
+        store.processes.set(process.id, process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, process.id, store);
+
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames.map(f => f.event).slice(0, 2)).toEqual(['conversation-snapshot', 'ask-user']);
+        expect(frames.find(f => f.event === 'ask-user')!.data).toEqual(pendingAskUser);
+    });
+
+    it('does not replay stale pending ask-user for terminal processes', async () => {
+        const process = createProcessFixture({
+            id: 'p-ask-done',
+            status: 'completed',
+            conversationTurns: [makeTurn('assistant', 'Done', 0)],
+            pendingAskUser: {
+                questionId: 'stale',
+                question: 'Old question',
+                type: 'text',
+                turnIndex: 1,
+            },
+        });
+        store.processes.set(process.id, process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, process.id, store);
+
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames.filter(f => f.event === 'ask-user')).toHaveLength(0);
+        expect(frames.filter(f => f.event === 'status')).toHaveLength(1);
+        expect(frames.filter(f => f.event === 'done')).toHaveLength(1);
+    });
+
     // Test 10b: Suggestions event is forwarded to SSE stream
     it('forwards suggestions event to SSE stream', async () => {
         let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;

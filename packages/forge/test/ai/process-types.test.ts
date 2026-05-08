@@ -106,3 +106,36 @@ describe('serializeProcess / deserializeProcess — pendingMessages', () => {
         expect(deserialized.pendingMessages![0].mode).toBeUndefined();
     });
 });
+
+describe('serializeProcess / deserializeProcess — pendingAskUser', () => {
+    it('should round-trip a pending ask-user question', () => {
+        const pendingAskUser = {
+            questionId: 'ask-1',
+            question: 'Choose a retry strategy',
+            type: 'select' as const,
+            options: [
+                { value: 'fast', label: 'Fast' },
+                { value: 'safe', label: 'Safe', description: 'Retry with extra validation' },
+            ],
+            defaultValue: 'safe',
+            turnIndex: 1,
+        };
+        const process = makeMinimalProcess({ pendingAskUser });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.pendingAskUser).toEqual(pendingAskUser);
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingAskUser).toEqual(pendingAskUser);
+    });
+
+    it('should handle undefined pendingAskUser', () => {
+        const process = makeMinimalProcess();
+
+        const serialized = serializeProcess(process);
+        expect(serialized.pendingAskUser).toBeUndefined();
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingAskUser).toBeUndefined();
+    });
+});
