@@ -72,6 +72,12 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
 
     const [notesRoot, setNotesRoot] = useState<string | null>(null);
 
+    // ── Dismiss update dot on click anywhere in NotesView ────────────────────
+    const markSeenRef = useRef<(() => void) | null>(null);
+    const handlePointerDown = useCallback(() => {
+        markSeenRef.current?.();
+    }, []);
+
     // ── Resizable panels ────────────────────────────────────────────────────
 
     const sidebarResize = useResizablePanel({initialWidth: 280,
@@ -359,6 +365,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
         <div
             className={`flex h-full${isResizing ? ' select-none' : ''}`}
             data-testid="notes-view"
+            onPointerDown={handlePointerDown}
         >
             {/* Left: notes tree sidebar */}
             <ResponsiveSidebar
@@ -379,6 +386,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onGoBack={handleGoBack}
                     onNotesRootReady={setNotesRoot}
                     onRestoreEditorFocus={handleRestoreEditorFocus}
+                    markSeenRef={markSeenRef}
                 />
             </ResponsiveSidebar>
 

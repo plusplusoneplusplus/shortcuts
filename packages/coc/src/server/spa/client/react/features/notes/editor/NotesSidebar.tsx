@@ -39,9 +39,11 @@ export interface NotesSidebarProps {
     onNotesRootReady?: (notesRoot: string) => void;
     /** Restores the active note editor after focus-preserving copy actions. */
     onRestoreEditorFocus?: () => void;
+    /** Ref populated with a callback that marks the currently selected note as seen. */
+    markSeenRef?: React.RefObject<(() => void) | null>;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef }: NotesSidebarProps) {
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
@@ -101,6 +103,15 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     useEffect(() => {
         if (selectedPath) markAsSeen(selectedPath);
     }, [selectedPath, markAsSeen]);
+
+    // Expose markAsSeen for the currently selected path so parent can dismiss the update dot on click
+    useEffect(() => {
+        if (!markSeenRef) return;
+        (markSeenRef as React.MutableRefObject<(() => void) | null>).current = () => {
+            if (selectedPath) markAsSeen(selectedPath);
+        };
+        return () => { (markSeenRef as React.MutableRefObject<(() => void) | null>).current = null; };
+    }, [markSeenRef, selectedPath, markAsSeen]);
 
     // Scroll the selected tree item into view after tree renders
     useEffect(() => {
