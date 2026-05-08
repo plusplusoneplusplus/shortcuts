@@ -30,6 +30,16 @@ export interface UseChatSSEOptions {
     processId: string | null;
     setIsStreaming: (v: boolean) => void;
     setTask: (updater: (prev: any) => any) => void;
+    /**
+     * Optional setter for the locally-cached process details. When provided,
+     * `finish()` updates `processDetails.status` synchronously so that
+     * `effectiveStatus = processDetails?.status ?? task?.status` no longer
+     * lags behind reality during the brief window between SSE termination
+     * and the async `refreshConversation()` HTTP refresh. Without this, a
+     * follow-up sent immediately after a task completes can be misrouted
+     * through the active-generation path and skip the optimistic user bubble.
+     */
+    setProcessDetails?: (updater: (prev: any) => any) => void;
     setPendingQueue: SetPendingQueue;
     setSuggestions: (v: string[]) => void;
     setSessionTokenLimit: (v: number | undefined) => void;
@@ -49,6 +59,7 @@ export function useChatSSE({
     processId,
     setIsStreaming,
     setTask,
+    setProcessDetails,
     setPendingQueue,
     setSuggestions,
     setSessionTokenLimit,
@@ -190,6 +201,16 @@ export function useChatSSE({
             closeSSE();
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
+            // Mirror the terminal status onto the locally-cached processDetails so
+            // `effectiveStatus = processDetails?.status ?? task?.status` flips to
+            // terminal in the same render. Without this, a follow-up sent in the
+            // window before refreshConversation() resolves is misrouted through
+            // the active-generation enqueue path and the optimistic user bubble
+            // is skipped, leaving the new message invisible until the user
+            // re-selects the chat.
+            setProcessDetails?.(prev => prev && prev.status === 'running'
+                ? { ...prev, status: finalStatus, endTime: prev.endTime ?? new Date().toISOString() }
+                : prev);
             // Stamp costTimeMs on the last assistant turn before server refresh
             setTurnsAndRef(prev => {
                 for (let i = prev.length - 1; i >= 0; i--) {

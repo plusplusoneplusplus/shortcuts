@@ -274,6 +274,124 @@ describe('useChatSSE', () => {
         expect(result.status).toBe('completed');
     });
 
+    // ── Regression: missing follow-up bubble after task completes ──
+    //
+    // Without the synchronous setProcessDetails update in finish(), the
+    // window between SSE 'done' and the async refreshConversation() leaves
+    // `effectiveStatus = processDetails?.status ?? task?.status` evaluating
+    // to 'running' in ChatDetail. A follow-up sent during that window is
+    // misrouted through the active-generation enqueue path, the optimistic
+    // user bubble is skipped, and SSE never reopens — so the new message
+    // stays invisible until the user re-selects the chat.
+
+    it('regression: done event mirrors terminal status onto processDetails synchronously', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        expect(setProcessDetails).toHaveBeenCalled();
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ id: 'pid-1', status: 'running' });
+        expect(result.status).toBe('completed');
+    });
+
+    it('regression: status=failed event mirrors terminal status onto processDetails', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'failed' });
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ id: 'pid-1', status: 'running' });
+        expect(result.status).toBe('failed');
+    });
+
+    it('regression: status=cancelled event mirrors terminal status onto processDetails', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'cancelled' });
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ id: 'pid-1', status: 'running' });
+        expect(result.status).toBe('cancelled');
+    });
+
+    it('regression: terminal status update preserves existing endTime', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        const existing = { id: 'pid-1', status: 'running', endTime: '2024-01-01T00:00:00Z' };
+        const result = updater!(existing);
+        expect(result.endTime).toBe('2024-01-01T00:00:00Z');
+    });
+
+    it('regression: terminal status update fills missing endTime with a fresh timestamp', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        const result = updater!({ id: 'pid-1', status: 'running' });
+        expect(typeof result.endTime).toBe('string');
+        expect(result.endTime.length).toBeGreaterThan(0);
+    });
+
+    it('regression: terminal status update is a no-op when processDetails is null', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater!(null)).toBeNull();
+    });
+
+    it('regression: terminal status update is a no-op when processDetails is already terminal', async () => {
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setProcessDetails })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setProcessDetails.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        const existing = { id: 'pid-1', status: 'completed', endTime: '2024-01-01T00:00:00Z' };
+        // Status was already terminal (e.g. cancelled by user); do not stomp it.
+        expect(updater!(existing)).toBe(existing);
+    });
+
+    it('regression: terminal status update is harmlessly absent when setProcessDetails is not provided', async () => {
+        // ChatDetail wires setProcessDetails through, but stand-alone callers
+        // may omit it. The hook must not crash and must still update task.
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        expect(setTask).toHaveBeenCalled();
+    });
+
     // ── Group 4: SSE event handling ──
 
     describe('SSE queue events', () => {

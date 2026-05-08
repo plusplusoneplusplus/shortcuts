@@ -374,6 +374,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         processId,
         setIsStreaming,
         setTask,
+        setProcessDetails,
         setPendingQueue,
         setSuggestions,
         setSessionTokenLimit,

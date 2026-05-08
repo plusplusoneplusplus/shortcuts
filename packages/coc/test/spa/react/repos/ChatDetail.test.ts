@@ -836,13 +836,13 @@ describe('ChatDetail', () => {
         it('clears pending queue on done', () => {
             // finish() calls setPendingQueue([]) to clear the queue
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             expect(finishBlock).toContain('setPendingQueue([])');
         });
 
         it('calls onSendComplete on done', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             expect(finishBlock).toContain('onSendComplete()');
         });
 
@@ -1286,14 +1286,14 @@ describe('ChatDetail', () => {
 
         it('useChatSSE finish calls refreshConversation and onSendComplete', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             expect(finishBlock).toContain('refreshConversation(processId)');
             expect(finishBlock).toContain('onSendComplete()');
         });
 
         it('useChatSSE finish clears pending queue', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             expect(finishBlock).toContain('setPendingQueue([])');
         });
 
@@ -1307,7 +1307,7 @@ describe('ChatDetail', () => {
     describe('useChatSSE finish() calls setTask then refreshConversation', () => {
         it('finish() calls setTask before refreshConversation', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
             const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
             expect(setTaskIdx).toBeGreaterThan(-1);
@@ -1318,7 +1318,7 @@ describe('ChatDetail', () => {
 
         it('finish calls refreshConversation directly (no .finally() wrapper)', () => {
             const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
-            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 2500);
             expect(finishBlock).toContain('void refreshConversation(processId)');
         });
     });
