@@ -142,7 +142,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
         const previousMode = process.metadata?.mode as ChatMode | undefined;
-        const currentMode = mode ?? previousMode;
+        const currentMode = mode ?? previousMode ?? 'ask';
 
         const metadataUpdates: Record<string, unknown> = {};
         if (mode && mode !== previousMode) {
@@ -235,7 +235,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
 
-            const { tools: filteredTools, suffix: combinedSuffix } = buildChatToolBundle({
+            const toolBundle = buildChatToolBundle({
                 dataDir: this.dataDir,
                 store: this.store,
                 workspaceId: wsId,
@@ -245,7 +245,28 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                     : undefined,
                 boundedMemory,
+                askUser: {
+                    enabled: (currentMode === 'ask' || currentMode === 'plan') && this.askUser.enabled,
+                    deps: {
+                        emitQuestion: async (questionPayload) => {
+                            await this.store.updateProcess(processId, { pendingAskUser: questionPayload });
+                            this.store.emitProcessEvent(processId, {
+                                type: 'ask-user',
+                                askUser: questionPayload,
+                            });
+                        },
+                        computeTurnIndex: () => process.conversationTurns?.length ?? 0,
+                    },
+                },
             });
+            const { tools: filteredTools, suffix: combinedSuffix } = toolBundle;
+            const session = this.getOrCreateSession(processId);
+            session.pendingAskUser = {
+                answerQuestion: toolBundle.askUser!.answerQuestion,
+                skipQuestion: toolBundle.askUser!.skipQuestion,
+                cancelAll: toolBundle.askUser!.cancelAll,
+                hasPending: toolBundle.askUser!.hasPending,
+            };
             const followUpMessage = prependSelectedSkillsDirective(
                 combinedSuffix ? `${message}${combinedSuffix}` : message,
                 selectedSkillNames,

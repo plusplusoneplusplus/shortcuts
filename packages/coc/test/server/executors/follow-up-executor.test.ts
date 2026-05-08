@@ -51,7 +51,20 @@ const mockApplyLlmToolPreferences = vi.fn().mockImplementation((addons: Array<{ 
     }
     return { tools, suffix };
 });
-const mockBuildChatToolBundle = vi.fn().mockReturnValue({ tools: [], suffix: '' });
+function makeMockToolBundle(overrides?: Partial<ReturnType<typeof makeMockToolBundle>>) {
+    return {
+        tools: [],
+        suffix: '',
+        askUser: {
+            answerQuestion: vi.fn(() => false),
+            skipQuestion: vi.fn(() => false),
+            cancelAll: vi.fn(),
+            hasPending: vi.fn(() => false),
+        },
+        ...overrides,
+    };
+}
+const mockBuildChatToolBundle = vi.fn().mockReturnValue(makeMockToolBundle());
 
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
@@ -150,7 +163,7 @@ describe('FollowUpExecutor', () => {
         sdkMocks.resetAll();
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockApplyLlmToolPreferences.mockClear();
-        mockBuildChatToolBundle.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
@@ -526,10 +539,10 @@ describe('FollowUpExecutor', () => {
     });
 
     it('passes shared chat tools and suffix to sendMessage on follow-up turns', async () => {
-        mockBuildChatToolBundle.mockReturnValue({
+        mockBuildChatToolBundle.mockReturnValue(makeMockToolBundle({
             tools: [{ name: 'tavily_web_search' }],
             suffix: '\n\nTavily suffix',
-        });
+        }));
         const proc = makeProcess({
             id: 'proc-shared-tools',
             metadata: { type: 'chat', workspaceId: 'ws-tools' },
@@ -543,6 +556,85 @@ describe('FollowUpExecutor', () => {
         expect(callArg.tools.map((tool: any) => tool.name)).toContain('tavily_web_search');
         expect(callArg.prompt).toContain('another question');
         expect(callArg.prompt).toContain('Tavily suffix');
+    });
+
+    it('passes enabled ask_user configuration on ask follow-up turns', async () => {
+        const proc = makeProcess({
+            id: 'proc-ask-user',
+            metadata: { type: 'chat', workspaceId: 'ws-ask', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            askUser: { enabled: true },
+        });
+        await executor.executeFollowUp('proc-ask-user', 'ask another question');
+
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
+            askUser: expect.objectContaining({
+                enabled: true,
+                deps: expect.objectContaining({
+                    emitQuestion: expect.any(Function),
+                    computeTurnIndex: expect.any(Function),
+                }),
+            }),
+        }));
+    });
+
+    it('keeps ask_user disabled on autopilot follow-up turns', async () => {
+        const proc = makeProcess({
+            id: 'proc-autopilot-user',
+            metadata: { type: 'chat', workspaceId: 'ws-auto', mode: 'autopilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            askUser: { enabled: true },
+        });
+        await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously');
+
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
+            askUser: expect.objectContaining({
+                enabled: false,
+            }),
+        }));
+    });
+
+    it('emits follow-up ask_user questions with the next assistant turn index', async () => {
+        const proc = makeProcess({
+            id: 'proc-ask-user-event',
+            metadata: { type: 'chat', workspaceId: 'ws-ask', mode: 'ask' },
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Hi there', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'follow up', timestamp: new Date(), turnIndex: 2, timeline: [] },
+            ],
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            askUser: { enabled: true },
+        });
+        await executor.executeFollowUp('proc-ask-user-event', 'ask for approval');
+
+        const askUser = mockBuildChatToolBundle.mock.calls[0][0].askUser;
+        expect(askUser.deps.computeTurnIndex()).toBe(3);
+
+        const questionPayload = {
+            questionId: 'question-1',
+            question: 'Approve?',
+            type: 'confirm',
+            turnIndex: askUser.deps.computeTurnIndex(),
+        };
+        await askUser.deps.emitQuestion(questionPayload);
+
+        expect(store.updateProcess).toHaveBeenCalledWith('proc-ask-user-event', {
+            pendingAskUser: questionPayload,
+        });
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-ask-user-event', {
+            type: 'ask-user',
+            askUser: questionPayload,
+        });
     });
 
     // -------------------------------------------------------------------------
