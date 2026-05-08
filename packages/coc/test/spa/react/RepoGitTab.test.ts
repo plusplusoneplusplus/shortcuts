@@ -1070,6 +1070,48 @@ describe('RepoGitTab', () => {
             expect(source).toContain('View Diff');
         });
 
+        it('imports git review pop-out helpers', () => {
+            expect(source).toContain("import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext'");
+            expect(source).toContain("import { buildGitReviewPopOutUrl } from '../../layout/Router'");
+        });
+
+        it('tracks popped-out git reviews from RepoGitTab', () => {
+            expect(source).toContain('const { markPoppedOut } = useGitReviewPopOut()');
+        });
+
+        it('defines handleOpenAsPopup with the commit pop-out URL and window target', () => {
+            const block = source.match(/const handleOpenAsPopup = useCallback[\s\S]*?\}, \[workspaceId, closeContextMenu, markPoppedOut\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('buildGitReviewPopOutUrl(workspaceId, commit.hash)');
+            expect(block![0]).toContain("window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800')");
+            expect(block![0]).toContain('markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash))');
+        });
+
+        it('contextMenuItems includes Open as Popup only for commit type after View Diff', () => {
+            const commitBlock = source.match(/if \(contextMenu\.type === 'commit' && contextMenu\.commit\)[\s\S]*?if \(contextMenu\.type === 'multi-commit'/);
+            expect(commitBlock).toBeTruthy();
+            const viewDiffIndex = commitBlock![0].indexOf("label: 'View Diff'");
+            const openAsPopupIndex = commitBlock![0].indexOf("label: 'Open as Popup'");
+            expect(viewDiffIndex).toBeGreaterThanOrEqual(0);
+            expect(openAsPopupIndex).toBeGreaterThan(viewDiffIndex);
+            expect(commitBlock![0]).toContain("icon: '↗'");
+            expect(commitBlock![0]).toContain('onClick: () => handleOpenAsPopup(commit)');
+
+            const multiCommitBlock = source.match(/if \(contextMenu\.type === 'multi-commit'[\s\S]*?if \(contextMenu\.type === 'branch-range'\)/);
+            expect(multiCommitBlock).toBeTruthy();
+            expect(multiCommitBlock![0]).not.toContain('Open as Popup');
+
+            const branchRangeBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)[\s\S]*?if \(skills\.length > 0\)/);
+            expect(branchRangeBlock).toBeTruthy();
+            expect(branchRangeBlock![0]).not.toContain('Open as Popup');
+        });
+
+        it('contextMenuItems dependency array includes handleOpenAsPopup', () => {
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+            expect(depsMatch).toBeTruthy();
+            expect(depsMatch![1]).toContain('handleOpenAsPopup');
+        });
+
         it('contextMenuItems includes Push to Here for unpushed commits', () => {
             expect(source).toContain("label: 'Push to Here'");
         });

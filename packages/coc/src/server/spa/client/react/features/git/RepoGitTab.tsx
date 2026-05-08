@@ -37,6 +37,8 @@ import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from 
 import { getCommitsCache, setCommitsCache, clearCommitsCache } from './hooks/useCommitsCache';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
+import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext';
+import { buildGitReviewPopOutUrl } from '../../layout/Router';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './commits/CommitList';
 import type { BranchRangeInfo } from './branches/BranchChanges';
@@ -125,6 +127,7 @@ type RightPanelView =
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { markPoppedOut } = useGitReviewPopOut();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
         minWidth: 160,
@@ -591,6 +594,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setPushing(false);
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
+
+    const handleOpenAsPopup = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash);
+        const win = window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800');
+        if (win) {
+            markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash));
+        }
+    }, [workspaceId, closeContextMenu, markPoppedOut]);
 
     const handleRebaseAutosquash = useCallback(async () => {
         if (rebasing) return;
@@ -1104,6 +1116,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🔍',
                 onClick: () => { handleSelect(commit); },
             });
+            items.push({
+                label: 'Open as Popup',
+                icon: '↗',
+                onClick: () => handleOpenAsPopup(commit),
+            });
             // "Push to Here" — only for unpushed commits
             const commitIndex = commits.findIndex(c => c.hash === commit.hash);
             const isUnpushed = commitIndex >= 0 && commitIndex < unpushedCount;
@@ -1230,7 +1247,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
