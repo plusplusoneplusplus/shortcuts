@@ -11,6 +11,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import { MemoryPromoteExecutor } from '../../../src/server/memory/memory-promote-executor';
 import { DEFAULT_PROMOTE_CONFIG } from '../../../src/server/memory/memory-promote';
+import { readAutoPromoteState } from '../../../src/server/memory/auto-promote';
 import type { MemoryPromotePayload } from '../../../src/server/tasks/task-types';
 
 function makeTmpDir(): string {
@@ -244,6 +245,51 @@ describe('MemoryPromoteExecutor', () => {
         });
         expect(mockAiService.sendMessage).not.toHaveBeenCalled();
         expect(fs.existsSync(repoMemoryFile(wsId))).toBe(false);
+    });
+
+    it('records manual promotion completion without updating auto-only run state', async () => {
+        const wsId = 'ws-manual-state';
+        const memDir = setupRepoDir(wsId);
+        const candidateStore = new MemoryCandidateStore({ dbPath: path.join(memDir, 'raw-memory.db') });
+        await candidateStore.upsertCandidate({
+            target: 'repo',
+            content: 'User explicitly prefers manual promotions to update dashboard state',
+            source: 'test',
+            workspaceId: wsId,
+            score: 1,
+            explicitMemoryIntent: true,
+        });
+        candidateStore.close();
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({ promoted: 1 });
+        const state = readAutoPromoteState(tmpDir, wsId);
+        expect(state.lastRunAt).toEqual(expect.any(String));
+        expect(Date.parse(state.lastRunAt!)).not.toBeNaN();
+        expect(state.lastRunTrigger).toBe('manual');
+        expect(state.lastAutoRunAt).toBeUndefined();
+        expect(state.lastTrigger).toBeUndefined();
+    });
+
+    it('records manual promotion skips without updating auto-only run state', async () => {
+        const wsId = 'ws-manual-skip-state';
+        setupRepoDir(wsId);
+
+        const executor = new MemoryPromoteExecutor(mockAiService, tmpDir);
+        const result = await executor.execute(makeTask(makePayload({ workspaceId: wsId, trigger: 'manual' })));
+
+        expect(result.success).toBe(true);
+        expect(result.result).toMatchObject({ promoted: 0 });
+        const state = readAutoPromoteState(tmpDir, wsId);
+        expect(state.lastRunAt).toEqual(expect.any(String));
+        expect(Date.parse(state.lastRunAt!)).not.toBeNaN();
+        expect(state.lastRunTrigger).toBe('manual');
+        expect(state.lastSkipReason).toBe('no-pending-candidates');
+        expect(state.lastAutoRunAt).toBeUndefined();
+        expect(state.lastTrigger).toBeUndefined();
     });
 
     it('system-scope promotion reads only system candidates and preserves system MEMORY.md', async () => {

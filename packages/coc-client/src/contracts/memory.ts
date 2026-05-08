@@ -8,6 +8,8 @@ export type AutoPromoteMode = 'off' | 'threshold' | 'cron' | 'cron+threshold';
 export interface AutoPromoteStatus {
   mode: AutoPromoteMode;
   nextRunAt: string | null;
+  lastRunAt?: string;
+  lastRunTrigger?: string;
   lastAutoRunAt?: string;
   lastTrigger?: 'auto-threshold' | 'auto-cron';
   lastSkipReason?: string;

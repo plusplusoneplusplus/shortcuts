@@ -88,12 +88,14 @@ export class MemoryPromoteExecutor {
             if (!lock.acquired) {
                 const reason = lock.reason ?? 'lock-held';
                 logger.debug(LogCategory.AI, `[MemoryPromote] Skipped ${target}@${workspaceId}: ${reason}`);
-                if (isAutoTrigger(payload.trigger)) {
-                    writeAutoPromoteState(this.dataDir, workspaceId, {
-                        lastSkipReason: reason,
+                writeAutoPromoteState(this.dataDir, workspaceId, {
+                    lastRunAt: new Date().toISOString(),
+                    lastRunTrigger: payload.trigger ?? 'manual',
+                    lastSkipReason: reason,
+                    ...(isAutoTrigger(payload.trigger) ? {
                         lastTrigger: payload.trigger,
-                    });
-                }
+                    } : {}),
+                });
                 this.getWsServer?.()?.broadcastProcessEvent({
                     type: 'memory-promote:skipped',
                     workspaceId,
@@ -122,6 +124,12 @@ export class MemoryPromoteExecutor {
                 const preservedExistingEntries = await this.readExistingEntryCount(workspaceId, target);
                 if (isAutoTrigger(payload.trigger)) {
                     this.recordAutoSkip(workspaceId, payload.trigger, 'no-pending-candidates', { target });
+                } else {
+                    writeAutoPromoteState(this.dataDir, workspaceId, {
+                        lastRunAt: new Date().toISOString(),
+                        lastRunTrigger: payload.trigger ?? 'manual',
+                        lastSkipReason: 'no-pending-candidates',
+                    });
                 }
                 return {
                     success: true,
@@ -149,6 +157,12 @@ export class MemoryPromoteExecutor {
                     this.recordAutoSkip(workspaceId, payload.trigger, 'no-qualifying-candidates', {
                         target,
                         ranked: ranked.length,
+                    });
+                } else {
+                    writeAutoPromoteState(this.dataDir, workspaceId, {
+                        lastRunAt: new Date().toISOString(),
+                        lastRunTrigger: payload.trigger ?? 'manual',
+                        lastSkipReason: 'no-qualifying-candidates',
                     });
                 }
                 return {
@@ -234,13 +248,16 @@ export class MemoryPromoteExecutor {
             );
 
             logger.debug(LogCategory.AI, `[MemoryPromote] Finalized ${target}@${workspaceId}: ${JSON.stringify(counts)}`);
-            if (isAutoTrigger(payload.trigger)) {
-                writeAutoPromoteState(this.dataDir, workspaceId, {
-                    lastAutoRunAt: new Date().toISOString(),
+            const now = new Date().toISOString();
+            writeAutoPromoteState(this.dataDir, workspaceId, {
+                lastRunAt: now,
+                lastRunTrigger: payload.trigger ?? 'manual',
+                ...(isAutoTrigger(payload.trigger) ? {
+                    lastAutoRunAt: now,
                     lastTrigger: payload.trigger,
                     lastSkipReason: counts.promoted === 0 ? 'no-qualifying-candidates' : undefined,
-                });
-            }
+                } : {}),
+            });
             this.getWsServer?.()?.broadcastProcessEvent({
                 type: 'memory-promote:completed',
                 workspaceId,
@@ -290,8 +307,11 @@ export class MemoryPromoteExecutor {
     }
 
     private recordAutoSkip(workspaceId: string, trigger: 'auto-threshold' | 'auto-cron', reason: string, details: Record<string, unknown>): void {
+        const now = new Date().toISOString();
         writeAutoPromoteState(this.dataDir, workspaceId, {
-            lastAutoRunAt: new Date().toISOString(),
+            lastRunAt: now,
+            lastRunTrigger: trigger,
+            lastAutoRunAt: now,
             lastTrigger: trigger,
             lastSkipReason: reason,
         });

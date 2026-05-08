@@ -96,6 +96,8 @@ export function AutoPromoteSection({ repoId, enabled, stats, onSaved }: AutoProm
     };
 
     const autoStatus = stats?.autoPromote;
+    const lastRunAt = autoStatus?.lastRunAt ?? autoStatus?.lastAutoRunAt;
+    const lastRunTrigger = autoStatus?.lastRunTrigger ?? autoStatus?.lastTrigger;
 
     return (
         <section
@@ -169,7 +171,9 @@ export function AutoPromoteSection({ repoId, enabled, stats, onSaved }: AutoProm
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#848484]">
                 <span>Pending: {stats?.pendingRawCount ?? 0}</span>
                 <span>Last trigger: {autoStatus?.lastTrigger ?? 'none'}</span>
-                <span>Last run: {autoStatus?.lastAutoRunAt ? new Date(autoStatus.lastAutoRunAt).toLocaleString() : 'never'}</span>
+                <span>
+                    Last run: {lastRunAt ? `${new Date(lastRunAt).toLocaleString()}${lastRunTrigger ? ` (${lastRunTrigger})` : ''}` : 'never'}
+                </span>
                 <span>Next run: {autoStatus?.nextRunAt ? new Date(autoStatus.nextRunAt).toLocaleString() : 'not scheduled'}</span>
             </div>
             {error && <p className="mt-2 text-xs text-red-500">{error}</p>}

@@ -28,6 +28,8 @@ export interface BoundedMemoryAutoPromoteConfig {
 }
 
 export interface MemoryAutoPromoteState {
+    lastRunAt?: string;
+    lastRunTrigger?: string;
     lastAutoRunAt?: string;
     lastTrigger?: AutoPromoteTrigger;
     lastSkipReason?: string;
@@ -97,6 +99,8 @@ export function readAutoPromoteState(dataDir: string, workspaceId: string): Memo
     try {
         const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         return isRecord(parsed) ? {
+            lastRunAt: typeof parsed.lastRunAt === 'string' ? parsed.lastRunAt : undefined,
+            lastRunTrigger: typeof parsed.lastRunTrigger === 'string' ? parsed.lastRunTrigger : undefined,
             lastAutoRunAt: typeof parsed.lastAutoRunAt === 'string' ? parsed.lastAutoRunAt : undefined,
             lastTrigger: parsed.lastTrigger === 'auto-threshold' || parsed.lastTrigger === 'auto-cron' ? parsed.lastTrigger : undefined,
             lastSkipReason: typeof parsed.lastSkipReason === 'string' ? parsed.lastSkipReason : undefined,

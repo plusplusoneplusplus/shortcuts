@@ -50,6 +50,8 @@ describe('AutoPromoteSection', () => {
                     autoPromote: {
                         mode: 'threshold',
                         nextRunAt: null,
+                        lastRunAt: '2026-05-08T14:00:00.000Z',
+                        lastRunTrigger: 'manual',
                         lastTrigger: 'auto-threshold',
                         lastSkipReason: 'promotion-already-active',
                     },
@@ -59,6 +61,7 @@ describe('AutoPromoteSection', () => {
 
         expect(await screen.findByTestId('auto-promote-section')).toBeInTheDocument();
         expect(screen.getByText('Last skip: promotion-already-active')).toBeInTheDocument();
+        expect(screen.getByText((content) => content.startsWith('Last run:') && content.includes('(manual)'))).toBeInTheDocument();
 
         fireEvent.change(screen.getByTestId('auto-promote-mode'), { target: { value: 'cron+threshold' } });
         fireEvent.change(screen.getByTestId('auto-promote-threshold'), { target: { value: '25' } });
