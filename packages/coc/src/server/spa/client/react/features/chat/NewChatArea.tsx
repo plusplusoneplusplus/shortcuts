@@ -185,7 +185,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 <div
                     data-testid="chat-input-bar"
                     className={cn(
-                        'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-shadow',
+                        'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                         MODE_BORDER_COLORS[selectedMode].border,
                         MODE_BORDER_COLORS[selectedMode].ring,
                     )}
@@ -196,7 +196,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         value={input}
                         ghostText={autocomplete.completion}
                         placeholder="Reply to CoC, or type / for commands..."
-                        className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-2.5 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
+                        className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-3 pt-2 pb-1 text-[13.5px] leading-[1.55] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
                         onChange={(val, pos) => {
                             setInput(val);
                             setCursorPos(pos);
@@ -265,10 +265,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         data-testid="new-chat-input"
                     />
                     <div
-                        className="flex flex-wrap items-center gap-x-1 gap-y-1 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        className="flex flex-wrap items-center gap-x-px gap-y-1 pl-2.5 pr-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
-                        <div data-testid="mode-selector" className="shrink-0">
+                        <div data-testid="mode-selector" className="shrink-0 mr-1">
                             <ModePillSelector
                                 options={DEFAULT_MODE_PILL_OPTIONS}
                                 value={selectedMode}
@@ -277,7 +277,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         </div>
                         <button
                             type="button"
-                            className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[160px]"
+                            className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                             onClick={() => {
                                 if (modelCommand.modelMenuVisible) {
                                     modelCommand.dismissModelMenu();
@@ -290,7 +290,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 : 'Pick a model'}
                             data-testid="model-picker-chip"
                         >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                 <polygon
                                     points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                     stroke="currentColor"
@@ -298,7 +298,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     strokeLinejoin="round"
                                 />
                             </svg>
-                            <span className="truncate font-mono text-[11px]">
+                            <span className="truncate font-mono text-[11px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                                 {modelCommand.modelOverride || 'model'}
                             </span>
                             {modelCommand.modelOverride && (
@@ -318,24 +318,40 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         </button>
                         <button
                             type="button"
-                            className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                            className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                             onClick={focusInputAndInsertSlash}
                             aria-label="Insert slash command"
                             title="Insert slash command (/)"
                             data-testid="chat-toolbar-slash-btn"
                         >
-                            <span aria-hidden="true" className="font-mono text-xs">/</span>
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                            </svg>
+                            <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">/</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                            onClick={focusInputAndInsertSlash}
+                            aria-label="Mention a skill"
+                            title="Mention a skill (@) — opens the skill picker"
+                            data-testid="chat-toolbar-mention-btn"
+                        >
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                            </svg>
+                            <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">@</span>
                         </button>
                         <button
                             type="button"
                             disabled={sending}
                             onClick={() => fileInputRef.current?.click()}
-                            className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="ctool shrink-0 inline-flex items-center justify-center h-[26px] w-[26px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             data-testid="new-chat-attach-btn"
                             aria-label="Attach file"
                             title="Attach files"
                         >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                 <path
                                     d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
                                     stroke="currentColor"
@@ -349,7 +365,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         {sending ? (
                             <button
                                 type="button"
-                                className="shrink-0 h-7 px-2 rounded bg-[#f14c4c] text-white text-xs font-medium hover:bg-[#d93636]"
+                                className="shrink-0 h-[28px] px-2 rounded-md bg-[#f14c4c] text-white text-[12px] font-medium hover:bg-[#d93636]"
                                 onClick={handleStop}
                                 data-testid="new-chat-stop-btn"
                                 title="Stop generation"
@@ -360,7 +376,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             <button
                                 type="button"
                                 disabled={!input.trim() && attachments.length === 0}
-                                className="shrink-0 inline-flex items-center gap-1.5 h-7 px-2 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="shrink-0 inline-flex items-center gap-1.5 h-[28px] pl-2.5 pr-2 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[12px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid="new-chat-send-btn"
                                 title="Send (Enter) · Shift+Enter for newline"
@@ -376,7 +392,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 <span>Queue follow-up</span>
                                 <span
                                     aria-hidden="true"
-                                    className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
+                                    className="hidden sm:inline-flex items-center pl-2 ml-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
                                 >
                                     &#x2318;&#x21B5;
                                 </span>

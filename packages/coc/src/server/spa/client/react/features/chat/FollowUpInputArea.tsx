@@ -485,16 +485,19 @@ export function FollowUpInputArea({
                 </div>
             ) : (
                 /* ── Stacked layout: input card whose bottom toolbar holds the
-                     mode pill selector (first), model picker, slash/attach
-                     buttons, and the QueueFollowUpButton. The toolbar wraps
-                     vertically on narrow screens (mobile-responsive). ── */
+                     mode pill selector (first), model picker, slash/mention/
+                     attach buttons, and the QueueFollowUpButton. The toolbar
+                     wraps vertically on narrow screens (mobile-responsive).
+                     Visual style mirrors the OpenDesign chats.html reference:
+                     uniform h-[26px] ctool buttons with rounded-sm corners,
+                     subtle hover, and a darker focus-within ring. ── */
                 <div className="space-y-1" data-testid="chat-input-stack">
                     {hiddenFileInput}
                     <div
                         ref={inputWrapperRef}
                         data-testid="chat-input-bar"
                         className={cn(
-                            'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-shadow',
+                            'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-[box-shadow,border-color]',
                             MODE_BORDER_COLORS[selectedMode].border,
                             MODE_BORDER_COLORS[selectedMode].ring,
                         )}
@@ -505,7 +508,7 @@ export function FollowUpInputArea({
                             value={followUpInput}
                             ghostText={autocomplete.completion}
                             placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Reply to CoC, or type / for commands...'}
-                            className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-2.5 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
+                            className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-3 pt-2 pb-1 text-[13.5px] leading-[1.55] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
                             onChange={handleEditorChange}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={(e: React.ClipboardEvent) => {
@@ -515,12 +518,12 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
-                            className="flex flex-wrap items-center gap-x-1 gap-y-1 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex flex-wrap items-center gap-x-px gap-y-1 pl-2.5 pr-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
                             {/* Mode pill selector — first in toolbar */}
                             {!hideModeSelector && (
-                                <div data-testid="mode-selector" className="shrink-0">
+                                <div data-testid="mode-selector" className="shrink-0 mr-1">
                                     <ModePillSelector
                                         options={pillOptions}
                                         value={selectedMode}
@@ -536,7 +539,7 @@ export function FollowUpInputArea({
                             {modelCommand && (
                                 <button
                                     type="button"
-                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[160px]"
+                                    className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                                     onClick={() => {
                                         if (modelCommand.modelMenuVisible) {
                                             modelCommand.dismissModelMenu();
@@ -549,7 +552,7 @@ export function FollowUpInputArea({
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
                                 >
-                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                         <polygon
                                             points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                             stroke="currentColor"
@@ -557,7 +560,7 @@ export function FollowUpInputArea({
                                             strokeLinejoin="round"
                                         />
                                     </svg>
-                                    <span className="truncate font-mono text-[11px]">
+                                    <span className="truncate font-mono text-[11px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
                                     {modelCommand.modelOverride && (
@@ -578,24 +581,40 @@ export function FollowUpInputArea({
                             )}
                             <button
                                 type="button"
-                                className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                                className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Insert slash command"
                                 title="Insert slash command (/)"
                                 data-testid="chat-toolbar-slash-btn"
                             >
-                                <span aria-hidden="true" className="font-mono text-xs">/</span>
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                                </svg>
+                                <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">/</span>
+                            </button>
+                            <button
+                                type="button"
+                                className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                onClick={focusInputAndInsertSlash}
+                                aria-label="Mention a skill"
+                                title="Mention a skill (@) — opens the skill picker"
+                                data-testid="chat-toolbar-mention-btn"
+                            >
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                                </svg>
+                                <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">@</span>
                             </button>
                             <button
                                 type="button"
                                 disabled={inputDisabled}
                                 onClick={() => fileInputRef.current?.click()}
-                                className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="ctool shrink-0 inline-flex items-center justify-center h-[26px] w-[26px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 data-testid="follow-up-attach-btn"
                                 aria-label="Attach file"
                                 title="Attach files"
                             >
-                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                     <path
                                         d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
                                         stroke="currentColor"

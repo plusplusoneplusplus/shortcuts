@@ -108,9 +108,9 @@ describe('ModePillSelector', () => {
         expect(group.getAttribute('aria-label')).toBe('Chat mode');
     });
 
-    // ── Compact density ────────────────────────────────────────────────────
+    // ── Compact density (matches OpenDesign chats.html .mode-opt) ─────────
 
-    it('uses compact pill padding (px-2 py-0.5, text-[12px])', () => {
+    it('uses rectangular pill padding (px-2.5 py-[3px], text-[11.5px])', () => {
         render(
             <ModePillSelector
                 options={DEFAULT_MODE_PILL_OPTIONS}
@@ -119,11 +119,40 @@ describe('ModePillSelector', () => {
             />,
         );
         const pill = screen.getByTestId('mode-pill-ask');
-        expect(pill.className).toContain('px-2');
-        expect(pill.className).toContain('py-0.5');
-        expect(pill.className).toContain('text-[12px]');
+        expect(pill.className).toContain('px-2.5');
+        expect(pill.className).toContain('py-[3px]');
+        expect(pill.className).toContain('text-[11.5px]');
         expect(pill.className).not.toContain('px-3');
         expect(pill.className).not.toContain('text-sm');
+    });
+
+    it('uses a rectangular rounded-md container (not a fully-rounded pill)', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+        const group = screen.getByRole('radiogroup');
+        const tokens = group.className.split(/\s+/);
+        expect(tokens).toContain('rounded-md');
+        expect(tokens).not.toContain('rounded-full');
+    });
+
+    it('selected pill uses an inset border shadow instead of an outer border', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+        const selected = screen.getByTestId('mode-pill-ask');
+        expect(selected.getAttribute('aria-checked')).toBe('true');
+        // Inset shadow gives the highlighted look without expanding the box.
+        expect(selected.className).toContain('shadow-[inset_0_0_0_1px_#d0d0d0]');
+        expect(selected.className).toContain('bg-[#f3f3f3]');
     });
 
     it('container uses compact p-0.5 (not p-1)', () => {

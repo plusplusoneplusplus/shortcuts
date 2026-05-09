@@ -1,11 +1,13 @@
 /**
- * ModePillSelector — segmented pill control for picking the chat mode.
+ * ModePillSelector — rectangular segmented control for picking the chat mode.
  *
- * Visual: a single rounded container holding one button per mode. Each option
- * shows a coloured status dot followed by its label. The currently selected
- * mode is highlighted with a raised background and a thin border, matching
- * the design mockup. Optional disabled placeholder modes (e.g. "Script") can
- * be rendered for upcoming features without wiring them to a real ChatMode.
+ * Visual: a single rounded-md container holding one button per mode. Each
+ * option shows a coloured status dot followed by its label. The currently
+ * selected mode is highlighted with a subtle sunken background and a thin
+ * inset border (matching the OpenDesign chats.html reference's
+ * `.mode-seg` / `.mode-opt.active` pattern). Optional disabled placeholder
+ * modes (e.g. "Script") can be rendered for upcoming features without
+ * wiring them to a real ChatMode.
  */
 
 import { cn } from '../../ui/cn';
@@ -57,7 +59,7 @@ export function ModePillSelector({
             role="radiogroup"
             aria-label="Chat mode"
             className={cn(
-                'inline-flex items-center gap-0.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-0.5',
+                'inline-flex items-center gap-0 rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-0.5',
                 className,
             )}
             data-testid={testId}
@@ -72,11 +74,11 @@ export function ModePillSelector({
                         aria-checked={selected}
                         title={opt.title ?? MODE_TOOLTIPS[opt.value]}
                         className={cn(
-                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] leading-tight font-medium cursor-pointer transition-colors',
+                            'inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-[3px] text-[11.5px] leading-tight font-medium cursor-pointer transition-colors -tracking-[0.005em]',
                             'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
                             selected
-                                ? 'border border-[#d0d0d0] dark:border-[#4a4a4a] bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc] shadow-sm'
-                                : 'border border-transparent text-[#5a5a5a] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                                ? 'bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc] shadow-[inset_0_0_0_1px_#d0d0d0] dark:shadow-[inset_0_0_0_1px_#4a4a4a]'
+                                : 'text-[#5a5a5a] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
                         )}
                         onClick={() => onChange(opt.value)}
                         data-testid={`mode-pill-${opt.value}`}
@@ -85,7 +87,7 @@ export function ModePillSelector({
                         <span
                             aria-hidden="true"
                             className={cn(
-                                'inline-block h-1.5 w-1.5 rounded-full',
+                                'inline-block h-[5px] w-[5px] rounded-full',
                                 opt.dotClass,
                             )}
                         />

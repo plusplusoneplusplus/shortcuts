@@ -19,6 +19,10 @@ export interface QueueFollowUpButtonProps {
  * optional keyboard shortcut hint. Holding Ctrl/Cmd switches the button into
  * the orange "Steer" state, sending with `'immediate'` delivery instead of
  * enqueueing.
+ *
+ * Visual style mirrors the OpenDesign chats.html reference's `.send-btn.queue`
+ * — a 28px-tall outlined chip with the keyboard shortcut hint inline,
+ * separated from the label by a thin vertical divider rather than a boxed kbd.
  */
 export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
     const { disabled, ctrlHeld, onSend, label = 'Queue follow-up', showShortcutHint = true } = props;
@@ -30,10 +34,10 @@ export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
             type="button"
             disabled={disabled}
             className={cn(
-                'shrink-0 inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-xs font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed',
+                'shrink-0 inline-flex items-center gap-1.5 h-[28px] pl-2.5 pr-2 rounded-md text-[12px] font-medium -tracking-[0.005em] cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed',
                 steering
                     ? 'bg-[#e8912d] text-white hover:bg-[#c97a25] border border-transparent'
-                    : 'bg-white dark:bg-[#1f1f1f] text-[#1e1e1e] dark:text-[#cccccc] border border-[#d0d0d0] dark:border-[#3c3c3c] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a]',
+                    : 'bg-white dark:bg-[#1f1f1f] text-[#1e1e1e] dark:text-[#cccccc] border border-[#d0d0d0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a]',
             )}
             onClick={() => onSend(steering ? 'immediate' : 'enqueue')}
             data-testid={testId}
@@ -57,7 +61,7 @@ export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
             {showShortcutHint && !steering && (
                 <span
                     aria-hidden="true"
-                    className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
+                    className="hidden sm:inline-flex items-center pl-2 ml-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
                     data-testid="queue-follow-up-shortcut-hint"
                 >
                     &#x2318;&#x21B5;
