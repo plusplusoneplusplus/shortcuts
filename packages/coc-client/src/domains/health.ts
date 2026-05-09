@@ -1,11 +1,11 @@
 import type { HealthResponse, OpenApiDocument } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 
 export class HealthClient {
   constructor(private readonly transport: RequestAdapter) {}
 
-  get(): Promise<HealthResponse> {
-    return this.transport.request<HealthResponse>('/health');
+  get(options?: Pick<CocRequestOptions, 'signal'>): Promise<HealthResponse> {
+    return this.transport.request<HealthResponse>('/health', options);
   }
 
   openApi(): Promise<OpenApiDocument> {

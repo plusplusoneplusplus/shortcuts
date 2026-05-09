@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { RemoteServer, RemoteServerHealth } from '../utils/serverRegistry';
-import { getApiBase } from '../utils/config';
+import { getSpaCocClient } from '../api/cocClient';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -11,17 +11,7 @@ export interface ServerHealthState extends Omit<RemoteServerHealth, 'serverId' |
 
 async function checkServer(server: RemoteServer): Promise<ServerHealthState> {
     try {
-        const res = await fetch(`${getApiBase()}/servers/${encodeURIComponent(server.id)}/health`);
-        if (!res.ok) {
-            return {
-                server,
-                kind: server.kind,
-                status: 'offline',
-                lastChecked: Date.now(),
-                error: `HTTP ${res.status}`,
-            };
-        }
-        const body = await res.json() as RemoteServerHealth;
+        const body = await getSpaCocClient().servers.getHealth(server.id);
         return {
             server,
             kind: server.kind,

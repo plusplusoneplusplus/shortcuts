@@ -14,6 +14,7 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMarkdownPopOut } from '../contexts/MarkdownPopOutContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
+import { getSpaCocClient } from '../api/cocClient';
 
 function RevealInExplorerIcon() {
     return (
@@ -100,7 +101,7 @@ export function MarkdownReviewDialog({
     const handleMinimize = onMinimize ? () => onMinimize(scrollTopRef.current) : undefined;
 
     const handleReveal = () => {
-        fetch(`/api/repos/${encodeURIComponent(wsId)}/reveal?path=${encodeURIComponent(filePath)}`)
+        getSpaCocClient().explorer.reveal(wsId, filePath)
             .catch(() => {/* ignore */});
     };
 

@@ -61,4 +61,22 @@ describe('AdminClient', () => {
     ]);
   });
 
+  it('passes signal option to getVersion', async () => {
+    const adapter = createMockAdapter({});
+    const client = new AdminClient(adapter, {
+      baseUrl: '',
+      apiBasePath: '/api',
+      fetch: globalThis.fetch,
+      wsPath: '/ws',
+    });
+    const controller = new AbortController();
+
+    await client.getVersion({ signal: controller.signal });
+
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/admin/version',
+      options: { signal: controller.signal },
+    });
+  });
+
 });

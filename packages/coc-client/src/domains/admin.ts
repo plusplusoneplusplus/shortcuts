@@ -59,8 +59,8 @@ export class AdminClient {
     });
   }
 
-  getVersion(): Promise<AdminVersionResponse> {
-    return this.transport.request<AdminVersionResponse>('/admin/version');
+  getVersion(options?: Pick<CocRequestOptions, 'signal'>): Promise<AdminVersionResponse> {
+    return this.transport.request<AdminVersionResponse>('/admin/version', options);
   }
 
   exportData(options?: Pick<CocRequestOptions, 'signal'>): Promise<Response> {

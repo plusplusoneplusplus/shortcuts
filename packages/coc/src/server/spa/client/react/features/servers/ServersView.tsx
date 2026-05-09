@@ -10,7 +10,8 @@ import {
     type RemoteServerPatch,
 } from '../../utils/serverRegistry';
 import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
-import { getApiBase, getHostname } from '../../utils/config';
+import { getHostname } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 import { ServerCard, formatUptime, timeAgo, type ServerCardHealth } from './ServerCard';
 import { AddServerDialog, EditServerDialog } from './AddServerDialog';
 
@@ -626,25 +627,17 @@ export function ServersView() {
 
     useEffect(() => {
         let cancelled = false;
-        const apiBase = getApiBase();
 
         const poll = async () => {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
             try {
-                const [healthRes, versionRes] = await Promise.all([
-                    fetch(`${apiBase}/health`, { signal: controller.signal }),
-                    fetch(`${apiBase}/admin/version`, { signal: controller.signal }),
+                const client = getSpaCocClient();
+                const [health, ver] = await Promise.all([
+                    client.health.get({ signal: controller.signal }),
+                    client.admin.getVersion({ signal: controller.signal }),
                 ]);
                 clearTimeout(timer);
-                if (cancelled) { return; }
-                if (!healthRes.ok || !versionRes.ok) {
-                    const s = !healthRes.ok ? healthRes.status : versionRes.status;
-                    setLocalHealth(prev => ({ ...prev, status: 'offline', lastChecked: Date.now(), error: `HTTP ${s}` }));
-                    return;
-                }
-                const health = await healthRes.json().catch(() => ({}));
-                const ver = await versionRes.json().catch(() => ({}));
                 if (cancelled) { return; }
                 setLocalHealth(prev => ({
                     ...prev,

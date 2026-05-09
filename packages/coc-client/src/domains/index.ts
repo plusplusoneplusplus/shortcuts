@@ -12,6 +12,7 @@ export { PullRequestsClient } from './pull-requests';
 export { QueueClient } from './queue';
 export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
+export { ServersClient } from './servers';
 export { SkillsClient } from './skills';
 export { StatsClient } from './stats';
 export { SuggestionsClient } from './suggestions';

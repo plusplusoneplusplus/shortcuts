@@ -9,7 +9,6 @@ import { useModels } from '../../hooks/useModels';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
-import { getApiBase } from '../../utils/config';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 
@@ -84,14 +83,7 @@ export function WorkItemExecuteDialog({
             // Track skill usage (fire-and-forget)
             for (const name of skillNames) {
                 trackUsage(name);
-                fetch(
-                    getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`,
-                    {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ skillName: name }),
-                    },
-                ).catch(() => {});
+                getSpaCocClient().preferences.recordSkillUsage(workspaceId, name).catch(() => {});
             }
 
             onExecuted();
