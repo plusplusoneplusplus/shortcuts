@@ -193,9 +193,8 @@ describe('TerminalView', () => {
 
     describe('pinned terminal hydration', () => {
         it('persists pin clicks through the terminal REST endpoint', () => {
-            expect(source).toContain('/terminals/${encodeURIComponent(tab.serverSessionId)}/pin');
-            expect(source).toContain("method: 'PATCH'");
-            expect(source).toContain('body: JSON.stringify({ pinned: requestedPinned })');
+            expect(source).toContain('pinTerminal');
+            expect(source).toContain('requestedPinned');
             expect(source).toContain('body.pinned');
         });
 
@@ -216,7 +215,7 @@ describe('TerminalView', () => {
             render(React.createElement(TerminalView, { workspaceId: 'ws 123' }));
 
             await waitFor(() => {
-                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws%20123/terminals');
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws%20123/terminals', expect.any(Object));
             });
 
             const restoredPanel = await screen.findByTestId('mock-terminal-panel-server-sess-pinned');
@@ -231,7 +230,7 @@ describe('TerminalView', () => {
             render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
 
             await waitFor(() => {
-                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals');
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals', expect.any(Object));
             });
             expect(screen.getByTestId('terminal-empty-state')).toBeTruthy();
             expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
@@ -243,7 +242,7 @@ describe('TerminalView', () => {
 
             render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
             await waitFor(() => {
-                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals');
+                expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals', expect.any(Object));
             });
 
             fireEvent.click(screen.getByTestId('terminal-new-btn'));

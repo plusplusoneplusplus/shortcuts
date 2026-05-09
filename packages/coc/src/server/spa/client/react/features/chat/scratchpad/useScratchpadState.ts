@@ -37,6 +37,7 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
 const STORAGE_KEY_HORIZONTAL = 'coc.scratchpad.topHeightPct';
 const STORAGE_KEY_VERTICAL = 'coc.scratchpad.leftWidthPct';
 const STORAGE_KEY_OPEN = (taskId: string) => `coc.scratchpad.open.${taskId}`;
+const STORAGE_KEY_LINKED_PATH = (taskId: string) => `coc.scratchpad.linkedNotePath.${taskId}`;
 const DEFAULT_PCT = 60;
 const MIN_PCT_HORIZONTAL = 15;
 const MIN_PCT_VERTICAL = 5;
@@ -53,6 +54,32 @@ function getStorageKey(layout: ScratchpadLayout): string {
     return layout === 'vertical' ? STORAGE_KEY_VERTICAL : STORAGE_KEY_HORIZONTAL;
 }
 
+function readLinkedNotePath(taskId: string | null): string | null {
+    if (!taskId) return null;
+    try {
+        return localStorage.getItem(STORAGE_KEY_LINKED_PATH(taskId));
+    } catch {
+        return null;
+    }
+}
+
+function writeLinkedNotePath(taskId: string | null, path: string | null): void {
+    if (!taskId) return;
+    try {
+        if (path === null) {
+            localStorage.removeItem(STORAGE_KEY_LINKED_PATH(taskId));
+        } else {
+            localStorage.setItem(STORAGE_KEY_LINKED_PATH(taskId), path);
+        }
+    } catch { /* ignore */ }
+}
+
+function addKnownFile(paths: string[], path: string): string[] {
+    const lc = path.toLowerCase();
+    if (paths.some(p => p.toLowerCase() === lc)) return paths;
+    return [...paths, path];
+}
+
 export function useScratchpadState(
     containerRef: React.RefObject<HTMLElement>,
     layout: ScratchpadLayout = 'horizontal',
@@ -62,10 +89,13 @@ export function useScratchpadState(
         if (!taskId) return false;
         try { return localStorage.getItem(STORAGE_KEY_OPEN(taskId)) === 'true'; } catch { return false; }
     });
-    const [linkedNotePath, setLinkedNotePath] = useState<string | null>(null);
+    const [linkedNotePath, setLinkedNotePathRaw] = useState<string | null>(() => readLinkedNotePath(taskId));
     const [isDragging, setIsDragging] = useState(false);
     const [expandMode, setExpandModeRaw] = useState<ScratchpadExpandMode>('split');
-    const [knownFiles, setKnownFiles] = useState<string[]>([]);
+    const [knownFiles, setKnownFiles] = useState<string[]>(() => {
+        const restoredPath = readLinkedNotePath(taskId);
+        return restoredPath === null ? [] : [restoredPath];
+    });
     const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
 
     const [topHeightPct, setTopHeightPctRaw] = useState<number>(() => {
@@ -96,12 +126,21 @@ export function useScratchpadState(
         setTopHeightPctRaw(DEFAULT_PCT);
     }, [layout]);
 
-    // Reset open state from localStorage when taskId changes
+    // Reset per-task state from localStorage when taskId changes.
     useEffect(() => {
-        if (!taskId) { setIsOpen(false); return; }
+        if (!taskId) {
+            setIsOpen(false);
+            setLinkedNotePathRaw(null);
+            return;
+        }
         try {
             setIsOpen(localStorage.getItem(STORAGE_KEY_OPEN(taskId)) === 'true');
         } catch { setIsOpen(false); }
+        const restoredPath = readLinkedNotePath(taskId);
+        setLinkedNotePathRaw(restoredPath);
+        if (restoredPath !== null) {
+            setKnownFiles(prev => addKnownFile(prev, restoredPath));
+        }
     }, [taskId]);
 
     const setTopHeightPct = useCallback((pct: number) => {
@@ -117,6 +156,11 @@ export function useScratchpadState(
         }
     }, [layout, setTopHeightPct]);
 
+    const setLinkedNotePath = useCallback((path: string | null) => {
+        setLinkedNotePathRaw(path);
+        writeLinkedNotePath(taskId, path);
+    }, [taskId]);
+
     const open = useCallback((notePath?: string) => {
         setIsOpen(prev => {
             if (!prev) setExpandModeRaw('split');
@@ -127,13 +171,9 @@ export function useScratchpadState(
         }
         if (notePath !== undefined) {
             setLinkedNotePath(notePath);
-            setKnownFiles(prev => {
-                const lc = notePath.toLowerCase();
-                if (prev.some(p => p.toLowerCase() === lc)) return prev;
-                return [...prev, notePath];
-            });
+            setKnownFiles(prev => addKnownFile(prev, notePath));
         }
-    }, [taskId]);
+    }, [taskId, setLinkedNotePath]);
 
     const close = useCallback(() => {
         setIsOpen(false);

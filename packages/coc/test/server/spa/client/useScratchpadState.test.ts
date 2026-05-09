@@ -8,6 +8,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useScratchpadState } from '../../../../src/server/spa/client/react/features/chat/scratchpad/useScratchpadState';
 
 const OPEN_KEY = (id: string) => `coc.scratchpad.open.${id}`;
+const LINKED_PATH_KEY = (id: string) => `coc.scratchpad.linkedNotePath.${id}`;
 
 describe('useScratchpadState — open/closed persistence', () => {
     beforeEach(() => {
@@ -122,6 +123,66 @@ describe('useScratchpadState — open/closed persistence', () => {
         expect(result.current.isOpen).toBe(true);
         expect(localStorage.getItem(OPEN_KEY('task-3'))).toBe('true');
         expect(result.current.linkedNotePath).toBe('notes/plan.md');
+    });
+
+    it('persists and restores linkedNotePath across hook remounts for the same taskId', () => {
+        const ref = { current: null } as React.RefObject<HTMLElement>;
+        const { result, unmount } = renderHook(() => useScratchpadState(ref, 'horizontal', 'task-linked'));
+
+        act(() => { result.current.open('notes/restored.md'); });
+        expect(localStorage.getItem(LINKED_PATH_KEY('task-linked'))).toBe('notes/restored.md');
+
+        unmount();
+
+        const { result: remounted } = renderHook(() => useScratchpadState(ref, 'horizontal', 'task-linked'));
+        expect(remounted.current.linkedNotePath).toBe('notes/restored.md');
+    });
+
+    it('loads each taskId own persisted linkedNotePath when taskId changes', () => {
+        localStorage.setItem(LINKED_PATH_KEY('task-A'), 'notes/a.md');
+        localStorage.setItem(LINKED_PATH_KEY('task-B'), 'notes/b.md');
+        const ref = { current: null } as React.RefObject<HTMLElement>;
+        let taskId = 'task-A';
+        const { result, rerender } = renderHook(() =>
+            useScratchpadState(ref, 'horizontal', taskId),
+        );
+        expect(result.current.linkedNotePath).toBe('notes/a.md');
+
+        taskId = 'task-B';
+        rerender();
+        expect(result.current.linkedNotePath).toBe('notes/b.md');
+    });
+
+    it('adds a restored linkedNotePath to knownFiles so the tab is visible immediately', () => {
+        localStorage.setItem(LINKED_PATH_KEY('task-tabs'), 'notes/tab.md');
+        const ref = { current: null } as React.RefObject<HTMLElement>;
+
+        const { result } = renderHook(() => useScratchpadState(ref, 'horizontal', 'task-tabs'));
+
+        expect(result.current.knownFiles).toEqual(['notes/tab.md']);
+    });
+
+    it('clears the persisted linkedNotePath when setLinkedNotePath(null) is called', () => {
+        localStorage.setItem(LINKED_PATH_KEY('task-clear'), 'notes/old.md');
+        const ref = { current: null } as React.RefObject<HTMLElement>;
+        const { result } = renderHook(() => useScratchpadState(ref, 'horizontal', 'task-clear'));
+
+        act(() => { result.current.setLinkedNotePath(null); });
+
+        expect(result.current.linkedNotePath).toBeNull();
+        expect(localStorage.getItem(LINKED_PATH_KEY('task-clear'))).toBeNull();
+    });
+
+    it('keeps the persisted linkedNotePath when close() hides the scratchpad', () => {
+        const ref = { current: null } as React.RefObject<HTMLElement>;
+        const { result } = renderHook(() => useScratchpadState(ref, 'horizontal', 'task-close'));
+        act(() => { result.current.open('notes/remembered.md'); });
+
+        act(() => { result.current.close(); });
+
+        expect(result.current.isOpen).toBe(false);
+        expect(localStorage.getItem(OPEN_KEY('task-close'))).toBeNull();
+        expect(localStorage.getItem(LINKED_PATH_KEY('task-close'))).toBe('notes/remembered.md');
     });
 });
 

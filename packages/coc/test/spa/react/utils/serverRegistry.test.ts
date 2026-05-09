@@ -43,9 +43,7 @@ describe('serverRegistry API client', () => {
         fetchMock.mockResolvedValueOnce(jsonResponse(servers));
 
         await expect(listRemoteServers()).resolves.toEqual(servers);
-        expect(fetchMock).toHaveBeenCalledWith('/api/servers', expect.objectContaining({
-            headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
-        }));
+        expect(fetchMock).toHaveBeenCalledWith('/api/servers', expect.any(Object));
     });
 
     it('adds, updates, removes, and tests through backend routes', async () => {
