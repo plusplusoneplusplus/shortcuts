@@ -11,6 +11,9 @@
 
 import React, { useState, useCallback } from 'react';
 import { TruncatedPath } from '../../../ui';
+import { ContextMenu } from '../../../tasks/comments/ContextMenu';
+import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
+import { copyToClipboard } from '../../../utils/format';
 
 // ----- Types -----
 
@@ -182,6 +185,33 @@ export function FilesViewToggle({ mode, onChange, testIdPrefix = 'files-view-tog
     );
 }
 
+// ----- Path helpers -----
+
+/** Join repo root and relative file path using the OS separator detected from repoRoot. */
+export function buildAbsolutePath(repoRoot: string, relativePath: string): string {
+    const isWindows = repoRoot.includes('\\');
+    const sep = isWindows ? '\\' : '/';
+    const normalizedRelative = isWindows ? relativePath.replace(/\//g, '\\') : relativePath;
+    const root = repoRoot.endsWith(sep) ? repoRoot.slice(0, -1) : repoRoot;
+    return `${root}${sep}${normalizedRelative}`;
+}
+
+function buildCopyPathMenuItems(filePath: string, repoRoot?: string): ContextMenuItem[] {
+    return [
+        {
+            label: 'Copy Relative Path',
+            onClick: () => { copyToClipboard(filePath); },
+        },
+        {
+            label: 'Copy Absolute Path',
+            disabled: !repoRoot,
+            onClick: () => {
+                if (repoRoot) copyToClipboard(buildAbsolutePath(repoRoot, filePath));
+            },
+        },
+    ];
+}
+
 // ----- FlatFileList -----
 
 export interface FlatFileListProps {
@@ -195,6 +225,8 @@ export interface FlatFileListProps {
     renderFileExtra?: (file: FileChange) => React.ReactNode;
     /** Trailing content per row — used by WorkingTree for action buttons. */
     renderActions?: (file: FileChange) => React.ReactNode;
+    /** Repo root path for "Copy Absolute Path" context menu action. */
+    repoRoot?: string;
 }
 
 export function FlatFileList({
@@ -206,7 +238,10 @@ export function FlatFileList({
     fileTestIdPrefix = 'flat-file-row',
     renderFileExtra,
     renderActions,
+    repoRoot,
 }: FlatFileListProps) {
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null);
+
     return (
         <div className="flex flex-col gap-0.5" data-testid="flat-file-list">
             {files.map((file, i) => {
@@ -219,6 +254,11 @@ export function FlatFileList({
                                 selectedFilePath === file.path ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10' : ''
                             }`}
                             onClick={() => onFileSelect(file.path)}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setContextMenu({ x: e.clientX, y: e.clientY, filePath: file.path });
+                            }}
                             data-testid={`${fileTestIdPrefix}-${file.path}`}
                         >
                             {count > 0 && (
@@ -257,6 +297,13 @@ export function FlatFileList({
                     </div>
                 );
             })}
+            {contextMenu && (
+                <ContextMenu
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    items={buildCopyPathMenuItems(contextMenu.filePath, repoRoot)}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 }
@@ -282,6 +329,8 @@ interface FileTreeViewProps {
     renderFileExtra?: (node: FileNode) => React.ReactNode;
     /** Trailing content per row — used by WorkingTree for action buttons. */
     renderActions?: (node: FileNode) => React.ReactNode;
+    /** Repo root path for "Copy Absolute Path" context menu action. */
+    repoRoot?: string;
 }
 
 export function FileTreeView({
@@ -297,6 +346,7 @@ export function FileTreeView({
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
     renderActions,
+    repoRoot,
 }: FileTreeViewProps) {
     return (
         <div className="flex flex-col gap-0.5" data-testid={depth === 0 ? 'commit-file-list' : undefined}>
@@ -316,6 +366,7 @@ export function FileTreeView({
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
+                        repoRoot={repoRoot}
                     />
                 ) : (
                     <FileEntry
@@ -332,6 +383,7 @@ export function FileTreeView({
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
+                        repoRoot={repoRoot}
                     />
                 ),
             )}
@@ -352,6 +404,7 @@ function DirEntry({
     fileTestIdPrefix,
     renderFileExtra,
     renderActions,
+    repoRoot,
 }: {
     node: DirNode;
     depth: number;
@@ -365,6 +418,7 @@ function DirEntry({
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
     renderActions?: (node: FileNode) => React.ReactNode;
+    repoRoot?: string;
 }) {
     const [open, setOpen] = useState(true);
 
@@ -397,6 +451,7 @@ function DirEntry({
                     fileTestIdPrefix={fileTestIdPrefix}
                     renderFileExtra={renderFileExtra}
                     renderActions={renderActions}
+                    repoRoot={repoRoot}
                 />
             )}
         </div>
@@ -416,6 +471,7 @@ function FileEntry({
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
     renderActions,
+    repoRoot,
 }: {
     node: FileNode;
     depth: number;
@@ -429,12 +485,14 @@ function FileEntry({
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
     renderActions?: (node: FileNode) => React.ReactNode;
+    repoRoot?: string;
 }) {
     const isActiveFile = onFileSelectSimple
         ? selectedFilePath === node.path
         : (selectedFile?.hash === commitHash && selectedFile?.filePath === node.path);
     const count = fileCommentMap.get(node.path) ?? 0;
     const displayStatus = normalizeStatus(node.status);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     return (
         <div>
@@ -452,6 +510,11 @@ function FileEntry({
                     } else if (onFileSelect && commitHash) {
                         onFileSelect(commitHash, node.path);
                     }
+                }}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY });
                 }}
                 data-testid={`${fileTestIdPrefix}-${node.path}`}
             >
@@ -488,6 +551,13 @@ function FileEntry({
                 {renderActions?.(node)}
             </button>
             {renderFileExtra?.(node)}
+            {contextMenu && (
+                <ContextMenu
+                    position={contextMenu}
+                    items={buildCopyPathMenuItems(node.path, repoRoot)}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 }

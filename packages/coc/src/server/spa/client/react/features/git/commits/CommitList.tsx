@@ -63,9 +63,11 @@ interface CommitListProps {
     reorderable?: boolean;
     /** Called when commits are reordered via drag-and-drop. Receives new order (display order). */
     onReorder?: (newOrder: GitCommitItem[]) => void;
+    /** Repo root path for "Copy Absolute Path" context menu action on file rows. */
+    repoRoot?: string;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -642,6 +644,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                         selectedFile={selectedFile}
                                                         onFileSelect={onFileSelect}
                                                         fileCommentMap={fileCommentMap}
+                                                        repoRoot={repoRoot}
                                                     />
                                                 ) : (
                                                     <FlatFileList
@@ -651,6 +654,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                         fileCommentMap={fileCommentMap}
                                                         commentBadgeTestIdPrefix="commit-file-comment-badge"
                                                         fileTestIdPrefix="commit-file"
+                                                        repoRoot={repoRoot}
                                                     />
                                                 )}
                                             </>

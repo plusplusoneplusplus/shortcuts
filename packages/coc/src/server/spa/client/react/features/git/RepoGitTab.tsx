@@ -670,6 +670,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         return new Set();
     }, [rightPanelView]);
 
+    const repoRoot = useMemo(() => {
+        const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+        return ws?.rootPath as string | undefined;
+    }, [state.workspaces, workspaceId]);
+
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
         setRightPanelView({ type: 'branch-file', filePath });
@@ -1330,6 +1335,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             workspaceId={workspaceId}
             reorderable={!searchQuery && unpushedCount > 1}
             onReorder={handleReorderCommits}
+            repoRoot={repoRoot}
         />
     );
 

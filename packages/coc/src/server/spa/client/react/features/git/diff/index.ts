@@ -5,7 +5,7 @@ export { DiffMiniMap } from './DiffMiniMap';
 export { DiffViewToggle } from './DiffViewToggle';
 export { FileDiffPanel } from './FileDiffPanel';
 export type { FileDiffPanelProps } from './FileDiffPanel';
-export { FileTree, buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle, STATUS_COLORS, STATUS_LABELS, normalizeStatus, flattenVisibleNodes } from './FileTree';
+export { FileTree, buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle, STATUS_COLORS, STATUS_LABELS, normalizeStatus, flattenVisibleNodes, buildAbsolutePath } from './FileTree';
 export type { FileChange, FileNode, FilesViewMode } from './FileTree';
 export { PopOutFilePanel } from './PopOutFilePanel';
 export { createCommitDiffSource, createBranchRangeDiffSource, fetchDiffFromSource } from './diffSource';
