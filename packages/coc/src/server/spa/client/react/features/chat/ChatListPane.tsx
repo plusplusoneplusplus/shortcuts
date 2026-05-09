@@ -986,9 +986,10 @@ export function ChatListPane({
     /**
      * Render a single row in the redesigned chats list.
      *
-     * Layout: [status-dot] [MODE pill] [title] [timestamp]
+     * Layout (CSS grid): [status-dot 10px] [MODE pill 36px] [title 1fr] [right auto]
      * - Mode pill is colored by AI execution mode (ASK / PLAN / AUTO).
      * - Status dot encodes runtime state independently of the mode pill.
+     * - On hover the timestamp swaps to inline pin/archive/more buttons.
      * - All click / context-menu / pin / archive functionality is preserved.
      */
     const renderChatListRow = useCallback((task: any, listForRange: any[], options?: { dataTestid?: string }) => {
@@ -997,6 +998,7 @@ export function ChatListPane({
         const isRunning = running.some((r: any) => r.id === task.id);
         const isFailed = !isRunning && task.status === 'failed';
         const isPinned = pinnedChatIds?.has(task.id) ?? false;
+        const isArchived = archivedChatIds?.has(task.id) ?? false;
         const isHistorySelected = selectedHistoryIds.has(task.id);
         const isRowSelected = isSelected(task.id);
 
@@ -1009,20 +1011,23 @@ export function ChatListPane({
             ? statusLabel('running', task.type)
             : (ts ? formatRelativeTime(new Date(ts).toISOString()) : '');
 
+        // Mode badge: tinted border + soft tinted background, font:9.5px/1 mono uppercase
         const modeBadgeClasses = cn(
-            'shrink-0 inline-flex items-center justify-center rounded border font-mono font-bold uppercase tracking-wider select-none',
-            'text-[9.5px] leading-none w-9 h-[18px]',
+            'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
+            'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
             modeShort === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
             modeShort === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
             modeShort === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
         );
 
         const dotClasses = cn(
-            'shrink-0 w-2 h-2 rounded-full',
-            isRunning && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.18)]',
+            'w-2 h-2 rounded-full justify-self-center transition-shadow',
+            isRunning && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
             !isRunning && isFailed && 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.20)]',
             !isRunning && !isFailed && 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
         );
+
+        const stopAndCall = (cb: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); cb(); };
 
         return (
             <SwipeableHistoryItem
@@ -1033,9 +1038,11 @@ export function ChatListPane({
             >
                 <div
                     className={cn(
-                        'group relative flex items-center gap-2 px-3 cursor-pointer leading-none',
+                        'chat-row group relative cursor-pointer leading-none transition-colors',
+                        'grid items-center gap-2 px-3 py-1',
+                        'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
                         'text-[12.5px] h-[26px]',
-                        'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60 transition-colors',
+                        'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                         'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                         isHistorySelected && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40',
                         !isHistorySelected && isRowSelected && 'bg-[#0078d4]/[0.08] dark:bg-[#3794ff]/[0.10]',
@@ -1062,7 +1069,7 @@ export function ChatListPane({
                 >
                     <span className={dotClasses} aria-label={`status: ${isRunning ? 'running' : isFailed ? 'failed' : 'done'}`} />
                     <span className={modeBadgeClasses} title={CHAT_MODE_LABELS[mode] || mode}>{modeLabel}</span>
-                    <span className="flex-1 min-w-0 flex items-center gap-1">
+                    <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                         {isHistorySelected && (
                             <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>
                         )}
@@ -1083,8 +1090,51 @@ export function ChatListPane({
                             ) : null;
                         })()}
                     </span>
-                    <span className="shrink-0 text-[10.5px] font-mono text-[#848484] dark:text-[#999] tabular-nums whitespace-nowrap">
-                        {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />{statusLabel('running', task.type)}</span> : timeText}
+                    <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
+                        <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
+                            {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />{statusLabel('running', task.type)}</span> : timeText}
+                        </span>
+                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
+                            <button
+                                type="button"
+                                className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                title={isPinned ? 'Unpin' : 'Pin'}
+                                aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
+                                data-testid="chat-row-pin"
+                                onClick={stopAndCall(() => (isPinned ? onUnpinChat?.(task.id) : onPinChat?.(task.id)))}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                title={isArchived ? 'Unarchive' : 'Archive'}
+                                aria-label={isArchived ? 'Unarchive chat' : 'Archive chat'}
+                                data-testid="chat-row-archive"
+                                onClick={stopAndCall(() => (isArchived ? onUnarchiveChat?.(task.id) : onArchiveChat?.(task.id)))}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                                    <rect x="2" y="2.5" width="10" height="2.5" rx=".5"/>
+                                    <path d="M3 5v6.5h8V5M5.5 7.5h3"/>
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                title="More"
+                                aria-label="More actions"
+                                data-testid="chat-row-more"
+                                onClick={(e) => { e.stopPropagation(); handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed'); }}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                                    <circle cx="3.5" cy="7" r="1"/>
+                                    <circle cx="7" cy="7" r="1"/>
+                                    <circle cx="10.5" cy="7" r="1"/>
+                                </svg>
+                            </button>
+                        </span>
                     </span>
                 </div>
             </SwipeableHistoryItem>
@@ -1093,6 +1143,7 @@ export function ChatListPane({
         unseenProcessIds,
         running,
         pinnedChatIds,
+        archivedChatIds,
         selectedHistoryIds,
         isMobile,
         isSelected,
@@ -1100,6 +1151,8 @@ export function ChatListPane({
         handleTaskContextMenu,
         onArchiveChat,
         onUnarchiveChat,
+        onPinChat,
+        onUnpinChat,
         historyLongPress,
     ]);
 
@@ -1145,7 +1198,7 @@ export function ChatListPane({
 
                         {/* Search bar — magnifying glass + ⌘F kbd hint */}
                         <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
+                            <span className="absolute left-[7px] top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
                                     <circle cx="7" cy="7" r="4.5" />
                                     <path d="M10.5 10.5l3 3" />
@@ -1157,7 +1210,7 @@ export function ChatListPane({
                                 placeholder="Search…"
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full h-7 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] pl-7 pr-14 text-xs text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#848484] outline-none focus:border-[#0078d4] dark:focus:border-[#3794ff] focus:bg-white dark:focus:bg-[#252526] focus:shadow-[0_0_0_3px_rgba(0,120,212,0.18)]"
+                                className="w-full h-7 rounded-md border border-[#e0e0e0] dark:border-[#474749] bg-[#f7f7f8] dark:bg-[#1e1e1e] pl-[26px] pr-14 text-[12.5px] leading-none text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#848484] outline-none focus:border-[#0078d4] dark:focus:border-[#3794ff] focus:bg-white dark:focus:bg-[#252526] focus:shadow-[0_0_0_3px_rgba(0,120,212,0.22)]"
                                 data-testid="queue-search-input"
                                 aria-label="Search conversations"
                             />
@@ -1165,7 +1218,7 @@ export function ChatListPane({
                                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[#848484] animate-pulse" data-testid="search-loading-indicator">⏳</span>
                             )}
                             {!searchQuery && !searchLoading && (
-                                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0] border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#252526] rounded px-1 py-px pointer-events-none select-none">
+                                <kbd className="absolute right-[6px] top-1/2 -translate-y-1/2 text-[10.5px] font-mono text-[#848484] dark:text-[#a0a0a0] border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#252526] rounded-[3px] px-1 py-px pointer-events-none select-none">
                                     {kbdLabel}
                                 </kbd>
                             )}
@@ -1186,7 +1239,7 @@ export function ChatListPane({
 
                         {/* Filter chips: All / Running / Failed (chips with zero count auto-hide except All) */}
                         {!isServerSearchActive && (
-                            <div className="flex flex-wrap gap-0.5" role="tablist" aria-label="Filter chats">
+                            <div className="flex flex-wrap gap-[3px]" role="tablist" aria-label="Filter chats">
                                 {([
                                     { id: 'all' as const, label: 'All', count: chatGroups.counts.all },
                                     { id: 'running' as const, label: 'Running', count: chatGroups.counts.running, dot: 'running' as const },
@@ -1202,17 +1255,17 @@ export function ChatListPane({
                                             data-testid={`chat-filter-chip-${chip.id}`}
                                             onClick={() => setChatFilter(chip.id)}
                                             className={cn(
-                                                'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[11.5px] leading-none transition-colors',
+                                                'inline-flex items-center gap-[5px] rounded-[5px] border px-[7px] py-[4px] text-[11.5px] leading-none transition-[background-color,color,border-color] duration-100',
                                                 isOn
                                                     ? 'text-[#1e1e1e] dark:text-[#ffffff] bg-[#0078d4]/[0.10] dark:bg-[#3794ff]/[0.16] border-[#0078d4]/35 dark:border-[#3794ff]/40'
                                                     : 'text-[#606060] dark:text-[#9d9d9d] border-transparent hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
                                             )}
                                         >
                                             {chip.dot === 'running' && (
-                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
+                                                <span className="inline-block w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
                                             )}
                                             {chip.dot === 'failed' && (
-                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" aria-hidden="true" />
+                                                <span className="inline-block w-[5px] h-[5px] rounded-full bg-red-500" aria-hidden="true" />
                                             )}
                                             <span>{chip.label}</span>
                                             <span className={cn('font-mono text-[10.5px] tabular-nums', isOn ? 'text-[#0078d4] dark:text-[#3794ff]' : 'text-[#9d9d9d] dark:text-[#7d7d7d]')}>
@@ -1286,13 +1339,13 @@ export function ChatListPane({
                                                 <div
                                                     className={cn(
                                                         'sticky top-0 z-[2] flex items-center justify-between px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150',
-                                                        section.variant === 'running' && 'bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/[0.08] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
-                                                        section.variant === 'pinned' && 'bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
-                                                        section.variant === 'plain' && 'bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                        section.variant === 'running' && 'bg-[#0078d4]/[0.07] dark:bg-[#3794ff]/[0.10] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                        section.variant === 'pinned' && 'bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                        section.variant === 'plain' && 'bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
                                                     )}
                                                 >
                                                     <span className={cn(
-                                                        'inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.1em]',
+                                                        'inline-flex items-center gap-1.5 text-[10px] leading-none font-mono font-semibold uppercase tracking-[0.1em]',
                                                         section.variant === 'running' && 'text-[#0078d4] dark:text-[#3794ff]',
                                                         section.variant === 'pinned' && 'text-[#848484] dark:text-[#a0a0a0]',
                                                         section.variant === 'plain' && 'text-[#848484] dark:text-[#a0a0a0]',
@@ -1305,7 +1358,10 @@ export function ChatListPane({
                                                         )}
                                                         {section.label}
                                                     </span>
-                                                    <span className="text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0]">{section.items.length}</span>
+                                                    <span className={cn(
+                                                        'text-[10px] leading-none font-mono tabular-nums',
+                                                        section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
+                                                    )}>{section.items.length}</span>
                                                 </div>
                                                 {section.items.map(task => renderChatListRow(task, chatGroups.flatVisible))}
                                             </div>
@@ -1326,15 +1382,15 @@ export function ChatListPane({
                                 {chatGroups.archivedChats.length > 0 && (
                                     <div data-section="archived">
                                         <button
-                                            className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors"
+                                            className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors backdrop-blur-md backdrop-saturate-150"
                                             onClick={() => setShowArchived(!showArchived)}
                                             data-testid="chat-archived-toggle"
                                         >
-                                            <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
+                                            <span className="inline-flex items-center gap-1.5 text-[10px] leading-none font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
                                                 <span className="text-[10px]">{showArchived ? '▼' : '▶'}</span>
                                                 Archived
                                             </span>
-                                            <span className="text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0]">{chatGroups.archivedChats.length}</span>
+                                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{chatGroups.archivedChats.length}</span>
                                         </button>
                                         {showArchived && (
                                             <div className="opacity-70">
