@@ -1,22 +1,27 @@
 /**
- * Tests for compact chat input bar layout — verifies that both FollowUpInputArea
- * and NewChatArea render mode selector, text input, and send button in a single
- * horizontal row (flex-row) at all viewport sizes.
+ * Tests for the redesigned chat input layout.
  *
- * Also tests the mobile-specific icon-only mode cycle button.
+ * The default layout is the new stacked design: a horizontal mode pill row
+ * sits above an input "card" whose bottom toolbar holds the model picker,
+ * tool buttons, and the Queue follow-up button.
+ *
+ * The legacy compact single-row layout (mode cycle button + dropdown + send
+ * inline with the input) is retained for narrow side panels via the
+ * `compactModeSelector` prop.
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { tracker, mockQueueDispatch, mockAppState, mockFetch } = vi.hoisted(() => ({
+const { tracker, mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch } = vi.hoisted(() => ({
     tracker: { calls: [] as Array<[string, number?]>, domValue: '' },
     mockQueueDispatch: vi.fn(),
-    mockAppState: { workspaces: [{ id: 'ws-1', rootPath: '/repo' }] },
+    mockAppState: { workspaces: [{ id: 'ws-1', rootPath: '/repo' }], onboardingProgress: { hasUsedChat: true } } as Record<string, any>,
     mockFetch: vi.fn(),
+    mockAppDispatch: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
@@ -45,7 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
+    useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -117,6 +122,8 @@ function makeFollowUpProps(overrides: Partial<FollowUpInputAreaProps> = {}): Fol
         richTextRef: createRef<RichTextInputHandle>(),
         inputDisabled: false,
         sending: false,
+        isActiveGeneration: false,
+        isCancelling: false,
         error: null,
         resumeFeedback: null,
         suggestions: [],
@@ -148,247 +155,203 @@ function makeFollowUpProps(overrides: Partial<FollowUpInputAreaProps> = {}): Fol
     };
 }
 
-// ── Layout structure tests ─────────────────────────────────────────────────
+// ── Default stacked layout (FollowUpInputArea) ─────────────────────────────
 
-describe('FollowUpInputArea — compact input bar layout', () => {
-    it('renders chat-input-bar container with flex-row', () => {
+describe('FollowUpInputArea — stacked input card layout', () => {
+    it('renders chat-input-bar as a vertical input card (flex-col)', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const bar = screen.getByTestId('chat-input-bar');
+        expect(bar.className).toContain('flex-col');
+        expect(bar.className).toContain('rounded-lg');
+        expect(bar.className).toContain('border');
+    });
+
+    it('renders the mode pill selector with one button per mode', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('does not render the legacy mode-dropdown / mode-cycle-btn in the default layout', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+    });
+
+    it('clicking a pill dispatches setSelectedMode with the new mode', () => {
+        const setSelectedMode = vi.fn();
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
+        fireEvent.click(screen.getByTestId('mode-pill-plan'));
+        expect(setSelectedMode).toHaveBeenCalledWith('plan');
+    });
+
+    it('respects allowedModes when rendering pills', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            selectedMode: 'ask',
+            allowedModes: ['ask', 'autopilot'],
+        })} />);
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+    });
+
+    it('renders the bottom toolbar with attach + slash trigger buttons', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        expect(screen.getByTestId('chat-input-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('follow-up-attach-btn')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+    });
+
+    it('Queue follow-up button has shrink-0 to prevent compression', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const btn = screen.getByTestId('activity-chat-send-btn');
+        expect(btn.className).toContain('shrink-0');
+        expect(btn.className).not.toContain('w-full');
+    });
+
+    it('Queue follow-up button has compact padding (px-2 sm:px-3)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const btn = screen.getByTestId('activity-chat-send-btn');
+        expect(btn.className).toContain('px-2');
+        expect(btn.className).toContain('sm:px-3');
+    });
+
+    it('hides the mode selector when hideModeSelector is true', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ hideModeSelector: true })} />);
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-ask')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-autopilot')).toBeNull();
+    });
+});
+
+// ── Legacy compact layout (compactModeSelector=true) ───────────────────────
+
+describe('FollowUpInputArea — compactModeSelector legacy single-row layout', () => {
+    it('renders chat-input-bar as a single horizontal row when compactModeSelector is true', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
         const bar = screen.getByTestId('chat-input-bar');
         expect(bar.className).toContain('flex-row');
         expect(bar.className).toContain('items-center');
         expect(bar.className).not.toContain('flex-col');
     });
 
-    it('renders mode-cycle-btn for mobile (sm:hidden) and mode-dropdown for desktop (hidden sm:block)', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const cycleBtn = screen.getByTestId('mode-cycle-btn');
-        const dropdown = screen.getByTestId('mode-dropdown');
-
-        expect(cycleBtn.className).toContain('sm:hidden');
-        expect(dropdown.className).toContain('hidden');
-        expect(dropdown.className).toContain('sm:block');
+    it('renders only the cycle button (no dropdown) when compactModeSelector is true', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
+        expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
+        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-pill-ask')).toBeNull();
     });
 
-    it('mode-cycle-btn shows icon-only text for current mode', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask' })} />);
-        expect(screen.getByTestId('mode-cycle-btn').textContent).toBe('💡');
-
-        const { unmount } = render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'plan' })} />);
-        expect(screen.getAllByTestId('mode-cycle-btn')[1].textContent).toBe('📋');
-        unmount();
+    it('cycle button shows the icon for the current mode', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'autopilot' })} />);
+        expect(screen.getByTestId('mode-cycle-btn').textContent).toContain('🤖');
     });
 
-    it('mode-cycle-btn has aria-label indicating current mode', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
-        const btn = screen.getByTestId('mode-cycle-btn');
-        expect(btn.getAttribute('aria-label')).toContain('autopilot');
-    });
-
-    it('tapping mode-cycle-btn calls setSelectedMode with next mode', () => {
+    it('clicking the cycle button advances to the next mode', () => {
         const setSelectedMode = vi.fn();
-        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask', setSelectedMode })} />);
         fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        // cycleMode('ask') → 'plan'
         expect(setSelectedMode).toHaveBeenCalledWith('plan');
     });
 
-    it('tapping mode-cycle-btn cycles through modes correctly', () => {
+    it('respects allowedModes when cycling (ask → autopilot)', () => {
         const setSelectedMode = vi.fn();
-
-        // ask → plan
-        const { unmount: u1 } = render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
-        fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('plan');
-        u1();
-
-        setSelectedMode.mockClear();
-
-        // autopilot → ask
-        const { unmount: u2 } = render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot', setSelectedMode })} />);
-        fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('ask');
-        u2();
-
-        setSelectedMode.mockClear();
-
-        // plan → autopilot
-        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'plan', setSelectedMode })} />);
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            compactModeSelector: true,
+            selectedMode: 'ask',
+            allowedModes: ['ask', 'autopilot'],
+            setSelectedMode,
+        })} />);
         fireEvent.click(screen.getByTestId('mode-cycle-btn'));
         expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
     });
 
-    it('send button has shrink-0 to prevent compression', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const btn = screen.getByTestId('activity-chat-send-btn');
-        expect(btn.className).toContain('shrink-0');
-        expect(btn.className).not.toContain('w-full');
-    });
-
-    it('send button has compact padding on mobile (px-2 sm:px-3)', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const btn = screen.getByTestId('activity-chat-send-btn');
-        expect(btn.className).toContain('px-2');
-        expect(btn.className).toContain('sm:px-3');
-    });
-
-    it('text input wrapper has min-w-0 to prevent overflow', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const bar = screen.getByTestId('chat-input-bar');
-        const inputWrapper = bar.querySelector('.flex-1.min-w-0');
-        expect(inputWrapper).toBeTruthy();
-    });
-
-    it('mode selector is hidden when hideModeSelector is true', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ hideModeSelector: true })} />);
+    it('hideModeSelector hides the selector even when compactModeSelector is true', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, hideModeSelector: true })} />);
         expect(screen.queryByTestId('mode-selector')).toBeNull();
         expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
-        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
     });
 
-    describe('compactModeSelector — icon-only at all sizes', () => {
-        it('renders only the icon-only cycle button (no dropdown) when compactModeSelector is true', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
-            expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
-            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
-        });
-
-        it('compact cycle button does NOT have sm:hidden class (visible at all sizes)', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
-            const btn = screen.getByTestId('mode-cycle-btn');
-            expect(btn.className).not.toContain('sm:hidden');
-        });
-
-        it('compact cycle button shows mode icon plus chevron and uses px-2 padding', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'autopilot' })} />);
-            const btn = screen.getByTestId('mode-cycle-btn');
-            expect(btn.textContent).toContain('🤖');
-            expect(btn.textContent).toContain('▾');
-            expect(btn.className).toContain('px-2');
-            expect(btn.className).toContain('h-[34px]');
-        });
-
-        it('compact cycle button title contains the full mode tooltip', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask' })} />);
-            const btn = screen.getByTestId('mode-cycle-btn');
-            expect(btn.getAttribute('title')).toContain('Ask');
-            expect(btn.getAttribute('title')).toContain('Shift+Tab to cycle');
-        });
-
-        it('clicking compact cycle button advances to the next mode', () => {
-            const setSelectedMode = vi.fn();
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask', setSelectedMode })} />);
-            fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-            expect(setSelectedMode).toHaveBeenCalledWith('plan');
-        });
-
-        it('respects allowedModes when cycling (ask → autopilot for note chat)', () => {
-            const setSelectedMode = vi.fn();
-            render(<FollowUpInputArea {...makeFollowUpProps({
-                compactModeSelector: true,
-                selectedMode: 'ask',
-                allowedModes: ['ask', 'autopilot'],
-                setSelectedMode,
-            })} />);
-            fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-            expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
-        });
-
-        it('hideModeSelector still hides the selector even when compactModeSelector is true', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, hideModeSelector: true })} />);
-            expect(screen.queryByTestId('mode-selector')).toBeNull();
-            expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
-        });
-
-        it('default behavior (compactModeSelector=false) still renders both mobile and desktop variants', () => {
-            render(<FollowUpInputArea {...makeFollowUpProps()} />);
-            expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
-            expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
-        });
-    });
-
-    it('all five children (file-input, attach-btn, mode, input, send) are direct children of the flex-row container', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+    it('text input wrapper has min-w-0 to prevent overflow in single-row layout', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
         const bar = screen.getByTestId('chat-input-bar');
-        // hidden file input, attach button, mode-selector, input wrapper, send button
-        const children = Array.from(bar.children);
-        expect(children.length).toBe(5);
+        const inputWrapper = bar.querySelector('.flex-1.min-w-0');
+        expect(inputWrapper).toBeTruthy();
     });
 });
 
-// ── NewChatArea compact layout tests ───────────────────────────────────────
+// ── NewChatArea stacked layout ─────────────────────────────────────────────
 
-describe('NewChatArea — compact input bar layout', () => {
-    it('renders chat-input-bar container with flex-row', () => {
+describe('NewChatArea — stacked input card layout', () => {
+    it('renders chat-input-bar as a vertical input card (flex-col)', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
-        expect(bar.className).toContain('flex-row');
-        expect(bar.className).toContain('items-center');
-        expect(bar.className).not.toContain('flex-col');
+        expect(bar.className).toContain('flex-col');
+        expect(bar.className).toContain('rounded-lg');
+        expect(bar.className).toContain('border');
     });
 
-    it('supports mode cycling via Shift+Tab on the input', () => {
+    it('renders the mode pill selector with all three modes by default', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        // Mode cycling is handled via Shift+Tab keyboard shortcut, not a separate button
-        expect(screen.getByTestId('chat-input-bar')).toBeTruthy();
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 
-    it('send button has shrink-0 and no w-full', () => {
+    it('does not render the legacy mode-dropdown / mode-cycle-btn', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+    });
+
+    it('renders the bottom toolbar with attach + slash trigger buttons', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        expect(screen.getByTestId('chat-input-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-attach-btn')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+    });
+
+    it('Queue follow-up button has shrink-0', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn');
         expect(btn.className).toContain('shrink-0');
         expect(btn.className).not.toContain('w-full');
     });
-
-    it('send button has compact padding (px-2 sm:px-3)', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        const btn = screen.getByTestId('new-chat-send-btn');
-        expect(btn.className).toContain('px-2');
-        expect(btn.className).toContain('sm:px-3');
-    });
-
-    it('text input wrapper has min-w-0', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        const bar = screen.getByTestId('chat-input-bar');
-        const inputWrapper = bar.querySelector('.flex-1.min-w-0');
-        expect(inputWrapper).toBeTruthy();
-    });
-
-    it('children (file-input, attach, mode-selector, input, send) are direct children of the flex-row container', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        const bar = screen.getByTestId('chat-input-bar');
-        const children = Array.from(bar.children);
-        expect(children.length).toBe(5);
-    });
 });
 
-// ── Source code validation (CSS class presence) ────────────────────────────
+// ── Source code validation ─────────────────────────────────────────────────
 
-describe('Compact input bar — source validation', () => {
-    it('FollowUpInputArea.tsx no longer uses flex-col for the input bar', async () => {
+describe('Stacked input bar — source validation', () => {
+    it('FollowUpInputArea.tsx contains the chat-input-stack stacked container', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const src = fs.readFileSync(
             path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea.tsx'),
             'utf-8',
         );
-        // Should not have old stacked layout
-        expect(src).not.toContain('flex flex-col sm:flex-row');
-        // Should have always-horizontal layout
-        expect(src).toContain('flex flex-row items-center');
+        expect(src).toContain('chat-input-stack');
+        expect(src).toContain('ModePillSelector');
     });
 
-    it('NewChatArea.tsx no longer uses flex-col for the input bar', async () => {
+    it('NewChatArea.tsx uses the ModePillSelector and a vertical input card', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const src = fs.readFileSync(
             path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/NewChatArea.tsx'),
             'utf-8',
         );
-        expect(src).not.toContain('flex flex-col sm:flex-row');
-        expect(src).toContain('flex flex-row items-center');
+        expect(src).toContain('ModePillSelector');
+        expect(src).toContain('flex-col');
     });
 
-    it('neither component uses w-full sm:w-auto on send button', async () => {
+    it('neither component uses the obsolete sm:flex-row stacked-mobile layout', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const followUp = fs.readFileSync(
@@ -399,7 +362,7 @@ describe('Compact input bar — source validation', () => {
             path.resolve(__dirname, '../../../../src/server/spa/client/react/features/chat/NewChatArea.tsx'),
             'utf-8',
         );
-        expect(followUp).not.toContain('w-full sm:w-auto');
-        expect(newChat).not.toContain('w-full sm:w-auto');
+        expect(followUp).not.toContain('flex flex-col sm:flex-row');
+        expect(newChat).not.toContain('flex flex-col sm:flex-row');
     });
 });

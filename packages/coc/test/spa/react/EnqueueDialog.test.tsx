@@ -1764,10 +1764,10 @@ describe('EnqueueDialog slash commands', () => {
             expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
         });
 
-        // Both skills should appear in the menu
+        // Both skills should appear in the menu (rendered with leading slash)
         const menu = screen.getByTestId('slash-command-menu');
-        expect(within(menu).getByText('impl')).toBeTruthy();
-        expect(within(menu).getByText('draft')).toBeTruthy();
+        expect(within(menu).getByText('/impl')).toBeTruthy();
+        expect(within(menu).getByText('/draft')).toBeTruthy();
     });
 
     it('filters slash-command menu as user types after /', async () => {
@@ -1794,10 +1794,10 @@ describe('EnqueueDialog slash commands', () => {
             expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
         });
 
-        // Only 'impl' should match the filter
+        // Only '/impl' should match the filter
         const menu = screen.getByTestId('slash-command-menu');
-        expect(within(menu).getByText('impl')).toBeTruthy();
-        expect(within(menu).queryByText('draft')).toBeNull();
+        expect(within(menu).getByText('/impl')).toBeTruthy();
+        expect(within(menu).queryByText('/draft')).toBeNull();
     });
 
     it('adds skill to selectedSkills when slash-command skill is selected via click', async () => {
@@ -1823,9 +1823,9 @@ describe('EnqueueDialog slash commands', () => {
             expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
         });
 
-        // Click on 'impl' in the menu (uses mousedown to prevent blur)
+        // Click on '/impl' in the menu (uses mousedown to prevent blur)
         const menu = screen.getByTestId('slash-command-menu');
-        const implItem = within(menu).getByText('impl');
+        const implItem = within(menu).getByText('/impl');
         fireEvent.mouseDown(implItem);
 
         // Skill chip should now show 'impl' as selected

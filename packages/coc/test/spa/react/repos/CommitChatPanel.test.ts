@@ -216,7 +216,8 @@ describe('FollowUpInputArea — hideModeSelector prop', () => {
     });
 
     it('hides mode selector when hideModeSelector is true', () => {
-        expect(followUpSource).toContain('{!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">');
+        // Both layout branches gate mode-selector rendering on !hideModeSelector.
+        expect(followUpSource).toMatch(/!hideModeSelector\s*&&[\s\S]*data-testid="mode-selector"/);
     });
 
     it('still renders mode selector by default (hideModeSelector=false)', () => {

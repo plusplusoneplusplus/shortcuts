@@ -31,6 +31,22 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
             </button>
         );
     },
+    QueueFollowUpButton: ({ disabled, ctrlHeld, onSend, label, ...rest }: any) => {
+        const testId = rest['data-testid'] ?? 'activity-chat-send-btn';
+        const steering = ctrlHeld;
+        const text = steering ? 'Steer' : (label ?? 'Queue follow-up');
+        return (
+            <button
+                disabled={disabled}
+                className={steering ? 'bg-[#e8912d] text-white hover:bg-[#c97a25] border border-transparent' : 'bg-white border border-[#d0d0d0]'}
+                onClick={() => onSend(steering ? 'immediate' : 'enqueue')}
+                data-testid={testId}
+                title={steering ? 'Release Ctrl to queue instead' : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
+            >
+                {steering ? '⚡' : '✉'} {text}
+            </button>
+        );
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui/AttachmentPreviews', () => ({
@@ -47,6 +63,19 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
+    ModelCommandMenu: () => null,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelector', () => ({
+    ModePillSelector: () => null,
+    DEFAULT_MODE_PILL_OPTIONS: [
+        { value: 'ask', label: 'Ask', dotClass: 'bg-blue-500' },
+        { value: 'plan', label: 'Plan', dotClass: 'bg-blue-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-orange-500' },
+    ],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
@@ -115,14 +144,14 @@ function getSendButton() {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('FollowUpInputArea – single send button', () => {
+describe('FollowUpInputArea – single send button (new stacked layout)', () => {
     beforeEach(() => {
         mockModHeld = false;
     });
 
-    it('shows "Send" by default (no modifier)', () => {
+    it('shows "Queue follow-up" by default (no modifier)', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
-        expect(getSendButton().textContent).toBe('Send');
+        expect(getSendButton().textContent).toContain('Queue follow-up');
     });
 
     it('shows Stop button when active generation is true, even if sending is false', () => {
@@ -132,11 +161,11 @@ describe('FollowUpInputArea – single send button', () => {
         expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 
-    it('keeps Send visible but disabled during local request submission', () => {
+    it('keeps Queue follow-up visible but disabled during local request submission', () => {
         render(<FollowUpInputArea {...defaultProps({ sending: true, isActiveGeneration: false })} />);
         expect(screen.queryByTestId('activity-chat-stop-btn')).toBeNull();
         const sendButton = getSendButton();
-        expect(sendButton.textContent).toBe('Send');
+        expect(sendButton.textContent).toContain('Queue follow-up');
         expect(sendButton.hasAttribute('disabled')).toBe(true);
     });
 
@@ -150,10 +179,11 @@ describe('FollowUpInputArea – single send button', () => {
         expect(onStop).not.toHaveBeenCalled();
     });
 
-    it('shows "⚡ Steer" when Ctrl is held', () => {
+    it('shows "Steer" when Ctrl is held', () => {
         mockModHeld = true;
         render(<FollowUpInputArea {...defaultProps()} />);
-        expect(getSendButton().textContent).toBe('⚡ Steer');
+        expect(getSendButton().textContent).toContain('Steer');
+        expect(getSendButton().textContent).not.toContain('Queue follow-up');
     });
 
     it('shows Stop button when Ctrl is held and active generation is true', () => {
@@ -172,11 +202,11 @@ describe('FollowUpInputArea – single send button', () => {
         expect(btn.className).toContain('hover:bg-[#c97a25]');
     });
 
-    it('applies default blue background when not in steering mode', () => {
+    it('applies outlined white background when not in steering mode', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         const btn = getSendButton();
-        expect(btn.className).toContain('bg-[#0078d4]');
-        expect(btn.className).toContain('hover:bg-[#106ebe]');
+        expect(btn.className).toContain('bg-white');
+        expect(btn.className).toContain('border');
     });
 
     it('shows modifier-held tooltip when Ctrl is held', () => {

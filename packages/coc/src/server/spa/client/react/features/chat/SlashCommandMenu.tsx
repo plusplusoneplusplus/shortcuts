@@ -1,8 +1,11 @@
 /**
- * SlashCommandMenu — autocomplete dropdown for `/skill` commands.
+ * SlashCommandMenu — autocomplete popover for `/skill` commands.
  *
- * Renders a filtered list of available skills. Supports keyboard
- * navigation (ArrowUp/Down, Enter/Tab to select, Escape to dismiss).
+ * Renders as a card-style panel anchored above the chat input. Each row shows
+ * the command name in monospace plus a short description, and the highlighted
+ * row gets a return-key indicator on the right edge to hint that Enter/Tab
+ * inserts the command. Supports keyboard navigation (ArrowUp/Down, Enter/Tab
+ * to select, Escape to dismiss).
  */
 
 import { useEffect, useRef } from 'react';
@@ -63,33 +66,59 @@ export function SlashCommandMenu({
     return (
         <div
             ref={menuRef}
-            className="absolute z-50 border rounded shadow-lg bg-white dark:bg-[#1e1e1e] border-[#e0e0e0] dark:border-[#3c3c3c] max-h-48 overflow-y-auto text-sm"
+            className="absolute z-50 rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden text-sm"
             style={{
                 bottom: position ? `calc(100% - ${position.top}px + 4px)` : '100%',
                 left: position?.left ?? 0,
-                minWidth: 220,
-                maxWidth: 480,
+                marginBottom: 6,
+                minWidth: 320,
+                maxWidth: 560,
             }}
             data-testid="slash-command-menu"
         >
-            {filtered.map((skill, i) => (
-                <div
-                    key={skill.name}
-                    data-menu-item
-                    className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 min-w-0 overflow-hidden ${
-                        i === highlightIndex
-                            ? 'bg-[#e8e8e8] dark:bg-[#37373d]'
-                            : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'
-                    }`}
-                    onMouseDown={e => { e.preventDefault(); onSelect(skill.name); }}
-                >
-                    <span className="text-yellow-500">⚡</span>
-                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{skill.name}</span>
-                    {skill.description && (
-                        <span className="text-xs text-[#848484] truncate min-w-0">— {skill.description}</span>
-                    )}
-                </div>
-            ))}
+            <div
+                className="px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-[10px] font-semibold tracking-wider uppercase text-[#848484]"
+                data-testid="slash-command-menu-header"
+            >
+                Slash commands
+            </div>
+            <div className="max-h-60 overflow-y-auto py-1">
+                {filtered.map((skill, i) => {
+                    const highlighted = i === highlightIndex;
+                    return (
+                        <div
+                            key={skill.name}
+                            data-menu-item
+                            data-highlighted={highlighted ? 'true' : 'false'}
+                            className={`px-3 py-1.5 cursor-pointer flex items-center gap-3 min-w-0 ${
+                                highlighted
+                                    ? 'bg-[#eef3fb] dark:bg-[#37373d]'
+                                    : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]'
+                            }`}
+                            onMouseDown={e => { e.preventDefault(); onSelect(skill.name); }}
+                        >
+                            <span className="font-mono text-[13px] font-semibold text-[#1e1e1e] dark:text-[#d4d4d4] shrink-0">
+                                /{skill.name}
+                            </span>
+                            {skill.description && (
+                                <span className="text-xs text-[#616161] dark:text-[#9d9d9d] truncate min-w-0 flex-1">
+                                    {skill.description}
+                                </span>
+                            )}
+                            {highlighted && (
+                                <span
+                                    aria-hidden="true"
+                                    className="ml-auto shrink-0 text-[#848484] text-base leading-none"
+                                    data-testid="slash-command-menu-return"
+                                    title="Press Enter to insert"
+                                >
+                                    &#x21B5;
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }

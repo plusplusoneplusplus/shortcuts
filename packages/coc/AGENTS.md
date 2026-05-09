@@ -332,6 +332,7 @@ src/
 │               ├── contexts/            # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
 │               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
 │               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
+│               ├── features/chat/       # Chat conversation UI: ChatDetail/ChatListPane, FollowUpInputArea + NewChatArea use a stacked layout (ModePillSelector pill row above an input card; bottom toolbar holds model picker, slash/attach buttons, model override badge, and QueueFollowUpButton). Legacy single-row layout is preserved when `compactModeSelector` is true (e.g., narrow side panels). SlashCommandMenu renders as a card popover with a header and `↵` indicator on the highlighted row.
 │               ├── features/notes/      # Notes UI; NoteEditor Run Skill is available for any notePath and dispatches normalized contextFiles/contextTaskName. Notes sidebar update indicators compare tree node lastModifiedAt against localStorage key `coc-notes-seen-<workspaceId>`.
 │               ├── features/pull-requests/ # Pull request dashboard: attention groups, row selection, detail view, and BatchCommandPanel queueing `pr-batch` chat tasks from selected PRs
 │               ├── features/terminal/   # Terminal UI; TerminalView hydrates pinned server sessions through /api/workspaces/:id/terminals, sends tab pin/unpin through PATCH /api/workspaces/:id/terminals/:sessionId/pin, and restored tabs attach to existing PTYs

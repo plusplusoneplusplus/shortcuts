@@ -108,7 +108,7 @@ describe('BatchCommandPanel', () => {
         fireEvent.change(screen.getByTestId('batch-command-input'), { target: { value: '/', selectionStart: 1 } });
         expect(screen.getByTestId('slash-command-menu')).toBeInTheDocument();
 
-        fireEvent.mouseDown(screen.getByText('nudge'));
+        fireEvent.mouseDown(screen.getByText('/nudge'));
 
         expect(screen.getByTestId('batch-command-input')).toHaveValue('/nudge');
         expect(screen.queryByTestId('slash-command-menu')).toBeNull();

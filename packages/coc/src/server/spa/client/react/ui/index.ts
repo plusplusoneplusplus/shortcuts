@@ -34,6 +34,8 @@ export type { SectionHeaderProps } from './SectionHeader';
 // ── Buttons / toggles ──────────────────────────────────────────────────
 export { SendButton, SplitSendButton } from './SplitSendButton';
 export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
+export { QueueFollowUpButton } from './QueueFollowUpButton';
+export type { QueueFollowUpButtonProps } from './QueueFollowUpButton';
 export { ModeToggleToolbar } from './ModeToggleToolbar';
 export type { ModeOption, ModeToggleToolbarProps } from './ModeToggleToolbar';
 export { SegmentedControl } from './SegmentedControl';

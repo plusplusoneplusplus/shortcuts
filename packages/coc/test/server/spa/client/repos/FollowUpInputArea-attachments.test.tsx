@@ -24,6 +24,15 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     SendButton: ({ disabled, ctrlHeld, onSend, ...rest }: any) => (
         <button data-testid="activity-chat-send-btn" onClick={() => onSend('enqueue')}>Send</button>
     ),
+    QueueFollowUpButton: ({ disabled, onSend, ...rest }: any) => (
+        <button
+            data-testid={rest['data-testid'] ?? 'activity-chat-send-btn'}
+            disabled={disabled}
+            onClick={() => onSend('enqueue')}
+        >
+            Queue follow-up
+        </button>
+    ),
 }));
 
 let capturedAttachments: any[] = [];
@@ -53,6 +62,19 @@ vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () =>
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
+    ModelCommandMenu: () => null,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/ModePillSelector', () => ({
+    ModePillSelector: () => null,
+    DEFAULT_MODE_PILL_OPTIONS: [
+        { value: 'ask', label: 'Ask', dotClass: 'bg-blue-500' },
+        { value: 'plan', label: 'Plan', dotClass: 'bg-blue-500' },
+        { value: 'autopilot', label: 'Autopilot', dotClass: 'bg-orange-500' },
+    ],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
@@ -121,11 +143,12 @@ describe('FollowUpInputArea – file attachments', () => {
         capturedAttachments = [];
     });
 
-    it('renders the "+" attach button', () => {
+    it('renders the attach button (paperclip icon)', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         const btn = screen.getByTestId('follow-up-attach-btn');
         expect(btn).toBeTruthy();
-        expect(btn.textContent?.trim()).toBe('+');
+        // New stacked layout renders a paperclip SVG icon instead of text
+        expect(btn.querySelector('svg')).not.toBeNull();
         expect(btn.getAttribute('aria-label')).toBe('Attach file');
     });
 

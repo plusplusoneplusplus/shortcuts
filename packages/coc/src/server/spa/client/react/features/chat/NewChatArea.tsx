@@ -1,6 +1,10 @@
 /**
  * NewChatArea — empty-state chat component shown when no task is selected
  * on the Activity tab. Lets the user type a message and start a new conversation.
+ *
+ * Visual layout matches the FollowUpInputArea redesign: a horizontal mode
+ * pill row above an input card whose bottom toolbar holds the model picker,
+ * inline tool buttons, and the "Queue follow-up" button.
  */
 
 import { useMemo, useRef, useState } from 'react';
@@ -8,7 +12,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { cn } from '../../ui/cn';
-import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
+import { MODE_BORDER_COLORS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
@@ -20,6 +24,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS } from './ModePillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
@@ -118,6 +123,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         setSending(false);
     }
 
+    function focusInputAndInsertSlash() {
+        const cur = richTextRef.current?.getValue() ?? input;
+        const next = cur === '' ? '/' : (cur.endsWith('/') ? cur : cur + ' /');
+        setInput(next);
+        richTextRef.current?.setValue(next, next.length);
+        setCursorPos(next.length);
+        richTextRef.current?.focus();
+        slashCommands.handleInputChange(next, next.length);
+    }
+
     return (
         <div className="flex flex-col h-full" data-testid="new-chat-area">
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
@@ -153,204 +168,251 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     <div className="text-xs text-[#f14c4c]" data-testid="new-chat-attachment-error">{attachmentError}</div>
                 )}
                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
-                <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
-                    {/* Hidden file input for the + button */}
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        className="hidden"
-                        data-testid="new-chat-file-input-hidden"
-                        onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                                addFromFileInput(e.target.files);
-                            }
-                            e.target.value = '';
-                        }}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    data-testid="new-chat-file-input-hidden"
+                    onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                            addFromFileInput(e.target.files);
+                        }
+                        e.target.value = '';
+                    }}
+                />
+                <div data-testid="mode-selector">
+                    <ModePillSelector
+                        options={DEFAULT_MODE_PILL_OPTIONS}
+                        value={selectedMode}
+                        onChange={setSelectedMode}
                     />
-                    {/* Attach file button */}
-                    <button
-                        type="button"
+                </div>
+                <div
+                    data-testid="chat-input-bar"
+                    className={cn(
+                        'relative flex flex-col rounded-lg border bg-white dark:bg-[#1f1f1f] focus-within:ring-2 transition-shadow',
+                        MODE_BORDER_COLORS[selectedMode].border,
+                        MODE_BORDER_COLORS[selectedMode].ring,
+                    )}
+                >
+                    <RichTextInput
+                        ref={richTextRef}
                         disabled={sending}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        data-testid="new-chat-attach-btn"
-                        aria-label="Attach file"
-                        title="Attach files"
+                        value={input}
+                        ghostText={autocomplete.completion}
+                        placeholder="Reply to CoC, or type / for commands..."
+                        className="w-full min-h-[40px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
+                        onChange={(val, pos) => {
+                            setInput(val);
+                            setCursorPos(pos);
+                            if (modelCommand.modelMenuVisible) {
+                                modelCommand.setModelFilter(val);
+                            } else {
+                                slashCommands.handleInputChange(val, pos);
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Tab' && e.shiftKey) {
+                                e.preventDefault();
+                                setSelectedMode(cycleMode(selectedMode));
+                                return;
+                            }
+                            // Priority 1: model command menu
+                            if (modelCommand.handleModelKeyDown(e)) {
+                                if (e.key === 'Enter' || e.key === 'Tab') {
+                                    const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
+                                    if (model) {
+                                        modelCommand.handleModelSelect(model.id);
+                                        setInput('');
+                                        richTextRef.current?.setValue('');
+                                    }
+                                }
+                                return;
+                            }
+                            // Priority 2: slash command menu
+                            if (slashCommands.handleKeyDown(e)) {
+                                if (e.key === 'Enter' || e.key === 'Tab') {
+                                    const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                                    if (skill?.name === 'model') {
+                                        setInput('');
+                                        richTextRef.current?.setValue('');
+                                        slashCommands.dismissMenu();
+                                        modelCommand.showModelMenu();
+                                    }
+                                }
+                                return;
+                            }
+                            // Priority 3: inline ghost-text accept (Tab, no modifiers).
+                            if (
+                                e.key === 'Tab'
+                                && !e.ctrlKey && !e.metaKey && !e.altKey
+                                && autocomplete.completion
+                            ) {
+                                e.preventDefault();
+                                const next = autocomplete.accept();
+                                setInput(next);
+                                richTextRef.current?.setValue(next, next.length);
+                                setCursorPos(next.length);
+                                autocomplete.dismiss();
+                                return;
+                            }
+                            if (e.key === 'Escape' && autocomplete.completion) {
+                                e.preventDefault();
+                                autocomplete.dismiss();
+                                return;
+                            }
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                void handleSend();
+                            }
+                        }}
+                        onPaste={addFromPaste}
+                        data-testid="new-chat-input"
+                    />
+                    <div
+                        className="flex items-center gap-1 px-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        data-testid="chat-input-toolbar"
                     >
-                        +
-                    </button>
-                    {/* Mode selector — mobile: cycling icon button, desktop: dropdown */}
-                    <div className="shrink-0" data-testid="mode-selector">
                         <button
                             type="button"
-                            onClick={() => setSelectedMode(cycleMode(selectedMode))}
-                            className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
-                            data-testid="mode-cycle-btn"
-                            aria-label={`Mode: ${selectedMode}. Tap to switch.`}
-                            title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
-                        >
-                            {MODE_ICONS[selectedMode]}
-                        </button>
-                        <select
-                            value={selectedMode}
-                            onChange={e => setSelectedMode(e.target.value as ChatMode)}
-                            className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
-                            data-testid="mode-dropdown"
-                            title="Select chat mode (Shift+Tab to cycle)"
-                        >
-                            {(Object.entries(MODE_LABELS) as [string, string][]).map(([mode, label]) => (
-                                <option key={mode} value={mode}>{label}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="flex-1 min-w-0 relative">
-                        <RichTextInput
-                            ref={richTextRef}
-                            disabled={sending}
-                            value={input}
-                            ghostText={autocomplete.completion}
-                            placeholder="Send a message... (type / for commands)"
-                            className={cn(
-                                'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
-                                MODE_BORDER_COLORS[selectedMode].border,
-                                MODE_BORDER_COLORS[selectedMode].ring,
-                            )}
-                            onChange={(val, pos) => {
-                                setInput(val);
-                                setCursorPos(pos);
+                            className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 max-w-[160px]"
+                            onClick={() => {
                                 if (modelCommand.modelMenuVisible) {
-                                    modelCommand.setModelFilter(val);
+                                    modelCommand.dismissModelMenu();
                                 } else {
-                                    slashCommands.handleInputChange(val, pos);
-                                }
-                            }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Tab' && e.shiftKey) {
-                                    e.preventDefault();
-                                    setSelectedMode(cycleMode(selectedMode));
-                                    return;
-                                }
-                                // Priority 1: model command menu
-                                if (modelCommand.handleModelKeyDown(e)) {
-                                    if (e.key === 'Enter' || e.key === 'Tab') {
-                                        const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
-                                        if (model) {
-                                            modelCommand.handleModelSelect(model.id);
-                                            setInput('');
-                                            richTextRef.current?.setValue('');
-                                        }
-                                    }
-                                    return;
-                                }
-                                // Priority 2: slash command menu
-                                if (slashCommands.handleKeyDown(e)) {
-                                    if (e.key === 'Enter' || e.key === 'Tab') {
-                                        const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
-                                        if (skill?.name === 'model') {
-                                            setInput('');
-                                            richTextRef.current?.setValue('');
-                                            slashCommands.dismissMenu();
-                                            modelCommand.showModelMenu();
-                                        }
-                                    }
-                                    return;
-                                }
-                                // Priority 3: inline ghost-text accept (Tab, no modifiers).
-                                if (
-                                    e.key === 'Tab'
-                                    && !e.ctrlKey && !e.metaKey && !e.altKey
-                                    && autocomplete.completion
-                                ) {
-                                    e.preventDefault();
-                                    const next = autocomplete.accept();
-                                    setInput(next);
-                                    richTextRef.current?.setValue(next, next.length);
-                                    setCursorPos(next.length);
-                                    autocomplete.dismiss();
-                                    return;
-                                }
-                                if (e.key === 'Escape' && autocomplete.completion) {
-                                    e.preventDefault();
-                                    autocomplete.dismiss();
-                                    return;
-                                }
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void handleSend();
-                                }
-                            }}
-                            onPaste={addFromPaste}
-                            data-testid="new-chat-input"
-                        />
-                        <SlashCommandMenu
-                            skills={augmentedSkills}
-                            filter={slashCommands.menuFilter}
-                            onSelect={(name) => {
-                                if (name === 'model') {
-                                    setInput('');
-                                    richTextRef.current?.setValue('');
-                                    slashCommands.dismissMenu();
                                     modelCommand.showModelMenu();
-                                    richTextRef.current?.focus();
                                 }
                             }}
-                            onDismiss={slashCommands.dismissMenu}
-                            visible={slashCommands.menuVisible}
-                            highlightIndex={slashCommands.highlightIndex}
-                        />
-                        <ModelCommandMenu
-                            models={modelCommand.filteredModels}
-                            filter={modelCommand.modelFilter}
-                            onSelect={(modelId) => {
-                                modelCommand.handleModelSelect(modelId);
-                                setInput('');
-                                richTextRef.current?.setValue('');
-                                richTextRef.current?.focus();
-                            }}
-                            onDismiss={modelCommand.dismissModelMenu}
-                            visible={modelCommand.modelMenuVisible}
-                            highlightIndex={modelCommand.modelHighlightIndex}
-                            currentModelId={modelCommand.modelOverride ?? undefined}
-                        />
-                    </div>
-                    {modelCommand.modelOverride && (
-                        <div
-                            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                            data-testid="new-chat-model-badge"
+                            title={modelCommand.modelOverride
+                                ? `Override active: ${modelCommand.modelOverride}`
+                                : 'Pick a model'}
+                            data-testid="model-picker-chip"
                         >
-                            <span className="truncate max-w-[120px]">{modelCommand.modelOverride}</span>
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <polygon
+                                    points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.2"
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                            <span className="truncate font-mono text-[12px]">
+                                {modelCommand.modelOverride || 'model'}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                            onClick={focusInputAndInsertSlash}
+                            aria-label="Insert slash command"
+                            title="Insert slash command (/)"
+                            data-testid="chat-toolbar-slash-btn"
+                        >
+                            <span aria-hidden="true" className="font-mono text-sm">/</span>
+                        </button>
+                        <button
+                            type="button"
+                            disabled={sending}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            data-testid="new-chat-attach-btn"
+                            aria-label="Attach file"
+                            title="Attach files"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <path
+                                    d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
+                                    stroke="currentColor"
+                                    strokeWidth="1.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                        </button>
+                        {modelCommand.modelOverride && (
+                            <div
+                                className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-[#5a5a5a] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526]"
+                                data-testid="new-chat-model-badge"
+                            >
+                                <span className="truncate max-w-[120px] font-mono">{modelCommand.modelOverride}</span>
+                                <button
+                                    type="button"
+                                    className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                                    onClick={() => modelCommand.setModelOverride(null)}
+                                    aria-label="Clear model override"
+                                    title="Clear model override"
+                                >✕</button>
+                            </div>
+                        )}
+                        <div className="flex-1" />
+                        {sending ? (
                             <button
                                 type="button"
-                                className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
-                                onClick={() => modelCommand.setModelOverride(null)}
-                                aria-label="Clear model override"
-                                title="Clear model override"
-                            >✕</button>
-                        </div>
-                    )}
-                    {sending ? (
-                        <button
-                            type="button"
-                            className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
-                            onClick={handleStop}
-                            data-testid="new-chat-stop-btn"
-                            title="Stop generation"
-                        >
-                            Stop
-                        </button>
-                    ) : (
-                        <button
-                            type="button"
-                            disabled={!input.trim() && attachments.length === 0}
-                            className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => { void handleSend(); }}
-                            data-testid="new-chat-send-btn"
-                            title="Send (Enter) · Shift+Enter for newline"
-                        >
-                            Send
-                        </button>
-                    )}
+                                className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
+                                onClick={handleStop}
+                                data-testid="new-chat-stop-btn"
+                                title="Stop generation"
+                            >
+                                Stop
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                disabled={!input.trim() && attachments.length === 0}
+                                className="shrink-0 inline-flex items-center gap-2 h-[34px] px-2 sm:px-3 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => { void handleSend(); }}
+                                data-testid="new-chat-send-btn"
+                                title="Send (Enter) · Shift+Enter for newline"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <path
+                                        d="M3 4h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6.5L4 13v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+                                        stroke="currentColor"
+                                        strokeWidth="1.2"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                                <span>Queue follow-up</span>
+                                <span
+                                    aria-hidden="true"
+                                    className="ml-1 inline-flex items-center justify-center min-w-[26px] h-[18px] px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
+                                >
+                                    &#x2318;&#x21B5;
+                                </span>
+                            </button>
+                        )}
+                    </div>
+                    <SlashCommandMenu
+                        skills={augmentedSkills}
+                        filter={slashCommands.menuFilter}
+                        onSelect={(name) => {
+                            if (name === 'model') {
+                                setInput('');
+                                richTextRef.current?.setValue('');
+                                slashCommands.dismissMenu();
+                                modelCommand.showModelMenu();
+                                richTextRef.current?.focus();
+                            }
+                        }}
+                        onDismiss={slashCommands.dismissMenu}
+                        visible={slashCommands.menuVisible}
+                        highlightIndex={slashCommands.highlightIndex}
+                    />
+                    <ModelCommandMenu
+                        models={modelCommand.filteredModels}
+                        filter={modelCommand.modelFilter}
+                        onSelect={(modelId) => {
+                            modelCommand.handleModelSelect(modelId);
+                            setInput('');
+                            richTextRef.current?.setValue('');
+                            richTextRef.current?.focus();
+                        }}
+                        onDismiss={modelCommand.dismissModelMenu}
+                        visible={modelCommand.modelMenuVisible}
+                        highlightIndex={modelCommand.modelHighlightIndex}
+                        currentModelId={modelCommand.modelOverride ?? undefined}
+                    />
                 </div>
             </div>
         </div>

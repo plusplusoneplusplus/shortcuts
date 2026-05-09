@@ -173,6 +173,12 @@ describe('NewChatArea', () => {
         );
     });
 
+    it('send button shows the "Queue follow-up" label', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        const btn = screen.getByTestId('new-chat-send-btn');
+        expect(btn.textContent).toContain('Queue follow-up');
+    });
+
     it('send button is enabled after typing', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
@@ -181,14 +187,13 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('renders mode selector with ask mode by default', () => {
+    it('renders mode pill selector with ask mode by default', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
-        expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
-        expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
-        // Default mode is 'ask'
-        const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('ask');
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
     });
 
     it('sends with default ask mode', async () => {
@@ -442,44 +447,30 @@ describe('NewChatArea', () => {
     });
 
     describe('mode selector', () => {
-        it('renders mode selector between attach button and input', () => {
+        it('mode pill row sits above the input card (mode-selector then chat-input-bar)', () => {
             render(<NewChatArea workspaceId="ws-1" />);
-            const bar = screen.getByTestId('chat-input-bar');
-            const testIds = Array.from(bar.querySelectorAll('[data-testid]')).map(
+            const ids = Array.from(document.querySelectorAll('[data-testid]')).map(
                 (el) => (el as HTMLElement).dataset.testid,
             );
-            // mode-selector should appear after attach btn, before input
-            const attachIdx = testIds.indexOf('new-chat-attach-btn');
-            const selectorIdx = testIds.indexOf('mode-selector');
-            const inputIdx = testIds.indexOf('new-chat-input');
-            expect(attachIdx).toBeLessThan(selectorIdx);
-            expect(selectorIdx).toBeLessThan(inputIdx);
+            const selectorIdx = ids.indexOf('mode-selector');
+            const inputBarIdx = ids.indexOf('chat-input-bar');
+            expect(selectorIdx).toBeGreaterThanOrEqual(0);
+            expect(inputBarIdx).toBeGreaterThan(selectorIdx);
         });
 
-        it('dropdown changes mode and updates border color', () => {
+        it('clicking a pill switches the active mode', () => {
             render(<NewChatArea workspaceId="ws-1" />);
-            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            expect(dropdown.value).toBe('ask');
-
-            fireEvent.change(dropdown, { target: { value: 'plan' } });
-            expect(dropdown.value).toBe('plan');
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            fireEvent.click(screen.getByTestId('mode-pill-plan'));
+            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('false');
         });
 
-        it('cycle button advances mode', () => {
-            render(<NewChatArea workspaceId="ws-1" />);
-            const cycleBtn = screen.getByTestId('mode-cycle-btn');
-            // Default is ask, cycling should go to plan
-            expect(cycleBtn.textContent).toBe('💡');
-            fireEvent.click(cycleBtn);
-            expect(cycleBtn.textContent).toBe('📋');
-        });
-
-        it('sends selected mode in payload via dropdown', async () => {
+        it('sends selected mode in payload after clicking a pill', async () => {
             mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'mode-task' } });
 
             render(<NewChatArea workspaceId="ws-1" />);
-            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            fireEvent.change(dropdown, { target: { value: 'autopilot' } });
+            fireEvent.click(screen.getByTestId('mode-pill-autopilot'));
 
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             fireEvent.change(input, { target: { value: 'Do stuff' } });
@@ -495,11 +486,10 @@ describe('NewChatArea', () => {
         it('Shift+Tab keyboard shortcut still cycles mode', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
-            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
-            expect(dropdown.value).toBe('ask');
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
 
             fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
-            expect(dropdown.value).toBe('plan');
+            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
         });
     });
 

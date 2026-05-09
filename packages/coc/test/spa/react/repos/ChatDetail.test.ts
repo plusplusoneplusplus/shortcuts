@@ -118,16 +118,18 @@ describe('ChatDetail', () => {
             expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('ask')");
         });
 
-        it('renders mode selector with cycle button and dropdown', () => {
+        it('renders mode selector using the segmented ModePillSelector by default', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-selector"');
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-dropdown"');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<ModePillSelector');
+            // Legacy compact-only controls are still present for the
+            // compactModeSelector branch used by narrow side panels.
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-cycle-btn"');
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<select');
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<option key={mode} value={mode}>{label}</option>');
         });
 
-        it('uses MODE_LABELS for mode options', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_LABELS');
+        it('imports ModePillSelector and exposes pill options for the new layout', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('ModePillSelector');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('DEFAULT_MODE_PILL_OPTIONS');
+            // The compact branch still references MODE_ICONS for its cycle button.
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_ICONS');
         });
 
@@ -350,13 +352,12 @@ describe('ChatDetail', () => {
         });
 
         it('renders Stop from active generation instead of local sending state', () => {
-            const stopSection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('{isActiveGeneration ? ('),
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('{isActiveGeneration ? (') + 700,
-            );
-            expect(stopSection).toContain('activity-chat-stop-btn');
+            // The stop button is now defined as a `stopButton` JSX variable
+            // and reused for both the compact + stacked layouts.
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-stop-btn"');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? stopButton');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("isCancelling ? 'Stopping...' : 'Stop'");
-            expect(stopSection).not.toContain('{sending ? (');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('{sending ? (');
         });
 
         it('branches active follow-up sends on durable active generation state', () => {
@@ -1168,7 +1169,10 @@ describe('ChatDetail', () => {
             expect(CONVERSATION_AREA_SOURCE).toContain('w-11 h-11 sm:w-8 sm:h-8');
         });
 
-        it('FollowUpInputArea always renders as a single horizontal row', () => {
+        it('FollowUpInputArea provides both the stacked and compact horizontal layouts', () => {
+            // Default stacked layout
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('chat-input-stack');
+            // Compact (legacy) layout for narrow side panels
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-row items-center');
         });
 
@@ -1198,7 +1202,7 @@ describe('ChatDetail', () => {
         });
 
         it('stop button is shown during active generation', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? (');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? stopButton');
         });
     });
 
@@ -1220,7 +1224,7 @@ describe('ChatDetail', () => {
         });
 
         it('stop button is conditionally rendered based on active generation state', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? (');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('{isActiveGeneration ? stopButton');
         });
     });
 

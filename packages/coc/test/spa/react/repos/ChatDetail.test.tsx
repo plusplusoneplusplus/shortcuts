@@ -615,16 +615,15 @@ describe('ChatDetail', () => {
     // ── Mode selector ──────────────────────────────────────────────────────
 
     describe('mode selector', () => {
-        it('shows mode selector by default (hideModeSelector defaults to false)', async () => {
+        it('shows mode pill selector by default (hideModeSelector defaults to false)', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
             expect(screen.getByTestId('mode-selector')).toBeTruthy();
-            const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
             // Mode syncs from task payload (autopilot in the default mock)
-            expect(dropdown.value).toBe('autopilot');
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
         });
 
         it('hides mode selector when hideModeSelector is true', async () => {
@@ -634,17 +633,18 @@ describe('ChatDetail', () => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
             expect(screen.queryByTestId('mode-selector')).toBeNull();
-            expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-ask')).toBeNull();
         });
 
-        it('dropdown selection changes mode when visible', async () => {
+        it('clicking a pill changes the active mode when visible', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
+                expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
             });
-            fireEvent.change(screen.getByTestId('mode-dropdown'), { target: { value: 'plan' } });
-            expect((screen.getByTestId('mode-dropdown') as HTMLSelectElement).value).toBe('plan');
+            fireEvent.click(screen.getByTestId('mode-pill-plan'));
+            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('false');
         });
     });
 
