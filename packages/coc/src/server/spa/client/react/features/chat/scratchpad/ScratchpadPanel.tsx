@@ -17,6 +17,8 @@ export interface ScratchpadHeaderBarProps {
     onSplitReset: () => void;
     files?: string[];
     onSelectFile?: (path: string) => void;
+    /** When true, the expand-mode buttons are omitted. Used on mobile. */
+    hideModeControls?: boolean;
 }
 
 export interface ScratchpadPanelProps {
@@ -172,6 +174,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                     onSelectFile={headerBar.onSelectFile}
                     layout="horizontal"
                     panelHeader
+                    hideModeControls={headerBar.hideModeControls}
                 />
             )}
             <div className={`flex-1 min-h-0 flex ${commentsVisible ? 'flex-row' : 'flex-col'}`}>

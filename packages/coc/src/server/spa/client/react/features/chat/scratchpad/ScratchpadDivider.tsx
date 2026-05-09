@@ -37,6 +37,11 @@ export interface ScratchpadDividerProps {
      * instead of cursor-row-resize, and does not register onMouseDown on the outer div.
      */
     panelHeader?: boolean;
+    /**
+     * When true, the expand-mode buttons (top/split/bottom) are omitted.
+     * Used on mobile where the tab-switcher replaces mode controls.
+     */
+    hideModeControls?: boolean;
 }
 
 export function ScratchpadDivider({
@@ -44,7 +49,7 @@ export function ScratchpadDivider({
     onMouseDown, onOpenFilePicker,
     onExpandTop, onExpandBottom, onSplitReset, onClose,
     files = [], onSelectFile, layout = 'horizontal',
-    renderMode = 'header-bar', panelHeader = false,
+    renderMode = 'header-bar', panelHeader = false, hideModeControls = false,
 }: ScratchpadDividerProps) {
     const isVertical = layout === 'vertical';
     const displayName = linkedNotePath ? fileBaseName(linkedNotePath) : 'Scratchpad';
@@ -201,6 +206,7 @@ export function ScratchpadDivider({
             {isVertical && <div className="flex-1" />}
 
             {/* Expand primary: maximize conversation, collapse scratchpad */}
+            {!hideModeControls && (
             <button
                 className={modeBtn('top')}
                 onClick={(e) => { e.stopPropagation(); onExpandTop(); }}
@@ -208,8 +214,10 @@ export function ScratchpadDivider({
                 data-testid="scratchpad-expand-top-btn"
                 type="button"
             >{isVertical ? <ChevronLeftIcon /> : <ChevronUpIcon />}</button>
+            )}
 
             {/* Expand secondary: maximize scratchpad, collapse conversation */}
+            {!hideModeControls && (
             <button
                 className={modeBtn('bottom')}
                 onClick={(e) => { e.stopPropagation(); onExpandBottom(); }}
@@ -217,8 +225,10 @@ export function ScratchpadDivider({
                 data-testid="scratchpad-expand-bottom-btn"
                 type="button"
             >{isVertical ? <ChevronRightIcon /> : <ChevronDownIcon />}</button>
+            )}
 
             {/* Split 50/50 reset */}
+            {!hideModeControls && (
             <button
                 className={modeBtn('split')}
                 onClick={(e) => { e.stopPropagation(); onSplitReset(); }}
@@ -226,6 +236,7 @@ export function ScratchpadDivider({
                 data-testid="scratchpad-split-btn"
                 type="button"
             ><SplitIcon /></button>
+            )}
 
             {/* Close */}
             <button

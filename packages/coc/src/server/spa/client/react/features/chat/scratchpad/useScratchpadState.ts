@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 export type ScratchpadExpandMode = 'split' | 'top' | 'bottom';
 export type ScratchpadLayout = 'horizontal' | 'vertical';
+export type MobileTab = 'chat' | 'scratchpad';
 
 export interface ScratchpadState {
     isOpen: boolean;
@@ -13,6 +14,8 @@ export interface ScratchpadState {
     knownFiles: string[];
     /** Active layout direction for the scratchpad split. */
     layout: ScratchpadLayout;
+    /** Active tab when on mobile — 'chat' or 'scratchpad'. */
+    activeMobileTab: MobileTab;
 }
 
 export interface UseScratchpadStateReturn extends ScratchpadState {
@@ -27,6 +30,8 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
      * Preserves insertion order. Does not change the active linkedNotePath.
      */
     registerFiles: (paths: string[]) => void;
+    /** Sets the active mobile tab ('chat' or 'scratchpad'). */
+    setActiveMobileTab: (tab: MobileTab) => void;
 }
 
 const STORAGE_KEY_HORIZONTAL = 'coc.scratchpad.topHeightPct';
@@ -61,6 +66,7 @@ export function useScratchpadState(
     const [isDragging, setIsDragging] = useState(false);
     const [expandMode, setExpandModeRaw] = useState<ScratchpadExpandMode>('split');
     const [knownFiles, setKnownFiles] = useState<string[]>([]);
+    const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
 
     const [topHeightPct, setTopHeightPctRaw] = useState<number>(() => {
         try {
@@ -131,6 +137,7 @@ export function useScratchpadState(
 
     const close = useCallback(() => {
         setIsOpen(false);
+        setActiveMobileTab('chat');
         if (taskId) {
             try { localStorage.removeItem(STORAGE_KEY_OPEN(taskId)); } catch { /* ignore */ }
         }
@@ -200,6 +207,7 @@ export function useScratchpadState(
         isDragging,
         knownFiles,
         layout,
+        activeMobileTab,
         open,
         close,
         setLinkedNotePath,
@@ -207,5 +215,6 @@ export function useScratchpadState(
         setExpandMode,
         handleDividerMouseDown,
         registerFiles,
+        setActiveMobileTab,
     };
 }

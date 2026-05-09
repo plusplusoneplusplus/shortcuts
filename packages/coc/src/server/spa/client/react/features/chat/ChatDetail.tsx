@@ -45,6 +45,7 @@ import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
+import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import type { ChatMode } from '../../repos/modeConfig';
 
@@ -798,6 +799,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     };
 
     const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
+    /** On mobile, when the scratchpad is open, switch to full-screen tab mode. */
+    const isMobileScratchpad = isMobile && scratchpadEnabled && scratchpad.isOpen;
 
     const showScratchpadButton = scratchpadEnabled
         && !scratchpad.isOpen
@@ -850,8 +853,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
-                    className={`relative flex flex-col min-w-0 overflow-hidden ${isVerticalScratchpad ? 'min-h-0' : ''}`}
-                    style={scratchpadEnabled && scratchpad.isOpen
+                    className={`relative flex flex-col min-w-0 overflow-hidden ${isVerticalScratchpad ? 'min-h-0' : ''}${isMobileScratchpad && scratchpad.activeMobileTab !== 'chat' ? ' hidden' : ''}`}
+                    style={scratchpadEnabled && scratchpad.isOpen && !isMobileScratchpad
                         ? { flex: `0 0 ${scratchpad.topHeightPct}%`, ...(isVerticalScratchpad ? { minWidth: 0 } : { minHeight: 0 }) }
                         : { flex: '1 1 auto', minHeight: 0 }
                     }
@@ -951,6 +954,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 </div>
                 {scratchpadEnabled && scratchpad.isOpen && (
                     <>
+                        {/* Desktop only: resize divider / header bar */}
+                        {!isMobileScratchpad && (
                         <ScratchpadDivider
                             linkedNotePath={scratchpad.linkedNotePath}
                             expandMode={scratchpad.expandMode}
@@ -966,6 +971,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             layout={scratchpadLayout}
                             renderMode={isVerticalScratchpad ? 'drag-handle' : 'header-bar'}
                         />
+                        )}
+                        <div className={isMobileScratchpad && scratchpad.activeMobileTab !== 'scratchpad' ? 'hidden' : 'contents'}>
                         <ScratchpadPanel
                             notePath={scratchpad.linkedNotePath}
                             workspaceId={workspaceId ?? ''}
@@ -982,19 +989,30 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                 onSplitReset: () => scratchpad.setExpandMode('split'),
                                 files: scratchpad.knownFiles,
                                 onSelectFile: scratchpad.setLinkedNotePath,
+                            } : isMobileScratchpad ? {
+                                expandMode: scratchpad.expandMode,
+                                isDragging: scratchpad.isDragging,
+                                onExpandTop: () => scratchpad.setExpandMode('top'),
+                                onExpandBottom: () => scratchpad.setExpandMode('bottom'),
+                                onSplitReset: () => scratchpad.setExpandMode('split'),
+                                files: scratchpad.knownFiles,
+                                onSelectFile: scratchpad.setLinkedNotePath,
+                                hideModeControls: true,
                             } : undefined}
                         />
+                        </div>
                     </>
                 )}
             </div>
-            {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
+            {/* Mobile tab bar — shown when isMobileScratchpad, positioned below follow-up input */}
+            {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
                         Follow-up chat is not available for this process type.
                     </div>
                 </div>
             )}
-            {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (
+            {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
@@ -1032,6 +1050,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     hideModeSelector={hideModeSelector}
                     allowedModes={allowedModes}
                     compactModeSelector={compactModeSelector}
+                />
+            )}
+            {isMobileScratchpad && (
+                <MobileScratchpadTabBar
+                    activeTab={scratchpad.activeMobileTab}
+                    onTabChange={scratchpad.setActiveMobileTab}
+                    onClose={scratchpad.close}
                 />
             )}
         </div>
