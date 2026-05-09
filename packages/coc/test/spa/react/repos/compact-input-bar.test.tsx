@@ -3,7 +3,7 @@
  *
  * The default layout is the new stacked design: a horizontal mode pill row
  * sits above an input "card" whose bottom toolbar holds the model picker,
- * tool buttons, and the Queue follow-up button.
+ * tool buttons, and the Send button.
  *
  * The legacy compact single-row layout (mode cycle button + dropdown + send
  * inline with the input) is retained for narrow side panels via the
@@ -249,14 +249,14 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
     });
 
-    it('Queue follow-up button has shrink-0 to prevent compression', () => {
+    it('Send button has shrink-0 to prevent compression', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
         expect(btn.className).toContain('shrink-0');
         expect(btn.className).not.toContain('w-full');
     });
 
-    it('Queue follow-up button uses ultra-compact 24px height + 11px label', () => {
+    it('Send button uses ultra-compact 24px height + 11px label', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
         expect(btn.className).toContain('h-[24px]');
@@ -269,7 +269,7 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(btn.className).not.toContain('text-xs');
     });
 
-    it('Queue follow-up shortcut hint uses a vertical separator (border-l), not a boxed kbd', () => {
+    it('Send button shortcut hint uses a vertical separator (border-l), not a boxed kbd', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const hint = screen.getByTestId('queue-follow-up-shortcut-hint');
         expect(hint.className).toContain('border-l');
@@ -426,7 +426,7 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(setModelOverride).toHaveBeenCalledWith(null);
     });
 
-    it('Queue follow-up keyboard shortcut hint is hidden on small screens (sm:inline-flex)', () => {
+    it('Send button keyboard shortcut hint is hidden on small screens (sm:inline-flex)', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const hint = screen.getByTestId('queue-follow-up-shortcut-hint');
         expect(hint.className).toContain('hidden');
@@ -524,7 +524,7 @@ describe('NewChatArea — stacked input card layout', () => {
         expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
     });
 
-    it('Queue follow-up button has shrink-0 + ultra-compact 24px height + vertical-separator hint', () => {
+    it('Send button has shrink-0 + ultra-compact 24px height + vertical-separator hint', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn');
         expect(btn.className).toContain('shrink-0');

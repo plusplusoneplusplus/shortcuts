@@ -6,7 +6,7 @@ export interface QueueFollowUpButtonProps {
     /** When true, render the orange "Steer" variant for immediate delivery. */
     ctrlHeld: boolean;
     onSend: (deliveryMode?: DeliveryMode) => void;
-    /** Label shown for the default (queue) action. Defaults to "Queue follow-up". */
+    /** Label shown for the default (queue) action. Defaults to "Send". */
     label?: string;
     /** Display the keyboard-shortcut hint (⌘↵) on the right of the button. */
     showShortcutHint?: boolean;
@@ -15,7 +15,7 @@ export interface QueueFollowUpButtonProps {
 }
 
 /**
- * Outlined "Queue follow-up" button with an inline chat-bubble icon and an
+ * Outlined "Send" button with an inline chat-bubble icon and an
  * optional keyboard shortcut hint. Holding Ctrl/Cmd switches the button into
  * the orange "Steer" state, sending with `'immediate'` delivery instead of
  * enqueueing.
@@ -25,7 +25,7 @@ export interface QueueFollowUpButtonProps {
  * separated from the label by a thin vertical divider rather than a boxed kbd.
  */
 export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
-    const { disabled, ctrlHeld, onSend, label = 'Queue follow-up', showShortcutHint = true } = props;
+    const { disabled, ctrlHeld, onSend, label = 'Send', showShortcutHint = true } = props;
     const testId = props['data-testid'] ?? 'activity-chat-send-btn';
     const steering = ctrlHeld;
 

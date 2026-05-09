@@ -221,7 +221,7 @@ describe('FollowUpInputArea — cursor regression', () => {
     });
 });
 
-describe('FollowUpInputArea — Queue follow-up button tooltip', () => {
+describe('FollowUpInputArea — Send button tooltip', () => {
     it('renders a title with keyboard shortcut hints', () => {
         render(<FollowUpInputArea {...makeProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
@@ -230,10 +230,10 @@ describe('FollowUpInputArea — Queue follow-up button tooltip', () => {
         );
     });
 
-    it('shows the "Queue follow-up" label by default', () => {
+    it('shows the "Send" label by default', () => {
         render(<FollowUpInputArea {...makeProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
-        expect(btn.textContent).toContain('Queue follow-up');
+        expect(btn.textContent).toContain('Send');
     });
 });
 

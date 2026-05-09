@@ -173,10 +173,10 @@ describe('NewChatArea', () => {
         );
     });
 
-    it('send button shows the "Queue follow-up" label', () => {
+    it('send button shows the "Send" label', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn');
-        expect(btn.textContent).toContain('Queue follow-up');
+        expect(btn.textContent).toContain('Send');
     });
 
     it('send button is enabled after typing', () => {

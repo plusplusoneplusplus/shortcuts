@@ -30,7 +30,7 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
             disabled={disabled}
             onClick={() => onSend('enqueue')}
         >
-            Queue follow-up
+            Send
         </button>
     ),
 }));

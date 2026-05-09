@@ -34,7 +34,7 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     QueueFollowUpButton: ({ disabled, ctrlHeld, onSend, label, ...rest }: any) => {
         const testId = rest['data-testid'] ?? 'activity-chat-send-btn';
         const steering = ctrlHeld;
-        const text = steering ? 'Steer' : (label ?? 'Queue follow-up');
+        const text = steering ? 'Steer' : (label ?? 'Send');
         return (
             <button
                 disabled={disabled}
@@ -149,9 +149,9 @@ describe('FollowUpInputArea – single send button (new stacked layout)', () => 
         mockModHeld = false;
     });
 
-    it('shows "Queue follow-up" by default (no modifier)', () => {
+    it('shows "Send" by default (no modifier)', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
-        expect(getSendButton().textContent).toContain('Queue follow-up');
+        expect(getSendButton().textContent).toContain('Send');
     });
 
     it('shows Stop button when active generation is true, even if sending is false', () => {
@@ -161,11 +161,11 @@ describe('FollowUpInputArea – single send button (new stacked layout)', () => 
         expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 
-    it('keeps Queue follow-up visible but disabled during local request submission', () => {
+    it('keeps Send visible but disabled during local request submission', () => {
         render(<FollowUpInputArea {...defaultProps({ sending: true, isActiveGeneration: false })} />);
         expect(screen.queryByTestId('activity-chat-stop-btn')).toBeNull();
         const sendButton = getSendButton();
-        expect(sendButton.textContent).toContain('Queue follow-up');
+        expect(sendButton.textContent).toContain('Send');
         expect(sendButton.hasAttribute('disabled')).toBe(true);
     });
 

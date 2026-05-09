@@ -4,7 +4,7 @@
  *
  * Visual layout matches the FollowUpInputArea redesign: a horizontal mode
  * pill row above an input card whose bottom toolbar holds the model picker,
- * inline tool buttons, and the "Queue follow-up" button.
+ * inline tool buttons, and the "Send" button.
  */
 
 import { useMemo, useRef, useState } from 'react';
@@ -395,7 +395,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                         strokeLinejoin="round"
                                     />
                                 </svg>
-                                <span>Queue follow-up</span>
+                                <span>Send</span>
                                 <span
                                     aria-hidden="true"
                                     className="hidden sm:inline-flex items-center pl-1.5 ml-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] text-[9px] text-[#848484] font-mono"

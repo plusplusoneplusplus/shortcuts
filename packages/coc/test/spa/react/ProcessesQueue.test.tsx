@@ -1084,7 +1084,7 @@ describe('ChatDetail follow-up input', () => {
         const input = screen.getByTestId('activity-chat-input');
         input.innerText = 'Follow-up question';
         fireEvent.input(input);
-        fireEvent.click(screen.getByRole('button', { name: /Queue follow-up|Steer/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Send|Steer/ }));
 
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith(
@@ -1168,13 +1168,13 @@ describe('ChatDetail follow-up input', () => {
         const input = screen.getByTestId('activity-chat-input');
         input.innerText = 'Need more';
         fireEvent.input(input);
-        fireEvent.click(screen.getByRole('button', { name: /Queue follow-up|Steer/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Send|Steer/ }));
 
         await waitFor(() => {
             expect(screen.getByText('Session expired.')).toBeDefined();
         });
 
-        expect((screen.getByRole('button', { name: /Queue follow-up|Steer/ }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByRole('button', { name: /Send|Steer/ }) as HTMLButtonElement).disabled).toBe(true);
         const expiredInput = screen.getByTestId('activity-chat-input');
         expect(expiredInput.getAttribute('contenteditable')).toBe('false');
     });
@@ -1283,7 +1283,7 @@ describe('ChatDetail semantic hooks', () => {
         const input = screen.getByTestId('activity-chat-input');
         input.innerText = 'follow up';
         fireEvent.input(input);
-        fireEvent.click(screen.getByRole('button', { name: /Queue follow-up|Steer/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Send|Steer/ }));
 
         await waitFor(() => {
             const errorBubble = container.querySelector('.chat-error-bubble');
@@ -1341,7 +1341,7 @@ describe('ChatDetail semantic hooks', () => {
         const input = screen.getByTestId('activity-chat-input');
         input.innerText = 'retry me';
         fireEvent.input(input);
-        fireEvent.click(screen.getByRole('button', { name: /Queue follow-up|Steer/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Send|Steer/ }));
 
         await waitFor(() => {
             const retryBtn = container.querySelector('[data-testid="retry-btn"]');
@@ -1548,7 +1548,7 @@ describe('ChatDetail semantic hooks', () => {
         const input = screen.getByTestId('activity-chat-input');
         input.innerText = 'More';
         fireEvent.input(input);
-        fireEvent.click(screen.getByRole('button', { name: /Queue follow-up|Steer/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Send|Steer/ }));
 
         await waitFor(() => {
             const errorBubble = container.querySelector('.chat-error-bubble');
