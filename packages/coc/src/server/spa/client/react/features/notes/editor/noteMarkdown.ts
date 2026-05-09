@@ -391,6 +391,30 @@ turndown.addRule('filePathRef', {
     },
 });
 
+// Empty paragraphs (from pressing Enter multiple times) → `&nbsp;` placeholder line.
+// Required because turndown drops `<p></p>` and CommonMark collapses blank lines, so
+// without a placeholder consecutive empty paragraphs vanish in the markdown round-trip.
+// Matches `<p></p>` (after preprocessEmptyParagraphs upgrades it to `<p><br></p>`),
+// `<p><br></p>`, and `<p>&nbsp;</p>` so re-saving an unchanged note is idempotent.
+turndown.addRule('emptyParagraph', {
+    filter(node) {
+        if (node.nodeName !== 'P') return false;
+        const text = (node.textContent ?? '').replace(/ /g, '').trim();
+        if (text !== '') return false;
+        for (const child of Array.from(node.childNodes)) {
+            if (child.nodeType === 1 && (child as Element).nodeName !== 'BR') return false;
+        }
+        return true;
+    },
+    replacement() {
+        // Emit raw-HTML passthrough rather than `&nbsp;` text — marked's inline
+        // tokenizer (with our file-path/note-link/highlight extensions registered)
+        // escapes the `&` in `&nbsp;` to `&amp;` on reload, breaking the round-trip.
+        // `<p>&nbsp;</p>` as a raw HTML block sidesteps inline tokenization entirely.
+        return '\n\n<p>&nbsp;</p>\n\n';
+    },
+});
+
 // ── Pre-processing helpers ──────────────────────────────────────────────────
 
 /**
@@ -425,6 +449,21 @@ function serializeMapEmbedPlaceholders(html: string): string {
     );
 }
 
+// Normalize visually-empty paragraphs to `<p><br></p>` so turndown's blank-node
+// check doesn't drop them before the emptyParagraph rule runs. JS `\s` includes
+// the NBSP character, so a `<p>&nbsp;</p>` (round-tripped placeholder) is also
+// treated as blank by turndown — handle both shapes here.
+function preprocessEmptyParagraphs(html: string): string {
+    return html.replace(/<p>\s*<\/p>|<p>(?:&nbsp;|&#160;|&#xA0;)\s*<\/p>/gi, '<p><br></p>');
+}
+
+// Convert `<p>&nbsp;</p>` (and literal NBSP form) back to `<p></p>` after marked,
+// so Tiptap loads a clean empty paragraph instead of one with a stray NBSP character
+// that the user would have to delete before typing.
+function stripNbspParagraphPlaceholders(html: string): string {
+    return html.replace(/<p>(?:&nbsp;| )\s*<\/p>/gi, '<p></p>');
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -436,7 +475,7 @@ function serializeMapEmbedPlaceholders(html: string): string {
 export function markdownToHtml(md: string): string {
     if (!md) return '';
     const html = marked.parse(md) as string;
-    return postProcessTaskLists(html);
+    return stripNbspParagraphPlaceholders(postProcessTaskLists(html));
 }
 
 /**
@@ -449,7 +488,11 @@ export function htmlToMarkdown(html: string): string {
     if (!html) return '';
     // Tiptap returns `<p></p>` for an empty document
     if (/^<p>\s*<\/p>$/i.test(html.trim())) return '';
-    let md = turndown.turndown(unwrapSingleParagraphListItems(serializeMapEmbedPlaceholders(html)));
+    let md = turndown.turndown(
+        preprocessEmptyParagraphs(
+            unwrapSingleParagraphListItems(serializeMapEmbedPlaceholders(html)),
+        ),
+    );
     // Ensure single trailing newline
     md = md.replace(/\n*$/, '\n');
     return md;

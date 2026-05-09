@@ -732,4 +732,125 @@ describe('noteMarkdown', () => {
             expect(result).toContain('width="250"');
         });
     });
+
+    // ── Empty paragraph preservation ────────────────────────────────────
+    //
+    // Tiptap emits `<p></p>` for each Enter the user presses with no content.
+    // Without dedicated handling, turndown drops these and CommonMark collapses
+    // any sequence of blank lines into a single paragraph break, so consecutive
+    // empty lines vanish on save/reload. The fix emits `&nbsp;` placeholder
+    // paragraphs in markdown and strips the resulting `<p>&nbsp;</p>` back to
+    // `<p></p>` on load.
+    describe('empty paragraph round-trip', () => {
+        function emptyParagraphCount(html: string): number {
+            return (html.match(/<p>(?:<\/p>|<br\s*\/?\s*><\/p>)/gi) ?? []).length;
+        }
+
+        it('preserves a single empty paragraph between two paragraphs', () => {
+            const original = '<p>first</p><p></p><p>second</p>';
+            const md = htmlToMarkdown(original);
+            expect(md).toContain('&nbsp;');
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(1);
+            expect(reloaded).toContain('<p>first</p>');
+            expect(reloaded).toContain('<p>second</p>');
+        });
+
+        it('preserves three consecutive empty paragraphs', () => {
+            const original = '<p>first</p><p></p><p></p><p></p><p>second</p>';
+            const md = htmlToMarkdown(original);
+            // Each empty paragraph emits one `&nbsp;` line.
+            expect((md.match(/&nbsp;/g) ?? []).length).toBe(3);
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(3);
+        });
+
+        it('treats <p><br></p> as an empty paragraph', () => {
+            const original = '<p>first</p><p><br></p><p><br></p><p>second</p>';
+            const md = htmlToMarkdown(original);
+            expect((md.match(/&nbsp;/g) ?? []).length).toBe(2);
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(2);
+        });
+
+        it('preserves a leading empty paragraph', () => {
+            const original = '<p></p><p>text</p>';
+            const md = htmlToMarkdown(original);
+            expect(md.startsWith('<p>&nbsp;</p>')).toBe(true);
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(1);
+        });
+
+        it('preserves a trailing empty paragraph', () => {
+            const original = '<p>text</p><p></p>';
+            const md = htmlToMarkdown(original);
+            expect(md).toContain('&nbsp;');
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(1);
+        });
+
+        it('does not introduce empty paragraphs into normal content', () => {
+            const original = '<p>hello</p><p>world</p>';
+            const md = htmlToMarkdown(original);
+            expect(md).not.toContain('&nbsp;');
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(0);
+        });
+
+        it('keeps the empty-document shortcut working for a lone <p></p>', () => {
+            // A document containing only a single empty paragraph is treated
+            // as an empty doc — we don't want to start writing &nbsp; into
+            // every freshly-created note.
+            expect(htmlToMarkdown('<p></p>')).toBe('');
+        });
+
+        it('round-trips mixed blank-line patterns idempotently', () => {
+            // After one round-trip, a second save must produce identical markdown
+            // (no NBSP accumulation, no extra blanks).
+            const original = '<p>a</p><p></p><p></p><p>b</p><p></p><p>c</p>';
+            const md1 = htmlToMarkdown(original);
+            const html1 = markdownToHtml(md1);
+            const md2 = htmlToMarkdown(html1);
+            expect(md2).toBe(md1);
+        });
+
+        it('reloaded empty paragraph contains no stray NBSP character for Tiptap', () => {
+            // Tiptap should see `<p></p>`, not `<p>&nbsp;</p>`, otherwise the user
+            // sees a leading non-breaking-space character in the empty line.
+            const md = htmlToMarkdown('<p>a</p><p></p><p>b</p>');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).not.toContain('<p>&nbsp;</p>');
+            // Also no literal NBSP ( ) inside a paragraph
+            expect(reloaded).not.toMatch(/<p> <\/p>/);
+        });
+
+        it('preserves empty paragraphs across heading and list contexts', () => {
+            const original = '<h1>Title</h1><p></p><p></p><p>body</p><p></p><ul><li>item</li></ul>';
+            const md = htmlToMarkdown(original);
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(3);
+            expect(reloaded).toContain('<h1');
+            expect(reloaded).toContain('<ul>');
+            expect(reloaded).toContain('item');
+        });
+
+        it('round-trips when input already contains <p>&nbsp;</p> (no NBSP accumulation)', () => {
+            // Defensive: simulate Tiptap echoing back `<p>&nbsp;</p>` (e.g. paste).
+            const original = '<p>a</p><p>&nbsp;</p><p>&nbsp;</p><p>b</p>';
+            const md = htmlToMarkdown(original);
+            expect((md.match(/&nbsp;/g) ?? []).length).toBe(2);
+            const reloaded = markdownToHtml(md);
+            expect(emptyParagraphCount(reloaded)).toBe(2);
+            // Idempotent across one more cycle.
+            expect(htmlToMarkdown(reloaded)).toBe(md);
+        });
+
+        it('keeps norm() comparison stable for non-empty content (regression guard)', () => {
+            // norm() is the helper at the top of this file; verify the new
+            // empty-paragraph machinery doesn't break the existing pattern.
+            const original = '<p>line one</p><p>line two</p>';
+            const md = htmlToMarkdown(original);
+            expect(norm(md)).toBe('line one\n\nline two');
+        });
+    });
 });
