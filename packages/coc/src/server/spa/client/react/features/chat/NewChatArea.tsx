@@ -182,13 +182,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     }}
                 />
                 <div data-testid="chat-input-stack" className="space-y-1">
-                    <div data-testid="mode-selector">
-                        <ModePillSelector
-                            options={DEFAULT_MODE_PILL_OPTIONS}
-                            value={selectedMode}
-                            onChange={setSelectedMode}
-                        />
-                    </div>
                 <div
                     data-testid="chat-input-bar"
                     className={cn(
@@ -272,12 +265,19 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         data-testid="new-chat-input"
                     />
                     <div
-                        className="flex items-center gap-0.5 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        className="flex flex-wrap items-center gap-x-1 gap-y-1 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
+                        <div data-testid="mode-selector" className="shrink-0">
+                            <ModePillSelector
+                                options={DEFAULT_MODE_PILL_OPTIONS}
+                                value={selectedMode}
+                                onChange={setSelectedMode}
+                            />
+                        </div>
                         <button
                             type="button"
-                            className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 max-w-[160px]"
+                            className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[160px]"
                             onClick={() => {
                                 if (modelCommand.modelMenuVisible) {
                                     modelCommand.dismissModelMenu();
@@ -286,11 +286,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 }
                             }}
                             title={modelCommand.modelOverride
-                                ? `Override active: ${modelCommand.modelOverride}`
+                                ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
                                 : 'Pick a model'}
                             data-testid="model-picker-chip"
                         >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                 <polygon
                                     points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                     stroke="currentColor"
@@ -301,6 +301,20 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             <span className="truncate font-mono text-[11px]">
                                 {modelCommand.modelOverride || 'model'}
                             </span>
+                            {modelCommand.modelOverride && (
+                                <span
+                                    role="button"
+                                    tabIndex={-1}
+                                    className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        modelCommand.setModelOverride(null);
+                                    }}
+                                    aria-label="Clear model override"
+                                    title="Clear model override"
+                                    data-testid="model-picker-chip-clear"
+                                >✕</span>
+                            )}
                         </button>
                         <button
                             type="button"
@@ -331,22 +345,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 />
                             </svg>
                         </button>
-                        {modelCommand.modelOverride && (
-                            <div
-                                className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526]"
-                                data-testid="new-chat-model-badge"
-                            >
-                                <span className="truncate max-w-[120px] font-mono">{modelCommand.modelOverride}</span>
-                                <button
-                                    type="button"
-                                    className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
-                                    onClick={() => modelCommand.setModelOverride(null)}
-                                    aria-label="Clear model override"
-                                    title="Clear model override"
-                                >✕</button>
-                            </div>
-                        )}
-                        <div className="flex-1" />
+                        <div className="flex-1 min-w-0" />
                         {sending ? (
                             <button
                                 type="button"
@@ -377,7 +376,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 <span>Queue follow-up</span>
                                 <span
                                     aria-hidden="true"
-                                    className="ml-0.5 inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
+                                    className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
                                 >
                                     &#x2318;&#x21B5;
                                 </span>

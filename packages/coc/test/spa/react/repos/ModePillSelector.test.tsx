@@ -77,7 +77,7 @@ describe('ModePillSelector', () => {
         expect(screen.getByTestId('mode-pill-autopilot').textContent).toBe('Autopilot');
     });
 
-    it('renders a coloured leading dot per option', () => {
+    it('dot colors match the chat-input border colors (ask=yellow, plan=blue, autopilot=green)', () => {
         render(
             <ModePillSelector
                 options={DEFAULT_MODE_PILL_OPTIONS}
@@ -86,11 +86,13 @@ describe('ModePillSelector', () => {
             />,
         );
         const askDot = screen.getByTestId('mode-pill-ask').querySelector('span[aria-hidden="true"]');
+        const planDot = screen.getByTestId('mode-pill-plan').querySelector('span[aria-hidden="true"]');
         const autopilotDot = screen
             .getByTestId('mode-pill-autopilot')
             .querySelector('span[aria-hidden="true"]');
-        expect(askDot?.className).toContain('bg-blue-500');
-        expect(autopilotDot?.className).toContain('bg-orange-500');
+        expect(askDot?.className).toContain('bg-yellow-500');
+        expect(planDot?.className).toContain('bg-blue-500');
+        expect(autopilotDot?.className).toContain('bg-green-500');
     });
 
     it('exposes the radiogroup role on the container', () => {

@@ -3,7 +3,7 @@
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -393,18 +393,27 @@ describe('NewChatArea', () => {
     });
 
     describe('model command in new chat', () => {
-        it('shows model badge when modelOverride is set', () => {
+        it('shows the active model name on the picker chip when modelOverride is set', () => {
             mockModelCommand.modelOverride = 'gpt-5.4';
             render(<NewChatArea workspaceId="ws-1" />);
-            const badge = screen.getByTestId('new-chat-model-badge');
-            expect(badge).toBeTruthy();
-            expect(badge.textContent).toContain('gpt-5.4');
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip.textContent).toContain('gpt-5.4');
+            // The standalone "new-chat-model-badge" is gone — the chip is the
+            // single source of truth for the active model.
+            expect(screen.queryByTestId('new-chat-model-badge')).toBeNull();
         });
 
-        it('does not show model badge when modelOverride is null', () => {
+        it('exposes a clear-override (✕) inside the chip when modelOverride is set', () => {
+            mockModelCommand.modelOverride = 'gpt-5.4';
+            render(<NewChatArea workspaceId="ws-1" />);
+            expect(screen.getByTestId('model-picker-chip-clear')).toBeTruthy();
+        });
+
+        it('does not render a separate model badge when modelOverride is null', () => {
             mockModelCommand.modelOverride = null;
             render(<NewChatArea workspaceId="ws-1" />);
             expect(screen.queryByTestId('new-chat-model-badge')).toBeNull();
+            expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
         });
 
         it('includes model in payload when modelOverride is set', async () => {
@@ -447,15 +456,16 @@ describe('NewChatArea', () => {
     });
 
     describe('mode selector', () => {
-        it('mode pill row sits above the input card (mode-selector then chat-input-bar)', () => {
+        it('mode pill selector lives inside the toolbar, before the model picker chip', () => {
             render(<NewChatArea workspaceId="ws-1" />);
-            const ids = Array.from(document.querySelectorAll('[data-testid]')).map(
-                (el) => (el as HTMLElement).dataset.testid,
-            );
-            const selectorIdx = ids.indexOf('mode-selector');
-            const inputBarIdx = ids.indexOf('chat-input-bar');
-            expect(selectorIdx).toBeGreaterThanOrEqual(0);
-            expect(inputBarIdx).toBeGreaterThan(selectorIdx);
+            const toolbar = screen.getByTestId('chat-input-toolbar');
+            const selector = within(toolbar).getByTestId('mode-selector');
+            const chip = within(toolbar).getByTestId('model-picker-chip');
+            expect(selector).toBeTruthy();
+            // Selector must come BEFORE the model picker chip in DOM order.
+            const pos = selector.compareDocumentPosition(chip);
+            // 4 = DOCUMENT_POSITION_FOLLOWING bit
+            expect(pos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         });
 
         it('clicking a pill switches the active mode', () => {

@@ -484,18 +484,12 @@ export function FollowUpInputArea({
                     )}
                 </div>
             ) : (
-                /* ── New stacked layout: mode pill row → input card with bottom toolbar ── */
+                /* ── Stacked layout: input card whose bottom toolbar holds the
+                     mode pill selector (first), model picker, slash/attach
+                     buttons, and the QueueFollowUpButton. The toolbar wraps
+                     vertically on narrow screens (mobile-responsive). ── */
                 <div className="space-y-1" data-testid="chat-input-stack">
                     {hiddenFileInput}
-                    {!hideModeSelector && (
-                        <div data-testid="mode-selector">
-                            <ModePillSelector
-                                options={pillOptions}
-                                value={selectedMode}
-                                onChange={(m) => setSelectedMode(m)}
-                            />
-                        </div>
-                    )}
                     <div
                         ref={inputWrapperRef}
                         data-testid="chat-input-bar"
@@ -521,14 +515,28 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
-                            className="flex items-center gap-0.5 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex flex-wrap items-center gap-x-1 gap-y-1 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
-                            {/* Model selector chip */}
+                            {/* Mode pill selector — first in toolbar */}
+                            {!hideModeSelector && (
+                                <div data-testid="mode-selector" className="shrink-0">
+                                    <ModePillSelector
+                                        options={pillOptions}
+                                        value={selectedMode}
+                                        onChange={(m) => setSelectedMode(m)}
+                                    />
+                                </div>
+                            )}
+                            {/* Model selector chip — shows the active model
+                                 (override or session). Clicking opens the
+                                 picker; the chip is the single source of
+                                 truth for the active model — no separate
+                                 override badge is rendered. */}
                             {modelCommand && (
                                 <button
                                     type="button"
-                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 max-w-[160px]"
+                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[160px]"
                                     onClick={() => {
                                         if (modelCommand.modelMenuVisible) {
                                             modelCommand.dismissModelMenu();
@@ -537,11 +545,11 @@ export function FollowUpInputArea({
                                         }
                                     }}
                                     title={modelCommand.modelOverride
-                                        ? `Override active: ${modelCommand.modelOverride}`
+                                        ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
                                 >
-                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                         <polygon
                                             points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                             stroke="currentColor"
@@ -552,6 +560,20 @@ export function FollowUpInputArea({
                                     <span className="truncate font-mono text-[11px]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
+                                    {modelCommand.modelOverride && (
+                                        <span
+                                            role="button"
+                                            tabIndex={-1}
+                                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                modelCommand.setModelOverride(null);
+                                            }}
+                                            aria-label="Clear model override"
+                                            title="Clear model override"
+                                            data-testid="model-picker-chip-clear"
+                                        >✕</span>
+                                    )}
                                 </button>
                             )}
                             <button
@@ -583,22 +605,7 @@ export function FollowUpInputArea({
                                     />
                                 </svg>
                             </button>
-                            {modelCommand?.modelOverride && (
-                                <div
-                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526]"
-                                    data-testid="model-override-badge"
-                                >
-                                    <span className="truncate max-w-[120px] font-mono">{modelCommand.modelOverride}</span>
-                                    <button
-                                        type="button"
-                                        className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
-                                        onClick={() => modelCommand.setModelOverride(null)}
-                                        aria-label="Clear model override"
-                                        title="Clear model override"
-                                    >✕</button>
-                                </div>
-                            )}
-                            <div className="flex-1" />
+                            <div className="flex-1 min-w-0" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending}

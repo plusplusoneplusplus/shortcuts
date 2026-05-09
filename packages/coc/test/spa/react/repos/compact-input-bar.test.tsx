@@ -278,6 +278,75 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(slash.className).toContain('w-6');
         expect(slash.className).not.toContain('h-7');
     });
+
+    // ── Toolbar position + responsiveness ────────────────────────────────
+    // The mode pill selector now lives INSIDE the toolbar, before the model
+    // picker chip, instead of on its own row above the input card.
+
+    it('mode pill selector is rendered inside the toolbar', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        expect(toolbar.contains(screen.getByTestId('mode-selector'))).toBe(true);
+    });
+
+    function makeModelCommand(overrides: Partial<NonNullable<FollowUpInputAreaProps['modelCommand']>> = {}) {
+        return {
+            modelMenuVisible: false,
+            modelFilter: '',
+            filteredModels: [],
+            modelHighlightIndex: 0,
+            modelOverride: null as string | null,
+            setModelOverride: vi.fn(),
+            handleModelSelect: vi.fn(),
+            showModelMenu: vi.fn(),
+            dismissModelMenu: vi.fn(),
+            handleModelKeyDown: vi.fn(() => false),
+            setModelFilter: vi.fn(),
+            ...overrides,
+        };
+    }
+
+    it('mode pill selector comes BEFORE the model picker chip in the toolbar', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ modelCommand: makeModelCommand() })} />);
+        const selector = screen.getByTestId('mode-selector');
+        const chip = screen.getByTestId('model-picker-chip');
+        // bit 4 = DOCUMENT_POSITION_FOLLOWING
+        const pos = selector.compareDocumentPosition(chip);
+        expect(pos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('toolbar wraps on narrow viewports (flex-wrap)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        expect(toolbar.className).toContain('flex-wrap');
+    });
+
+    it('separate model-override-badge is removed (chip is the single source)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            modelCommand: makeModelCommand({ modelOverride: 'gpt-5.4' }),
+        })} />);
+        expect(screen.queryByTestId('model-override-badge')).toBeNull();
+        const chip = screen.getByTestId('model-picker-chip');
+        expect(chip.textContent).toContain('gpt-5.4');
+    });
+
+    it('chip exposes an inline clear (✕) when modelOverride is set', () => {
+        const setModelOverride = vi.fn();
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            modelCommand: makeModelCommand({ modelOverride: 'gpt-5.4', setModelOverride }),
+        })} />);
+        const clear = screen.getByTestId('model-picker-chip-clear');
+        expect(clear).toBeTruthy();
+        fireEvent.click(clear);
+        expect(setModelOverride).toHaveBeenCalledWith(null);
+    });
+
+    it('Queue follow-up keyboard shortcut hint is hidden on small screens (sm:inline-flex)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const hint = screen.getByTestId('queue-follow-up-shortcut-hint');
+        expect(hint.className).toContain('hidden');
+        expect(hint.className).toContain('sm:inline-flex');
+    });
 });
 
 // ── Legacy compact layout (compactModeSelector=true) ───────────────────────

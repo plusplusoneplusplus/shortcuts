@@ -57,7 +57,7 @@ export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
             {showShortcutHint && !steering && (
                 <span
                     aria-hidden="true"
-                    className="ml-0.5 inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
+                    className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[22px] h-4 px-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484] font-mono"
                     data-testid="queue-follow-up-shortcut-hint"
                 >
                     &#x2318;&#x21B5;
