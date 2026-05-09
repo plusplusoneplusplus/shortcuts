@@ -136,7 +136,7 @@ async function waitForConversation(page: Page, count: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 test.describe('Mode Selector', () => {
-    test('mode-dropdown is visible and changing to ask updates textarea border', async ({ page, serverUrl, mockAI }) => {
+    test('mode pill selector is visible and changing to ask updates input border', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mode-1');
         try {
             const task = await seedAndWaitForTask(serverUrl, wsId, {
@@ -146,16 +146,20 @@ test.describe('Mode Selector', () => {
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            // Mode dropdown is visible
-            const dropdown = page.locator('[data-testid="mode-dropdown"]');
-            await expect(dropdown).toBeVisible();
+            // Mode pill selector is visible
+            const pillSelector = page.locator('[data-testid="mode-pill-selector"]');
+            await expect(pillSelector).toBeVisible();
 
-            // Change mode to 'ask'
-            await dropdown.selectOption('ask');
+            // Change mode to 'ask' by clicking its pill
+            const askPill = page.locator('[data-testid="mode-pill-ask"]');
+            await askPill.click();
+            await expect(askPill).toHaveAttribute('aria-checked', 'true');
 
-            // Textarea should now have yellow border class
-            const textarea = page.locator('[data-testid="activity-chat-input"]');
-            await expect(textarea).toHaveClass(/border-yellow-500/);
+            // The chat-input-bar (stacked layout outer card) owns the mode-coloured
+            // border in the redesigned UI. The inner contenteditable border is
+            // intentionally transparent.
+            const chatInputBar = page.locator('[data-testid="chat-input-bar"]');
+            await expect(chatInputBar).toHaveClass(/border-yellow-500/);
         } finally {
             cleanup();
         }
@@ -171,8 +175,12 @@ test.describe('Mode Selector', () => {
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            // Change mode to 'ask'
-            await page.locator('[data-testid="mode-dropdown"]').selectOption('ask');
+            // Change mode to 'ask' by clicking its pill
+            await page.locator('[data-testid="mode-pill-ask"]').click();
+            await expect(page.locator('[data-testid="mode-pill-ask"]')).toHaveAttribute(
+                'aria-checked',
+                'true',
+            );
 
             // Capture the follow-up POST body
             let capturedBody: Record<string, unknown> | null = null;
@@ -1224,23 +1232,26 @@ test.describe('Shift+Tab Mode Cycling', () => {
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            const dropdown = page.locator('[data-testid="mode-dropdown"]');
+            const askPill = page.locator('[data-testid="mode-pill-ask"]');
+            const planPill = page.locator('[data-testid="mode-pill-plan"]');
+            const autopilotPill = page.locator('[data-testid="mode-pill-autopilot"]');
             const textarea = page.locator('[data-testid="activity-chat-input"]');
 
             // Default mode is 'autopilot'.  Cycle order: ask → plan → autopilot.
             // Pressing Shift+Tab from `autopilot` therefore lands on `ask`,
-            // then `plan`, then back to `autopilot`.
-            await expect(dropdown).toHaveValue('autopilot');
+            // then `plan`, then back to `autopilot`. The active pill is
+            // identified by aria-checked="true".
+            await expect(autopilotPill).toHaveAttribute('aria-checked', 'true');
 
             await textarea.click();
             await textarea.press('Shift+Tab');
-            await expect(dropdown).toHaveValue('ask', { timeout: 1_000 });
+            await expect(askPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
 
             await textarea.press('Shift+Tab');
-            await expect(dropdown).toHaveValue('plan', { timeout: 1_000 });
+            await expect(planPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
 
             await textarea.press('Shift+Tab');
-            await expect(dropdown).toHaveValue('autopilot', { timeout: 1_000 });
+            await expect(autopilotPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
         } finally {
             cleanup();
         }

@@ -565,8 +565,10 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
 
             // Placeholder text (RichTextInput stores it on data-placeholder, not
             // the standard placeholder attribute, because the underlying
-            // contenteditable div has no native placeholder support).
-            await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveAttribute('data-placeholder', /[Cc]ontinue|message|Send a message/i);
+            // contenteditable div has no native placeholder support). The
+            // stacked layout uses "Reply to CoC, ..." while the legacy
+            // compact layout uses "Send a message ...".
+            await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveAttribute('data-placeholder', /[Cc]ontinue|message|Send a message|Reply to CoC/i);
         } finally {
             cleanup();
         }
