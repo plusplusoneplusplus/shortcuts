@@ -1670,6 +1670,15 @@ export function ChatListPane({
                             </span>
                         )}
                     </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onNewChat ?? onOpenDialog}
+                        title="New chat"
+                        data-testid="toolbar-new-chat-btn"
+                    >
+                        💬<span className="hidden md:inline"> New Chat</span>
+                    </Button>
                     <div className="relative" ref={pauseMenuRef}>
                         <div
                             className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"

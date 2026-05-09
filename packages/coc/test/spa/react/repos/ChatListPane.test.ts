@@ -1239,6 +1239,21 @@ describe('ChatListPane: New Chat button uses onNewChat', () => {
         expect(source).toContain('data-testid="new-chat-btn"');
     });
 
+    it('toolbar new-chat button is present in queue toolbar', () => {
+        expect(source).toContain('data-testid="toolbar-new-chat-btn"');
+    });
+
+    it('toolbar new-chat button reuses onNewChat callback', () => {
+        // The toolbar button should use the same onNewChat ?? onOpenDialog handler
+        const matches = source.match(/onNewChat \?\? onOpenDialog/g) ?? [];
+        expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('toolbar new-chat button hides label on mobile', () => {
+        // The label "New Chat" inside the toolbar button is hidden on mobile via responsive class
+        expect(source).toMatch(/hidden md:inline">\s*New Chat/);
+    });
+
     it('empty-state Queue Task button was removed', () => {
         // The empty-state "Queue Task" button has been removed — no task queueing from empty state
         expect(source).not.toContain('data-testid="repo-queue-task-btn-empty"');
