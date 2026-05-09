@@ -74,7 +74,7 @@ export function ModePillSelector({
                         aria-checked={selected}
                         title={opt.title ?? MODE_TOOLTIPS[opt.value]}
                         className={cn(
-                            'inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-[3px] text-[11.5px] leading-tight font-medium cursor-pointer transition-colors -tracking-[0.005em]',
+                            'inline-flex items-center gap-1 rounded-[3px] px-2 py-[2px] text-[11px] leading-tight font-medium cursor-pointer transition-colors -tracking-[0.005em]',
                             'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
                             selected
                                 ? 'bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc] shadow-[inset_0_0_0_1px_#d0d0d0] dark:shadow-[inset_0_0_0_1px_#4a4a4a]'
@@ -87,7 +87,7 @@ export function ModePillSelector({
                         <span
                             aria-hidden="true"
                             className={cn(
-                                'inline-block h-[5px] w-[5px] rounded-full',
+                                'inline-block h-[4px] w-[4px] rounded-full',
                                 opt.dotClass,
                             )}
                         />

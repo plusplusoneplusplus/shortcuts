@@ -213,20 +213,25 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(btn.className).not.toContain('w-full');
     });
 
-    it('Queue follow-up button uses 28px height + 12px label (matches OpenDesign .send-btn)', () => {
+    it('Queue follow-up button uses ultra-compact 24px height + 11px label', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
-        expect(btn.className).toContain('h-[28px]');
-        expect(btn.className).toContain('pl-2.5');
-        expect(btn.className).toContain('pr-2');
-        expect(btn.className).toContain('text-[12px]');
+        expect(btn.className).toContain('h-[24px]');
+        expect(btn.className).toContain('pl-2');
+        expect(btn.className).toContain('pr-1.5');
+        expect(btn.className).toContain('text-[11px]');
+        // Guard against the previous (taller) sizing tokens.
+        expect(btn.className).not.toContain('h-[28px]');
+        expect(btn.className).not.toContain('text-[12px]');
+        expect(btn.className).not.toContain('text-xs');
     });
 
     it('Queue follow-up shortcut hint uses a vertical separator (border-l), not a boxed kbd', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const hint = screen.getByTestId('queue-follow-up-shortcut-hint');
         expect(hint.className).toContain('border-l');
-        expect(hint.className).toContain('pl-2');
+        expect(hint.className).toContain('pl-1.5');
+        expect(hint.className).toContain('text-[9px]');
         // Old boxed-kbd style had a full border + rounded corners — guard
         // against accidentally re-introducing them.
         expect(hint.className).not.toContain('border border-');
@@ -268,32 +273,38 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(editor.className).not.toContain('min-h-[40px]');
     });
 
-    it('chat-input-toolbar uses py-1.5 + asymmetric pl-2.5 pr-2 (matches reference .composer-foot)', () => {
+    it('chat-input-toolbar uses ultra-compact py-1 + asymmetric pl-2 pr-1.5', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const toolbar = screen.getByTestId('chat-input-toolbar');
-        expect(toolbar.className).toContain('py-1.5');
-        expect(toolbar.className).toContain('pl-2.5');
-        expect(toolbar.className).toContain('pr-2');
+        expect(toolbar.className).toContain('py-1');
+        expect(toolbar.className).toContain('pl-2');
+        expect(toolbar.className).toContain('pr-1.5');
+        // Guard against re-introducing the previous (taller) padding tokens.
+        expect(toolbar.className).not.toContain('py-1.5');
         expect(toolbar.className).not.toContain('py-2');
+        expect(toolbar.className).not.toContain('pl-2.5');
         expect(toolbar.className).not.toContain('p-3');
     });
 
-    it('toolbar attach button uses uniform 26x26 ctool sizing', () => {
+    it('toolbar attach button uses ultra-compact 22x22 ctool sizing', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const attach = screen.getByTestId('follow-up-attach-btn');
-        expect(attach.className).toContain('h-[26px]');
-        expect(attach.className).toContain('w-[26px]');
+        expect(attach.className).toContain('h-[22px]');
+        expect(attach.className).toContain('w-[22px]');
         expect(attach.className).toContain('ctool');
+        expect(attach.className).not.toContain('h-[26px]');
         expect(attach.className).not.toContain('h-7');
     });
 
-    it('toolbar slash button uses uniform 26px ctool height with kbd-glyph padding', () => {
+    it('toolbar slash button uses 22px ctool height with px-1.5 padding', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const slash = screen.getByTestId('chat-toolbar-slash-btn');
-        expect(slash.className).toContain('h-[26px]');
-        expect(slash.className).toContain('px-[7px]');
+        expect(slash.className).toContain('h-[22px]');
+        expect(slash.className).toContain('px-1.5');
+        expect(slash.className).toContain('text-[11px]');
         expect(slash.className).toContain('ctool');
-        expect(slash.className).not.toContain('h-7');
+        expect(slash.className).not.toContain('h-[26px]');
+        expect(slash.className).not.toContain('px-[7px]');
     });
 
     // ── @ mention-skill button (matches reference .ctool with @ kbd) ──────
@@ -301,8 +312,9 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const mention = screen.getByTestId('chat-toolbar-mention-btn');
         expect(mention).toBeTruthy();
-        expect(mention.className).toContain('h-[26px]');
-        expect(mention.className).toContain('px-[7px]');
+        expect(mention.className).toContain('h-[22px]');
+        expect(mention.className).toContain('px-1.5');
+        expect(mention.className).toContain('text-[11px]');
         expect(mention.className).toContain('ctool');
         expect(mention.getAttribute('aria-label')).toBe('Mention a skill');
         // Carries an @ glyph as a visible kbd hint
@@ -469,25 +481,29 @@ describe('NewChatArea — stacked input card layout', () => {
         expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
     });
 
-    it('Queue follow-up button has shrink-0 + 28px height + vertical-separator hint', () => {
+    it('Queue follow-up button has shrink-0 + ultra-compact 24px height + vertical-separator hint', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn');
         expect(btn.className).toContain('shrink-0');
         expect(btn.className).not.toContain('w-full');
-        expect(btn.className).toContain('h-[28px]');
+        expect(btn.className).toContain('h-[24px]');
+        expect(btn.className).toContain('text-[11px]');
+        expect(btn.className).not.toContain('h-[28px]');
         // The shortcut hint nested inside should use a vertical separator
         // rather than a boxed kbd (matches the OpenDesign reference).
         const hint = btn.querySelector('span.border-l') as HTMLElement | null;
         expect(hint).not.toBeNull();
         expect(hint?.textContent).toMatch(/⌘/);
+        expect(hint?.className).toContain('text-[9px]');
     });
 
-    it('NewChatArea toolbar buttons use the uniform ctool class (h-[26px])', () => {
+    it('NewChatArea toolbar buttons use the uniform ctool class (h-[22px])', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         for (const tid of ['model-picker-chip', 'chat-toolbar-slash-btn', 'chat-toolbar-mention-btn', 'new-chat-attach-btn']) {
             const btn = screen.getByTestId(tid);
             expect(btn.className).toContain('ctool');
-            expect(btn.className).toContain('h-[26px]');
+            expect(btn.className).toContain('h-[22px]');
+            expect(btn.className).not.toContain('h-[26px]');
         }
     });
 });

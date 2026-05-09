@@ -284,7 +284,7 @@ export function FollowUpInputArea({
                 'shrink-0 rounded bg-[#f14c4c] text-white font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]',
                 compactModeSelector
                     ? 'h-[34px] px-2 sm:px-3 text-sm'
-                    : 'h-7 px-2 text-xs',
+                    : 'h-[24px] px-1.5 text-[11px]',
             )}
             onClick={() => {
                 if (!isCancelling) onStop?.();
@@ -518,12 +518,12 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
-                            className="flex flex-wrap items-center gap-x-px gap-y-1 pl-2.5 pr-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
                             {/* Mode pill selector — first in toolbar */}
                             {!hideModeSelector && (
-                                <div data-testid="mode-selector" className="shrink-0 mr-1">
+                                <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                                     <ModePillSelector
                                         options={pillOptions}
                                         value={selectedMode}
@@ -539,7 +539,7 @@ export function FollowUpInputArea({
                             {modelCommand && (
                                 <button
                                     type="button"
-                                    className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
+                                    className="ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                                     onClick={() => {
                                         if (modelCommand.modelMenuVisible) {
                                             modelCommand.dismissModelMenu();
@@ -552,7 +552,7 @@ export function FollowUpInputArea({
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
                                 >
-                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                         <polygon
                                             points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                             stroke="currentColor"
@@ -560,14 +560,14 @@ export function FollowUpInputArea({
                                             strokeLinejoin="round"
                                         />
                                     </svg>
-                                    <span className="truncate font-mono text-[11px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
                                     {modelCommand.modelOverride && (
                                         <span
                                             role="button"
                                             tabIndex={-1}
-                                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer text-[10px]"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 modelCommand.setModelOverride(null);
@@ -581,40 +581,40 @@ export function FollowUpInputArea({
                             )}
                             <button
                                 type="button"
-                                className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Insert slash command"
                                 title="Insert slash command (/)"
                                 data-testid="chat-toolbar-slash-btn"
                             >
-                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                     <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                                 </svg>
-                                <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">/</span>
+                                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
                             </button>
                             <button
                                 type="button"
-                                className="ctool shrink-0 inline-flex items-center gap-1 h-[26px] px-[7px] rounded-sm text-[11.5px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Mention a skill"
                                 title="Mention a skill (@) — opens the skill picker"
                                 data-testid="chat-toolbar-mention-btn"
                             >
-                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                     <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
                                 </svg>
-                                <span aria-hidden="true" className="font-mono text-[10px] text-[#848484]">@</span>
+                                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
                             </button>
                             <button
                                 type="button"
                                 disabled={inputDisabled}
                                 onClick={() => fileInputRef.current?.click()}
-                                className="ctool shrink-0 inline-flex items-center justify-center h-[26px] w-[26px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="ctool shrink-0 inline-flex items-center justify-center h-[22px] w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 data-testid="follow-up-attach-btn"
                                 aria-label="Attach file"
                                 title="Attach files"
                             >
-                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                     <path
                                         d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
                                         stroke="currentColor"

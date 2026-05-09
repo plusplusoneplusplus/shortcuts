@@ -110,7 +110,7 @@ describe('ModePillSelector', () => {
 
     // ── Compact density (matches OpenDesign chats.html .mode-opt) ─────────
 
-    it('uses rectangular pill padding (px-2.5 py-[3px], text-[11.5px])', () => {
+    it('uses ultra-compact pill padding (px-2 py-[2px], text-[11px])', () => {
         render(
             <ModePillSelector
                 options={DEFAULT_MODE_PILL_OPTIONS}
@@ -119,11 +119,26 @@ describe('ModePillSelector', () => {
             />,
         );
         const pill = screen.getByTestId('mode-pill-ask');
-        expect(pill.className).toContain('px-2.5');
-        expect(pill.className).toContain('py-[3px]');
-        expect(pill.className).toContain('text-[11.5px]');
+        expect(pill.className).toContain('px-2');
+        expect(pill.className).toContain('py-[2px]');
+        expect(pill.className).toContain('text-[11px]');
         expect(pill.className).not.toContain('px-3');
         expect(pill.className).not.toContain('text-sm');
+        expect(pill.className).not.toContain('text-[11.5px]');
+    });
+
+    it('mode dot uses tight 4px diameter to match the compact toolbar', () => {
+        const { container } = render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+        const dot = container.querySelector('span.bg-yellow-500') as HTMLElement | null;
+        expect(dot).not.toBeNull();
+        expect(dot?.className).toContain('h-[4px]');
+        expect(dot?.className).toContain('w-[4px]');
     });
 
     it('uses a rectangular rounded-md container (not a fully-rounded pill)', () => {
