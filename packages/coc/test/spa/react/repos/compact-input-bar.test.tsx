@@ -213,11 +213,12 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(btn.className).not.toContain('w-full');
     });
 
-    it('Queue follow-up button has compact padding (px-2 sm:px-3)', () => {
+    it('Queue follow-up button has compact sizing (h-7 px-2 text-xs)', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const btn = screen.getByTestId('activity-chat-send-btn');
+        expect(btn.className).toContain('h-7');
         expect(btn.className).toContain('px-2');
-        expect(btn.className).toContain('sm:px-3');
+        expect(btn.className).toContain('text-xs');
     });
 
     it('hides the mode selector when hideModeSelector is true', () => {
@@ -226,6 +227,56 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(screen.queryByTestId('mode-pill-ask')).toBeNull();
         expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
         expect(screen.queryByTestId('mode-pill-autopilot')).toBeNull();
+    });
+
+    // ── Compact density ────────────────────────────────────────────────────
+    // The stacked layout must stay vertically tight; these regressions guard
+    // against accidentally re-introducing taller paddings or heights that
+    // previously made the input area waste a lot of vertical space.
+
+    it('outer container uses compact py-2 (not p-3)', () => {
+        const { container } = render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const outer = container.querySelector('div.border-t') as HTMLElement;
+        expect(outer).not.toBeNull();
+        expect(outer.className).toContain('py-2');
+        expect(outer.className).not.toContain('p-3');
+    });
+
+    it('chat-input-stack uses tight space-y-1 between pill row and input card', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const stack = screen.getByTestId('chat-input-stack');
+        expect(stack.className).toContain('space-y-1');
+        expect(stack.className).not.toContain('space-y-2');
+    });
+
+    it('RichTextInput shrinks to min-h-[28px] (down from min-h-[40px])', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const editor = screen.getByTestId('activity-chat-input') as HTMLElement;
+        expect(editor.className).toContain('min-h-[28px]');
+        expect(editor.className).not.toContain('min-h-[40px]');
+    });
+
+    it('chat-input-toolbar uses compact py-1 (not py-1.5)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        expect(toolbar.className).toContain('py-1');
+        expect(toolbar.className).not.toContain('py-1.5');
+    });
+
+    it('toolbar attach button uses compact h-6 w-6 (not h-7 w-7)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const attach = screen.getByTestId('follow-up-attach-btn');
+        expect(attach.className).toContain('h-6');
+        expect(attach.className).toContain('w-6');
+        expect(attach.className).not.toContain('h-7');
+    });
+
+    it('toolbar slash button uses compact h-6 w-6 (not h-7 w-7)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps()} />);
+        const slash = screen.getByTestId('chat-toolbar-slash-btn');
+        expect(slash.className).toContain('h-6');
+        expect(slash.className).toContain('w-6');
+        expect(slash.className).not.toContain('h-7');
     });
 });
 

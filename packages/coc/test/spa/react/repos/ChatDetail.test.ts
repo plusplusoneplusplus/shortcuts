@@ -1219,7 +1219,7 @@ describe('ChatDetail', () => {
 
         it('stop button uses red styling', () => {
             const stopIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
-            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx - 300, stopIdx + 50);
+            const stopBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopIdx - 600, stopIdx + 50);
             expect(stopBlock).toContain('f14c4c');
         });
 
@@ -1235,13 +1235,13 @@ describe('ChatDetail', () => {
 
         it('stop button uses red background color', () => {
             const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
-            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 600, stopBtnIdx + 50);
             expect(stopBtnBlock).toContain('f14c4c');
         });
 
         it('stop button invokes onStop callback on click', () => {
             const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
-            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 600, stopBtnIdx + 50);
             expect(stopBtnBlock).toContain('onStop');
         });
 

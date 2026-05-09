@@ -106,6 +106,38 @@ describe('ModePillSelector', () => {
         expect(group.getAttribute('aria-label')).toBe('Chat mode');
     });
 
+    // ── Compact density ────────────────────────────────────────────────────
+
+    it('uses compact pill padding (px-2 py-0.5, text-[12px])', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+        const pill = screen.getByTestId('mode-pill-ask');
+        expect(pill.className).toContain('px-2');
+        expect(pill.className).toContain('py-0.5');
+        expect(pill.className).toContain('text-[12px]');
+        expect(pill.className).not.toContain('px-3');
+        expect(pill.className).not.toContain('text-sm');
+    });
+
+    it('container uses compact p-0.5 (not p-1)', () => {
+        render(
+            <ModePillSelector
+                options={DEFAULT_MODE_PILL_OPTIONS}
+                value="ask"
+                onChange={() => {}}
+            />,
+        );
+        const group = screen.getByRole('radiogroup');
+        const tokens = group.className.split(/\s+/);
+        expect(tokens).toContain('p-0.5');
+        expect(tokens).not.toContain('p-1');
+    });
+
     it('honours custom options (subset/order)', () => {
         const onChange = vi.fn();
         render(

@@ -57,7 +57,7 @@ export function ModePillSelector({
             role="radiogroup"
             aria-label="Chat mode"
             className={cn(
-                'inline-flex items-center gap-1 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-1',
+                'inline-flex items-center gap-0.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-0.5',
                 className,
             )}
             data-testid={testId}
@@ -72,7 +72,7 @@ export function ModePillSelector({
                         aria-checked={selected}
                         title={opt.title ?? MODE_TOOLTIPS[opt.value]}
                         className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium cursor-pointer transition-colors',
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] leading-tight font-medium cursor-pointer transition-colors',
                             'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
                             selected
                                 ? 'border border-[#d0d0d0] dark:border-[#4a4a4a] bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc] shadow-sm'

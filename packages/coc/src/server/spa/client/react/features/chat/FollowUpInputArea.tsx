@@ -280,7 +280,12 @@ export function FollowUpInputArea({
     const stopButton = (
         <button
             type="button"
-            className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]"
+            className={cn(
+                'shrink-0 rounded bg-[#f14c4c] text-white font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]',
+                compactModeSelector
+                    ? 'h-[34px] px-2 sm:px-3 text-sm'
+                    : 'h-7 px-2 text-xs',
+            )}
             onClick={() => {
                 if (!isCancelling) onStop?.();
             }}
@@ -309,7 +314,12 @@ export function FollowUpInputArea({
     );
 
     return (
-        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+        <div
+            className={cn(
+                'border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
+                compactModeSelector ? 'p-3 space-y-2' : 'px-3 py-2 space-y-1.5',
+            )}
+        >
             {resumeFeedback && (
                 <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
                     {resumeFeedback.message}
@@ -475,7 +485,7 @@ export function FollowUpInputArea({
                 </div>
             ) : (
                 /* ── New stacked layout: mode pill row → input card with bottom toolbar ── */
-                <div className="space-y-2" data-testid="chat-input-stack">
+                <div className="space-y-1" data-testid="chat-input-stack">
                     {hiddenFileInput}
                     {!hideModeSelector && (
                         <div data-testid="mode-selector">
@@ -501,7 +511,7 @@ export function FollowUpInputArea({
                             value={followUpInput}
                             ghostText={autocomplete.completion}
                             placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Reply to CoC, or type / for commands...'}
-                            className="w-full min-h-[40px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
+                            className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-2.5 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
                             onChange={handleEditorChange}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={(e: React.ClipboardEvent) => {
@@ -511,14 +521,14 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
-                            className="flex items-center gap-1 px-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex items-center gap-0.5 px-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
                             {/* Model selector chip */}
                             {modelCommand && (
                                 <button
                                     type="button"
-                                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 max-w-[160px]"
+                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 max-w-[160px]"
                                     onClick={() => {
                                         if (modelCommand.modelMenuVisible) {
                                             modelCommand.dismissModelMenu();
@@ -531,7 +541,7 @@ export function FollowUpInputArea({
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                         <polygon
                                             points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
                                             stroke="currentColor"
@@ -539,31 +549,31 @@ export function FollowUpInputArea({
                                             strokeLinejoin="round"
                                         />
                                     </svg>
-                                    <span className="truncate font-mono text-[12px]">
+                                    <span className="truncate font-mono text-[11px]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
                                 </button>
                             )}
                             <button
                                 type="button"
-                                className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                                className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
                                 onClick={focusInputAndInsertSlash}
                                 aria-label="Insert slash command"
                                 title="Insert slash command (/)"
                                 data-testid="chat-toolbar-slash-btn"
                             >
-                                <span aria-hidden="true" className="font-mono text-sm">/</span>
+                                <span aria-hidden="true" className="font-mono text-xs">/</span>
                             </button>
                             <button
                                 type="button"
                                 disabled={inputDisabled}
                                 onClick={() => fileInputRef.current?.click()}
-                                className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
                                 data-testid="follow-up-attach-btn"
                                 aria-label="Attach file"
                                 title="Attach files"
                             >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                                     <path
                                         d="M10.5 4.5 5 10a2 2 0 0 0 2.83 2.83L13 7.66a3.5 3.5 0 0 0-4.95-4.95L3 7.76"
                                         stroke="currentColor"
@@ -575,7 +585,7 @@ export function FollowUpInputArea({
                             </button>
                             {modelCommand?.modelOverride && (
                                 <div
-                                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-[#5a5a5a] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526]"
+                                    className="shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-[#5a5a5a] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526]"
                                     data-testid="model-override-badge"
                                 >
                                     <span className="truncate max-w-[120px] font-mono">{modelCommand.modelOverride}</span>
