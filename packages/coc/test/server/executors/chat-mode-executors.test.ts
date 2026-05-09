@@ -861,7 +861,7 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
         );
     });
 
-    it('ChatExecutor still uses tasks root (not notes/Plans)', async () => {
+    it('ChatExecutor also uses notes/Plans (same as PlanExecutor)', async () => {
         const executor = new ChatExecutor(store, makeOptions(store), DATA_DIR);
         const task: QueuedTask = {
             id: 'chat-tasks-root',
@@ -882,11 +882,16 @@ describe('PlanExecutor auto-folder path (notes/Plans)', () => {
 
         await executor.execute(task, 'Hello');
 
-        // mkdir should NOT be called (no plan mode)
-        expect(vi.mocked(fs.promises.mkdir)).not.toHaveBeenCalled();
-        // tasks root path should appear in system message
+        // mkdir SHOULD be called — ask mode now targets notes/Plans like plan mode
+        const expectedPath = path.join(DATA_DIR, 'repos', 'ws-chat-test', 'notes', 'Plans');
+        expect(vi.mocked(fs.promises.mkdir)).toHaveBeenCalledWith(
+            expectedPath,
+            { recursive: true },
+        );
+        // notes/Plans path should appear in system message
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const sysContent: string = call.systemMessage?.content ?? '';
-        expect(sysContent).toContain('tasks');
+        expect(sysContent).toContain('notes');
+        expect(sysContent).toContain('Plans');
     });
 });

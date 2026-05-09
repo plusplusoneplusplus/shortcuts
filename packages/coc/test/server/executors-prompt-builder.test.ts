@@ -109,6 +109,39 @@ describe('buildModeSystemMessage', () => {
         const result = buildModeSystemMessage('ask');
         expect(result!.content).not.toContain('auto-folder-block');
     });
+
+    it('ask-mode read-only message does not permit arbitrary file writes', () => {
+        // The READ_ONLY_SYSTEM_MESSAGE must restrict general writes; only the plan
+        // file and the attached note file are allowed exceptions.  This test is a
+        // regression guard: if someone widens the message to allow broad writes the
+        // real READ_ONLY_SYSTEM_MESSAGE (not the mock) should still contain the
+        // restriction.  We verify the exported constant directly.
+        const { READ_ONLY_SYSTEM_MESSAGE: realMsg } =
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            require('@plusplusoneplusplus/forge') as { READ_ONLY_SYSTEM_MESSAGE: string };
+        expect(realMsg).toContain('read-only');
+        // Must not grant blanket write access
+        expect(realMsg).not.toMatch(/you may (create|write|modify) any file/i);
+    });
+});
+
+// ============================================================================
+// appendAutoFolderBlock — ask mode with notes/Plans context
+// ============================================================================
+
+describe('appendAutoFolderBlock — ask mode uses notes/Plans path', () => {
+    it('forwards notes/Plans tasksRoot when ask-mode auto-folder context is provided', () => {
+        mockBuildAutoFolderLocationBlock.mockReturnValueOnce('ask-plan-save-block');
+        const msg = buildModeSystemMessage('ask');
+        // Simulate the context that resolveAutoFolderContext now returns for ask mode
+        const ctx = { tasksRoot: '/home/user/.coc/repos/ws/notes/Plans', existingFolders: [] };
+        const result = appendAutoFolderBlock(msg, ctx);
+        expect(result!.content).toContain('ask-plan-save-block');
+        expect(mockBuildAutoFolderLocationBlock).toHaveBeenCalledWith(
+            '/home/user/.coc/repos/ws/notes/Plans',
+            [],
+        );
+    });
 });
 
 // ============================================================================

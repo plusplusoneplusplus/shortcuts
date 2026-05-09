@@ -48,12 +48,12 @@ describe('resolveAutoFolderContext', () => {
         await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
     });
 
-    it('resolves ask mode to the repo tasks root and lists non-hidden folders', async () => {
+    it('resolves ask mode to notes/Plans (same as plan mode) and creates the directory', async () => {
         const dataDir = await makeDataDir();
-        const tasksRoot = path.join(dataDir, 'repos', 'ws-test', 'tasks');
-        await fs.mkdir(path.join(tasksRoot, 'feature-a'), { recursive: true });
-        await fs.mkdir(path.join(tasksRoot, '.hidden'), { recursive: true });
-        await fs.writeFile(path.join(tasksRoot, 'not-a-folder.md'), 'x');
+        const plansRoot = path.join(dataDir, 'repos', 'ws-test', 'notes', 'Plans');
+        await fs.mkdir(path.join(plansRoot, 'feature-a'), { recursive: true });
+        await fs.mkdir(path.join(plansRoot, '.hidden'), { recursive: true });
+        await fs.writeFile(path.join(plansRoot, 'not-a-folder.md'), 'x');
 
         const context = await resolveAutoFolderContext({
             dataDir,
@@ -63,7 +63,9 @@ describe('resolveAutoFolderContext', () => {
             resolveWorkspaceIdForPath: async () => 'unused',
         });
 
-        expect(context.tasksRoot).toBe(tasksRoot);
+        const stat = await fs.stat(plansRoot);
+        expect(stat.isDirectory()).toBe(true);
+        expect(context.tasksRoot).toBe(plansRoot);
         expect(context.existingFolders).toEqual(['feature-a']);
     });
 
@@ -87,8 +89,7 @@ describe('resolveAutoFolderContext', () => {
 
     it('resolves the workspace ID from the working directory when not provided', async () => {
         const dataDir = await makeDataDir();
-        const tasksRoot = path.join(dataDir, 'repos', 'ws-resolved', 'tasks');
-        await fs.mkdir(tasksRoot, { recursive: true });
+        const plansRoot = path.join(dataDir, 'repos', 'ws-resolved', 'notes', 'Plans');
 
         const context = await resolveAutoFolderContext({
             dataDir,
@@ -97,6 +98,27 @@ describe('resolveAutoFolderContext', () => {
             resolveWorkspaceIdForPath: async () => 'ws-resolved',
         });
 
+        const stat = await fs.stat(plansRoot);
+        expect(stat.isDirectory()).toBe(true);
+        expect(context.tasksRoot).toBe(plansRoot);
+    });
+
+    it('routes non-ask/plan modes to the tasks root, not notes/Plans', async () => {
+        const dataDir = await makeDataDir();
+        const tasksRoot = path.join(dataDir, 'repos', 'ws-other', 'tasks');
+        await fs.mkdir(tasksRoot, { recursive: true });
+
+        const context = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(dataDir, 'repo'),
+            workspaceId: 'ws-other',
+            // mode omitted — defaults to non-ask/plan (autopilot-style)
+            resolveWorkspaceIdForPath: async () => 'unused',
+        });
+
         expect(context.tasksRoot).toBe(tasksRoot);
+        // Ensure no notes/Plans directory was created
+        const plansRoot = path.join(dataDir, 'repos', 'ws-other', 'notes', 'Plans');
+        await expect(fs.stat(plansRoot)).rejects.toThrow();
     });
 });

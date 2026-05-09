@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Partial mock of fs — controls existsSync so skill-dir probing is testable
 // ---------------------------------------------------------------------------
 
-vi.mock('fs', async (importOriginal) => {
+    vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
     return {
         ...actual,
@@ -25,6 +25,8 @@ vi.mock('fs', async (importOriginal) => {
             ...actual.promises,
             access: vi.fn(actual.promises.access),
             readFile: vi.fn(actual.promises.readFile),
+            mkdir: vi.fn().mockResolvedValue(undefined),
+            readdir: vi.fn().mockResolvedValue([]),
         },
     };
 });

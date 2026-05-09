@@ -24,6 +24,7 @@ vi.mock('fs', async (importOriginal) => {
         promises: {
             ...actual.promises,
             readdir: vi.fn(async () => []),
+            mkdir: vi.fn().mockResolvedValue(undefined),
         },
     };
 });
@@ -214,12 +215,12 @@ describe('Workspace ID resolution in queue-executor-bridge', () => {
 
             await executor.execute(task);
 
-            // resolveTaskRoot should have been called with the workspace ID, not the raw path
-            expect(mockResolveTaskRoot).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    workspaceId: WORKSPACE_ID,
-                }),
-            );
+            // Ask-mode follow-ups now target notes/Plans (same as plan mode).
+            // Verify the workspace ID was resolved correctly by checking the mkdir path.
+            const import_fs = await import('fs');
+            const mkdirMock = import_fs.promises.mkdir as ReturnType<typeof vi.fn>;
+            const expectedPlansPath = path.join(DATA_DIR, 'repos', WORKSPACE_ID, 'notes', 'Plans');
+            expect(mkdirMock).toHaveBeenCalledWith(expectedPlansPath, { recursive: true });
         });
 
         it('should resolve workspace ID from store when metadata.workspaceId is missing', async () => {
@@ -248,13 +249,13 @@ describe('Workspace ID resolution in queue-executor-bridge', () => {
 
             await executor.execute(task);
 
-            // Should have resolved via getWorkspaces lookup
+            // Should have resolved workspace ID via getWorkspaces lookup, then used it
+            // to construct the notes/Plans path.
             expect(store.getWorkspaces).toHaveBeenCalled();
-            expect(mockResolveTaskRoot).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    workspaceId: WORKSPACE_ID,
-                }),
-            );
+            const import_fs = await import('fs');
+            const mkdirMock = import_fs.promises.mkdir as ReturnType<typeof vi.fn>;
+            const expectedPlansPath = path.join(DATA_DIR, 'repos', WORKSPACE_ID, 'notes', 'Plans');
+            expect(mkdirMock).toHaveBeenCalledWith(expectedPlansPath, { recursive: true });
         });
     });
 

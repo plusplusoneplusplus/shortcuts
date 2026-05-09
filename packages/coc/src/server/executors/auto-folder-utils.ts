@@ -29,8 +29,9 @@ export interface ResolveAutoFolderContextOptions {
 /**
  * Resolve the target root directory and list existing user-facing folders.
  *
- * Plan mode targets repo notes/Plans so generated plans appear in the Notes
- * tab. Other modes target the repo task root.
+ * Both `plan` and `ask` modes target repo notes/Plans so generated plans
+ * appear in the Notes tab regardless of which mode the user is in.
+ * Other modes target the repo task root.
  */
 export async function resolveAutoFolderContext(
     options: ResolveAutoFolderContextOptions,
@@ -40,7 +41,7 @@ export async function resolveAutoFolderContext(
     const effectiveDataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
 
     let folderRoot: string;
-    if (options.mode === 'plan') {
+    if (options.mode === 'plan' || options.mode === 'ask') {
         folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId, 'notes'), 'Plans');
         await fs.promises.mkdir(folderRoot, { recursive: true });
     } else {
