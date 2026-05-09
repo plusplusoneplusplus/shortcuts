@@ -6,7 +6,7 @@
  * Shared queue task list used by the Activity tab.
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Card, Button, cn, FilterDropdown } from '../../ui';
 import type { FilterItem } from '../../ui';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
@@ -562,6 +562,77 @@ export function ChatListPane({
     const [showHistory, setShowHistory] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
 
+    /**
+     * Filter chip selection on the redesigned chats tab.
+     * Chip counts are computed against the unfiltered list so badges remain
+     * meaningful regardless of the active filter.
+     */
+    const [chatFilter, setChatFilter] = useState<'all' | 'running' | 'failed'>('all');
+
+    /** Platform-aware modifier key label for the search kbd hint. */
+    const kbdLabel = useMemo(() => {
+        if (typeof navigator === 'undefined') return '⌘F';
+        const isMac = /mac/i.test(navigator.platform);
+        return isMac ? '⌘F' : 'Ctrl+F';
+    }, []);
+
+    // Time-bucketed groups for the redesigned chats tab.
+    // Splits the chats list into Running / Pinned / Today / This Week / Older
+    // (and a separate Archived bucket). The chatFilter chip is applied to each
+    // bucket; chip counts are derived from the unfiltered list.
+    const chatGroups = useMemo(() => {
+        if (activeTab !== 'chats') return null;
+
+        const runningIdSet = new Set(running.map((r: any) => r.id));
+        const isRunningTask = (t: any) => runningIdSet.has(t.id);
+
+        const passesFilter = (t: any): boolean => {
+            if (chatFilter === 'all') return true;
+            if (chatFilter === 'running') return isRunningTask(t);
+            if (chatFilter === 'failed') return t.status === 'failed';
+            return true;
+        };
+
+        const allActive = chatAllItems.pinned.concat(chatAllItems.unpinned);
+        const runningChats = allActive.filter(t => isRunningTask(t) && passesFilter(t));
+        const pinnedChats = chatAllItems.pinned.filter(t => !isRunningTask(t) && passesFilter(t));
+        const recentNonRunning = chatAllItems.unpinned.filter(t => !isRunningTask(t) && passesFilter(t));
+        const archivedChats = chatAllItems.archived.filter(passesFilter);
+
+        const today: any[] = [];
+        const week: any[] = [];
+        const older: any[] = [];
+        const nowMs = Date.now();
+        for (const t of recentNonRunning) {
+            const ts = t.completedAt ?? t.endTime ?? t.startedAt ?? t.startTime ?? t.createdAt;
+            const time = ts ? +new Date(ts) : 0;
+            const ageH = time ? (nowMs - time) / 3600000 : Infinity;
+            if (ageH < 24) today.push(t);
+            else if (ageH < 24 * 7) week.push(t);
+            else older.push(t);
+        }
+
+        const counts = {
+            all: allActive.length,
+            running: allActive.filter(isRunningTask).length,
+            failed: allActive.filter(t => t.status === 'failed').length,
+        };
+
+        // Flat list across visible sections, used for shift-click range selection
+        const flatVisible = [...runningChats, ...pinnedChats, ...today, ...week, ...older];
+
+        return {
+            runningChats,
+            pinnedChats,
+            today,
+            week,
+            older,
+            archivedChats,
+            counts,
+            flatVisible,
+        };
+    }, [activeTab, running, chatAllItems, chatFilter]);
+
     const handleCancel = async (taskId: string) => {
         await getSpaCocClient().queue.cancel(taskId);
         fetchQueue();
@@ -912,6 +983,126 @@ export function ChatListPane({
         );
     }, [unseenProcessIds, selectedHistoryIds, isDense, isMobile, isSelected, handleHistoryItemClick, handleTaskContextMenu, filteredUnpinned, onArchiveChat, onUnarchiveChat]);
 
+    /**
+     * Render a single row in the redesigned chats list.
+     *
+     * Layout: [status-dot] [MODE pill] [title] [timestamp]
+     * - Mode pill is colored by AI execution mode (ASK / PLAN / AUTO).
+     * - Status dot encodes runtime state independently of the mode pill.
+     * - All click / context-menu / pin / archive functionality is preserved.
+     */
+    const renderChatListRow = useCallback((task: any, listForRange: any[], options?: { dataTestid?: string }) => {
+        const isUnseen = unseenProcessIds?.has(task.id) ?? false;
+        const hasDraft = !!getDraft(task.id);
+        const isRunning = running.some((r: any) => r.id === task.id);
+        const isFailed = !isRunning && task.status === 'failed';
+        const isPinned = pinnedChatIds?.has(task.id) ?? false;
+        const isHistorySelected = selectedHistoryIds.has(task.id);
+        const isRowSelected = isSelected(task.id);
+
+        const mode = (task.payload?.mode ?? task.mode ?? 'autopilot') as string;
+        const modeShort = mode === 'autopilot' ? 'auto' : mode;
+        const modeLabel = mode === 'autopilot' ? 'AUTO' : mode === 'plan' ? 'PLAN' : mode === 'ask' ? 'ASK' : 'AUTO';
+
+        const ts = task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt;
+        const timeText = isRunning
+            ? statusLabel('running', task.type)
+            : (ts ? formatRelativeTime(new Date(ts).toISOString()) : '');
+
+        const modeBadgeClasses = cn(
+            'shrink-0 inline-flex items-center justify-center rounded border font-mono font-bold uppercase tracking-wider select-none',
+            'text-[9.5px] leading-none w-9 h-[18px]',
+            modeShort === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
+            modeShort === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
+            modeShort === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
+        );
+
+        const dotClasses = cn(
+            'shrink-0 w-2 h-2 rounded-full',
+            isRunning && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.18)]',
+            !isRunning && isFailed && 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.20)]',
+            !isRunning && !isFailed && 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
+        );
+
+        return (
+            <SwipeableHistoryItem
+                key={task.id}
+                isMobile={isMobile}
+                onArchive={() => onArchiveChat(task.id)}
+                onUnarchive={() => onUnarchiveChat(task.id)}
+            >
+                <div
+                    className={cn(
+                        'group relative flex items-center gap-2 px-3 cursor-pointer leading-none',
+                        'text-[12.5px] h-[26px]',
+                        'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60 transition-colors',
+                        'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
+                        isHistorySelected && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40',
+                        !isHistorySelected && isRowSelected && 'bg-[#0078d4]/[0.08] dark:bg-[#3794ff]/[0.10]',
+                        !isHistorySelected && isRowSelected && 'before:content-[""] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-[#0078d4] dark:before:bg-[#3794ff]',
+                        selectedHistoryIds.size > 0 && 'select-none',
+                    )}
+                    onClick={(e) => {
+                        if (historyLongPress.didLongPress?.()) return;
+                        handleHistoryItemClick(e, task, listForRange);
+                    }}
+                    onContextMenu={(e) => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                    onTouchStart={(e) => {
+                        historyLongPressTaskRef.current = task.id;
+                        historyLongPress.onTouchStart(e);
+                    }}
+                    onTouchEnd={historyLongPress.onTouchEnd}
+                    onTouchMove={historyLongPress.onTouchMove}
+                    data-task-id={task.id}
+                    data-testid={options?.dataTestid ?? (isRunning ? 'running-task-row' : 'history-task-row')}
+                    data-unseen={isUnseen || undefined}
+                    data-selected={isHistorySelected || undefined}
+                    data-pinned={isPinned ? 'true' : undefined}
+                    title={getChatTitle(task)}
+                >
+                    <span className={dotClasses} aria-label={`status: ${isRunning ? 'running' : isFailed ? 'failed' : 'done'}`} />
+                    <span className={modeBadgeClasses} title={CHAT_MODE_LABELS[mode] || mode}>{modeLabel}</span>
+                    <span className="flex-1 min-w-0 flex items-center gap-1">
+                        {isHistorySelected && (
+                            <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>
+                        )}
+                        {isUnseen && (
+                            <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />
+                        )}
+                        <span className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]', isUnseen && 'font-semibold', isFailed && 'text-red-700 dark:text-red-400')}>
+                            {getChatTitle(task)}
+                        </span>
+                        {hasDraft && (
+                            <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>
+                        )}
+                        {(() => {
+                            const cat = getSessionCategory(task);
+                            const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined;
+                            return m ? (
+                                <span className={cn('shrink-0 text-[10px] font-medium', m.color)} data-testid="session-category-badge">{m.icon}</span>
+                            ) : null;
+                        })()}
+                    </span>
+                    <span className="shrink-0 text-[10.5px] font-mono text-[#848484] dark:text-[#999] tabular-nums whitespace-nowrap">
+                        {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />{statusLabel('running', task.type)}</span> : timeText}
+                    </span>
+                </div>
+            </SwipeableHistoryItem>
+        );
+    }, [
+        unseenProcessIds,
+        running,
+        pinnedChatIds,
+        selectedHistoryIds,
+        isMobile,
+        isSelected,
+        handleHistoryItemClick,
+        handleTaskContextMenu,
+        onArchiveChat,
+        onUnarchiveChat,
+        historyLongPress,
+    ]);
+
     // When a server-side search is active, always render the main body so FTS5 results
     // can be displayed even when the locally-loaded history page is empty.
     if (running.length === 0 && queued.length === 0 && history.length === 0 && !isServerSearchActive) {
@@ -945,39 +1136,94 @@ export function ChatListPane({
     return (
         <>
             <div ref={containerRef} className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1">
-                {/* ── Chats tab: flat time-sorted list ── */}
-                {activeTab === 'chats' && (
+                {/* ── Chats tab: redesigned status-grouped list ── */}
+                {activeTab === 'chats' && chatGroups && (
                     <>
                         <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                             💬 New Chat
                         </Button>
-                        {/* Search bar — always visible on Chats tab */}
-                        <div className="flex items-center gap-1.5 px-1 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] text-xs">
-                            <span className="text-[#848484]">🔍</span>
+
+                        {/* Search bar — magnifying glass + ⌘F kbd hint */}
+                        <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                                    <circle cx="7" cy="7" r="4.5" />
+                                    <path d="M10.5 10.5l3 3" />
+                                </svg>
+                            </span>
                             <input
+                                ref={searchInputRef}
                                 type="text"
-                                placeholder="Search conversations…"
+                                placeholder="Search…"
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="flex-1 bg-transparent outline-none text-xs placeholder:text-[#848484]"
+                                className="w-full h-7 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] pl-7 pr-14 text-xs text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#848484] outline-none focus:border-[#0078d4] dark:focus:border-[#3794ff] focus:bg-white dark:focus:bg-[#252526] focus:shadow-[0_0_0_3px_rgba(0,120,212,0.18)]"
                                 data-testid="queue-search-input"
+                                aria-label="Search conversations"
                             />
                             {searchLoading && (
-                                <span className="text-[#848484] animate-pulse" data-testid="search-loading-indicator">⏳</span>
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[#848484] animate-pulse" data-testid="search-loading-indicator">⏳</span>
+                            )}
+                            {!searchQuery && !searchLoading && (
+                                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0] border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#252526] rounded px-1 py-px pointer-events-none select-none">
+                                    {kbdLabel}
+                                </kbd>
                             )}
                             {searchQuery && !searchLoading && (
-                                <span className="text-[#848484] tabular-nums" data-testid="search-match-count">
-                                    {isServerSearchActive ? searchTotal ?? 0 : chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length}
-                                </span>
-                            )}
-                            {searchQuery && (
-                                <button
-                                    className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none"
-                                    onClick={() => setSearchQuery('')}
-                                    data-testid="chat-search-close"
-                                >✕</button>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                    <span className="text-[#848484] tabular-nums text-[10px]" data-testid="search-match-count">
+                                        {isServerSearchActive ? searchTotal ?? 0 : chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length}
+                                    </span>
+                                    <button
+                                        className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none text-[12px]"
+                                        onClick={() => setSearchQuery('')}
+                                        data-testid="chat-search-close"
+                                        aria-label="Clear search"
+                                    >✕</button>
+                                </div>
                             )}
                         </div>
+
+                        {/* Filter chips: All / Running / Failed (chips with zero count auto-hide except All) */}
+                        {!isServerSearchActive && (
+                            <div className="flex flex-wrap gap-0.5" role="tablist" aria-label="Filter chats">
+                                {([
+                                    { id: 'all' as const, label: 'All', count: chatGroups.counts.all },
+                                    { id: 'running' as const, label: 'Running', count: chatGroups.counts.running, dot: 'running' as const },
+                                    { id: 'failed' as const, label: 'Failed', count: chatGroups.counts.failed, dot: 'failed' as const },
+                                ]).filter(c => c.id === 'all' || c.count > 0).map(chip => {
+                                    const isOn = chatFilter === chip.id;
+                                    return (
+                                        <button
+                                            key={chip.id}
+                                            role="tab"
+                                            aria-selected={isOn}
+                                            data-filter={chip.id}
+                                            data-testid={`chat-filter-chip-${chip.id}`}
+                                            onClick={() => setChatFilter(chip.id)}
+                                            className={cn(
+                                                'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[11.5px] leading-none transition-colors',
+                                                isOn
+                                                    ? 'text-[#1e1e1e] dark:text-[#ffffff] bg-[#0078d4]/[0.10] dark:bg-[#3794ff]/[0.16] border-[#0078d4]/35 dark:border-[#3794ff]/40'
+                                                    : 'text-[#606060] dark:text-[#9d9d9d] border-transparent hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                                            )}
+                                        >
+                                            {chip.dot === 'running' && (
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
+                                            )}
+                                            {chip.dot === 'failed' && (
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" aria-hidden="true" />
+                                            )}
+                                            <span>{chip.label}</span>
+                                            <span className={cn('font-mono text-[10.5px] tabular-nums', isOn ? 'text-[#0078d4] dark:text-[#3794ff]' : 'text-[#9d9d9d] dark:text-[#7d7d7d]')}>
+                                                {chip.count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {/* FTS5 server-side search results (replaces normal sections when active) */}
                         {isServerSearchActive ? (
                             <div data-testid="chat-search-results">
@@ -995,38 +1241,18 @@ export function ChatListPane({
                                         No matching chats found
                                     </div>
                                 )}
-                                <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
+                                <div className="-mx-2 md:-mx-4 mt-1 flex flex-col">
                                     {searchResults!.map(task => (
-                                        <Card
-                                            key={task.id}
-                                            className={cn(
-                                                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
-                                                isSelected(task.id) && "ring-2 ring-[#0078d4]"
-                                            )}
-                                            onClick={() => onSelectTask(task.id, task)}
-                                            data-task-id={task.id}
-                                            data-testid="chat-search-result-item"
-                                        >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                                                <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    <span className="truncate" title={task.displayName || task.title || 'Chat'}>
-                                                        {task.displayName || task.title || 'Chat'}
-                                                    </span>
-                                                    {task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
-                                                </span>
-                                            </div>
-                                            {!isDense && task._searchSnippet && (
+                                        <React.Fragment key={task.id}>
+                                            {renderChatListRow(task, searchResults!, { dataTestid: 'chat-search-result-item' })}
+                                            {task._searchSnippet && (
                                                 <div
-                                                    className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb] [&_mark]:bg-yellow-200 [&_mark]:dark:bg-yellow-700/50 [&_mark]:text-inherit [&_mark]:rounded-sm [&_mark]:px-px"
+                                                    className="px-3 pb-1 -mt-px text-[10px] truncate text-[#848484] dark:text-[#bbb] [&_mark]:bg-yellow-200 [&_mark]:dark:bg-yellow-700/50 [&_mark]:text-inherit [&_mark]:rounded-sm [&_mark]:px-px"
                                                     data-testid="chat-search-snippet"
                                                     dangerouslySetInnerHTML={{ __html: task._searchSnippet }}
                                                 />
                                             )}
-                                            {!isDense && !task._searchSnippet && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
-                                        </Card>
+                                        </React.Fragment>
                                     ))}
                                 </div>
                                 {searchHasMore && onLoadMoreSearchResults && (
@@ -1043,130 +1269,81 @@ export function ChatListPane({
                                 )}
                             </div>
                         ) : (
-                            /* Normal pinned/unpinned/archived sections */
-                            <>
-                                {chatAllItems.pinned.length > 0 && (
-                                    <div>
-                                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">📌 Pinned</div>
-                                        <div className="flex flex-col gap-1">
-                                            {chatAllItems.pinned.map(task => {
-                                                const isUnseen = unseenProcessIds?.has(task.id) ?? false;
-                                                const hasDraft = !!getDraft(task.id);
-                                                const isRunning = running.some(t => t.id === task.id);
-                                                return (
-                                                    <Card
-                                                        key={task.id}
-                                                        className={cn(
-                                                            'p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500',
-                                                            isSelected(task.id) && 'ring-2 ring-[#0078d4]'
+                            /* Status-priority groups: Running → Pinned → Today → This week → Older → Archived */
+                            <div className="-mx-2 md:-mx-4 flex flex-col">
+                                {(() => {
+                                    const sections = [
+                                        { id: 'running', label: 'Running', items: chatGroups.runningChats, variant: 'running' as const },
+                                        { id: 'pinned', label: 'Pinned', items: chatGroups.pinnedChats, variant: 'pinned' as const },
+                                        { id: 'today', label: 'Today', items: chatGroups.today, variant: 'plain' as const },
+                                        { id: 'week', label: 'This week', items: chatGroups.week, variant: 'plain' as const },
+                                        { id: 'older', label: 'Older', items: chatGroups.older, variant: 'plain' as const },
+                                    ];
+                                    return sections
+                                        .filter(s => s.items.length > 0)
+                                        .map(section => (
+                                            <div key={section.id} data-section={section.id}>
+                                                <div
+                                                    className={cn(
+                                                        'sticky top-0 z-[2] flex items-center justify-between px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150',
+                                                        section.variant === 'running' && 'bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/[0.08] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                        section.variant === 'pinned' && 'bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                        section.variant === 'plain' && 'bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80',
+                                                    )}
+                                                >
+                                                    <span className={cn(
+                                                        'inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.1em]',
+                                                        section.variant === 'running' && 'text-[#0078d4] dark:text-[#3794ff]',
+                                                        section.variant === 'pinned' && 'text-[#848484] dark:text-[#a0a0a0]',
+                                                        section.variant === 'plain' && 'text-[#848484] dark:text-[#a0a0a0]',
+                                                    )}>
+                                                        {section.variant === 'running' && (
+                                                            <span className="w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" aria-hidden="true" />
                                                         )}
-                                                        onClick={() => onSelectTask(task.id, task)}
-                                                        onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
-                                                        data-task-id={task.id}
-                                                        data-pinned="true"
-                                                    >
-                                                        <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                            <span className="flex items-center gap-1 min-w-0 truncate">
-                                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                                {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                                <span className={cn('truncate', isUnseen && 'font-semibold')} title={getChatTitle(task)}>{getChatTitle(task)}</span>
-                                                                {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                            </span>
-                                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />{statusLabel('running', task.type)}</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
-                                                            </span>
-                                                        </div>
-                                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
-                                                    </Card>
-                                                );
-                                            })}
-                                        </div>
+                                                        {section.variant === 'pinned' && (
+                                                            <span className="w-[5px] h-[5px] rounded-full bg-[#0078d4] dark:bg-[#3794ff]" aria-hidden="true" />
+                                                        )}
+                                                        {section.label}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0]">{section.items.length}</span>
+                                                </div>
+                                                {section.items.map(task => renderChatListRow(task, chatGroups.flatVisible))}
+                                            </div>
+                                        ));
+                                })()}
+
+                                {chatGroups.flatVisible.length === 0 && !searchQuery && (
+                                    <div className="text-center text-xs text-[#848484] py-4 px-3">
+                                        {chatFilter === 'all' ? 'No chat sessions yet' : 'No chats match this filter'}
                                     </div>
                                 )}
-                                {chatAllItems.unpinned.length > 0 && (
-                                    <div>
-                                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">💬 Recently</div>
-                                        <div className="flex flex-col gap-1">
-                                            {chatAllItems.unpinned.map(task => {
-                                                const isUnseen = unseenProcessIds?.has(task.id) ?? false;
-                                                const hasDraft = !!getDraft(task.id);
-                                                const isRunning = running.some(t => t.id === task.id);
-                                                return (
-                                                    <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
-                                                    <Card
-                                                        className={cn(
-                                                            'p-2 cursor-pointer',
-                                                            isSelected(task.id) && 'ring-2 ring-[#0078d4]'
-                                                        )}
-                                                        onClick={() => onSelectTask(task.id, task)}
-                                                        onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
-                                                        data-task-id={task.id}
-                                                    >
-                                                        <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                            <span className="flex items-center gap-1 min-w-0 truncate">
-                                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                                {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                                <span className={cn('truncate', isUnseen && 'font-semibold')} title={getChatTitle(task)}>{getChatTitle(task)}</span>
-                                                                {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                            </span>
-                                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />{statusLabel('running', task.type)}</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
-                                                            </span>
-                                                        </div>
-                                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
-                                                    </Card>
-                                                    </SwipeableHistoryItem>
-                                                );
-                                            })}
-                                        </div>
+                                {chatGroups.flatVisible.length === 0 && searchQuery && (
+                                    <div className="text-center text-xs text-[#848484] py-4 px-3" data-testid="chat-search-empty-state">
+                                        No chats matching &ldquo;{searchQuery}&rdquo;
                                     </div>
                                 )}
-                                {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && !searchQuery && (
-                                    <div className="text-center text-xs text-[#848484] py-4">No chat sessions yet</div>
-                                )}
-                                {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && chatAllItems.archived.length === 0 && searchQuery && (
-                                    <div className="text-center text-xs text-[#848484] py-4" data-testid="chat-search-empty-state">No chats matching &ldquo;{searchQuery}&rdquo;</div>
-                                )}
-                                {chatAllItems.archived.length > 0 && (
-                                    <div>
+
+                                {chatGroups.archivedChats.length > 0 && (
+                                    <div data-section="archived">
                                         <button
-                                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                                            className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b bg-white/90 dark:bg-[#1e1e1e]/90 border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors"
                                             onClick={() => setShowArchived(!showArchived)}
                                             data-testid="chat-archived-toggle"
                                         >
-                                            {showArchived ? '▼' : '▶'} 📦 Archived ({chatAllItems.archived.length})
+                                            <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
+                                                <span className="text-[10px]">{showArchived ? '▼' : '▶'}</span>
+                                                Archived
+                                            </span>
+                                            <span className="text-[10px] font-mono text-[#848484] dark:text-[#a0a0a0]">{chatGroups.archivedChats.length}</span>
                                         </button>
                                         {showArchived && (
-                                            <div className="flex flex-col gap-1">
-                                                {chatAllItems.archived.map(task => (
-                                                    <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
-                                                    <Card
-                                                        className={cn('p-2 cursor-pointer opacity-60', isSelected(task.id) && 'ring-2 ring-[#0078d4]')}
-                                                        onClick={() => onSelectTask(task.id, task)}
-                                                        onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                                        data-task-id={task.id}
-                                                        data-archived="true"
-                                                    >
-                                                        <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                            <span className="flex items-center gap-1 min-w-0 truncate">
-                                                                <span className="truncate" title={getChatTitle(task)}>{getChatTitle(task)}</span>
-                                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                            </span>
-                                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                                {(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
-                                                            </span>
-                                                        </div>
-                                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
-                                                    </Card>
-                                                    </SwipeableHistoryItem>
-                                                ))}
+                                            <div className="opacity-70">
+                                                {chatGroups.archivedChats.map(task => renderChatListRow(task, chatGroups.archivedChats))}
                                             </div>
                                         )}
                                     </div>
                                 )}
-                            </>
+                            </div>
                         )}
                     </>
                 )}
