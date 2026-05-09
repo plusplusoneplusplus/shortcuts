@@ -91,7 +91,7 @@ describe('useRemoteServerHealth', () => {
         try {
             await waitFor(() => expect(result.current[0].status).toBe('online'));
             const state = result.current[0];
-            expect(fetchMock).toHaveBeenCalledWith('/api/servers/a/health');
+            expect(fetchMock).toHaveBeenCalledWith('/api/servers/a/health', expect.any(Object));
             expect(state.uptime).toBe(1234);
             expect(state.processCount).toBe(7);
             expect(state.version).toBe('1.2.3');
@@ -109,7 +109,7 @@ describe('useRemoteServerHealth', () => {
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
             await waitFor(() => expect(result.current[0].status).toBe('offline'));
-            expect(result.current[0].error).toBe('network down');
+            expect(result.current[0].error).toBe('CoC API request failed before receiving a response');
             expect(result.current[0].lastChecked).toBeTypeOf('number');
         } finally {
             unmount();
@@ -121,7 +121,7 @@ describe('useRemoteServerHealth', () => {
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
             await waitFor(() => expect(result.current[0].status).toBe('offline'));
-            expect(result.current[0].error).toBe('HTTP 503');
+            expect(result.current[0].error).toBe('bad');
         } finally {
             unmount();
         }

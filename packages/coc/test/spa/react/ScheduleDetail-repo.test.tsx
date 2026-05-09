@@ -24,6 +24,15 @@ vi.mock('../../../src/server/spa/client/react/features/schedules/CreateScheduleF
     ),
 }));
 
+vi.mock('../../../src/server/spa/client/react/features/schedules/PromptScheduleForm', () => ({
+    PromptScheduleForm: ({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) => (
+        <div data-testid="mock-form">
+            <button data-testid="mock-save" onClick={() => onCreated()}>Save</button>
+            <button data-testid="mock-cancel" onClick={() => onCancel()}>Cancel</button>
+        </div>
+    ),
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>

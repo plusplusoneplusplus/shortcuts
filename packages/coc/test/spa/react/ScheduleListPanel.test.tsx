@@ -163,7 +163,7 @@ describe('ScheduleListPanel — two-section UI', () => {
     it('shows empty state for user section when no user schedules', () => {
         renderPanel([REPO_SCHEDULE]);
         // User section shows empty state text
-        expect(screen.getByText(/No schedules yet/)).toBeTruthy();
+        expect(screen.getByText(/Create a recurring prompt/)).toBeTruthy();
     });
 
     it('shows empty state for repo section when no repo schedules', () => {

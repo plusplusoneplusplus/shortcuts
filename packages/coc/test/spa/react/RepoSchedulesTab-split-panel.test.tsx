@@ -195,7 +195,7 @@ describe('Split-panel layout', () => {
         });
     });
 
-    it('+ New renders CreateScheduleForm in right panel without deselecting left row', async () => {
+    it('creates a new schedule form in right panel without deselecting left row', async () => {
         await renderWithSchedules();
 
         // Wait for auto-select
@@ -208,7 +208,7 @@ describe('Split-panel layout', () => {
 
         // Form should appear in right panel
         await waitFor(() => {
-            expect(screen.getByText('New Schedule')).toBeTruthy();
+            expect(screen.getByText('New Prompt Routine')).toBeTruthy();
         });
 
         // Left list row should still have active styling (aria-selected on li)
@@ -245,11 +245,11 @@ describe('Split-panel layout', () => {
         await renderEmpty();
 
         // Left panel empty state — new two-section UI
-        expect(screen.getByText('No schedules yet. Click "+ New" to create one.')).toBeTruthy();
-        expect(screen.getByText('🕐')).toBeTruthy();
+        expect(screen.getByText('Create a recurring prompt')).toBeTruthy();
+        expect(screen.getByText('💬')).toBeTruthy();
 
         // Right panel placeholder
-        expect(screen.getByText('Create your first schedule with "+ New"')).toBeTruthy();
+        expect(screen.getByText('Create a recurring prompt with "+ New"')).toBeTruthy();
     });
 
     it('active row has border-l-2 border-[#0078d4] classes', async () => {

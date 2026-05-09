@@ -171,6 +171,7 @@ describe('CreateScheduleForm action-card UI', () => {
         // Click "+ New" to open the form
         const newBtn = screen.getByText('+ New');
         fireEvent.click(newBtn);
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         expect(screen.getByTestId('schedule-action-cards')).toBeTruthy();
         expect(screen.getByTestId('schedule-action-workflow')).toBeTruthy();
@@ -182,6 +183,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('clicking a Script action card pre-fills the schedule name', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-script'));
 
@@ -195,6 +197,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('run-workflow template starts with empty target for dropdown selection', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
@@ -207,6 +210,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('clicking a template shows dynamic params fields', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-script'));
         fireEvent.click(screen.getByTestId('advanced-options-toggle'));
@@ -221,6 +225,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('clicking a template shows the hint text', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-script')!;
         fireEvent.click(screen.getByTestId('schedule-action-script'));
@@ -233,6 +238,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('switching back to Prompt resets script-only fields', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-script'));
         expect(screen.getByTestId('working-directory-input')).toBeTruthy();
@@ -248,6 +254,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('switching between templates updates form fields', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         // Select run-script
         fireEvent.click(screen.getByTestId('schedule-action-script'));
@@ -264,6 +271,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('script working directory is editable', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-action-script'));
 
         const wdInput = screen.getByTestId('working-directory-input') as HTMLInputElement;
@@ -274,6 +282,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('Create button has type="submit" so it triggers form submission', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         const createBtn = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement;
         expect(createBtn.type).toBe('submit');
@@ -287,6 +296,7 @@ describe('CreateScheduleForm action-card UI', () => {
 
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-action-script'));
 
         // run-script has empty target — fill the script command input
@@ -313,6 +323,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('workflow action selects the daily preset', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-workflow'));
 
@@ -323,6 +334,7 @@ describe('CreateScheduleForm action-card UI', () => {
     it('notes auto-commit action selects the 30-minute preset', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-action-notes-auto-commit'));
 
@@ -353,6 +365,7 @@ describe('Workflow dropdown selector (target field)', () => {
     async function openRunWorkflowTemplate() {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         // Set up workflow list mock to return two workflows
         mockWorkflowClient.list.mockResolvedValue([
             { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
@@ -442,6 +455,7 @@ describe('Workflow dropdown selector (target field)', () => {
     it('falls back to text input when no workflows are found', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         // Return empty workflows list
         mockWorkflowClient.list.mockResolvedValue([]);
@@ -457,6 +471,7 @@ describe('Workflow dropdown selector (target field)', () => {
     it('falls back to text input when workflow fetch fails', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         mockWorkflowClient.list.mockRejectedValue(new Error('Internal Server Error'));
 
@@ -471,6 +486,7 @@ describe('Workflow dropdown selector (target field)', () => {
     it('shows loading indicator while fetching workflows', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         // Make workflow list hang indefinitely
         mockWorkflowClient.list.mockReturnValue(new Promise(() => {}));
@@ -525,6 +541,7 @@ describe('Workflow dropdown selector (target field)', () => {
     it('params.pipeline is set when a workflow is selected from dropdown', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         mockWorkflowClient.list.mockResolvedValue([
             { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
@@ -636,13 +653,13 @@ describe('Split-panel layout', () => {
         });
     });
 
-    it('clicking "+ New" shows CreateScheduleForm in the right panel while left list remains visible', async () => {
+    it('clicking "+ New" shows schedule form in the right panel while left list remains visible', async () => {
         await renderWithSchedules();
 
         fireEvent.click(screen.getByText('+ New'));
 
         await waitFor(() => {
-            expect(screen.getByText('New Schedule')).toBeTruthy();
+            expect(screen.getByText('New Prompt Routine')).toBeTruthy();
             expect(screen.getByText(MOCK_SCHEDULE.name)).toBeTruthy();
         });
     });
@@ -814,6 +831,7 @@ describe('Cron hint panel UI', () => {
     it('shows cron hint panel when cron mode is active', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
         fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
@@ -826,6 +844,7 @@ describe('Cron hint panel UI', () => {
     it('does not show cron hint panel in interval mode', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
 
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
 
@@ -836,6 +855,7 @@ describe('Cron hint panel UI', () => {
     it('field legend displays all 5 cron field badges', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
         fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
@@ -850,6 +870,7 @@ describe('Cron hint panel UI', () => {
     it('shows human-readable description for default cron value', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
         fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
@@ -861,6 +882,7 @@ describe('Cron hint panel UI', () => {
     it('clicking an example populates the cron input', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
         fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
@@ -875,6 +897,7 @@ describe('Cron hint panel UI', () => {
     it('renders example buttons for all CRON_EXAMPLES', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByTestId('switch-to-advanced'));
         fireEvent.click(screen.getByTestId('schedule-preset-custom-interval'));
         fireEvent.click(screen.getByTestId('schedule-trigger-mode-cron'));
 
