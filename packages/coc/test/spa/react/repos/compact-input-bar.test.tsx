@@ -166,6 +166,30 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(bar.className).toContain('border');
     });
 
+    // Regression: stacked input card must not show two conflicting borders
+    // (Tailwind default blue ring + mode-coloured border) when the
+    // contenteditable child is focused. The fix requires `focus-within:`
+    // prefix on the ring colour so it actually applies to the parent card.
+    it('chat-input-bar applies a mode-coloured focus-within ring (no default-blue conflict)', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask' })} />);
+        const bar = screen.getByTestId('chat-input-bar');
+        // The activator that turns the ring on
+        expect(bar.className).toContain('focus-within:ring-2');
+        // The colour must use focus-within: (not bare focus:) so it
+        // propagates from the focused child to this parent <div>.
+        expect(bar.className).toContain('focus-within:ring-yellow-500/30');
+        expect(bar.className).not.toMatch(/(?:^|\s)focus:ring-yellow/);
+    });
+
+    it.each([
+        ['plan', 'focus-within:ring-blue-500/30'],
+        ['autopilot', 'focus-within:ring-green-500/30'],
+    ] as const)('chat-input-bar uses %s ring class for %s mode', (mode, ringClass) => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: mode })} />);
+        const bar = screen.getByTestId('chat-input-bar');
+        expect(bar.className).toContain(ringClass);
+    });
+
     it('renders the mode pill selector with one button per mode', () => {
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();

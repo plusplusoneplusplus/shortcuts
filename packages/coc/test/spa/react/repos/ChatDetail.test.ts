@@ -675,9 +675,19 @@ describe('ChatDetail', () => {
     describe('mode-based input border colors', () => {
         it('defines MODE_BORDER_COLORS mapping for all three modes', () => {
             expect(MODE_CONFIG_SOURCE).toContain('MODE_BORDER_COLORS');
-            expect(MODE_CONFIG_SOURCE).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' }");
-            expect(MODE_CONFIG_SOURCE).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' }");
-            expect(MODE_CONFIG_SOURCE).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' }");
+            expect(MODE_CONFIG_SOURCE).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus-within:ring-green-500/30' }");
+            expect(MODE_CONFIG_SOURCE).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus-within:ring-yellow-500/30' }");
+            expect(MODE_CONFIG_SOURCE).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus-within:ring-blue-500/30' }");
+        });
+
+        // Regression guard for the “double-border” bug where the stacked
+        // chat-input card showed Tailwind’s default blue ring on top of the
+        // mode-coloured border. The fix requires `focus-within:` (not
+        // `focus:`) so the ring colour propagates to the parent card whose
+        // focused descendant is a contenteditable input.
+        it('uses focus-within: prefix on the ring (not bare focus:)', () => {
+            expect(MODE_CONFIG_SOURCE).not.toMatch(/ring:\s*'focus:ring-/);
+            expect(MODE_CONFIG_SOURCE).toMatch(/ring:\s*'focus-within:ring-(green|yellow|blue)-500\/30'/);
         });
 
         it('applies dynamic border class from MODE_BORDER_COLORS to rich text input', () => {
