@@ -90,6 +90,61 @@ describe('resolveReasoningEffort', () => {
         });
     });
 
+    it('strips raw-effort suffix when family is self-referential (upstream regression)', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-xhigh',
+            model: model('claude-opus-4.7-xhigh', {
+                family: 'claude-opus-4.7-xhigh',
+                rawEfforts: ['xhigh'],
+                supportedEfforts: ['medium'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'xhigh',
+        });
+    });
+
+    it('strips raw-effort suffix when family is missing entirely', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-high',
+            model: model('claude-opus-4.7-high', {
+                rawEfforts: ['high'],
+                supportedEfforts: ['high'],
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'high',
+        });
+    });
+
+    it('does not strip suffix for multi-effort models', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-flex',
+            model: model('claude-opus-4.7-flex', {
+                family: 'claude-opus-4.7-flex',
+                rawEfforts: ['low', 'medium', 'high'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7-flex',
+            reasoningEffort: 'medium',
+        });
+    });
+
+    it('does not strip suffix when modelId does not end with the resolved effort', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-internal',
+            model: model('claude-opus-4.7-internal', {
+                family: 'claude-opus-4.7-internal',
+                rawEfforts: ['xhigh'],
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7-internal',
+            reasoningEffort: 'xhigh',
+        });
+    });
+
     it('throws for an explicitly requested unsupported effort', () => {
         expect(() => resolveReasoningEffort({
             modelId: 'high-only',

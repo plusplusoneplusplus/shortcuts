@@ -110,16 +110,62 @@ export function resolveReasoningSelection(options: ResolveReasoningEffortOptions
     const reasoningEffort = resolveReasoningEffort(options);
     const rawCapabilityEfforts = normalizeReasoningEffortList(options.model?.capabilities?.supports?.reasoning_effort);
     const family = options.model?.capabilities?.family;
-    const modelId = reasoningEffort
-        && rawCapabilityEfforts?.includes(reasoningEffort)
-        && typeof family === 'string'
-        && family.length > 0
-        && family !== options.modelId
-        ? family
-        : options.modelId;
+    const baseModelId = deriveBaseModelId({
+        modelId: options.modelId,
+        family,
+        reasoningEffort,
+        rawCapabilityEfforts,
+    });
 
     return {
-        modelId,
+        modelId: baseModelId ?? options.modelId,
         reasoningEffort,
     };
+}
+
+interface DeriveBaseModelOptions {
+    modelId: string | undefined;
+    family: string | undefined;
+    reasoningEffort: ReasoningEffort | undefined;
+    rawCapabilityEfforts: ReasoningEffort[] | undefined;
+}
+
+/**
+ * Map a raw-effort variant model ID (e.g. "claude-opus-4.7-xhigh") to the
+ * base family ID the SDK actually accepts for requests.
+ *
+ * Two signals, in priority order:
+ *
+ *   1. capabilities.family — when distinct from modelId, trust it.
+ *   2. Suffix derivation — when family is missing or equals modelId,
+ *      and the model advertises exactly one raw reasoning effort that
+ *      matches the resolved effort, and modelId ends with "-<effort>",
+ *      strip that suffix. Driven entirely by live metadata, not a
+ *      hardcoded variant list.
+ *
+ * Returns undefined when no rewrite applies.
+ */
+function deriveBaseModelId(options: DeriveBaseModelOptions): string | undefined {
+    const { modelId, family, reasoningEffort, rawCapabilityEfforts } = options;
+
+    if (!reasoningEffort || !modelId) {
+        return undefined;
+    }
+    if (!rawCapabilityEfforts?.includes(reasoningEffort)) {
+        return undefined;
+    }
+
+    if (typeof family === 'string' && family.length > 0 && family !== modelId) {
+        return family;
+    }
+
+    if (rawCapabilityEfforts.length !== 1) {
+        return undefined;
+    }
+    const suffix = `-${reasoningEffort}`;
+    if (!modelId.endsWith(suffix)) {
+        return undefined;
+    }
+    const base = modelId.slice(0, -suffix.length);
+    return base.length > 0 ? base : undefined;
 }
