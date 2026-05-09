@@ -1057,6 +1057,106 @@
     color: #999;
 }
 
+/* Zebra striping */
+.interactive-md-table tbody tr:nth-child(even) {
+    background: #f6f8fa;
+}
+.dark .interactive-md-table tbody tr:nth-child(even) {
+    background: #1a1a1a;
+}
+
+/* Fullscreen backdrop + panel */
+.interactive-table-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.interactive-table-fullscreen-panel {
+    background: #fff;
+    border-radius: 8px;
+    max-width: 95vw;
+    max-height: 95dvh;
+    width: 95vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.dark .interactive-table-fullscreen-panel {
+    background: #1e1e1e;
+}
+
+.interactive-table-fullscreen-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 95dvh;
+}
+
+.interactive-table-fullscreen-inner .interactive-table-scroll {
+    flex: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+/* Column visibility picker */
+.interactive-table-col-picker-wrapper {
+    position: relative;
+}
+
+.interactive-table-col-picker {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    min-width: 160px;
+    margin-top: 2px;
+    padding: 4px 0;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    font-size: 0.75rem;
+}
+
+.dark .interactive-table-col-picker {
+    background: #2d2d2d;
+    border-color: #4a4a4a;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.interactive-table-col-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: #333;
+}
+
+.interactive-table-col-picker-row:hover {
+    background: #f0f0f0;
+}
+
+.dark .interactive-table-col-picker-row {
+    color: #d4d4d4;
+}
+
+.dark .interactive-table-col-picker-row:hover {
+    background: #3a3a3a;
+}
+
+.interactive-table-col-picker-row input[type="checkbox"] {
+    margin: 0;
+}
+
 /* Wiki article prose — targets standard HTML tags emitted by marked.parse() */
 .wiki-body {
     line-height: 1.65;

@@ -246,4 +246,168 @@ describe('InteractiveTable', () => {
             expect(screen.getByTestId('interactive-table-test-1')).toBeTruthy();
         });
     });
+
+    describe('fullscreen', () => {
+        it('renders Expand button', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            expect(screen.getByTitle('Expand table')).toBeTruthy();
+        });
+
+        it('shows backdrop when Expand is clicked', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+            expect(screen.getByTestId('interactive-table-backdrop')).toBeTruthy();
+        });
+
+        it('shows Exit button in fullscreen mode', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+            expect(screen.getByTitle('Exit fullscreen')).toBeTruthy();
+        });
+
+        it('exits fullscreen when Exit is clicked', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+            expect(screen.getByTestId('interactive-table-backdrop')).toBeTruthy();
+
+            fireEvent.click(screen.getByTitle('Exit fullscreen'));
+            expect(container.querySelector('.interactive-table-backdrop')).toBeNull();
+        });
+
+        it('exits fullscreen when backdrop is clicked', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+            const backdrop = screen.getByTestId('interactive-table-backdrop');
+
+            fireEvent.click(backdrop);
+            expect(container.querySelector('.interactive-table-backdrop')).toBeNull();
+        });
+
+        it('does not exit fullscreen when inner panel is clicked', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+
+            // Click on the table itself (inside the panel)
+            const table = screen.getByTestId('interactive-table-test-1');
+            fireEvent.click(table);
+            // Should still be in fullscreen
+            expect(screen.getByTestId('interactive-table-backdrop')).toBeTruthy();
+        });
+
+        it('exits fullscreen on Escape key', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+            expect(screen.getByTestId('interactive-table-backdrop')).toBeTruthy();
+
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(container.querySelector('.interactive-table-backdrop')).toBeNull();
+        });
+
+        it('preserves table data in fullscreen mode', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Expand table'));
+
+            expect(screen.getByText('5 rows')).toBeTruthy();
+        });
+    });
+
+    describe('column visibility', () => {
+        it('renders Columns button', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            expect(screen.getByTitle('Toggle column visibility')).toBeTruthy();
+        });
+
+        it('shows column picker dropdown when Columns is clicked', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            expect(screen.getByTestId('col-picker')).toBeTruthy();
+        });
+
+        it('lists all columns with checkboxes', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            const checkboxes = within(picker).getAllByRole('checkbox');
+            expect(checkboxes.length).toBe(2);
+            // All initially checked
+            checkboxes.forEach(cb => {
+                expect((cb as HTMLInputElement).checked).toBe(true);
+            });
+        });
+
+        it('hides a column when its checkbox is unchecked', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            const checkboxes = within(picker).getAllByRole('checkbox');
+
+            // Uncheck "Name" (first column)
+            fireEvent.click(checkboxes[0]);
+
+            // Should have only 1 header column
+            const ths = container.querySelectorAll('th');
+            expect(ths.length).toBe(1);
+        });
+
+        it('disables the last visible column checkbox', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            const checkboxes = within(picker).getAllByRole('checkbox');
+
+            // Hide first column — now only second is visible
+            fireEvent.click(checkboxes[0]);
+
+            // Re-open picker to get fresh checkboxes
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker2 = screen.getByTestId('col-picker');
+            const checkboxes2 = within(picker2).getAllByRole('checkbox');
+
+            // The second checkbox (last visible) should be disabled
+            const visibleCheckbox = checkboxes2.find(cb => (cb as HTMLInputElement).checked);
+            expect((visibleCheckbox as HTMLInputElement).disabled).toBe(true);
+        });
+
+        it('closes dropdown on outside click', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            expect(screen.getByTestId('col-picker')).toBeTruthy();
+
+            // Click outside
+            fireEvent.mouseDown(document.body);
+            expect(container.querySelector('[data-testid="col-picker"]')).toBeNull();
+        });
+
+        it('shows plain text labels (strips HTML)', () => {
+            const props = {
+                ...defaultProps,
+                headers: ['<strong>Name</strong>', '<em>Score</em>'],
+            };
+            render(<InteractiveTable {...props} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            const labels = within(picker).getAllByRole('checkbox');
+            // The label text should be stripped of HTML
+            expect(labels[0].parentElement?.textContent).toContain('Name');
+            expect(labels[0].parentElement?.textContent).not.toContain('<strong>');
+        });
+
+        it('hides aggregation footer cells for hidden columns', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+
+            // Initially there's a tfoot
+            expect(container.querySelector('tfoot')).not.toBeNull();
+
+            // Hide Score column (the numeric one, col index 1)
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            const checkboxes = within(picker).getAllByRole('checkbox');
+            fireEvent.click(checkboxes[1]); // hide Score
+
+            // Footer should have only 1 cell now (Name, which is non-numeric = empty)
+            const footerCells = container.querySelectorAll('tfoot td');
+            expect(footerCells.length).toBe(1);
+        });
+    });
 });

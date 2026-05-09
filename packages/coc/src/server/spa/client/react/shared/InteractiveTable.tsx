@@ -6,7 +6,7 @@
  * `<table>` produced by forge's `renderTable()`.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     useReactTable,
     getCoreRowModel,
@@ -17,6 +17,7 @@ import {
     type ColumnDef,
     type SortingState,
     type ColumnFiltersState,
+    type VisibilityState,
 } from '@tanstack/react-table';
 import type { ColumnAlignment, ExtractedTableData } from './extractTablesFromHtml';
 
@@ -159,8 +160,43 @@ export function InteractiveTable({
 }: InteractiveTableProps) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
     const [showFilters, setShowFilters] = useState(false);
+    const [showColPicker, setShowColPicker] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+    const colPickerRef = useRef<HTMLDivElement>(null);
+    const colPickerBtnRef = useRef<HTMLButtonElement>(null);
+
+    // Close column picker on outside click
+    useEffect(() => {
+        if (!showColPicker) return;
+        const handler = (e: MouseEvent) => {
+            if (
+                colPickerRef.current &&
+                !colPickerRef.current.contains(e.target as Node) &&
+                colPickerBtnRef.current &&
+                !colPickerBtnRef.current.contains(e.target as Node)
+            ) {
+                setShowColPicker(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showColPicker]);
+
+    // Escape key exits fullscreen
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsFullscreen(false);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [isFullscreen]);
+
+    const exitFullscreen = useCallback(() => setIsFullscreen(false), []);
 
     // Stable column IDs
     const colIds = useMemo(() => headers.map((_, i) => `col_${i}`), [headers]);
@@ -222,9 +258,10 @@ export function InteractiveTable({
     const table = useReactTable({
         data,
         columns,
-        state: { sorting, columnFilters },
+        state: { sorting, columnFilters, columnVisibility },
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
+        onColumnVisibilityChange: setColumnVisibility,
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -256,8 +293,11 @@ export function InteractiveTable({
 
     const filteredRowCount = table.getFilteredRowModel().rows.length;
 
-    return (
-        <div className="interactive-table" data-testid={`interactive-table-${tableKey}`}>
+    // Count visible columns for "prevent hiding all" logic
+    const visibleColumnCount = table.getVisibleLeafColumns().length;
+
+    const tableContent = (
+        <div className={`interactive-table${isFullscreen ? ' interactive-table-fullscreen-inner' : ''}`} data-testid={`interactive-table-${tableKey}`}>
             {/* Toolbar */}
             <div className="interactive-table-toolbar">
                 <span className="interactive-table-row-count">
@@ -273,6 +313,37 @@ export function InteractiveTable({
                     >
                         {showFilters ? '✕ Filter' : '⊞ Filter'}
                     </button>
+                    <div className="interactive-table-col-picker-wrapper">
+                        <button
+                            ref={colPickerBtnRef}
+                            className="interactive-table-btn"
+                            onClick={() => setShowColPicker(v => !v)}
+                            title="Toggle column visibility"
+                        >
+                            ⊞ Columns
+                        </button>
+                        {showColPicker && (
+                            <div ref={colPickerRef} className="interactive-table-col-picker" data-testid="col-picker">
+                                {table.getAllLeafColumns().map(col => {
+                                    const idx = colIds.indexOf(col.id);
+                                    const label = idx >= 0 ? stripHtml(headers[idx]) : col.id;
+                                    const isVisible = col.getIsVisible();
+                                    const isLastVisible = isVisible && visibleColumnCount <= 1;
+                                    return (
+                                        <label key={col.id} className="interactive-table-col-picker-row">
+                                            <input
+                                                type="checkbox"
+                                                checked={isVisible}
+                                                disabled={isLastVisible}
+                                                onChange={col.getToggleVisibilityHandler()}
+                                            />
+                                            {label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                     <button
                         className="interactive-table-btn"
                         onClick={handleCopyMarkdown}
@@ -286,6 +357,13 @@ export function InteractiveTable({
                         title="Copy as CSV"
                     >
                         {copyFeedback === 'csv' ? '✓ Copied' : '⧉ CSV'}
+                    </button>
+                    <button
+                        className="interactive-table-btn"
+                        onClick={() => setIsFullscreen(f => !f)}
+                        title={isFullscreen ? 'Exit fullscreen' : 'Expand table'}
+                    >
+                        {isFullscreen ? '⤡ Exit' : '⤢ Expand'}
                     </button>
                 </div>
             </div>
@@ -359,6 +437,8 @@ export function InteractiveTable({
                         <tfoot>
                             <tr className="interactive-table-agg-row">
                                 {colIds.map((id, i) => {
+                                    const col = table.getColumn(id);
+                                    if (col && !col.getIsVisible()) return null;
                                     const agg = aggregations.get(i);
                                     if (!agg) {
                                         return <td key={id} className="table-cell interactive-table-agg-cell" />;
@@ -418,4 +498,23 @@ export function InteractiveTable({
             )}
         </div>
     );
+
+    if (isFullscreen) {
+        return (
+            <div
+                className="interactive-table-backdrop"
+                data-testid="interactive-table-backdrop"
+                onClick={exitFullscreen}
+            >
+                <div
+                    className="interactive-table-fullscreen-panel"
+                    onClick={e => e.stopPropagation()}
+                >
+                    {tableContent}
+                </div>
+            </div>
+        );
+    }
+
+    return tableContent;
 }
