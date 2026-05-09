@@ -6,9 +6,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
-import { getApiBase } from '../../utils/config';
 import { formatRelativeTime } from '../../utils/format';
 import { McpServersPanel } from '../skills/McpServersPanel';
 import type { McpServerEntry } from '../skills/McpServersPanel';
@@ -246,17 +246,14 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const fetchInstructions = useCallback(async () => {
         setInstrLoading(true);
         try {
-            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions');
-            if (res.ok) {
-                const data: Record<InstructionMode, string | null> = await res.json();
-                setInstrContents(data);
-                setInstrDraft({
-                    base: data.base ?? '',
-                    ask: data.ask ?? '',
-                    plan: data.plan ?? '',
-                    autopilot: data.autopilot ?? '',
-                });
-            }
+            const data = await getSpaCocClient().workspaces.getInstructions(workspaceId) as Record<InstructionMode, string | null>;
+            setInstrContents(data);
+            setInstrDraft({
+                base: data.base ?? '',
+                ask: data.ask ?? '',
+                plan: data.plan ?? '',
+                autopilot: data.autopilot ?? '',
+            });
         } catch {
             // ignore
         } finally {
@@ -270,15 +267,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         setInstrSaving(true);
         try {
             const content = instrDraft[mode];
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
-                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) }
-            );
-            if (!res.ok) throw new Error((await res.json()).message ?? 'Save failed');
+            await getSpaCocClient().workspaces.updateInstruction(workspaceId, mode, { content });
             setInstrContents(prev => ({ ...prev, [mode]: content || null }));
             addToast('Instructions saved', 'success');
         } catch (e: any) {
-            addToast(e?.message ?? 'Failed to save instructions', 'error');
+            addToast(getSpaCocClientErrorMessage(e, 'Failed to save instructions'), 'error');
         } finally {
             setInstrSaving(false);
         }
@@ -287,16 +280,16 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const handleInstrDelete = async (mode: InstructionMode) => {
         setInstrSaving(true);
         try {
-            const res = await fetch(
-                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
-                { method: 'DELETE' }
-            );
-            if (!res.ok && res.status !== 404) throw new Error((await res.json()).message ?? 'Delete failed');
+            try {
+                await getSpaCocClient().workspaces.deleteInstruction(workspaceId, mode);
+            } catch (e) {
+                if (!(e instanceof CocApiError && e.status === 404)) throw e;
+            }
             setInstrContents(prev => ({ ...prev, [mode]: null }));
             setInstrDraft(prev => ({ ...prev, [mode]: '' }));
             addToast('Instructions deleted', 'success');
         } catch (e: any) {
-            addToast(e?.message ?? 'Failed to delete instructions', 'error');
+            addToast(getSpaCocClientErrorMessage(e, 'Failed to delete instructions'), 'error');
         } finally {
             setInstrSaving(false);
         }

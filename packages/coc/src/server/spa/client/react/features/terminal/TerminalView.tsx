@@ -8,7 +8,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '../../ui/cn';
 import { TerminalPanel } from './TerminalPanel';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalViewProps {
@@ -24,14 +25,6 @@ interface TerminalTab {
     pinned: boolean;
 }
 
-interface TerminalSessionsResponse {
-    sessions?: TerminalSessionInfo[];
-}
-
-interface TerminalPinResponse {
-    sessionId: string;
-    pinned: boolean;
-}
 
 export function TerminalView({ workspaceId }: TerminalViewProps) {
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
@@ -55,14 +48,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         let cancelled = false;
 
         async function hydratePinnedTerminals() {
-            const response = await fetch(
-                `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/terminals`,
-            );
-            if (!response.ok) {
-                throw new Error(`Failed to load terminal sessions: ${response.status} ${response.statusText}`);
-            }
-
-            const body = await response.json() as TerminalSessionsResponse;
+            const body = await getSpaCocClient().workspaces.listTerminals(workspaceId);
             const pinnedSessions = (Array.isArray(body.sessions) ? body.sessions : [])
                 .filter(session => session.pinned);
             if (cancelled) return;
@@ -156,25 +142,18 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         setPinError(null);
         markPinning(id, true);
         try {
-            const response = await fetch(
-                `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(tab.serverSessionId)}/pin`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pinned: requestedPinned }),
-                },
-            );
-
-            if (response.status === 404) {
-                markSessionMissing(id);
-                setPinError('Terminal session no longer exists.');
-                return;
-            }
-            if (!response.ok) {
-                throw new Error(`Failed to update terminal pin: ${response.status} ${response.statusText}`);
+            let body: { sessionId: string; pinned: boolean };
+            try {
+                body = await getSpaCocClient().workspaces.pinTerminal(workspaceId, tab.serverSessionId, requestedPinned);
+            } catch (err) {
+                if (err instanceof CocApiError && err.status === 404) {
+                    markSessionMissing(id);
+                    setPinError('Terminal session no longer exists.');
+                    return;
+                }
+                throw err;
             }
 
-            const body = await response.json() as TerminalPinResponse;
             if (body.sessionId !== tab.serverSessionId || typeof body.pinned !== 'boolean') {
                 throw new Error('Terminal pin response did not match the requested session.');
             }

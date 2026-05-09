@@ -182,6 +182,22 @@ export interface MyWorkSummaryResponse {
   waitingOnCount: number;
 }
 
+export interface TerminalSession {
+  id: string;
+  pinned: boolean;
+  workspaceId: string;
+  [key: string]: unknown;
+}
+
+export interface TerminalSessionsResponse {
+  sessions?: TerminalSession[];
+}
+
+export interface TerminalPinResponse {
+  sessionId: string;
+  pinned: boolean;
+}
+
 export interface MyLifeSummaryResponse {
   generated: boolean;
   path: string;

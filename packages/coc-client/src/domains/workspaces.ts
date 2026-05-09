@@ -13,6 +13,8 @@ import type {
   MyWorkSyncRequest,
   MyWorkSyncResponse,
   RegisterWorkspaceRequest,
+  TerminalPinResponse,
+  TerminalSessionsResponse,
   UpdateWorkspaceInstructionRequest,
   UpdateWorkspaceMcpConfigRequest,
   ProcessHistoryResponse,
@@ -186,5 +188,16 @@ export class WorkspacesClient {
 
   generateMyLifeSummary(): Promise<MyLifeSummaryResponse> {
     return this.transport.request<MyLifeSummaryResponse>('/my-life/generate-summary', { method: 'POST' });
+  }
+
+  listTerminals(workspaceId: string): Promise<TerminalSessionsResponse> {
+    return this.transport.request<TerminalSessionsResponse>(`/workspaces/${encodePathSegment(workspaceId)}/terminals`);
+  }
+
+  pinTerminal(workspaceId: string, sessionId: string, pinned: boolean): Promise<TerminalPinResponse> {
+    return this.transport.request<TerminalPinResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/pin`,
+      { method: 'PATCH', body: { pinned } },
+    );
   }
 }

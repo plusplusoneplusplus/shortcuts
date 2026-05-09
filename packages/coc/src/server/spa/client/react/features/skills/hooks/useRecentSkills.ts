@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface RecentSkillEntry {
     type: 'prompt' | 'skill';
@@ -31,9 +31,6 @@ export interface UseRecentSkillsResult {
 const MAX_RECENT = 5;
 
 export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
-    const prefsUrl = wsId
-        ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-        : getApiBase() + '/preferences';
     const [recentItems, setRecentItems] = useState<RecentSkillEntry[]>([]);
     const [loaded, setLoaded] = useState(false);
 
@@ -41,12 +38,13 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(prefsUrl);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const client = getSpaCocClient();
+                const prefs = wsId
+                    ? await client.preferences.getRepo(wsId)
+                    : await client.preferences.getGlobal();
                 // Read from legacy key for backwards compatibility
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
-                    const items: RecentSkillEntry[] = prefs.recentFollowPrompts
+                    const items: RecentSkillEntry[] = (prefs.recentFollowPrompts as any[])
                         .filter((e: any) => e.name)
                         .map((e: any) => ({
                             type: e.type || 'skill' as const,
@@ -77,11 +75,12 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
             const updated = [entry, ...filtered].slice(0, MAX_RECENT);
 
             // Fire-and-forget persistence (uses legacy key for backwards compat)
-            fetch(prefsUrl, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recentFollowPrompts: updated }),
-            }).catch(() => {});
+            const client = getSpaCocClient();
+            const patchData = { recentFollowPrompts: updated } as any;
+            (wsId
+                ? client.preferences.patchRepo(wsId, patchData)
+                : client.preferences.patchGlobal(patchData)
+            ).catch(() => {});
 
             return updated;
         });

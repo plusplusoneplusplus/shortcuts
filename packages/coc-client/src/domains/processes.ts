@@ -148,6 +148,34 @@ export class ProcessesClient {
     });
   }
 
+  pin(processId: string, pinned: boolean): Promise<{ process: AIProcess }> {
+    return this.transport.request<{ process: AIProcess }>(`/processes/${encodePathSegment(processId)}/pin`, {
+      method: 'PATCH',
+      body: { pinned },
+    });
+  }
+
+  archive(processId: string, archived: boolean): Promise<{ process: AIProcess }> {
+    return this.transport.request<{ process: AIProcess }>(`/processes/${encodePathSegment(processId)}/archive`, {
+      method: 'PATCH',
+      body: { archived },
+    });
+  }
+
+  archiveBatch(ids: string[]): Promise<void> {
+    return this.transport.request<void>('/processes/archive', {
+      method: 'POST',
+      body: { ids: [...ids] },
+    });
+  }
+
+  unarchiveBatch(ids: string[]): Promise<void> {
+    return this.transport.request<void>('/processes/unarchive', {
+      method: 'POST',
+      body: { ids: [...ids] },
+    });
+  }
+
   pinnedTurns(processId: string): Promise<PinnedTurnsResponse> {
     return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`);
   }

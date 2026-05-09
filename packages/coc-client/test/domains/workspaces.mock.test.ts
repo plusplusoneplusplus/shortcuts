@@ -262,6 +262,38 @@ describe('WorkspacesClient mock server contract', () => {
       details: { fieldErrors: { path: 'Path does not exist' } },
     } satisfies Partial<CocApiError>);
   });
+
+  it('lists terminal sessions for a workspace', async () => {
+    mock = await startMockServer();
+    const response = {
+      sessions: [
+        { id: 'sess-1', pinned: true, workspaceId: 'repo/one' },
+        { id: 'sess-2', pinned: false, workspaceId: 'repo/one' },
+      ],
+    };
+    mock.on('GET', '/api/workspaces/repo%2Fone/terminals', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.listTerminals('repo/one')).resolves.toEqual(response);
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/terminals');
+  });
+
+  it('pins and unpins a terminal session', async () => {
+    mock = await startMockServer();
+    const pinResponse = { sessionId: 'sess-1', pinned: true };
+    const unpinResponse = { sessionId: 'sess-1', pinned: false };
+    mock.on('PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', [
+      { body: pinResponse },
+      { body: unpinResponse },
+    ]);
+    const client = createClient(mock);
+
+    await expect(client.workspaces.pinTerminal('repo/one', 'sess-1', true)).resolves.toEqual(pinResponse);
+    expectJsonRequest(mock.requests[0], 'PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', { pinned: true });
+
+    await expect(client.workspaces.pinTerminal('repo/one', 'sess-1', false)).resolves.toEqual(unpinResponse);
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', { pinned: false });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface ScriptTemplate {
     id: string;
@@ -26,9 +26,6 @@ export interface UseScriptTemplatesResult {
 }
 
 export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
-    const prefsUrl = wsId
-        ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-        : getApiBase() + '/preferences';
     const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
     const [loaded, setLoaded] = useState(false);
 
@@ -36,11 +33,12 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(prefsUrl);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const client = getSpaCocClient();
+                const prefs = wsId
+                    ? await client.preferences.getRepo(wsId)
+                    : await client.preferences.getGlobal();
                 if (!cancelled && Array.isArray(prefs.scriptTemplates)) {
-                    setTemplates(prefs.scriptTemplates.filter((t: any) => t && t.id));
+                    setTemplates((prefs.scriptTemplates as any[]).filter((t: any) => t && t.id));
                 }
             } catch {
                 // Preferences are optional
@@ -52,11 +50,12 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
     }, [wsId]);
 
     const persist = useCallback((updated: ScriptTemplate[]) => {
-        fetch(prefsUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scriptTemplates: updated }),
-        }).catch(() => {});
+        const client = getSpaCocClient();
+        const patchData = { scriptTemplates: updated } as any;
+        (wsId
+            ? client.preferences.patchRepo(wsId, patchData)
+            : client.preferences.patchGlobal(patchData)
+        ).catch(() => {});
     }, [wsId]);
 
     const saveTemplate = useCallback((t: Omit<ScriptTemplate, 'id'>) => {

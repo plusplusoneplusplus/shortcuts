@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout, isWorkflowsEnabled, isPullRequestsEnabled } from '../../utils/config';
+import { isTerminalEnabled, isNotesEnabled, isMyWorkEnabled, isMyLifeEnabled, isScratchpadEnabled, getScratchpadLayout, isWorkflowsEnabled, isPullRequestsEnabled } from '../../utils/config';
+import { getSpaCocClient } from '../../api/cocClient';
 
 interface DisplaySettings {
     showReportIntent: boolean;
@@ -34,23 +35,22 @@ let fetchPromise: Promise<DisplaySettings> | null = null;
 
 async function fetchDisplaySettings(): Promise<DisplaySettings> {
     try {
-        const res = await fetch(getApiBase() + '/admin/config');
-        if (!res.ok) return DEFAULT_SETTINGS;
-        const data = await res.json();
+        const data = await getSpaCocClient().admin.getConfig();
+        const resolved = (data as any)?.resolved;
         return {
-            showReportIntent: data?.resolved?.showReportIntent ?? false,
-            toolCompactness: (data?.resolved?.toolCompactness ?? 3) as 0 | 1 | 2 | 3,
-            taskCardDensity: (data?.resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
-            historyGrouping: data?.resolved?.historyGrouping ?? true,
-            groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
-            terminalEnabled: data?.resolved?.terminal?.enabled ?? true,
-            notesEnabled: data?.resolved?.notes?.enabled ?? true,
-            myWorkEnabled: data?.resolved?.myWork?.enabled ?? false,
-            myLifeEnabled: data?.resolved?.myLife?.enabled ?? false,
-            scratchpadEnabled: data?.resolved?.scratchpad?.enabled ?? false,
-            scratchpadLayout: (data?.resolved?.scratchpad?.layout === 'horizontal' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
-            workflowsEnabled: data?.resolved?.workflows?.enabled ?? false,
-            pullRequestsEnabled: data?.resolved?.pullRequests?.enabled ?? false,
+            showReportIntent: resolved?.showReportIntent ?? false,
+            toolCompactness: (resolved?.toolCompactness ?? 3) as 0 | 1 | 2 | 3,
+            taskCardDensity: (resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
+            historyGrouping: resolved?.historyGrouping ?? true,
+            groupSingleLineMessages: resolved?.groupSingleLineMessages ?? true,
+            terminalEnabled: resolved?.terminal?.enabled ?? true,
+            notesEnabled: resolved?.notes?.enabled ?? true,
+            myWorkEnabled: resolved?.myWork?.enabled ?? false,
+            myLifeEnabled: resolved?.myLife?.enabled ?? false,
+            scratchpadEnabled: resolved?.scratchpad?.enabled ?? false,
+            scratchpadLayout: (resolved?.scratchpad?.layout === 'horizontal' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
+            workflowsEnabled: resolved?.workflows?.enabled ?? false,
+            pullRequestsEnabled: resolved?.pullRequests?.enabled ?? false,
         };
     } catch {
         return DEFAULT_SETTINGS;

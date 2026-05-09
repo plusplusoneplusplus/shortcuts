@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../../utils/config';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface SkillTemplate {
     id: string;
@@ -30,9 +30,6 @@ export interface UseSkillTemplatesResult {
 }
 
 export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
-    const prefsUrl = wsId
-        ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-        : getApiBase() + '/preferences';
     const [templates, setTemplates] = useState<SkillTemplate[]>([]);
     const [loaded, setLoaded] = useState(false);
 
@@ -40,11 +37,12 @@ export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(prefsUrl);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const client = getSpaCocClient();
+                const prefs = wsId
+                    ? await client.preferences.getRepo(wsId)
+                    : await client.preferences.getGlobal();
                 if (!cancelled && Array.isArray(prefs.skillTemplates)) {
-                    setTemplates(prefs.skillTemplates.filter((t: any) => t && t.id));
+                    setTemplates((prefs.skillTemplates as any[]).filter((t: any) => t && t.id));
                 }
             } catch {
                 // Preferences are optional
@@ -56,11 +54,12 @@ export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
     }, [wsId]);
 
     const persist = useCallback((updated: SkillTemplate[]) => {
-        fetch(prefsUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ skillTemplates: updated }),
-        }).catch(() => {});
+        const client = getSpaCocClient();
+        const patchData = { skillTemplates: updated } as any;
+        (wsId
+            ? client.preferences.patchRepo(wsId, patchData)
+            : client.preferences.patchGlobal(patchData)
+        ).catch(() => {});
     }, [wsId]);
 
     const saveTemplate = useCallback((t: Omit<SkillTemplate, 'id'>) => {

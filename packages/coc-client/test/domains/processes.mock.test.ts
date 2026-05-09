@@ -426,6 +426,45 @@ describe('ProcessesClient mock server contract', () => {
     expectJsonRequest(mock.requests[1], 'POST', '/api/processes/proc%2F1/ask-user-response', { questionId: 'q-2', skipped: true });
     expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F2/ask-user-response', { questionId: 'q-3', answer: 'no' });
   });
+
+  it('pins and unpins a process', async () => {
+    mock = await startMockServer();
+    const process = mockProcess({ id: 'proc/1' });
+    mock.on('PATCH', '/api/processes/proc%2F1/pin', { body: { process } });
+    const client = createClient(mock);
+
+    await expect(client.processes.pin('proc/1', true)).resolves.toEqual({ process });
+    expectJsonRequest(mock.requests[0], 'PATCH', '/api/processes/proc%2F1/pin', { pinned: true });
+
+    await expect(client.processes.pin('proc/1', false)).resolves.toEqual({ process });
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/processes/proc%2F1/pin', { pinned: false });
+  });
+
+  it('archives and unarchives a process', async () => {
+    mock = await startMockServer();
+    const process = mockProcess({ id: 'proc/1' });
+    mock.on('PATCH', '/api/processes/proc%2F1/archive', { body: { process } });
+    const client = createClient(mock);
+
+    await expect(client.processes.archive('proc/1', true)).resolves.toEqual({ process });
+    expectJsonRequest(mock.requests[0], 'PATCH', '/api/processes/proc%2F1/archive', { archived: true });
+
+    await expect(client.processes.archive('proc/1', false)).resolves.toEqual({ process });
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/processes/proc%2F1/archive', { archived: false });
+  });
+
+  it('batch archives and unarchives processes', async () => {
+    mock = await startMockServer();
+    mock.on('POST', '/api/processes/archive', { status: 204 });
+    mock.on('POST', '/api/processes/unarchive', { status: 204 });
+    const client = createClient(mock);
+
+    await client.processes.archiveBatch(['id-1', 'id/2']);
+    expectJsonRequest(mock.requests[0], 'POST', '/api/processes/archive', { ids: ['id-1', 'id/2'] });
+
+    await client.processes.unarchiveBatch(['id-3']);
+    expectJsonRequest(mock.requests[1], 'POST', '/api/processes/unarchive', { ids: ['id-3'] });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {
