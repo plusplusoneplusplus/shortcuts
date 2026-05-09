@@ -190,6 +190,25 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(bar.className).toContain(ringClass);
     });
 
+    // Regression: even after fixing the focus-within prefix on the outer
+    // card, the INNER contenteditable still drew its own 1px gray border
+    // (Tailwind's default `border` color) AND a default-blue `focus:ring-2`
+    // from the base RichTextInput chrome — producing a visible second
+    // border-rectangle inside the mode-coloured card and a blue ring on
+    // click. The stacked consumer must explicitly neutralize both with
+    // `border-transparent` and `focus:ring-transparent`.
+    it('inner activity-chat-input neutralizes the base border + default-blue focus:ring', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask' })} />);
+        const editor = screen.getByTestId('activity-chat-input') as HTMLElement;
+        expect(editor.className).toContain('border-transparent');
+        expect(editor.className).toContain('focus:ring-transparent');
+        // Guard against re-introducing a coloured inner border or a
+        // mismatched ring colour. The visible focus indicator must come
+        // from the outer chat-input-bar's mode-coloured focus-within ring.
+        expect(editor.className).not.toMatch(/(?:^|\s)border-(?:[a-z]+-)/);
+        expect(editor.className).not.toMatch(/(?:^|\s)focus:ring-(?:blue|yellow|green|red|gray)/);
+    });
+
     it('renders the mode pill selector with one button per mode', () => {
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'autopilot' })} />);
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
@@ -529,6 +548,20 @@ describe('NewChatArea — stacked input card layout', () => {
             expect(btn.className).toContain('h-[22px]');
             expect(btn.className).not.toContain('h-[26px]');
         }
+    });
+
+    // Regression: the inner contenteditable in NewChatArea must also
+    // neutralize the base RichTextInput border + default-blue focus ring,
+    // matching FollowUpInputArea. Without this, clicking inside the new
+    // chat input shows a blue inner ring conflicting with the outer
+    // mode-coloured focus-within ring.
+    it('inner new-chat-input neutralizes the base border + default-blue focus:ring', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        const editor = screen.getByTestId('new-chat-input') as HTMLElement;
+        expect(editor.className).toContain('border-transparent');
+        expect(editor.className).toContain('focus:ring-transparent');
+        expect(editor.className).not.toMatch(/(?:^|\s)border-(?:[a-z]+-)/);
+        expect(editor.className).not.toMatch(/(?:^|\s)focus:ring-(?:blue|yellow|green|red|gray)/);
     });
 });
 

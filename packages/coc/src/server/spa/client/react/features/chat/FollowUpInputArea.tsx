@@ -508,7 +508,14 @@ export function FollowUpInputArea({
                             value={followUpInput}
                             ghostText={autocomplete.completion}
                             placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Reply to CoC, or type / for commands...'}
-                            className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg bg-transparent px-3 pt-2 pb-1 text-[13.5px] leading-[1.55] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none disabled:opacity-60"
+                            // border-transparent + focus:ring-transparent neutralize the
+                            // base RichTextInput's 1px gray border and default blue
+                            // focus:ring-2, so the inner contenteditable adds no visible
+                            // border or ring inside the outer card. The card itself
+                            // owns the visible mode-coloured focus-within ring (see
+                            // chat-input-bar above), and the toolbar above carries
+                            // the only horizontal divider via its own border-t.
+                            className="w-full min-h-[28px] max-h-40 overflow-y-auto rounded-t-lg border-transparent bg-transparent px-3 pt-2 pb-1 text-[13.5px] leading-[1.55] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-transparent disabled:opacity-60"
                             onChange={handleEditorChange}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={(e: React.ClipboardEvent) => {
