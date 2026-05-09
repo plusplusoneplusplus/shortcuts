@@ -4,6 +4,7 @@ import { StatusBadge, failureLabel } from './ScheduleStatusBadge';
 import { RunHistoryList } from '../chat/RunHistoryList';
 import type { Schedule, RunRecord } from './scheduleTypes';
 import { CreateScheduleForm } from './CreateScheduleForm';
+import { PromptScheduleForm } from './PromptScheduleForm';
 import { useState, useCallback } from 'react';
 
 export interface ScheduleDetailProps {
@@ -35,24 +36,43 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
     return (
         <div className="flex flex-col gap-0" data-testid="schedule-detail">
             {editingId === schedule.id ? (
-                <CreateScheduleForm
-                    workspaceId={workspaceId}
-                    mode="edit"
-                    scheduleId={schedule.id}
-                    initialValues={{
-                        name: schedule.name,
-                        target: schedule.target,
-                        targetType: schedule.targetType,
-                        cron: schedule.cron,
-                        params: { ...schedule.params },
-                        onFailure: schedule.onFailure,
-                        outputFolder: schedule.outputFolder,
-                        model: schedule.model,
-                        chatMode: schedule.mode ?? 'autopilot',
-                    }}
-                    onCreated={handleSaved}
-                    onCancel={onCancelEdit}
-                />
+                (!schedule.targetType || schedule.targetType === 'prompt') && !Object.keys(schedule.params ?? {}).some(k => k === 'pipeline') ? (
+                    <PromptScheduleForm
+                        workspaceId={workspaceId}
+                        mode="edit"
+                        scheduleId={schedule.id}
+                        initialValues={{
+                            name: schedule.name,
+                            target: schedule.target,
+                            cron: schedule.cron,
+                            model: schedule.model,
+                            chatMode: schedule.mode ?? 'ask',
+                            outputFolder: schedule.outputFolder,
+                            onFailure: schedule.onFailure,
+                        }}
+                        onCreated={handleSaved}
+                        onCancel={onCancelEdit}
+                    />
+                ) : (
+                    <CreateScheduleForm
+                        workspaceId={workspaceId}
+                        mode="edit"
+                        scheduleId={schedule.id}
+                        initialValues={{
+                            name: schedule.name,
+                            target: schedule.target,
+                            targetType: schedule.targetType,
+                            cron: schedule.cron,
+                            params: { ...schedule.params },
+                            onFailure: schedule.onFailure,
+                            outputFolder: schedule.outputFolder,
+                            model: schedule.model,
+                            chatMode: schedule.mode ?? 'autopilot',
+                        }}
+                        onCreated={handleSaved}
+                        onCancel={onCancelEdit}
+                    />
+                )
             ) : (
                 <>
                     {/* ── Header zone ─────────────────────────────────────── */}

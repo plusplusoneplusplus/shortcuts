@@ -13,6 +13,7 @@ import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';
 import { CreateScheduleForm } from './CreateScheduleForm';
+import { PromptScheduleForm } from './PromptScheduleForm';
 import type { Schedule, RunRecord } from './scheduleTypes';
 
 // Re-export cron utilities that external code may reference
@@ -32,7 +33,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(state.selectedScheduleId);
     const [history, setHistory] = useState<RunRecord[]>([]);
-    const [showCreate, setShowCreate] = useState(false);
+    const [showCreate, setShowCreate] = useState<false | 'prompt' | 'advanced'>(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [duplicateValues, setDuplicateValues] = useState<Partial<Schedule> | null>(null);
     const { isMobile, isTablet } = useBreakpoint();
@@ -166,7 +167,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             schedules={schedules}
             selectedId={selectedId}
             onSelect={handleSelect}
-            onNew={() => { setShowCreate(true); if (isMobile) setMobileShowDetail(true); }}
+            onNew={() => { setShowCreate('prompt'); if (isMobile) setMobileShowDetail(true); }}
             loading={loading}
             onMove={handleMove}
             onRefresh={fetchSchedules}
@@ -181,7 +182,25 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
     const detailContent = (
         <>
-            {showCreate ? (
+            {showCreate === 'prompt' ? (
+                <div className="px-4 py-3">
+                    <PromptScheduleForm
+                        workspaceId={workspaceId}
+                        onCreated={() => { setShowCreate(false); setDuplicateValues(null); fetchSchedules(); }}
+                        onCancel={() => { setShowCreate(false); setDuplicateValues(null); }}
+                        onAdvanced={() => setShowCreate('advanced')}
+                        initialValues={duplicateValues ? {
+                            name: `Copy of ${duplicateValues.name}`,
+                            target: duplicateValues.target,
+                            cron: duplicateValues.cron,
+                            model: duplicateValues.model,
+                            chatMode: duplicateValues.mode ?? 'ask',
+                            outputFolder: duplicateValues.outputFolder,
+                            onFailure: duplicateValues.onFailure,
+                        } : undefined}
+                    />
+                </div>
+            ) : showCreate === 'advanced' ? (
                 <div className="px-4 py-3">
                     <CreateScheduleForm
                         workspaceId={workspaceId}
@@ -209,7 +228,12 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                     onRunNow={handleRunNow}
                     onPauseResume={handlePauseResume}
                     onEdit={(id) => setEditingId(id)}
-                    onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); }}
+                    onDuplicate={(s) => {
+                        setDuplicateValues(s);
+                        // Route prompt schedules to the prompt form, others to advanced
+                        const isPrompt = (!s.targetType || s.targetType === 'prompt') && !Object.keys(s.params ?? {}).some(k => k === 'pipeline');
+                        setShowCreate(isPrompt ? 'prompt' : 'advanced');
+                    }}
                     onDelete={handleDelete}
                     onCancelEdit={() => setEditingId(null)}
                     onSaved={() => { setEditingId(null); fetchSchedules(); }}
@@ -217,7 +241,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             ) : (
                 <div className="flex items-center justify-center h-full text-sm text-[#848484]">
                     {schedules.length === 0
-                        ? 'Create your first schedule with "+ New"'
+                        ? 'Create a recurring prompt with "+ New"'
                         : 'Select a schedule to view details'}
                 </div>
             )}

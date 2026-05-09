@@ -188,8 +188,9 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                             onDrop={(e) => handleDrop(e, 'user')}
                             data-testid="user-schedules-dropzone"
                         >
-                            <div className="text-2xl mb-1">🕐</div>
-                            <div className="text-xs">No schedules yet. Click &quot;+ New&quot; to create one.</div>
+                            <div className="text-2xl mb-1">💬</div>
+                            <div className="text-xs font-medium mb-0.5">Create a recurring prompt</div>
+                            <div className="text-[10px] text-[#848484]">Automate code reviews, summaries, health checks, and more.</div>
                         </div>
                     ) : (
                         <ul
