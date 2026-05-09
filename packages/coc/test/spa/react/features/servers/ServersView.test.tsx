@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { ServersView } from '../../../../../src/server/spa/client/react/features/servers/ServersView';
 import type { RemoteServer } from '../../../../../src/server/spa/client/react/utils/serverRegistry';
+import { useRemoteServerHealth } from '../../../../../src/server/spa/client/react/hooks/useRemoteServerHealth';
 
 const registryMocks = vi.hoisted(() => ({
     listRemoteServers: vi.fn(),
@@ -95,12 +96,24 @@ beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
 });
 
+const defaultHealthImpl = (servers: RemoteServer[]) =>
+    servers.map(s => ({
+        server: s,
+        kind: s.kind,
+        status: 'online' as const,
+        version: '1.0.0',
+        effectiveUrl: s.kind === 'devtunnel' ? s.effectiveUrl : s.url,
+        localPort: s.kind === 'devtunnel' ? s.localPort : undefined,
+        tunnelId: s.kind === 'devtunnel' ? s.tunnelId : undefined,
+    }));
+
 afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.restoreAllMocks();
     Object.values(registryMocks).forEach(mock => mock.mockReset());
+    vi.mocked(useRemoteServerHealth).mockReset().mockImplementation(defaultHealthImpl);
 });
 
 describe('ServersView', () => {
@@ -315,5 +328,131 @@ describe('ServersView', () => {
         } finally {
             unmount();
         }
+    });
+
+    // ── New UI features ──
+
+    it('summary strip renders the four KPI labels', () => {
+        render(<ServersView />);
+        const strip = screen.getByTestId('summary-strip');
+        expect(strip.textContent).toContain('Online');
+        expect(strip.textContent).toContain('Offline');
+        expect(strip.textContent).toContain('Active tasks');
+        expect(strip.textContent).toContain('DevTunnels');
+    });
+
+    it('filter "URL" shows only URL-kind servers', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        fireEvent.click(screen.getByRole('button', { name: 'URL' }));
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+        expect(screen.getAllByTestId('server-card')[0].textContent).toContain('Box A');
+    });
+
+    it('filter "Tunnel" shows only DevTunnel servers', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Tunnel' }));
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+        expect(screen.getAllByTestId('server-card')[0].textContent).toContain('Box B');
+    });
+
+    it('filter "Local" shows only the local server', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+        expect(screen.getAllByTestId('server-card')[0].textContent).toContain('This Server');
+    });
+
+    it('filter "All" restores the full list after narrowing', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        fireEvent.click(screen.getByRole('button', { name: 'URL' }));
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+        expect(screen.getAllByTestId('server-card')).toHaveLength(3);
+    });
+
+    it('filter "Offline" shows only offline-status servers', async () => {
+        vi.mocked(useRemoteServerHealth).mockImplementation(servers =>
+            servers.map(s => ({
+                server: s,
+                kind: s.kind,
+                status: 'offline' as const,
+                effectiveUrl: s.kind === 'devtunnel'
+                    ? (s as typeof TUNNEL_REMOTE).effectiveUrl
+                    : (s as typeof URL_REMOTE).url,
+                localPort: s.kind === 'devtunnel' ? (s as typeof TUNNEL_REMOTE).localPort : undefined,
+                tunnelId: s.kind === 'devtunnel' ? (s as typeof TUNNEL_REMOTE).tunnelId : undefined,
+            }))
+        );
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+        render(<ServersView />);
+        // Wait for remote to appear (local is separate and stays 'checking' until poll resolves)
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        // Click "Offline" — accessible name includes count badge, so use regex
+        fireEvent.click(screen.getByRole('button', { name: /^Offline/ }));
+        // URL_REMOTE is 'offline'; local is 'checking' (its own health poll, not yet online)
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+        expect(screen.getAllByTestId('server-card')[0].textContent).toContain('Box A');
+    });
+
+    it('search by label narrows the displayed server cards', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'Box A' } });
+        expect(screen.getAllByTestId('server-card')).toHaveLength(1);
+        expect(screen.getAllByTestId('server-card')[0].textContent).toContain('Box A');
+    });
+
+    it('clearing search text restores the full server list', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
+
+        const input = screen.getByPlaceholderText('Search…');
+        fireEvent.change(input, { target: { value: 'Box' } });
+        expect(screen.getAllByTestId('server-card')).toHaveLength(2);
+
+        fireEvent.change(input, { target: { value: '' } });
+        expect(screen.getAllByTestId('server-card')).toHaveLength(3);
+    });
+
+    it('switching to list view renders server labels without server-card wrappers', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTitle('list'));
+        expect(screen.queryAllByTestId('server-card')).toHaveLength(0);
+        expect(screen.getByText('This Server')).toBeTruthy();
+        expect(screen.getByText('Box A')).toBeTruthy();
+    });
+
+    it('switching to split view shows a detail panel heading for the auto-selected server', () => {
+        render(<ServersView />);
+        fireEvent.click(screen.getByTitle('split'));
+        // Local server is auto-selected; DetailPanel renders its label as an <h2>
+        expect(screen.getByRole('heading', { name: 'This Server' })).toBeTruthy();
+    });
+
+    it('shows a load-error banner when listRemoteServers rejects', async () => {
+        registryMocks.listRemoteServers.mockRejectedValue(new Error('network error'));
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getByTestId('servers-view-load-error')).toBeTruthy());
+        expect(screen.getByTestId('servers-view-load-error').textContent).toContain('network error');
     });
 });
