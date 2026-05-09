@@ -313,6 +313,8 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'kb-refresh',
     'fresh-written',
     'terse-replies',
+    'for-each',
+    'map-reduce',
 ];
 
 /** Default configuration values */
