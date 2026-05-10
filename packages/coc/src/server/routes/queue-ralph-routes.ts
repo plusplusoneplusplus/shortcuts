@@ -65,7 +65,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
 
             // Validate: must be grilling phase
             const procPayload = (proc as any).payload as Record<string, any> | undefined;
-            const ralphCtx = procPayload?.context?.ralph;
+            const ralphCtx = procPayload?.context?.ralph ?? (proc.metadata as any)?.ralph;
             if (!ralphCtx || ralphCtx.phase !== 'grilling') {
                 return sendError(res, 400, 'Process is not in grilling phase');
             }
