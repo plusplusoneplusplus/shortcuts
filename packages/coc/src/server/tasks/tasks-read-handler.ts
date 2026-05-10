@@ -366,7 +366,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendError(res, 400, 'File too large (max 4MB)');
                 }
                 const content = await fs.promises.readFile(resolvedPath, 'utf-8');
-                sendJSON(res, 200, { content, path: filePath });
+                sendJSON(res, 200, { content, path: filePath, mtime: stat.mtimeMs });
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
                     return sendError(res, 404, 'File not found');

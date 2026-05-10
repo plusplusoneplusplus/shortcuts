@@ -153,6 +153,8 @@ describe('Tasks Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.content).toBe(markdown);
             expect(body.path).toBe('my-task.md');
+            expect(typeof body.mtime).toBe('number');
+            expect(body.mtime).toBeGreaterThan(0);
         });
 
         it('should return content for nested file paths', async () => {
@@ -473,11 +475,48 @@ describe('Tasks Handler', () => {
             const data = JSON.parse(res.body);
             expect(data.path).toBe('test.md');
             expect(data.updated).toBe(true);
+            expect(typeof data.mtime).toBe('number');
+            expect(data.mtime).toBeGreaterThan(0);
 
             // Verify file on disk
             const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'test.md');
             const actual = fs.readFileSync(filePath, 'utf-8');
             expect(actual).toBe(newContent);
+        });
+
+        it('should return 409 conflict when expectedMtime does not match', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'test.md': '# Original' });
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'test.md', content: '# Updated', expectedMtime: 1 // stale
+            });
+            expect(res.status).toBe(409);
+            const data = JSON.parse(res.body);
+            expect(data.error).toBe('conflict');
+            expect(data.reason).toBe('mtime_mismatch');
+            expect(typeof data.currentMtime).toBe('number');
+            expect(typeof data.currentContent).toBe('string');
+        });
+
+        it('should succeed when expectedMtime matches the current mtime', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'test.md': '# Original' });
+
+            // First get the current mtime
+            const getRes = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=test.md`);
+            expect(getRes.status).toBe(200);
+            const { mtime } = JSON.parse(getRes.body);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'test.md', content: '# Updated', expectedMtime: mtime
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.updated).toBe(true);
+            expect(typeof data.mtime).toBe('number');
         });
 
         it('should write content to a nested file', async () => {

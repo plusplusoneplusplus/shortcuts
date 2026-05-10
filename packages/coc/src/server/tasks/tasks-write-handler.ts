@@ -121,7 +121,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: filePath, content } = body || {};
+            const { path: filePath, content, expectedMtime } = body || {};
             if (!filePath || typeof filePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -141,6 +141,19 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 if (!stat.isFile()) {
                     return sendError(res, 400, 'Path is not a file');
                 }
+                // Optimistic locking: if expectedMtime is provided, verify the file
+                // hasn't been modified since the client last read it.
+                if (typeof expectedMtime === 'number') {
+                    if (Math.round(stat.mtimeMs) !== Math.round(expectedMtime)) {
+                        const currentContent = await fs.promises.readFile(resolvedPath, 'utf-8');
+                        return sendJSON(res, 409, {
+                            error: 'conflict',
+                            reason: 'mtime_mismatch',
+                            currentMtime: stat.mtimeMs,
+                            currentContent,
+                        });
+                    }
+                }
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
                     return sendError(res, 404, 'File not found');
@@ -151,7 +164,8 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             try {
                 await fs.promises.writeFile(resolvedPath, content, 'utf-8');
                 taskCache.invalidateWorkspace(ws.id);
-                sendJSON(res, 200, { path: filePath, updated: true });
+                const writtenStat = await fs.promises.stat(resolvedPath);
+                sendJSON(res, 200, { path: filePath, updated: true, mtime: writtenStat.mtimeMs });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to write file: ' + (err.message || 'Unknown error'));
             }

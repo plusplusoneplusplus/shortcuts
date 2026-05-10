@@ -111,16 +111,19 @@ export interface UndoArchiveResponse {
 export interface TaskContentResponse {
   content: string;
   path: string;
+  mtime: number;
 }
 
 export interface WriteTaskContentRequest {
   path: string;
   content: string;
+  expectedMtime?: number;
 }
 
 export interface WriteTaskContentResponse {
   path: string;
   updated: boolean;
+  mtime: number;
 }
 
 export interface FilePreviewResponse {
