@@ -27,6 +27,9 @@ import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-grouping';
 import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
+import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
+import { RalphSessionRow } from './RalphSessionRow';
+import { isRalphEnabled } from '../../utils/config';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -40,6 +43,7 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'ask': 'Ask',
     'plan': 'Plan',
     'autopilot': 'Autopilot',
+    'ralph': 'Ralph',
 };
 
 export type ActivityTabMode = 'chats' | 'tasks';
@@ -119,6 +123,7 @@ export function getTaskTypeIcon(task: any): string {
     if (type === 'chat') {
         if (mode === 'ask') return '💡';
         if (mode === 'plan') return '📋';
+        if (mode === 'ralph') return '🔄';
         return '🤖';
     }
     if (type === 'run-workflow') return payload.workItemId ? '📦' : '▶️';
@@ -753,6 +758,24 @@ export function ChatListPane({
             flatVisible,
         };
     }, [activeTab, running, chatAllItems, chatFilter]);
+
+    const applyRalphGrouping = useCallback((items: any[]): RalphHistoryEntry[] => {
+        if (!isRalphEnabled()) return items;
+        return groupByRalphSession(items, unseenProcessIds);
+    }, [unseenProcessIds]);
+
+    const todayGrouped = useMemo(
+        () => chatGroups ? applyRalphGrouping(chatGroups.today) : [],
+        [chatGroups, applyRalphGrouping],
+    );
+    const weekGrouped = useMemo(
+        () => chatGroups ? applyRalphGrouping(chatGroups.week) : [],
+        [chatGroups, applyRalphGrouping],
+    );
+    const olderGrouped = useMemo(
+        () => chatGroups ? applyRalphGrouping(chatGroups.older) : [],
+        [chatGroups, applyRalphGrouping],
+    );
 
     const handleCancel = async (taskId: string) => {
         await getSpaCocClient().queue.cancel(taskId);
@@ -1450,9 +1473,9 @@ export function ChatListPane({
                                     const sections = [
                                         { id: 'running', label: 'Running', items: chatGroups.runningChats, variant: 'running' as const },
                                         { id: 'pinned', label: 'Pinned', items: chatGroups.pinnedChats, variant: 'pinned' as const },
-                                        { id: 'today', label: 'Today', items: chatGroups.today, variant: 'plain' as const },
-                                        { id: 'week', label: 'This week', items: chatGroups.week, variant: 'plain' as const },
-                                        { id: 'older', label: 'Older', items: chatGroups.older, variant: 'plain' as const },
+                                        { id: 'today', label: 'Today', items: todayGrouped, variant: 'plain' as const },
+                                        { id: 'week', label: 'This week', items: weekGrouped, variant: 'plain' as const },
+                                        { id: 'older', label: 'Older', items: olderGrouped, variant: 'plain' as const },
                                     ];
                                     return sections
                                         .filter(s => s.items.length > 0)
@@ -1485,7 +1508,21 @@ export function ChatListPane({
                                                         section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
                                                     )}>{section.items.length}</span>
                                                 </div>
-                                                {section.items.map(task => renderChatListRow(task, chatGroups.flatVisible))}
+                                                {section.items.map((entry: RalphHistoryEntry) =>
+                                                    entry.kind === 'ralph-session' ? (
+                                                        <RalphSessionRow
+                                                            key={entry.sessionId}
+                                                            session={entry as RalphSession}
+                                                            selectedTaskId={selectedTaskId}
+                                                            now={now}
+                                                            unseenProcessIds={unseenProcessIds}
+                                                            onSelectTask={onSelectTask}
+                                                            renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible)}
+                                                        />
+                                                    ) : (
+                                                        renderChatListRow(entry, chatGroups.flatVisible)
+                                                    )
+                                                )}
                                             </div>
                                         ));
                                 })()}

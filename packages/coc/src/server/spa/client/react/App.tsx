@@ -261,6 +261,9 @@ function AppInner() {
             case 'work-item-removed':
                 if (msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
                 break;
+            case 'ralph-session-complete':
+                window.dispatchEvent(new CustomEvent('ralph-session-complete', { detail: { repoId: msg.repoId } }));
+                break;
         }
     }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification]);
 

@@ -162,6 +162,18 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         fetchQueue();
     }, [workspaceId, fetchQueue]);
 
+    // Refresh queue when a Ralph session completes (fired by App.tsx WS handler)
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (!detail?.repoId || detail.repoId === workspaceId) {
+                fetchQueue();
+            }
+        };
+        window.addEventListener('ralph-session-complete', handler);
+        return () => window.removeEventListener('ralph-session-complete', handler);
+    }, [workspaceId, fetchQueue]);
+
     // Track active (running + queued) process IDs to detect departures and arrivals
     const prevActiveIdsRef = useRef<string[]>([]);
 

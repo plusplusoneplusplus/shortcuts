@@ -1,0 +1,220 @@
+/**
+ * Tests for ralph-session-grouping utility.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+    groupByRalphSession,
+    getRalphSessionId,
+    getRalphPhase,
+    isRalphTask,
+    type RalphSession,
+} from '../../../../src/server/spa/client/react/features/chat/ralph-session-grouping';
+
+function makeTask(overrides: any = {}): any {
+    return {
+        id: `task-${Math.random().toString(36).slice(2)}`,
+        type: 'chat',
+        status: 'completed',
+        createdAt: Date.now(),
+        ...overrides,
+    };
+}
+
+function makeGrillingTask(sessionId: string, overrides: any = {}): any {
+    return makeTask({
+        payload: {
+            mode: 'ask',
+            context: {
+                ralph: {
+                    sessionId,
+                    phase: 'grilling',
+                },
+            },
+        },
+        ...overrides,
+    });
+}
+
+function makeIterationTask(sessionId: string, iteration: number, overrides: any = {}): any {
+    return makeTask({
+        payload: {
+            mode: 'ralph',
+            context: {
+                ralph: {
+                    sessionId,
+                    phase: 'executing',
+                    currentIteration: iteration,
+                },
+            },
+        },
+        ...overrides,
+    });
+}
+
+// ---------------------------------------------------------------------------
+// getRalphSessionId / getRalphPhase / isRalphTask
+// ---------------------------------------------------------------------------
+
+describe('getRalphSessionId', () => {
+    it('returns undefined for non-ralph task', () => {
+        expect(getRalphSessionId(makeTask())).toBeUndefined();
+    });
+    it('returns sessionId from payload.context.ralph', () => {
+        const task = makeGrillingTask('sess-1');
+        expect(getRalphSessionId(task)).toBe('sess-1');
+    });
+});
+
+describe('getRalphPhase', () => {
+    it('returns undefined for non-ralph task', () => {
+        expect(getRalphPhase(makeTask())).toBeUndefined();
+    });
+    it('returns grilling for grilling tasks', () => {
+        expect(getRalphPhase(makeGrillingTask('s'))).toBe('grilling');
+    });
+    it('returns executing for iteration tasks', () => {
+        expect(getRalphPhase(makeIterationTask('s', 1))).toBe('executing');
+    });
+});
+
+describe('isRalphTask', () => {
+    it('returns false for non-ralph task', () => {
+        expect(isRalphTask(makeTask())).toBe(false);
+    });
+    it('returns true for ralph task', () => {
+        expect(isRalphTask(makeGrillingTask('sess-1'))).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// groupByRalphSession
+// ---------------------------------------------------------------------------
+
+describe('groupByRalphSession', () => {
+    it('returns empty array for empty input', () => {
+        expect(groupByRalphSession([])).toEqual([]);
+    });
+
+    it('returns standalone tasks unchanged when no ralph tasks', () => {
+        const t1 = makeTask({ createdAt: 1000 });
+        const t2 = makeTask({ createdAt: 2000 });
+        const result = groupByRalphSession([t1, t2]);
+        expect(result).toHaveLength(2);
+        // Both should have no kind
+        expect(result.every(e => e.kind === undefined || e.kind !== 'ralph-session')).toBe(true);
+    });
+
+    it('groups ralph tasks by sessionId, leaving non-ralph tasks standalone', () => {
+        const standalone = makeTask({ createdAt: 5000 });
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const iter1 = makeIterationTask('sess-1', 1, { createdAt: 2000 });
+
+        const result = groupByRalphSession([standalone, grilling, iter1]);
+
+        expect(result).toHaveLength(2);
+        const session = result.find(e => e.kind === 'ralph-session') as RalphSession;
+        expect(session).toBeDefined();
+        expect(session.sessionId).toBe('sess-1');
+        expect(session.grillingProcess).toBe(grilling);
+        expect(session.iterations).toHaveLength(1);
+    });
+
+    it('creates separate groups for multiple sessions', () => {
+        const g1 = makeGrillingTask('sess-1', { createdAt: 3000 });
+        const i1 = makeIterationTask('sess-1', 1, { createdAt: 4000 });
+        const g2 = makeGrillingTask('sess-2', { createdAt: 1000 });
+        const i2 = makeIterationTask('sess-2', 1, { createdAt: 2000 });
+
+        const result = groupByRalphSession([g1, i1, g2, i2]);
+
+        expect(result).toHaveLength(2);
+        expect(result.every(e => e.kind === 'ralph-session')).toBe(true);
+        const ids = result.map((e: any) => e.sessionId);
+        expect(ids).toContain('sess-1');
+        expect(ids).toContain('sess-2');
+    });
+
+    it('session with only grilling process has phase=grilling', () => {
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const result = groupByRalphSession([grilling]);
+        const session = result[0] as RalphSession;
+        expect(session.kind).toBe('ralph-session');
+        expect(session.phase).toBe('grilling');
+        expect(session.grillingProcess).toBe(grilling);
+        expect(session.iterations).toHaveLength(0);
+    });
+
+    it('session with grilling + 2 iterations has phase=executing', () => {
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const i1 = makeIterationTask('sess-1', 1, { createdAt: 2000 });
+        const i2 = makeIterationTask('sess-1', 2, { createdAt: 3000 });
+
+        const result = groupByRalphSession([grilling, i1, i2]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('executing');
+        expect(session.iterations).toHaveLength(2);
+    });
+
+    it('session with completed final iteration has phase=complete', () => {
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const i1 = makeIterationTask('sess-1', 1, {
+            createdAt: 2000,
+            status: 'completed',
+            payload: {
+                mode: 'ralph',
+                context: {
+                    ralph: {
+                        sessionId: 'sess-1',
+                        phase: 'complete',
+                        currentIteration: 1,
+                    },
+                },
+            },
+        });
+
+        const result = groupByRalphSession([grilling, i1]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('complete');
+    });
+
+    it('propagates hasUnseen when session item is in unseenIds', () => {
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const iter = makeIterationTask('sess-1', 1, { createdAt: 2000 });
+        const unseenIds = new Set([grilling.id]);
+
+        const result = groupByRalphSession([grilling, iter], unseenIds);
+        const session = result[0] as RalphSession;
+        expect(session.hasUnseen).toBe(true);
+    });
+
+    it('hasUnseen is false when no session items are unseen', () => {
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const unseenIds = new Set<string>(['other-task-id']);
+
+        const result = groupByRalphSession([grilling], unseenIds);
+        const session = result[0] as RalphSession;
+        expect(session.hasUnseen).toBe(false);
+    });
+
+    it('sorts result by latest timestamp descending', () => {
+        const standalone = makeTask({ createdAt: 9000 });
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+        const iter = makeIterationTask('sess-1', 1, { createdAt: 2000 });
+
+        const result = groupByRalphSession([grilling, iter, standalone]);
+        // standalone has ts 9000, session has latestTimestamp 2000
+        expect(result[0]).toBe(standalone);
+        expect((result[1] as RalphSession).kind).toBe('ralph-session');
+    });
+
+    it('sorts iterations by currentIteration ascending within session', () => {
+        const i2 = makeIterationTask('sess-1', 2, { createdAt: 3000 });
+        const i1 = makeIterationTask('sess-1', 1, { createdAt: 2000 });
+        const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
+
+        const result = groupByRalphSession([i2, i1, grilling]);
+        const session = result[0] as RalphSession;
+        expect(session.iterations[0].payload.context.ralph.currentIteration).toBe(1);
+        expect(session.iterations[1].payload.context.ralph.currentIteration).toBe(2);
+    });
+});
