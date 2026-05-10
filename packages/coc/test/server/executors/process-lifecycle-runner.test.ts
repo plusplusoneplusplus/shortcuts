@@ -757,3 +757,96 @@ describe('ProcessLifecycleRunner — title generation gating', () => {
         expect(proc?.title).toBe('existing title');
     });
 });
+
+// ============================================================================
+// Ralph auto-loop: onRalphNext callback
+// ============================================================================
+
+describe('ProcessLifecycleRunner — ralph onRalphNext callback', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    function makeRalphTask(ralphCtx?: Record<string, unknown>): QueuedTask {
+        return makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Continue toward the goal',
+                workspaceId: 'ws-ralph',
+                context: ralphCtx ? { ralph: ralphCtx } : undefined,
+            } as any,
+        });
+    }
+
+    it('calls onRalphNext after a ralph task completes successfully', async () => {
+        const onRalphNext = vi.fn();
+        const task = makeRalphTask({ originalGoal: 'Build a REST API', currentIteration: 1 });
+
+        await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'Done\nRALPH_PROGRESS:\nAuth done\nRALPH_NEXT' }),
+            onRalphNext,
+        }));
+
+        expect(onRalphNext).toHaveBeenCalledOnce();
+        const [calledProcessId, calledTask, calledResponse] = onRalphNext.mock.calls[0];
+        expect(calledProcessId).toBe(`queue_${task.id}`);
+        expect(calledTask).toBe(task);
+        expect(calledResponse).toContain('RALPH_NEXT');
+    });
+
+    it('does not call onRalphNext for non-ralph tasks', async () => {
+        const onRalphNext = vi.fn();
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Hello', workspaceId: 'ws' } as any,
+        });
+
+        await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'Some response RALPH_NEXT' }),
+            onRalphNext,
+        }));
+
+        expect(onRalphNext).not.toHaveBeenCalled();
+    });
+
+    it('does not call onRalphNext when task fails', async () => {
+        const onRalphNext = vi.fn();
+        const task = makeRalphTask({ originalGoal: 'Build a REST API' });
+
+        await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockRejectedValue(new Error('execution error')),
+            onRalphNext,
+        }));
+
+        expect(onRalphNext).not.toHaveBeenCalled();
+    });
+
+    it('does not crash when onRalphNext callback throws', async () => {
+        const onRalphNext = vi.fn().mockImplementation(() => { throw new Error('enqueue failed'); });
+        const task = makeRalphTask({ originalGoal: 'Build a REST API' });
+
+        const result = await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'RALPH_NEXT' }),
+            onRalphNext,
+        }));
+
+        expect(result.success).toBe(true);
+        expect(onRalphNext).toHaveBeenCalledOnce();
+    });
+
+    it('works without onRalphNext callback (backward compat)', async () => {
+        const task = makeRalphTask({ originalGoal: 'Build a REST API' });
+
+        const result = await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'RALPH_NEXT' }),
+            // no onRalphNext
+        }));
+
+        expect(result.success).toBe(true);
+    });
+});

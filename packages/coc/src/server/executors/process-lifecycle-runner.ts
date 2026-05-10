@@ -49,6 +49,7 @@ import {
     isRunWorkflowPayload,
     isRunScriptPayload,
     hasNoteChatContext,
+    isRalphMode,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
@@ -126,6 +127,12 @@ export interface LifecycleRunnerOptions {
     getWorkingDirectoryFn: (task: QueuedTask) => string | undefined;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
+    /**
+     * Called after a ralph-mode task completes successfully.
+     * The bridge uses this to parse RALPH_NEXT/RALPH_COMPLETE and enqueue the
+     * next iteration (or emit a session-complete event).
+     */
+    onRalphNext?: (processId: string, task: QueuedTask, responseText: string) => void;
 }
 
 // ============================================================================
@@ -376,6 +383,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         await opts.onDrainPendingMessages(processId, task.id);
                     } catch (err) {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                }
+
+                // Trigger Ralph auto-loop for ralph-mode tasks
+                if (finalStatus === 'completed' && opts.onRalphNext && isRalphMode(task.payload)) {
+                    try {
+                        opts.onRalphNext(processId, task, responseText);
+                    } catch (err) {
+                        logger.debug(LogCategory.AI, `[QueueExecutor] Failed to trigger Ralph next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
 

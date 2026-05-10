@@ -11,6 +11,7 @@ import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
 import type { MemoryPromoteConfig } from '../memory/memory-promote';
+import { parseRalphSignal, appendProgress } from '../executors/ralph-signal-parser';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -65,12 +66,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private queueExecutor?: QueueExecutor;
     private readonly executors: ExecutorRegistry;
     private readonly titleGenerationService: TitleGenerationService;
+    private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService ?? getCopilotSDKService();
+        this.getWsServer = options.getWsServer;
         this.titleGenerationService = new TitleGenerationService({
             store,
             aiService: this.aiService,
@@ -127,6 +130,85 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return ws?.id ?? rootPath;
     }
 
+    /**
+     * Called by ProcessLifecycleRunner after a ralph-mode task completes.
+     * Parses RALPH_NEXT/RALPH_COMPLETE signal and either enqueues the next
+     * iteration or emits a ralph-session-complete WS event.
+     */
+    private enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): void {
+        if (!this.queueManager) return;
+        const logger = getLogger();
+
+        const { signal, progress } = parseRalphSignal(responseText);
+        const payload = completedTask.payload as unknown as ChatPayload;
+        const ralphCtx = payload.context?.ralph;
+        const currentIteration = ralphCtx?.currentIteration ?? 1;
+        const maxIterations = ralphCtx?.maxIterations ?? 10;
+        const workspaceId = payload.workspaceId;
+        const sessionId = ralphCtx?.sessionId;
+
+        const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations;
+
+        if (!shouldContinue) {
+            // Session complete — emit WS event
+            const reason = signal === 'RALPH_COMPLETE' ? 'signal' : 'cap';
+            logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${reason}, iterations: ${currentIteration})`);
+            if (workspaceId) {
+                try {
+                    this.getWsServer?.()?.broadcastProcessEvent({
+                        type: 'ralph-session-complete',
+                        workspaceId,
+                        sessionId,
+                        processId,
+                        totalIterations: currentIteration,
+                        reason,
+                    });
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[Ralph] Failed to broadcast ralph-session-complete: ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
+            return;
+        }
+
+        // Enqueue next iteration
+        const nextIteration = currentIteration + 1;
+        const updatedProgress = appendProgress(ralphCtx?.accumulatedProgress, progress);
+
+        logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${nextIteration}/${maxIterations} for session ${sessionId ?? processId}`);
+
+        try {
+            this.queueManager.enqueue({
+                type: 'chat',
+                repoId: completedTask.repoId,
+                priority: 'normal',
+                payload: {
+                    kind: 'chat' as const,
+                    mode: 'ralph' as const,
+                    prompt: payload.prompt,
+                    workspaceId: payload.workspaceId,
+                    workingDirectory: payload.workingDirectory,
+                    folderPath: (payload as any).folderPath,
+                    context: {
+                        ...payload.context,
+                        ralph: {
+                            ...ralphCtx,
+                            originalGoal: ralphCtx?.originalGoal ?? '',
+                            accumulatedProgress: updatedProgress || undefined,
+                            currentIteration: nextIteration,
+                            maxIterations,
+                            sessionId: sessionId ?? processId,
+                            phase: 'executing' as const,
+                        },
+                    },
+                } as any,
+                config: completedTask.config ?? {},
+                displayName: `Ralph iteration ${nextIteration}${sessionId ? ` (${sessionId})` : ''}`,
+            });
+        } catch (err) {
+            logger.warn(LogCategory.AI, `[Ralph] Failed to enqueue next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');
         const existingTask = this.queueManager.getTask(taskId);
@@ -172,6 +254,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
+                onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
             });
         } finally {
             this.cancelledTasks.delete(task.id);

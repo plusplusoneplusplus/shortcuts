@@ -134,7 +134,8 @@ export type ServerMessage =
     | { type: 'memory-promote:completed'; workspaceId: string; trigger: string; target: string; counts: Record<string, unknown>; timestamp: number }
     | { type: 'turn-deleted'; processId: string; turnIndex: number; deletedAt: string | null }
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
-    | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean };
+    | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean }
+    | { type: 'ralph-session-complete'; workspaceId: string; sessionId?: string; processId: string; totalIterations: number; reason: 'signal' | 'cap' };
 
 /** Client → Server message types */
 export type ClientMessage =
