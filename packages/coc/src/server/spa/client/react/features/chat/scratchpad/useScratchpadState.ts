@@ -30,6 +30,8 @@ export interface UseScratchpadStateReturn extends ScratchpadState {
      * Preserves insertion order. Does not change the active linkedNotePath.
      */
     registerFiles: (paths: string[]) => void;
+    /** Removes a stale file path from scratchpad tabs and clears it if active. */
+    unregisterFile: (path: string) => void;
     /** Sets the active mobile tab ('chat' or 'scratchpad'). */
     setActiveMobileTab: (tab: MobileTab) => void;
 }
@@ -192,6 +194,16 @@ export function useScratchpadState(
         });
     }, []);
 
+    const unregisterFile = useCallback((path: string) => {
+        const lc = path.toLowerCase();
+        setKnownFiles(prev => prev.filter(p => p.toLowerCase() !== lc));
+        setLinkedNotePathRaw(prev => {
+            if (prev?.toLowerCase() !== lc) return prev;
+            writeLinkedNotePath(taskId, null);
+            return null;
+        });
+    }, [taskId]);
+
     // Drag mechanism — layout-aware
     const startPosRef = useRef(0);
     const startPctRef = useRef(0);
@@ -255,6 +267,7 @@ export function useScratchpadState(
         setExpandMode,
         handleDividerMouseDown,
         registerFiles,
+        unregisterFile,
         setActiveMobileTab,
     };
 }

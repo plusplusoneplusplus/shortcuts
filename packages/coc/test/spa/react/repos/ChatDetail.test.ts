@@ -33,6 +33,8 @@ const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features'
 const MODE_CONFIG_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'modeConfig.ts'), 'utf-8');
 const QUEUED_BUBBLE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'QueuedBubble.tsx'), 'utf-8');
 const CHAT_UTILS_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'utils', 'chatUtils.ts'), 'utf-8');
+const SCRATCHPAD_CANDIDATES_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'scratchpad', 'scratchpadCandidates.ts'), 'utf-8');
+const SCRATCHPAD_STATE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'features', 'chat', 'scratchpad', 'useScratchpadState.ts'), 'utf-8');
 
 describe('ChatDetail', () => {
     let source: string;
@@ -1182,7 +1184,7 @@ describe('ChatDetail', () => {
             expect(source).toContain('planPatchedRef.current = false');
             // Verify the reset is in a useEffect with [taskId] dependency
             const resetIdx = source.indexOf('planPatchedRef.current = false');
-            const surroundingBlock = source.substring(resetIdx - 30, resetIdx + 80);
+            const surroundingBlock = source.substring(resetIdx - 30, resetIdx + 180);
             expect(surroundingBlock).toContain('useEffect');
             expect(surroundingBlock).toContain('taskId');
         });
@@ -1195,6 +1197,40 @@ describe('ChatDetail', () => {
             // .find() returns the first match, not .filter() or .at(-1)
             expect(detectBlock).toContain('createdFiles.find');
             expect(detectBlock).not.toContain('findLast');
+        });
+
+        it('builds scratchpad candidates from linked, known, created, and plan paths', () => {
+            expect(source).toContain('buildScratchpadCandidates');
+            expect(source).toContain('linkedNotePath: scratchpad.linkedNotePath');
+            expect(source).toContain('knownFiles: scratchpad.knownFiles');
+            expect(source).toContain('createdFiles');
+            expect(source).toContain('effectivePlanPath');
+        });
+
+        it('tracks invalid scratchpad paths so deleted plan files are skipped', () => {
+            expect(source).toContain('invalidScratchpadPaths');
+            expect(source).toContain('setInvalidScratchpadPaths');
+            expect(source).toContain('invalidPaths: invalidScratchpadPaths');
+            expect(SCRATCHPAD_CANDIDATES_SOURCE).toContain('invalidPaths.has(key)');
+        });
+
+        it('retries the next scratchpad candidate instead of closing on note 404', () => {
+            expect(source).toContain('handleScratchpadNotFound');
+            const notFoundBlock = source.substring(
+                source.indexOf('const handleScratchpadNotFound'),
+                source.indexOf('const handleScratchpadNotFound') + 800,
+            );
+            expect(notFoundBlock).toContain('scratchpadCandidates.find');
+            expect(notFoundBlock).toContain('scratchpad.unregisterFile');
+            expect(notFoundBlock).toContain('scratchpad.open(nextPath)');
+            expect(source).toContain('onNotFound={handleScratchpadNotFound}');
+            expect(source).not.toContain('onNotFound={scratchpad.close}');
+        });
+
+        it('scratchpad state exposes unregisterFile for pruning stale tabs', () => {
+            expect(SCRATCHPAD_STATE_SOURCE).toContain('unregisterFile: (path: string) => void');
+            expect(SCRATCHPAD_STATE_SOURCE).toContain('setKnownFiles(prev => prev.filter');
+            expect(SCRATCHPAD_STATE_SOURCE).toContain('writeLinkedNotePath(taskId, null)');
         });
     });
 

@@ -46,6 +46,7 @@ import { useScratchpadState } from './scratchpad/useScratchpadState';
 import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
+import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
@@ -132,6 +133,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
+    const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
     const [pendingAskUserQuestion, setPendingAskUserQuestion] = useState<import('./hooks/useChatSSE').AskUserQuestion | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
@@ -259,7 +261,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     }, [processId, isTerminal, task?.metadata?.notePath]);
 
     // Reset patch guard when switching tasks
-    useEffect(() => { planPatchedRef.current = false; }, [taskId]);
+    useEffect(() => {
+        planPatchedRef.current = false;
+        setInvalidScratchpadPaths(new Set());
+    }, [taskId]);
 
     // Reactively sync title from process-updated WS events (via AppContext)
     useEffect(() => {
@@ -821,19 +826,43 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
     /** On mobile, when the scratchpad is open, switch to full-screen tab mode. */
     const isMobileScratchpad = isMobile && scratchpadEnabled && scratchpad.isOpen;
+    const scratchpadCandidates = useMemo(() => buildScratchpadCandidates({
+        linkedNotePath: scratchpad.linkedNotePath,
+        knownFiles: scratchpad.knownFiles,
+        createdFiles,
+        effectivePlanPath,
+        invalidPaths: invalidScratchpadPaths,
+    }), [scratchpad.linkedNotePath, scratchpad.knownFiles, createdFiles, effectivePlanPath, invalidScratchpadPaths]);
 
     const showScratchpadButton = scratchpadEnabled
         && !scratchpad.isOpen
-        && (scratchpad.knownFiles.length > 0 || !!effectivePlanPath);
+        && scratchpadCandidates.length > 0;
 
     const handleOpenScratchpad = useCallback(() => {
-        scratchpad.open(
-            scratchpad.linkedNotePath
-            ?? scratchpad.knownFiles[0]
-            ?? effectivePlanPath
-            ?? undefined,
-        );
-    }, [scratchpad, effectivePlanPath]);
+        scratchpad.open(scratchpadCandidates[0]);
+    }, [scratchpad, scratchpadCandidates]);
+
+    const handleScratchpadNotFound = useCallback(() => {
+        const missingPath = scratchpad.linkedNotePath;
+        if (!missingPath) {
+            scratchpad.close();
+            return;
+        }
+
+        const missingKey = missingPath.toLowerCase();
+        const nextPath = scratchpadCandidates.find(path => path.toLowerCase() !== missingKey);
+        setInvalidScratchpadPaths(prev => {
+            const next = new Set(prev);
+            next.add(missingKey);
+            return next;
+        });
+        scratchpad.unregisterFile(missingPath);
+        if (nextPath) {
+            scratchpad.open(nextPath);
+        } else {
+            scratchpad.close();
+        }
+    }, [scratchpad, scratchpadCandidates]);
 
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
@@ -1019,7 +1048,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             notePath={scratchpad.linkedNotePath}
                             workspaceId={workspaceId ?? ''}
                             onClose={scratchpad.close}
-                            onNotFound={scratchpad.close}
+                            onNotFound={handleScratchpadNotFound}
                             height="auto"
                             parentProcessId={processId ?? undefined}
                             selectedMode={selectedMode}
