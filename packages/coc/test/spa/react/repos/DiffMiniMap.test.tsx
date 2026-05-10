@@ -2,17 +2,20 @@
  * DiffMiniMap — comprehensive tests.
  *
  * Covers segment building, rendering, click navigation, viewport indicator,
- * drag scrolling, visibility conditions, and edge cases.
+ * drag scrolling, visibility conditions, pixel-based alignment, and edge cases.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     DiffMiniMap,
     buildDiffSegments,
     getSegmentColor,
+    measureLineOffsets,
+    computeSegmentPositions,
     MINIMAP_WIDTH,
     type DiffSegment,
+    type LineOffset,
 } from '../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap';
 import type { DiffLine } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
@@ -26,13 +29,48 @@ function makeLines(types: DiffLine['type'][]): DiffLine[] {
     return types.map((type, i) => makeLine(type, i));
 }
 
-function createScrollContainer(): HTMLDivElement {
+function createScrollContainer(options?: {
+    lineHeights?: number[];
+}): HTMLDivElement {
     const el = document.createElement('div');
-    Object.defineProperties(el, {
-        scrollHeight: { value: 2000, configurable: true },
-        clientHeight: { value: 500, configurable: true },
-        scrollTop: { value: 0, writable: true, configurable: true },
-    });
+    const lineHeights = options?.lineHeights;
+
+    // If custom line heights are provided, create child elements with
+    // data-diff-line-index and mock their bounding rects.
+    if (lineHeights) {
+        let cumulativeTop = 0;
+        const totalHeight = lineHeights.reduce((a, b) => a + b, 0);
+
+        for (let i = 0; i < lineHeights.length; i++) {
+            const lineEl = document.createElement('div');
+            lineEl.setAttribute('data-diff-line-index', String(i));
+            const top = cumulativeTop;
+            const height = lineHeights[i];
+            vi.spyOn(lineEl, 'getBoundingClientRect').mockReturnValue({
+                top, left: 0, width: 100, height,
+                bottom: top + height, right: 100, x: 0, y: 0, toJSON: () => {},
+            });
+            el.appendChild(lineEl);
+            cumulativeTop += height;
+        }
+
+        Object.defineProperties(el, {
+            scrollHeight: { value: totalHeight, configurable: true },
+            clientHeight: { value: Math.min(500, totalHeight), configurable: true },
+            scrollTop: { value: 0, writable: true, configurable: true },
+        });
+        vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+            top: 0, left: 0, width: 100, height: Math.min(500, totalHeight),
+            bottom: Math.min(500, totalHeight), right: 100, x: 0, y: 0, toJSON: () => {},
+        });
+    } else {
+        Object.defineProperties(el, {
+            scrollHeight: { value: 2000, configurable: true },
+            clientHeight: { value: 500, configurable: true },
+            scrollTop: { value: 0, writable: true, configurable: true },
+        });
+    }
+
     el.scrollTo = vi.fn((opts?: ScrollToOptions) => {
         if (opts?.top !== undefined) (el as any).scrollTop = opts.top;
     });
@@ -138,12 +176,146 @@ describe('getSegmentColor', () => {
     });
 });
 
+// ── Pixel measurement tests ────────────────────────────────────────────
+
+describe('measureLineOffsets', () => {
+    it('returns empty offsets when no data-diff-line-index elements exist', () => {
+        const container = document.createElement('div');
+        Object.defineProperty(container, 'scrollHeight', { value: 1000, configurable: true });
+        vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+            top: 0, left: 0, width: 100, height: 500,
+            bottom: 500, right: 100, x: 0, y: 0, toJSON: () => {},
+        });
+
+        const { offsets, totalHeight } = measureLineOffsets(container);
+        expect(offsets).toEqual([]);
+        expect(totalHeight).toBe(1000);
+    });
+
+    it('measures uniform-height lines correctly', () => {
+        const container = createScrollContainer({
+            lineHeights: [20, 20, 20, 20, 20],
+        });
+
+        const { offsets, totalHeight } = measureLineOffsets(container);
+        expect(offsets).toHaveLength(5);
+        expect(offsets[0]).toEqual({ top: 0, height: 20 });
+        expect(offsets[1]).toEqual({ top: 20, height: 20 });
+        expect(offsets[4]).toEqual({ top: 80, height: 20 });
+        expect(totalHeight).toBe(100);
+    });
+
+    it('measures wrapped (variable-height) lines correctly', () => {
+        // Simulate a line that wraps to 3 visual rows (60px) vs normal 20px
+        const container = createScrollContainer({
+            lineHeights: [20, 20, 60, 20, 20],
+        });
+
+        const { offsets, totalHeight } = measureLineOffsets(container);
+        expect(offsets).toHaveLength(5);
+        expect(offsets[0]).toEqual({ top: 0, height: 20 });
+        expect(offsets[1]).toEqual({ top: 20, height: 20 });
+        expect(offsets[2]).toEqual({ top: 40, height: 60 }); // wrapped line
+        expect(offsets[3]).toEqual({ top: 100, height: 20 });
+        expect(offsets[4]).toEqual({ top: 120, height: 20 });
+        expect(totalHeight).toBe(140);
+    });
+});
+
+describe('computeSegmentPositions', () => {
+    it('returns zero positions when totalHeight is zero', () => {
+        const segments: DiffSegment[] = [
+            { type: 'added', startLine: 0, lineCount: 2 },
+        ];
+        const result = computeSegmentPositions(segments, [], 0);
+        expect(result).toEqual([{ topPercent: 0, heightPercent: 0 }]);
+    });
+
+    it('computes correct percentages for uniform-height lines', () => {
+        const offsets: LineOffset[] = [
+            { top: 0, height: 20 },
+            { top: 20, height: 20 },
+            { top: 40, height: 20 },
+            { top: 60, height: 20 },
+        ];
+        const segments: DiffSegment[] = [
+            { type: 'context', startLine: 0, lineCount: 2 },
+            { type: 'added', startLine: 2, lineCount: 2 },
+        ];
+        const result = computeSegmentPositions(segments, offsets, 80);
+
+        expect(result[0].topPercent).toBe(0);
+        expect(result[0].heightPercent).toBe(50);
+        expect(result[1].topPercent).toBe(50);
+        expect(result[1].heightPercent).toBe(50);
+    });
+
+    it('accounts for wrapped lines taking more pixel space', () => {
+        // Line 1 is a wrapped line that is 60px tall
+        const offsets: LineOffset[] = [
+            { top: 0, height: 20 },   // line 0: normal
+            { top: 20, height: 60 },  // line 1: wrapped (3x height)
+            { top: 80, height: 20 },  // line 2: normal
+        ];
+        const segments: DiffSegment[] = [
+            { type: 'context', startLine: 0, lineCount: 1 },
+            { type: 'added', startLine: 1, lineCount: 1 },   // the wrapped line
+            { type: 'context', startLine: 2, lineCount: 1 },
+        ];
+        const result = computeSegmentPositions(segments, offsets, 100);
+
+        // The 'added' segment should take 60% (60px / 100px), not 33%
+        expect(result[0]).toEqual({ topPercent: 0, heightPercent: 20 });
+        expect(result[1]).toEqual({ topPercent: 20, heightPercent: 60 });
+        expect(result[2]).toEqual({ topPercent: 80, heightPercent: 20 });
+    });
+
+    it('handles startLine beyond lineOffsets range', () => {
+        const offsets: LineOffset[] = [
+            { top: 0, height: 20 },
+        ];
+        const segments: DiffSegment[] = [
+            { type: 'added', startLine: 5, lineCount: 1 },
+        ];
+        const result = computeSegmentPositions(segments, offsets, 100);
+        expect(result[0].topPercent).toBe(100);
+    });
+});
+
 // ── Component rendering tests ──────────────────────────────────────────
 
 describe('DiffMiniMap', () => {
+    let rafCallbacks: FrameRequestCallback[];
+    let originalRaf: typeof globalThis.requestAnimationFrame;
+    let originalCaf: typeof globalThis.cancelAnimationFrame;
+
+    beforeEach(() => {
+        rafCallbacks = [];
+        originalRaf = globalThis.requestAnimationFrame;
+        originalCaf = globalThis.cancelAnimationFrame;
+        globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => {
+            rafCallbacks.push(cb);
+            return rafCallbacks.length;
+        });
+        globalThis.cancelAnimationFrame = vi.fn();
+        // Provide a no-op ResizeObserver for jsdom
+        globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+            observe: vi.fn(),
+            unobserve: vi.fn(),
+            disconnect: vi.fn(),
+        }));
+    });
+
     afterEach(() => {
         vi.restoreAllMocks();
+        globalThis.requestAnimationFrame = originalRaf;
+        globalThis.cancelAnimationFrame = originalCaf;
     });
+
+    function flushRaf() {
+        const cbs = rafCallbacks.splice(0);
+        cbs.forEach(cb => cb(performance.now()));
+    }
 
     describe('visibility', () => {
         it('renders nothing when diffLines is empty', () => {
@@ -203,6 +375,73 @@ describe('DiffMiniMap', () => {
             renderMiniMap({ diffLines: makeLines(['context', 'added']) });
             const seg = screen.getByTestId('diff-minimap-segment-0');
             expect(seg.style.backgroundColor).toBe('transparent');
+        });
+
+        it('segments use absolute positioning with top/height percentages', () => {
+            const scrollContainer = createScrollContainer({
+                lineHeights: [20, 20, 20],
+            });
+            renderMiniMap({
+                diffLines: makeLines(['context', 'added', 'context']),
+                scrollContainer,
+            });
+
+            act(() => flushRaf());
+
+            const seg = screen.getByTestId('diff-minimap-segment-1');
+            // The 'added' segment (at index 1 of 3 equal-height lines)
+            // should have top ≈ 33.33%
+            expect(parseFloat(seg.style.top)).toBeCloseTo(33.33, 0);
+            expect(parseFloat(seg.style.height)).toBeCloseTo(33.33, 0);
+        });
+    });
+
+    describe('pixel-based alignment with wrapped lines', () => {
+        it('positions segments correctly when a line wraps to multiple visual rows', () => {
+            // 5 lines: context(20px), removed(20px), added(60px wrapped), context(20px), context(20px)
+            const scrollContainer = createScrollContainer({
+                lineHeights: [20, 20, 60, 20, 20],
+            });
+            const diffLines = makeLines(['context', 'removed', 'added', 'context', 'context']);
+
+            renderMiniMap({ diffLines, scrollContainer });
+            act(() => flushRaf());
+
+            // Segments: context(1), removed(1), added(1), context(2)
+            // Total height = 140px
+            const removedSeg = screen.getByTestId('diff-minimap-segment-1');
+            const addedSeg = screen.getByTestId('diff-minimap-segment-2');
+
+            // removed: top=20/140*100≈14.29%, height=20/140*100≈14.29%
+            const removedTop = parseFloat(removedSeg.style.top);
+            expect(removedTop).toBeCloseTo(14.29, 1);
+
+            // added (wrapped): top=40/140*100≈28.57%
+            const addedTop = parseFloat(addedSeg.style.top);
+            expect(addedTop).toBeCloseTo(28.57, 1);
+
+            // height should reflect the wrapped pixel height (60px / 140px ≈ 42.86%)
+            const addedHeight = parseFloat(addedSeg.style.height);
+            expect(addedHeight).toBeCloseTo(42.86, 1);
+        });
+
+        it('uniform-height lines produce evenly spaced segments', () => {
+            const scrollContainer = createScrollContainer({
+                lineHeights: [20, 20, 20, 20],
+            });
+            const diffLines = makeLines(['context', 'added', 'added', 'context']);
+
+            renderMiniMap({ diffLines, scrollContainer });
+            act(() => flushRaf());
+
+            const contextSeg0 = screen.getByTestId('diff-minimap-segment-0');
+            const addedSeg = screen.getByTestId('diff-minimap-segment-1');
+            const contextSeg1 = screen.getByTestId('diff-minimap-segment-2');
+
+            // Each line is 25% of total height
+            expect(parseFloat(contextSeg0.style.top)).toBeCloseTo(0, 1);
+            expect(parseFloat(addedSeg.style.top)).toBeCloseTo(25, 1);
+            expect(parseFloat(contextSeg1.style.top)).toBeCloseTo(75, 1);
         });
     });
 
@@ -298,6 +537,14 @@ describe('DiffMiniMap', () => {
             Object.defineProperty(scrollContainer, 'clientHeight', { value: 0, configurable: true });
             // Should not throw
             renderMiniMap({ scrollContainer });
+            expect(screen.getByTestId('diff-minimap')).toBeTruthy();
+        });
+
+        it('handles no line-index elements gracefully (fallback)', () => {
+            // A container with no data-diff-line-index children
+            const scrollContainer = createScrollContainer();
+            renderMiniMap({ scrollContainer });
+            // Should render without errors
             expect(screen.getByTestId('diff-minimap')).toBeTruthy();
         });
     });

@@ -1,10 +1,13 @@
 /**
  * DiffMiniMap — compact vertical overview of a unified diff.
  *
- * Shows colored strips proportional to line count for each contiguous region
- * of added, removed, or context lines.  Users can click anywhere on the strip
- * to scroll the diff viewer to that position, or drag the viewport indicator.
- * Mirrors VS Code's diff-editor minimap decoration gutter.
+ * Shows colored strips whose vertical position and height are derived from the
+ * actual rendered pixel layout of the diff viewer (via `data-diff-line-index`
+ * elements).  This ensures correct alignment even when long lines wrap to
+ * multiple visual rows.
+ *
+ * Users can click anywhere on the strip to scroll the diff viewer to that
+ * position, or drag the viewport indicator.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +27,11 @@ export interface DiffSegment {
     type: SegmentType;
     startLine: number;
     lineCount: number;
+}
+
+export interface LineOffset {
+    top: number;
+    height: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -55,6 +63,64 @@ export function getSegmentColor(type: SegmentType): string {
     }
 }
 
+/**
+ * Measure pixel offsets (top + height) of each diff line element within
+ * the scroll container.  Returns per-line offsets plus total content height.
+ */
+export function measureLineOffsets(
+    scrollContainer: HTMLElement,
+): { offsets: LineOffset[]; totalHeight: number } {
+    const lineEls = scrollContainer.querySelectorAll<HTMLElement>('[data-diff-line-index]');
+    if (lineEls.length === 0) return { offsets: [], totalHeight: scrollContainer.scrollHeight };
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const scrollTop = scrollContainer.scrollTop;
+
+    const result: LineOffset[] = [];
+    for (const el of lineEls) {
+        const elRect = el.getBoundingClientRect();
+        const top = elRect.top - containerRect.top + scrollTop;
+        result.push({ top, height: elRect.height });
+    }
+
+    return { offsets: result, totalHeight: scrollContainer.scrollHeight };
+}
+
+/**
+ * Compute segment position/size as percentages of total content height
+ * using pixel-accurate line offsets.
+ */
+export function computeSegmentPositions(
+    segments: DiffSegment[],
+    lineOffsets: LineOffset[],
+    totalHeight: number,
+): { topPercent: number; heightPercent: number }[] {
+    if (totalHeight <= 0 || lineOffsets.length === 0) {
+        return segments.map(() => ({ topPercent: 0, heightPercent: 0 }));
+    }
+
+    return segments.map(seg => {
+        const firstIdx = seg.startLine;
+        const lastIdx = seg.startLine + seg.lineCount - 1;
+
+        if (firstIdx >= lineOffsets.length) {
+            return { topPercent: 100, heightPercent: 0 };
+        }
+
+        const clampedLast = Math.min(lastIdx, lineOffsets.length - 1);
+        const first = lineOffsets[firstIdx];
+        const last = lineOffsets[clampedLast];
+
+        const segTop = first.top;
+        const segHeight = (last.top + last.height) - segTop;
+
+        return {
+            topPercent: (segTop / totalHeight) * 100,
+            heightPercent: (segHeight / totalHeight) * 100,
+        };
+    });
+}
+
 // ── Props ──────────────────────────────────────────────────────────────
 
 export interface DiffMiniMapProps {
@@ -68,13 +134,67 @@ export interface DiffMiniMapProps {
 export function DiffMiniMap({ diffLines, scrollContainerRef }: DiffMiniMapProps) {
     const [viewportTop, setViewportTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
+    const [lineOffsets, setLineOffsets] = useState<LineOffset[]>([]);
+    const [totalContentHeight, setTotalContentHeight] = useState(0);
 
     const stripAreaRef = useRef<HTMLDivElement>(null);
     const draggingRef = useRef(false);
     const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const measureRafRef = useRef<number | null>(null);
 
     const segments = useMemo(() => buildDiffSegments(diffLines), [diffLines]);
     const totalLines = diffLines.length;
+
+    // ── Measure line offsets from the DOM ──────────────────────────────
+
+    const measureLines = useCallback(() => {
+        const sc = scrollContainerRef.current;
+        if (!sc) return;
+
+        const { offsets, totalHeight } = measureLineOffsets(sc);
+        setLineOffsets(offsets);
+        setTotalContentHeight(totalHeight);
+    }, [scrollContainerRef]);
+
+    const scheduleMeasure = useCallback(() => {
+        if (measureRafRef.current !== null) return;
+        measureRafRef.current = requestAnimationFrame(() => {
+            measureRafRef.current = null;
+            measureLines();
+        });
+    }, [measureLines]);
+
+    // Measure on mount and when diff changes
+    useEffect(() => {
+        measureLines();
+        // Re-measure after a frame in case layout hasn't settled yet
+        const raf = requestAnimationFrame(() => measureLines());
+        return () => cancelAnimationFrame(raf);
+    }, [diffLines, measureLines]);
+
+    // Re-measure on resize via ResizeObserver
+    useEffect(() => {
+        const sc = scrollContainerRef.current;
+        if (!sc) return;
+
+        const ro = new ResizeObserver(() => scheduleMeasure());
+        ro.observe(sc);
+
+        return () => {
+            ro.disconnect();
+            if (measureRafRef.current !== null) {
+                cancelAnimationFrame(measureRafRef.current);
+                measureRafRef.current = null;
+            }
+        };
+    }, [scrollContainerRef, scheduleMeasure]);
+
+    // ── Compute segment positions ─────────────────────────────────────
+
+    const segmentPositions = useMemo(
+        () => computeSegmentPositions(segments, lineOffsets, totalContentHeight),
+        [segments, lineOffsets, totalContentHeight],
+    );
 
     // ── Sync viewport indicator with scroll position ──────────────────
 
@@ -190,9 +310,9 @@ export function DiffMiniMap({ diffLines, scrollContainerRef }: DiffMiniMapProps)
                     onMouseDown={onDragStart}
                 />
 
-                {/* Segments */}
+                {/* Segments — absolutely positioned based on pixel measurements */}
                 {segments.map((seg, i) => {
-                    const heightPercent = (seg.lineCount / totalLines) * 100;
+                    const pos = segmentPositions[i];
                     const color = getSegmentColor(seg.type);
                     return (
                         <div
@@ -201,7 +321,9 @@ export function DiffMiniMap({ diffLines, scrollContainerRef }: DiffMiniMapProps)
                             data-testid={`diff-minimap-segment-${i}`}
                             data-segment-type={seg.type}
                             style={{
-                                height: `max(${MIN_SEGMENT_HEIGHT}px, ${heightPercent}%)`,
+                                top: `${pos.topPercent}%`,
+                                height: `${pos.heightPercent}%`,
+                                minHeight: `${MIN_SEGMENT_HEIGHT}px`,
                                 backgroundColor: color,
                             }}
                         />
