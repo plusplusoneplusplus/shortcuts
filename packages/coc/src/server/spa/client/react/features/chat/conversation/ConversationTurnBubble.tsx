@@ -908,7 +908,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             turn.streaming && 'streaming',
             turn.isError && 'error',
             turn.archived && 'opacity-50',
-            turn.deletedAt && 'opacity-30 line-through'
+            turn.deletedAt && 'opacity-30 line-through',
+            'py-1.5'
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}
             {...(turnIndex != null ? { 'data-turn-index': turnIndex } : {})}
@@ -921,46 +922,66 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     onClose={() => setContextMenu(null)}
                 />
             )}
+            {!isUser && (
+                <span
+                    className={cn(
+                        'turn-avatar flex-shrink-0 mt-0.5 mr-3 inline-flex items-center justify-center w-6 h-6 rounded-full select-none border',
+                        isScript
+                            ? 'bg-[#1e1e1e] text-[#d4d4d4] border-[#000] font-mono text-[10px]'
+                            : turn.isError
+                                ? 'bg-[#ffebe9] text-[#cf222e] border-[#f5c2c2] dark:bg-[#3a1a1a] dark:text-[#f87171] dark:border-[#7a3030] text-[11.5px] font-semibold'
+                                : 'bg-[#dafbe1] text-[#15703a] border-[#b8e6c1] dark:bg-[#0f3a1f] dark:text-[#4ade80] dark:border-[#225a32] text-[11.5px] font-semibold'
+                    )}
+                    title={isScript ? 'Script Output' : turn.isError ? 'Assistant — error' : 'Assistant'}
+                    aria-hidden="true"
+                >
+                    {isScript ? '$_' : 'C'}
+                </span>
+            )}
             <div
                 className={cn(
-                    'group w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',
+                    'group min-w-0 relative',
                     isUser
-                        ? 'bg-[#e8f3ff] dark:bg-[#0f2a42] border-[#b3d7ff] dark:border-[#2a4a66]'
-                        : turn.isError
-                            ? 'bg-[#fff5f5] dark:bg-[#2a1a1a] border-[#f14c4c] dark:border-[#8b2020]'
-                            : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]',
-                    turn.pinnedAt && 'ring-2 ring-amber-400/60 dark:ring-amber-500/40'
+                        ? cn(
+                            'turn-bubble max-w-[85%] sm:max-w-[78%] rounded-2xl px-3.5 py-2',
+                            turn.pinnedAt
+                                ? 'bg-[#fff8c5] dark:bg-[#3a3520] border border-[#f0d878] dark:border-[#a08020]'
+                                : 'bg-[#f3f4f6] dark:bg-[#2a2a2c]'
+                        )
+                        : 'turn-body flex-1 min-w-0'
                 )}
             >
-                <div className="flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1">
-                    {turn.pinnedAt && (
+                <div
+                    className={cn(
+                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1',
+                        isUser
+                            ? 'absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
+                            : 'min-h-[16px]'
+                    )}
+                >
+                    {!isUser && turn.pinnedAt && (
                         <span className="text-amber-500 dark:text-amber-400" title="Pinned">📌</span>
                     )}
                     <span
                         className={cn(
-                            'font-medium uppercase tracking-wide role-label min-w-0 truncate',
-                            isUser
-                                ? 'text-[#005a9e] dark:text-[#7bbef3]'
-                                : isScript
-                                    ? 'text-[#16825d] dark:text-[#4ec9b0]'
-                                    : 'text-[#5f6a7a] dark:text-[#b0b8c3]'
+                            'role-label min-w-0 truncate sr-only'
                         )}
                     >
                         {isUser ? 'You' : isScript ? 'Script Output' : 'Assistant'}
                     </span>
                     {turn.isError && (
-                        <span className="text-[#f14c4c] error-indicator text-[10px]">⚠ Error</span>
+                        <span className="text-[#f14c4c] error-indicator text-[10px] font-medium">⚠ Error</span>
                     )}
                     {turn.timestamp && (() => {
                         const d = new Date(turn.timestamp);
                         return (
-                            <span className="ml-auto timestamp whitespace-nowrap" title={d.toLocaleString()}>
+                            <span className="ml-auto timestamp whitespace-nowrap font-mono tabular-nums" title={d.toLocaleString()}>
                                 {formatShortTimestamp(d)}
                             </span>
                         );
                     })()}
                     {turn.streaming && (
-                        <span className="text-[#f14c4c] streaming-indicator">Live</span>
+                        <span className="text-[#f14c4c] streaming-indicator inline-flex items-center gap-1 uppercase tracking-wide font-mono text-[10px]">Live</span>
                     )}
                     {!isUser && !turn.streaming && (turn.tokenUsage || turn.costTimeMs != null) && (
                         <AssistantStatsBadge tokenUsage={turn.tokenUsage} costTimeMs={turn.costTimeMs} />
@@ -1029,6 +1050,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         </button>
                     )}
                 </div>
+
+                {isUser && turn.pinnedAt && (
+                    <span
+                        className="absolute -left-5 top-2 text-amber-500 dark:text-amber-400 text-[11px] select-none"
+                        title="Pinned"
+                        aria-hidden="true"
+                    >
+                        📌
+                    </span>
+                )}
 
                 <div className="space-y-2 chat-message-content">
                     {isUser && turn.skillNames && turn.skillNames.length > 0 && (
