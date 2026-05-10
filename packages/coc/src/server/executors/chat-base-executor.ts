@@ -311,8 +311,30 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         let attachments: Attachment[] | undefined;
         let imageTempDir: string | undefined;
         let pasteCleanup: (() => void) | undefined;
-        const payloadImages = (payload as unknown as Record<string, unknown>)?.images;
-        if (Array.isArray(payloadImages) && payloadImages.length > 0) {
+        const payloadRecord = payload as unknown as Record<string, unknown>;
+        const payloadImages = payloadRecord?.images;
+
+        // Honor pre-decoded SDK attachments + temp dir set by the API layer
+        // (e.g. /api/queue for new chats, or drainPendingMessages for buffered
+        // follow-ups). When present we skip the legacy data-URL decode path
+        // entirely so we don't double-write or leak the existing temp dir.
+        const preBuiltAttachments = Array.isArray(payloadRecord?.attachments)
+            ? (payloadRecord.attachments as unknown[]).filter(
+                (a): a is Attachment =>
+                    !!a
+                    && typeof a === 'object'
+                    && (a as Record<string, unknown>).type === 'file'
+                    && typeof (a as Record<string, unknown>).path === 'string',
+            )
+            : undefined;
+        const preBuiltTempDir = typeof payloadRecord?.imageTempDir === 'string'
+            ? payloadRecord.imageTempDir as string
+            : undefined;
+
+        if (preBuiltAttachments && preBuiltAttachments.length > 0) {
+            attachments = preBuiltAttachments;
+            imageTempDir = preBuiltTempDir;
+        } else if (Array.isArray(payloadImages) && payloadImages.length > 0) {
             const validImages = payloadImages
                 .filter((img: unknown) => typeof img === 'string')
                 .slice(0, 10) as string[];

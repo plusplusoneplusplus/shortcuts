@@ -216,6 +216,23 @@ export function hasAttachments(body: Record<string, unknown>): boolean {
 }
 
 /**
+ * Check whether `value` looks like a wire-format AttachmentPayload[] (with `dataUrl`),
+ * as opposed to an already-decoded SDK Attachment[] (with `type: 'file'` + `path`).
+ *
+ * Used by the enqueue path to detect when the client is sending a brand-new chat
+ * with raw data-URL attachments that still need to be decoded server-side.
+ */
+export function isWireAttachmentArray(value: unknown): value is AttachmentPayload[] {
+    if (!Array.isArray(value) || value.length === 0) return false;
+    return value.every(
+        (a) =>
+            !!a
+            && typeof a === 'object'
+            && typeof (a as Record<string, unknown>).dataUrl === 'string',
+    );
+}
+
+/**
  * Extract both legacy images and new attachments from a request body.
  * Returns a unified set of SDK Attachment objects and text content for prompt injection.
  * Handles backward compatibility: if only `images` is provided, falls back to image handling.

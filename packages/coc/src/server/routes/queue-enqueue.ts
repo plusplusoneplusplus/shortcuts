@@ -7,8 +7,15 @@
  * GET  /api/queue/models — List available AI models
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { getActiveModels, modelMetadataStore, ensureQueueProcessId } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
+import {
+    isWireAttachmentArray,
+    processMessageAttachments,
+} from '../core/attachment-utils';
 import type { Route } from '../types';
 import {
     serializeTask,
@@ -53,6 +60,18 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         const validation = validateAndParseTask(body);
         if (!validation.valid) {
             return sendError(res, 400, validation.error!);
+        }
+
+        // For brand-new chat tasks, the SPA sends raw data-URL attachments on
+        // payload.attachments. Decode them to temp files now so the executor
+        // (which only knows how to read payload.images and SDK-form attachments)
+        // and the lifecycle runner (which renders the initial user turn from
+        // payload.images) both see the right shapes.
+        try {
+            decodeChatPayloadAttachments(validation.input!.payload as Record<string, unknown>);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to process attachments';
+            return sendError(res, 400, message);
         }
 
         try {
@@ -249,4 +268,66 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
         },
     });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * If `payload.attachments` is the wire AttachmentPayload[] format produced by
+ * the SPA's NewChatArea (objects with a `dataUrl` field), decode them into
+ * temp files and rewrite `payload` to the shapes the chat executor expects:
+ *
+ *   - payload.images            string[]   data URLs (images only) — used both
+ *                                          for AI image attachments and for
+ *                                          rendering the initial user turn
+ *   - payload.attachments       Attachment[] (SDK form, file-path references)
+ *                                          — pre-built so the executor can use
+ *                                          them directly without re-decoding
+ *   - payload.imageTempDir      string     temp dir to clean up after run
+ *   - payload.fileAttachmentMeta FileAttachmentMeta[] — per-attachment display meta
+ *
+ * Text-file attachments have their content appended to `payload.prompt` so the
+ * AI sees them in-context (mirrors the follow-up route).
+ *
+ * If `payload.attachments` is already in SDK form (or absent), this is a no-op.
+ *
+ * Idempotent and safe to call before any non-chat payload — exits early when
+ * `payload.kind !== 'chat'`.
+ */
+/**
+ * @internal exported for tests
+ */
+export function decodeChatPayloadAttachments(payload: Record<string, unknown>): void {
+    if (payload.kind !== 'chat') return;
+    if (!isWireAttachmentArray(payload.attachments)) return;
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+    const result = processMessageAttachments(
+        { attachments: payload.attachments } as Record<string, unknown>,
+        tempDir,
+    );
+
+    if (result.sdkAttachments.length > 0) {
+        payload.attachments = result.sdkAttachments;
+    } else {
+        delete payload.attachments;
+        // No usable attachments — drop the empty temp dir.
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch { /* non-fatal */ }
+        return;
+    }
+
+    if (result.validatedImages && result.validatedImages.length > 0) {
+        payload.images = result.validatedImages;
+    }
+    payload.imageTempDir = result.imageTempDir;
+    if (result.fileAttachmentMeta && result.fileAttachmentMeta.length > 0) {
+        payload.fileAttachmentMeta = result.fileAttachmentMeta;
+    }
+
+    if (result.textContext) {
+        const existingPrompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+        payload.prompt = existingPrompt + result.textContext;
+    }
 }
