@@ -126,6 +126,9 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn(),
     formatDuration: (ms: number) => `${Math.round(ms / 1000)}s`,
     formatRelativeTime: (d: string) => d,
+    statusLabel: (status: string, _type?: string) => status,
+    typeLabel: (type: string) => type,
+    repoName: (path: string) => path,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
@@ -391,7 +394,7 @@ describe('ChatListPane', () => {
             renderPane({ running: [makeRunningTask()] });
             const toggle = screen.getByTestId('running-tasks-section-toggle');
             expect(toggle.textContent).toContain('Running Tasks');
-            expect(toggle.textContent).toContain('(1)');
+            expect(toggle.textContent).toContain('1');
         });
 
         it('hides section when no running tasks', () => {
@@ -404,9 +407,9 @@ describe('ChatListPane', () => {
             expect(screen.getByText('Build App')).toBeTruthy();
         });
 
-        it('shows type icon for ask mode', () => {
+        it('shows mode pill for ask mode', () => {
             const { container } = renderPane({ running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })] });
-            expect(container.textContent).toContain('💡');
+            expect(container.textContent).toContain('ASK');
         });
 
         it('clicking task calls onSelectTask', () => {
@@ -430,7 +433,7 @@ describe('ChatListPane', () => {
             renderPane({ queued: [makeQueuedTask()] });
             const toggle = screen.getByTestId('queued-tasks-section-toggle');
             expect(toggle.textContent).toContain('Queued Tasks');
-            expect(toggle.textContent).toContain('(1)');
+            expect(toggle.textContent).toContain('1');
         });
 
         it('shows task display name', () => {
@@ -466,8 +469,11 @@ describe('ChatListPane', () => {
             mockPinnedChatIds = new Set(['h-1']);
             renderPane({ history: [makeHistoryTask()] });
             const toggle = screen.getByTestId('pinned-chats-section-toggle');
-            expect(toggle.textContent).toContain('📌 Pinned');
-            expect(toggle.textContent).toContain('(1)');
+            // Section is now wrapped in a sticky container; the count badge is a sibling element.
+            const sectionWrapper = toggle.closest('[data-section="pinned"]') as HTMLElement | null;
+            expect(sectionWrapper).toBeTruthy();
+            expect(toggle.textContent).toContain('Pinned');
+            expect(sectionWrapper!.textContent).toContain('1');
         });
 
         it('shows pinned section when history tasks are pinned', () => {
@@ -496,7 +502,9 @@ describe('ChatListPane', () => {
             mockPinnedChatIds = new Set(['run-1']);
             renderPane({ running: [makeRunningTask()] });
             const toggle = screen.getByTestId('pinned-chats-section-toggle');
-            expect(toggle.textContent).toContain('(1)');
+            const sectionWrapper = toggle.closest('[data-section="pinned"]') as HTMLElement | null;
+            expect(sectionWrapper).toBeTruthy();
+            expect(sectionWrapper!.textContent).toContain('1');
         });
 
         it('pinned section hidden when no pinned tasks', () => {
@@ -511,7 +519,9 @@ describe('ChatListPane', () => {
             const { container } = renderPane({ history: [makeHistoryTask()] });
             // Completed section has no data-testid — find by text
             expect(container.textContent).toContain('Completed Tasks');
-            expect(container.textContent).toContain('(1)');
+            const completedSection = container.querySelector('[data-section="completed"]') as HTMLElement | null;
+            expect(completedSection).toBeTruthy();
+            expect(completedSection!.textContent).toContain('1');
         });
 
         it('completed task shows name', () => {
@@ -551,7 +561,9 @@ describe('ChatListPane', () => {
             renderPane({ history: [makeHistoryTask({ id: 'h-a' })] });
             const toggle = screen.getByTestId('archived-chats-section-toggle');
             expect(toggle.textContent).toContain('📦 Archived');
-            expect(toggle.textContent).toContain('(1)');
+            const sectionWrapper = toggle.closest('[data-section="archived"]') as HTMLElement | null;
+            expect(sectionWrapper).toBeTruthy();
+            expect(sectionWrapper!.textContent).toContain('1');
         });
 
         it('starts collapsed by default', () => {
@@ -996,20 +1008,25 @@ describe('ChatListPane', () => {
             expect(searchBar.textContent).toContain('1');
         });
 
-        it('close button clears and hides', () => {
-            renderPane({ history: [makeHistoryTask()] });
-            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
-            expect(screen.getByTestId('queue-search-input')).toBeTruthy();
+        it('close button clears the query but keeps the search bar visible', () => {
+            // Activity-compact reference: search input is permanent. ✕ only clears
+            // the query (and is itself only visible while there *is* a query).
+            renderPane({ history: [makeHistoryTask({ id: 'h-1', displayName: 'Foo' })] });
+            const input = screen.getByTestId('queue-search-input');
+            fireEvent.change(input, { target: { value: 'Foo' } });
             fireEvent.click(screen.getByTestId('queue-search-close'));
-            expect(screen.queryByTestId('queue-search-input')).toBeNull();
+            const inputAfter = screen.getByTestId('queue-search-input') as HTMLInputElement;
+            expect(inputAfter.value).toBe('');
         });
 
-        it('Escape closes search', () => {
-            renderPane({ history: [makeHistoryTask()] });
+        it('Escape clears the query but keeps the search bar visible', () => {
+            renderPane({ history: [makeHistoryTask({ id: 'h-1', displayName: 'Foo' })] });
+            const input = screen.getByTestId('queue-search-input');
+            fireEvent.change(input, { target: { value: 'Foo' } });
             fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
-            expect(screen.getByTestId('queue-search-input')).toBeTruthy();
             fireEvent.keyDown(document, { key: 'Escape' });
-            expect(screen.queryByTestId('queue-search-input')).toBeNull();
+            const inputAfter = screen.getByTestId('queue-search-input') as HTMLInputElement;
+            expect(inputAfter.value).toBe('');
         });
     });
 
@@ -1200,45 +1217,50 @@ describe('ChatListPane', () => {
         });
     });
 
-    // ── Type icons ─────────────────────────────────────────────────────
-    describe('Type icons', () => {
-        it('chat ask shows 💡', () => {
+    // ── Mode pills ─────────────────────────────────────────────────────
+    // The redesigned compact list surfaces task category via a MODE pill in the
+    // 36px column instead of inline emoji icons. Pills are ASK / PLAN / AUTO / SCRP.
+    describe('Mode pills', () => {
+        it('chat ask renders ASK pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
             });
-            expect(container.textContent).toContain('💡');
+            expect(container.textContent).toContain('ASK');
         });
 
-        it('chat plan shows 📋', () => {
+        it('chat plan renders PLAN pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'plan' } })],
             });
-            expect(container.textContent).toContain('📋');
+            expect(container.textContent).toContain('PLAN');
         });
 
-        it('chat default shows 🤖', () => {
+        it('chat default renders AUTO pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat' })],
             });
-            expect(container.textContent).toContain('🤖');
+            expect(container.textContent).toContain('AUTO');
         });
 
-        it('run-workflow shows ▶️', () => {
+        it('run-workflow renders AUTO pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'run-workflow' })],
             });
-            expect(container.textContent).toContain('▶️');
+            expect(container.textContent).toContain('AUTO');
         });
 
-        it('run-script shows 🛠️', () => {
+        it('run-script renders SCRP pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'run-script' })],
             });
-            expect(container.textContent).toContain('🛠️');
+            expect(container.textContent).toContain('SCRP');
         });
     });
 
     // ── Dense mode ─────────────────────────────────────────────────────
+    // The redesigned compact list always uses a 26px-tall single-line row, so
+    // the legacy taskCardDensity setting no longer changes per-row padding.
+    // The setting still hides the prompt-preview line in dense mode.
     describe('Dense mode', () => {
         it('hides prompt preview', () => {
             mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
@@ -1248,72 +1270,12 @@ describe('ChatListPane', () => {
             expect(screen.queryByText('This is a prompt')).toBeNull();
         });
 
-        it('uses tighter padding with mobile-responsive vertical padding', () => {
+        it('compact row is rendered as a CSS grid with the dot/pill/title/right columns', () => {
             mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
             renderPane({ running: [makeRunningTask()] });
             const card = document.querySelector('[data-task-id="run-1"]');
-            expect(card!.className).toContain('px-2');
-            expect(card!.className).toContain('py-2.5');
-            expect(card!.className).toContain('md:py-1');
-        });
-
-        it('uses reduced gap for section containers', () => {
-            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
-            const { container } = renderPane({ running: [makeRunningTask()] });
-            const gapEl = container.querySelector('.gap-0\\.5');
-            expect(gapEl).toBeTruthy();
-        });
-
-        it('applies mobile-responsive padding to history cards', () => {
-            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
-            renderPane({ history: [makeHistoryTask()] });
-            const card = document.querySelector('[data-task-id="h-1"]');
-            expect(card!.className).toContain('py-2.5');
-            expect(card!.className).toContain('md:py-1');
-        });
-
-        it('applies mobile-responsive padding to pinned cards', () => {
-            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
-            mockPinnedChatIds = new Set(['h-1']);
-            renderPane({ history: [makeHistoryTask()] });
-            const card = document.querySelector('[data-task-id="h-1"]');
-            expect(card!.className).toContain('py-2.5');
-            expect(card!.className).toContain('md:py-1');
-        });
-
-        it('applies mobile-responsive padding to queued cards', () => {
-            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
-            renderPane({ queued: [makeQueuedTask()] });
-            const card = document.querySelector('[data-task-id="q-1"]');
-            expect(card!.className).toContain('py-2.5');
-            expect(card!.className).toContain('md:py-1');
-        });
-
-        it('applies mobile-responsive padding to archived cards', () => {
-            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
-            mockArchivedChatIds = new Set(['h-1']);
-            renderPane({ history: [makeHistoryTask()] });
-            // Archived section is collapsed by default — expand it
-            fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
-            const card = document.querySelector('[data-task-id="h-1"]');
-            expect(card!.className).toContain('py-2.5');
-            expect(card!.className).toContain('md:py-1');
-        });
-
-        it('does not apply mobile-responsive padding in compact mode', () => {
-            mockDisplaySettings = { taskCardDensity: 'compact', showReportIntent: false };
-            renderPane({ history: [makeHistoryTask()] });
-            const card = document.querySelector('[data-task-id="h-1"]');
-            expect(card!.className).not.toContain('py-2.5');
-            expect(card!.className).not.toContain('md:py-1');
-        });
-
-        it('does not apply mobile-responsive padding in normal mode', () => {
-            mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
-            renderPane({ history: [makeHistoryTask()] });
-            const card = document.querySelector('[data-task-id="h-1"]');
-            expect(card!.className).not.toContain('py-2.5');
-            expect(card!.className).not.toContain('md:py-1');
+            expect(card!.className).toContain('grid');
+            expect(card!.className).toContain('grid-cols-[10px_36px_minmax(0,1fr)_auto]');
         });
     });
 
@@ -1351,25 +1313,29 @@ describe('ChatListPane', () => {
     });
 
     // ── Prompt preview ─────────────────────────────────────────────────
+    // The redesigned compact list is a single-line row, so the multi-line prompt
+    // preview is gone. The prompt is now used as the title fallback when neither
+    // displayName nor title are present (and is still truncated/skill-filtered
+    // by getChatTitle).
     describe('Prompt preview', () => {
-        it('shows prompt preview in compact mode', () => {
+        it('falls back to prompt text as title when displayName and title are absent', () => {
             renderPane({
-                history: [makeHistoryTask({ prompt: 'Fix the login bug' })],
+                history: [makeHistoryTask({ displayName: undefined, title: undefined, prompt: 'Fix the login bug' })],
             });
             expect(screen.getByText('Fix the login bug')).toBeTruthy();
         });
 
-        it('truncates long prompts', () => {
+        it('truncates long prompts when used as title', () => {
             const longPrompt = 'A'.repeat(100);
             renderPane({
-                history: [makeHistoryTask({ prompt: longPrompt })],
+                history: [makeHistoryTask({ displayName: undefined, title: undefined, prompt: longPrompt })],
             });
-            expect(screen.getByText('A'.repeat(57) + '…')).toBeTruthy();
+            expect(screen.getByText('A'.repeat(47) + '…')).toBeTruthy();
         });
 
-        it('hides prompt matching skill pattern', () => {
+        it('does not surface prompts that match the skill-only pattern', () => {
             renderPane({
-                history: [makeHistoryTask({ prompt: 'Use the deploy skill.' })],
+                history: [makeHistoryTask({ displayName: undefined, title: undefined, prompt: 'Use the deploy skill.' })],
             });
             expect(screen.queryByText(/Use the deploy skill/)).toBeNull();
         });
@@ -1532,13 +1498,17 @@ describe('ChatListPane', () => {
         });
 
         it('shows search result count including total', () => {
-            renderPane({
+            const { container } = renderPane({
                 history: [makeHistoryTask()],
                 searchResults: [makeSearchResultTask()],
                 searchTotal: 47,
             });
-            expect(screen.getByText(/Search Results/).textContent).toContain('1');
-            expect(screen.getByText(/Search Results/).textContent).toContain('47');
+            // The header label and the count badge are siblings inside the section wrapper.
+            const section = container.querySelector('[data-section="search-results"]') as HTMLElement | null;
+            expect(section).toBeTruthy();
+            expect(section!.textContent).toContain('Search Results');
+            expect(section!.textContent).toContain('1');
+            expect(section!.textContent).toContain('47');
         });
 
         it('shows "No matching conversations found" for empty results', () => {
@@ -1564,7 +1534,7 @@ describe('ChatListPane', () => {
             expect(snippetEl!.innerHTML).toContain('<mark>query</mark>');
         });
 
-        it('renders task type icon and status in search results', () => {
+        it('encodes failure status via the row dot color in search results', () => {
             const { container } = renderPane({
                 history: [makeHistoryTask()],
                 searchResults: [
@@ -1573,8 +1543,13 @@ describe('ChatListPane', () => {
                 ],
                 searchTotal: 2,
             });
-            expect(container.textContent).toContain('✅');
-            expect(container.textContent).toContain('❌');
+            // Status icons (✅/❌) were replaced by the colored status dot in the redesigned
+            // compact list. Verify the failed row's dot uses the red status color, and the
+            // completed row's dot uses the neutral gray.
+            const okDot = container.querySelector('[data-task-id="sr-ok"] [aria-label^="status"]');
+            const failDot = container.querySelector('[data-task-id="sr-fail"] [aria-label^="status"]');
+            expect(okDot?.className).toContain('bg-[#bbbbbb]');
+            expect(failDot?.className).toContain('bg-red-500');
         });
 
         it('calls onSelectTask when clicking a search result', () => {

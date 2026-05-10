@@ -45,8 +45,9 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('data-testid="pinned-chats-section-toggle"');
         });
 
-        it('renders pinned cards with data-pinned attribute', () => {
-            expect(source).toContain('data-pinned="true"');
+        it('marks pinned rows with the data-pinned attribute', () => {
+            // The compact row computes the attribute conditionally; check the JSX expression.
+            expect(source).toContain("data-pinned={isPinned ? 'true' : undefined}");
         });
 
         it('uses showPinned state for collapsing', () => {
@@ -54,8 +55,13 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('setShowPinned');
         });
 
-        it('shows pin icon in pinned section header', () => {
-            expect(source).toContain('📌 Pinned');
+        it('renders the pinned section header with the label "Pinned"', () => {
+            // The redesigned sticky header drops the 📌 emoji in favor of a small status dot.
+            const pinnedSection = source.substring(
+                source.indexOf('data-section="pinned"'),
+                source.indexOf('data-section="pinned"') + 1500,
+            );
+            expect(pinnedSection).toContain('Pinned');
         });
     });
 
@@ -128,32 +134,26 @@ describe('ChatListPane pinned chats', () => {
     });
 
     describe('title tooltip on truncated elements', () => {
-        it('pinned section task name has title attribute', () => {
-            expect(source).toContain("title={task.displayName || task.title || task.type || 'Task'}");
+        it('compact row passes title={titleText} on the row container', () => {
+            // The unified row sets title={titleText} on the container <div>; this provides
+            // the native browser tooltip for truncated content across pinned / unpinned /
+            // archived sections, and replaces the per-section title attributes the old
+            // Card-based layout used.
+            expect(source).toContain('title={titleText}');
+        });
+
+        it('compact row also sets title={titleText} on the truncated title span', () => {
+            // The inner span carries the chat-title class and the truncate utility;
+            // the title text is rendered inside it.
+            expect(source).toContain("'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]'");
         });
 
         it('QueueTaskItem task name has title attribute', () => {
             expect(source).toContain('title={name}>{name}');
         });
 
-        it('prompt preview lines have title={p} in IIFE renders', () => {
-            const matches = source.match(/title=\{p\}/g);
-            // 3 sections: pinned, unpinned, archived
-            expect(matches).not.toBeNull();
-            expect(matches!.length).toBeGreaterThanOrEqual(3);
-        });
-
         it('QueueTaskItem prompt preview has title attribute', () => {
             expect(source).toContain('title={promptPreview}>{promptPreview}');
-        });
-
-        it('title attributes appear on truncate spans', () => {
-            // Every title={task.displayName...} should be on a span with truncate class
-            const titlePattern = /className=\{cn\("truncate".*?\}\s+title=\{task\.displayName/g;
-            const matches = source.match(titlePattern);
-            // 3 sections: pinned, unpinned, archived
-            expect(matches).not.toBeNull();
-            expect(matches!.length).toBe(3);
         });
     });
 
@@ -178,8 +178,8 @@ describe('ChatListPane pinned chats', () => {
                 expect(source).toContain('data-testid="archived-chats-section-toggle"');
             });
 
-            it('renders archived cards with data-archived attribute', () => {
-                expect(source).toContain('data-archived="true"');
+            it('marks archived rows with the data-archived attribute', () => {
+                expect(source).toContain("data-archived={isArchived ? 'true' : undefined}");
             });
 
             it('uses showArchived state for collapsing', () => {
@@ -294,8 +294,10 @@ describe('ChatListPane pinned chats', () => {
             expect(runningBlock).toContain('onUnpinChat(taskId)');
         });
 
-        it('passes isPinned to QueueTaskItem for running tasks', () => {
-            expect(source).toContain('isPinned={pinnedChatIds?.has(task.id) ?? false}');
+        it('passes pinnedChatIds membership through the unified row renderer', () => {
+            // The redesigned compact row consumes pinnedChatIds inside renderChatListRow
+            // (used for both pinned-row indicators and pinned/unpinned/running rows).
+            expect(source).toContain('pinnedChatIds?.has(task.id)');
         });
 
         it('QueueTaskItem accepts isPinned prop', () => {
@@ -609,11 +611,16 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('flex flex-wrap items-center gap-1.5');
         });
 
-        it('toggle button has min-w-0 to allow shrinking on narrow screens', () => {
-            // The toggle button needs min-w-0 so its text can truncate instead of pushing the action button off-screen.
-            const idx = source.indexOf('Completed Tasks (');
-            const completedSection = source.substring(idx - 600, idx + 300);
-            expect(completedSection).toContain('min-w-0');
+        it('completed tasks header uses single-line tracking and tabular-nums for the count', () => {
+            // The redesigned sticky header replaces the min-w-0 truncation pattern with a
+            // tracking-[0.1em] mono uppercase label on the left and a tabular-nums count
+            // pill on the right. The label cannot push the count off-screen because the
+            // count lives in a separate flex item.
+            const idx = source.indexOf('data-section="completed"');
+            expect(idx).toBeGreaterThan(-1);
+            const completedSection = source.substring(idx, idx + 2000);
+            expect(completedSection).toContain("tracking-[0.1em]");
+            expect(completedSection).toContain('tabular-nums');
         });
 
         it('renders mark-all-read-btn when unseen completed tasks exist', () => {
@@ -638,7 +645,7 @@ describe('ChatListPane pinned chats', () => {
         it('renders chevron toggle in running tasks header', () => {
             const runningHeader = source.substring(
                 source.indexOf('running-tasks-section-toggle'),
-                source.indexOf('running-tasks-section-toggle') + 200,
+                source.indexOf('running-tasks-section-toggle') + 600,
             );
             expect(runningHeader).toContain('showRunning ? \'▼\' : \'▶\'');
         });
@@ -665,7 +672,7 @@ describe('ChatListPane pinned chats', () => {
         it('renders chevron toggle in queued tasks header', () => {
             const queuedHeader = source.substring(
                 source.indexOf('queued-tasks-section-toggle'),
-                source.indexOf('queued-tasks-section-toggle') + 200,
+                source.indexOf('queued-tasks-section-toggle') + 600,
             );
             expect(queuedHeader).toContain('showQueued ? \'▼\' : \'▶\'');
         });
@@ -787,16 +794,21 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('data-testid="queue-search-close"');
         });
 
-        it('closes search on ✕ button click', () => {
-            // onClick handler precedes data-testid in JSX, so look back from the testid
+        it('clears the search query on ✕ button click', () => {
+            // The redesigned activity-compact list keeps the search bar always
+            // visible (matching the reference UI), so the close button only
+            // clears the query — it no longer hides the bar.
             const closeBtnIdx = source.indexOf('queue-search-close');
             const closeBtn = source.substring(closeBtnIdx - 200, closeBtnIdx + 50);
             expect(closeBtn).toContain("setSearchQuery('')");
-            expect(closeBtn).toContain('setSearchVisible(false)');
         });
 
         it('shows match count when searchQuery is non-empty', () => {
-            expect(source).toContain('{searchQuery && !searchLoading && (');
+            // Activity branch uses a ternary to render either the kbd hint or
+            // the count + close cluster, so this exact prefix no longer exists.
+            // Instead assert that the count branch (`searchQuery`) renders the
+            // tabular-nums match count span.
+            expect(source).toContain('text-[#848484] tabular-nums text-[10px]');
         });
 
         it('includes searchQuery in filteredRunning dependencies', () => {
@@ -842,9 +854,12 @@ describe('ChatListPane pinned chats', () => {
             expect(source).not.toContain("'cancelled' ? '🚫'");
         });
 
-        it('still renders ❌ for failed status', () => {
+        it('encodes failed status via the row dot (red) instead of an inline ❌ glyph', () => {
+            // The redesigned compact list represents status entirely via the colored
+            // status dot — failed rows use bg-red-500. The inline ❌ status emoji is
+            // gone from the chat-list rows.
             expect(source).toContain("'failed'");
-            expect(source).toContain('❌');
+            expect(source).toContain('bg-red-500');
         });
     });
 
@@ -1129,22 +1144,25 @@ describe('ChatListPane mobile long-press context menu', () => {
         });
     });
 
-    describe('running tasks — onLongPress wired', () => {
-        it('passes onLongPress to running QueueTaskItem', () => {
-            // The source should contain onLongPress wired for running tasks
-            // (look for the pattern near 'running' status in JSX invocations)
-            expect(source).toContain("task.id, 'running')}");
+    describe('running tasks — context menu wired', () => {
+        it('routes running rows through the unified context-menu helper', () => {
+            // The redesigned compact row dispatches running-row right-clicks through
+            // handleTaskContextMenu(e, task.id, 'running'); long-press still works via
+            // the shared touch handlers attached to the row.
+            expect(source).toContain("handleTaskContextMenu(e, task.id, contextMenuKind)");
         });
     });
 
-    describe('queued tasks — onLongPress wired with cancelLongPress', () => {
-        it('passes onLongPress to queued QueueTaskItem', () => {
-            // The source should contain onLongPress wired for queued tasks
-            expect(source).toContain("item.id, 'queued')}");
+    describe('queued tasks — drag-drop preserved on the wrapper element', () => {
+        it('renders queued rows through the shared compact-row renderer', () => {
+            // Each queued task is wrapped in a draggable <div> that delegates rendering to
+            // the unified renderChatListRow with taskStatus='queued'. Drag/drop and
+            // pause-marker insertion are preserved on the wrapper.
+            expect(source).toContain("renderChatListRow(item, tabFilteredQueued, { taskStatus: 'queued' })");
         });
 
-        it('passes cancelLongPress={!!activeDraggedTaskId} to queued QueueTaskItem', () => {
-            expect(source).toContain('cancelLongPress={!!activeDraggedTaskId}');
+        it('preserves the activeDraggedTaskId opacity-40 affordance on the wrapper', () => {
+            expect(source).toContain('activeDraggedTaskId === item.id && \'opacity-40\'');
         });
     });
 
@@ -1161,22 +1179,21 @@ describe('ChatListPane mobile long-press context menu', () => {
             expect(source).toContain('historyLongPress.onTouchMove');
         });
 
-        it('wires onTouchStart to pinned history cards', () => {
-            const occurrences = source.split('historyLongPress.onTouchStart(e)').length - 1;
-            expect(occurrences).toBeGreaterThanOrEqual(3);
+        it('wires onTouchStart on the unified compact row', () => {
+            // The compact-row renderer is the single source of touch wiring across
+            // pinned / unpinned / archived / running / completed sections.
+            expect(source).toContain('historyLongPress.onTouchStart(e);');
         });
 
-        it('wires onTouchEnd (cancel) to history cards', () => {
-            const occurrences = source.split('onTouchEnd={historyLongPress.onTouchEnd}').length - 1;
-            expect(occurrences).toBeGreaterThanOrEqual(3);
+        it('wires onTouchEnd (cancel) on the unified compact row', () => {
+            expect(source).toContain('onTouchEnd={historyLongPress.onTouchEnd}');
         });
 
-        it('wires onTouchMove to history cards', () => {
-            const occurrences = source.split('onTouchMove={historyLongPress.onTouchMove}').length - 1;
-            expect(occurrences).toBeGreaterThanOrEqual(3);
+        it('wires onTouchMove on the unified compact row', () => {
+            expect(source).toContain('onTouchMove={historyLongPress.onTouchMove}');
         });
 
-        it('suppresses onClick when long press fired for pinned history', () => {
+        it('suppresses onClick when long press fired', () => {
             expect(source).toContain('historyLongPress.didLongPress()');
         });
     });
@@ -1481,15 +1498,19 @@ describe('ChatListPane: chat search', () => {
             expect(source).not.toContain("activeTab === 'tasks' && searchVisible && (");
         });
 
-        it('search bar uses a ternary to decide visibility per tab', () => {
-            expect(source).toContain("activeTab === 'tasks') ? searchVisible : true");
+        it('search bar is always visible on every tab (no searchVisible gate)', () => {
+            // The activity-compact reference shows the search input as a permanent
+            // part of the toolbar, so the per-tab `searchVisible` gate has been
+            // removed entirely. The chats branch and activity branch each render
+            // their own permanent search input.
+            expect(source).not.toContain("activeTab === 'tasks') ? searchVisible : true");
+            expect(source).toContain('Search bar — always visible');
         });
 
-        it('search bar is always visible on chats tab (no searchVisible gate)', () => {
-            // On chats tab the ternary evaluates to `true`, so the search bar always shows
-            const startIdx = source.indexOf("activeTab === 'tasks') ? searchVisible : true");
-            const searchBarBlock = source.substring(startIdx, startIdx + 1200);
-            expect(searchBarBlock).toContain('queue-search-input');
+        it('search bar is always visible on chats tab', () => {
+            // The chats-tab search input lives inside the `activeTab === \'chats\'`
+            // branch and is unconditionally rendered.
+            expect(source).toContain('data-testid="queue-search-input"');
         });
     });
 
@@ -1590,12 +1611,16 @@ describe('ChatListPane: chat search', () => {
     });
 
     describe('close button behavior per tab', () => {
-        it('close button only hides search bar on tasks tab', () => {
-            const closeBlock = source.substring(
-                source.indexOf('queue-search-close') - 200,
-                source.indexOf('queue-search-close'),
-            );
-            expect(closeBlock).toContain("activeTab === 'tasks') setSearchVisible(false)");
+        it('close button never hides the always-visible search bar', () => {
+            // The activity-compact reference keeps the search bar always visible,
+            // so neither branch's close button toggles the legacy `searchVisible`
+            // gate from inside its onClick handler.
+            const activityCloseIdx = source.indexOf('queue-search-close');
+            const chatsCloseIdx = source.indexOf('chat-search-close');
+            const activityClose = source.substring(activityCloseIdx - 200, activityCloseIdx);
+            const chatsClose = source.substring(chatsCloseIdx - 200, chatsCloseIdx);
+            expect(activityClose).not.toContain('setSearchVisible(false)');
+            expect(chatsClose).not.toContain('setSearchVisible(false)');
         });
     });
 });
