@@ -416,7 +416,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             )}
                             <div
                                 ref={tabStripRef}
-                                className="flex items-center gap-0.5 px-1.5 overflow-x-auto scrollbar-hide border-x border-[#d8dee4] dark:border-[#3c3c3c]"
+                                className="flex items-center gap-0.5 pl-1.5 pr-0 overflow-x-auto scrollbar-hide border-l border-[#d8dee4] dark:border-[#3c3c3c]"
                                 style={{ WebkitOverflowScrolling: 'touch' }}
                                 data-testid="repo-sub-tab-strip"
                             >
