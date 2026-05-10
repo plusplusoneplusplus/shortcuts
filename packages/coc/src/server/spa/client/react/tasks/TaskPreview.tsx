@@ -33,7 +33,7 @@ export function TaskPreview({ wsId, filePath, taskRootPath, initialViewMode }: T
     }, []);
 
     return (
-        <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+        <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden" data-testid="task-preview">
             <NoteEditor
                 workspaceId={wsId}
                 notePath={filePath}

@@ -338,7 +338,7 @@ describe('TasksPanel', () => {
         const navState = makeNavState({ openFilePath: 'feature1/design.md' });
         render(<Wrap><TasksPanel wsId="ws1" initialNavState={navState} /></Wrap>);
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
     });
@@ -509,7 +509,7 @@ describe('TasksPanel', () => {
 
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
 
         expect(screen.getByTestId('miller-column-0')).toBeTruthy();
@@ -543,11 +543,11 @@ describe('TasksPanel', () => {
 
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
 
         // The preview container should use flex-1 (responsive) instead of a fixed width
-        const previewBody = document.querySelector('#task-preview-body')!;
+        const previewBody = document.querySelector('[data-testid="task-preview"]')!;
         const previewContainer = previewBody.closest('.flex-1');
         expect(previewContainer).toBeTruthy();
 
@@ -832,13 +832,13 @@ describe('TasksPanel — folder click clears preview', () => {
         // Click the file inside "chat" to open the markdown preview
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
 
         // Now click "repo-queue-tab" folder — preview should disappear
         fireEvent.click(screen.getByTestId('task-tree-item-repo-queue-tab'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeNull();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeNull();
         });
     });
 
@@ -870,13 +870,13 @@ describe('TasksPanel — folder click clears preview', () => {
         // Click the file inside to open preview
         fireEvent.click(screen.getByTestId('task-tree-item-spec'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
 
         // Click "chat" folder — preview should disappear
         fireEvent.click(screen.getByTestId('task-tree-item-chat'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeNull();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeNull();
         });
     });
 
@@ -898,7 +898,7 @@ describe('TasksPanel — folder click clears preview', () => {
         await waitFor(() => {
             expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         });
-        expect(document.querySelector('#task-preview-body')).toBeNull();
+        expect(document.querySelector('[data-testid="task-preview"]')).toBeNull();
     });
 
     it('collapses stale deeper column when opening a sibling file', async () => {
@@ -935,7 +935,7 @@ describe('TasksPanel — folder click clears preview', () => {
         // Open sibling file from the same column as "chat".
         fireEvent.click(screen.getByTestId('task-tree-item-fix-wiki-graph'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
         await waitFor(() => {
             expect(screen.queryByTestId('miller-column-2')).toBeNull();
@@ -1014,7 +1014,7 @@ describe('TasksPanel — folder click clears preview', () => {
         // Click a file in column 1.
         fireEvent.click(screen.getByTestId('task-tree-item-fix-wiki-graph'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
 
         // Now click the chat folder — should open column 2 and hide preview.
@@ -1023,7 +1023,7 @@ describe('TasksPanel — folder click clears preview', () => {
             expect(screen.getByTestId('miller-column-2')).toBeTruthy();
         });
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeNull();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeNull();
         });
     });
 
@@ -1055,7 +1055,7 @@ describe('TasksPanel — folder click clears preview', () => {
         // Open root-level README; child folder column should collapse.
         fireEvent.click(screen.getByTestId('task-tree-item-README'));
         await waitFor(() => {
-            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            expect(document.querySelector('[data-testid="task-preview"]')).toBeTruthy();
         });
         await waitFor(() => {
             expect(screen.queryByTestId('miller-column-1')).toBeNull();
