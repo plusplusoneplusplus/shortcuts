@@ -56,6 +56,8 @@ export interface NoteEditorProps {
     onNotFound?: () => void;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
     toolbarRight?: React.ReactNode;
+    /** Initial view mode. Defaults to 'rich'. */
+    initialViewMode?: NoteViewMode;
     /** Absolute path to the notes root directory. When provided, Run Skill context uses an absolute note path. */
     notesRoot?: string;
     /** Whether the AI chat panel is currently open. */
@@ -161,6 +163,7 @@ export function NoteEditor({
     onFlushSave,
     onNotFound,
     toolbarRight,
+    initialViewMode,
     notesRoot,
     chatPanelOpen,
     onToggleChatPanel,
@@ -209,7 +212,7 @@ export function NoteEditor({
     const editorScrollContainerRef = useRef<HTMLDivElement | null>(null);
 
     // Source mode state
-    const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
+    const [viewMode, setViewModeRaw] = useState<NoteViewMode>(initialViewMode ?? 'rich');
     const [rawMarkdown, setRawMarkdown] = useState('');
     const [sourceDirty, setSourceDirty] = useState(false);
     const viewModeRef = useRef(viewMode);

@@ -1,9 +1,11 @@
 /**
- * TaskPreview — task panel wrapper for the shared MarkdownReviewEditor.
+ * TaskPreview — task panel wrapper for NoteEditor using the tasks content API.
  */
 
-import { useCallback } from 'react';
-import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
+import { useCallback, useMemo } from 'react';
+import { NoteEditor, type NoteViewMode } from '../features/notes/editor/NoteEditor';
+import { noopCommentBackend } from '../features/notes/editor/NoteEditorCommentBackend';
+import { createTasksNoteEditorIO } from './TasksNoteEditorIO';
 import { useTaskPanel } from '../contexts/TaskContext';
 import { Button } from '../ui';
 
@@ -17,7 +19,14 @@ interface TaskPreviewProps {
 export function TaskPreview({ wsId, filePath, taskRootPath, initialViewMode }: TaskPreviewProps) {
     const { setOpenFilePath } = useTaskPanel();
 
-    const handleViewModeChange = useCallback((mode: 'review' | 'source') => {
+    // Memoize the IO adapter — stateless, so one instance per mount is fine.
+    const tasksIO = useMemo(() => createTasksNoteEditorIO(), []);
+
+    // Map legacy 'review' | 'source' | null → NoteViewMode.
+    const mappedInitialViewMode: NoteViewMode = initialViewMode === 'source' ? 'source' : 'rich';
+
+    // Sync view mode changes into the URL hash (?mode=source).
+    const handleViewModeChange = useCallback((mode: NoteViewMode) => {
         const hash = location.hash.replace(/^#/, '').split('?')[0];
         const newHash = mode === 'source' ? `#${hash}?mode=source` : `#${hash}`;
         history.replaceState(null, '', newHash);
@@ -25,14 +34,14 @@ export function TaskPreview({ wsId, filePath, taskRootPath, initialViewMode }: T
 
     return (
         <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
-            <MarkdownReviewEditor
-                wsId={wsId}
-                filePath={filePath}
-                taskRootPath={taskRootPath}
-                fetchMode="tasks"
-                initialViewMode={initialViewMode ?? undefined}
+            <NoteEditor
+                workspaceId={wsId}
+                notePath={filePath}
+                io={tasksIO}
+                commentBackend={noopCommentBackend}
+                notesRoot={taskRootPath ?? undefined}
+                initialViewMode={mappedInitialViewMode}
                 onViewModeChange={handleViewModeChange}
-                showAiButtons={true}
                 toolbarRight={
                     <Button variant="ghost" size="sm" className="task-preview-close" data-testid="task-preview-close" title="Close preview" onClick={() => setOpenFilePath(null)}>
                         ✕
