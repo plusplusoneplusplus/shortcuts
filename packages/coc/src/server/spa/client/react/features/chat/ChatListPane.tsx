@@ -27,7 +27,7 @@ import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-grouping';
-import { HistoryGroupHeader } from '../git/commits/HistoryGroupHeader';
+import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -1852,11 +1852,20 @@ export function ChatListPane({
                                         if (entry.kind === 'group') {
                                             // Expanded by default if group has unseen items; user toggle overrides
                                             const expanded = !collapsedGroups.has(entry.planFilePath);
+                                            const aggregateMode = computeAggregateMode(entry.children);
+                                            const groupHasUnseen = !!unseenProcessIds && entry.children.some((c: any) => unseenProcessIds.has(c.id));
                                             return (
-                                                <div key={entry.planFilePath} data-testid="history-group">
+                                                <div
+                                                    key={entry.planFilePath}
+                                                    data-testid="history-group"
+                                                    data-expanded={expanded ? 'true' : 'false'}
+                                                    className={cn(expanded && 'bg-[#f7f7f8]/60 dark:bg-[#1f1f20]/60')}
+                                                >
                                                     <HistoryGroupHeader
                                                         group={entry}
                                                         isExpanded={expanded}
+                                                        isUnseen={groupHasUnseen}
+                                                        aggregateMode={aggregateMode}
                                                         onToggle={() => toggleGroup(entry.planFilePath)}
                                                         onContextMenu={e => {
                                                             e.preventDefault();
@@ -1868,7 +1877,10 @@ export function ChatListPane({
                                                         isDense={isDense}
                                                     />
                                                     {expanded && (
-                                                        <div className="flex flex-col pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-1">
+                                                        <div
+                                                            className="flex flex-col"
+                                                            data-testid="history-group-children"
+                                                        >
                                                             {entry.children.map((task: any) => renderChatListRow(task, entry.children, { taskStatus: 'completed' }))}
                                                         </div>
                                                     )}
