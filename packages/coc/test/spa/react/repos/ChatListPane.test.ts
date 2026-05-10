@@ -1249,9 +1249,12 @@ describe('ChatListPane: New Chat button uses onNewChat', () => {
         expect(matches.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('toolbar new-chat button hides label on mobile', () => {
-        // The label "New Chat" inside the toolbar button is hidden on mobile via responsive class
-        expect(source).toMatch(/hidden md:inline">\s*New Chat/);
+    it('toolbar new-chat button always shows the "New chat" label (primary CTA)', () => {
+        // The activity-compact action bar treats the New chat button as the
+        // primary, flex-grow CTA — so the label is always visible (no
+        // responsive hiding) and a platform-aware kbd hint is shown next to it.
+        expect(source).toMatch(/<span className="flex-1 text-left truncate">New chat<\/span>/);
+        expect(source).toContain('newChatKbdLabel');
     });
 
     it('empty-state Queue Task button was removed', () => {

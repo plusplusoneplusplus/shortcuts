@@ -451,6 +451,15 @@ export function ChatListPane({
                 setSearchVisible(true);
                 setTimeout(() => searchInputRef.current?.focus(), 0);
             }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
+                // ⌘N / Ctrl+N — primary "New chat" shortcut. Only intercept when
+                // the activity pane is visible and the detail pane isn't focused
+                // (so users editing a chat aren't disrupted).
+                if (!containerRef.current || containerRef.current.offsetParent === null) return;
+                if (detailPaneFocusedRef.current) return;
+                e.preventDefault();
+                (onNewChat ?? onOpenDialog)?.();
+            }
             if (e.key === 'Escape' && searchVisible) {
                 setSearchQuery('');
                 setSearchVisible(false);
@@ -462,7 +471,7 @@ export function ChatListPane({
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchVisible]);
+    }, [searchVisible, onNewChat, onOpenDialog, selectedHistoryIds.size]);
 
     const allTasks = useMemo(
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
@@ -696,6 +705,13 @@ export function ChatListPane({
         if (typeof navigator === 'undefined') return '⌘F';
         const isMac = /mac/i.test(navigator.platform);
         return isMac ? '⌘F' : 'Ctrl+F';
+    }, []);
+
+    /** Platform-aware modifier key label for the New chat kbd hint. */
+    const newChatKbdLabel = useMemo(() => {
+        if (typeof navigator === 'undefined') return '⌘N';
+        const isMac = /mac/i.test(navigator.platform);
+        return isMac ? '⌘N' : 'Ctrl+N';
     }, []);
 
     // Time-bucketed groups for the redesigned chats tab.
@@ -1577,9 +1593,143 @@ export function ChatListPane({
                     </div>
                 )}
 
+                {/*
+                 * Action bar — primary "New chat", refresh utility, and a split
+                 * pause pill that exposes BOTH "Pause All" and "Pause AP" toggles
+                 * in the activity-compact reference style. Functionality is
+                 * unchanged: each pause toggle drives the same handler that the
+                 * legacy "⏸ All / ⏸ AP" buttons used (open duration menu when
+                 * running, resume immediately when paused).
+                 */}
+                <div className={cn('flex items-center gap-1.5 mb-1.5 md:mb-3')}>
+                    <button
+                        type="button"
+                        onClick={onNewChat ?? onOpenDialog}
+                        title={`New chat (${newChatKbdLabel})`}
+                        data-testid="toolbar-new-chat-btn"
+                        className="flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 bg-[#1e1e1e] hover:bg-[#0078d4] dark:bg-[#cccccc] dark:hover:bg-white text-white dark:text-[#1e1e1e] border border-[#1e1e1e] dark:border-[#cccccc] rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]"
+                    >
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className="flex-shrink-0">
+                            <path d="M7 2v10M2 7h10" />
+                        </svg>
+                        <span className="flex-1 text-left truncate">New chat</span>
+                        <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-white/30 dark:border-[#1e1e1e]/30 text-white/85 dark:text-[#1e1e1e]/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                    </button>
+
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isRefreshing}
+                        loading={isRefreshing}
+                        onClick={onRefresh}
+                        title="Refresh queue"
+                        data-testid="queue-refresh-btn"
+                        className="!h-7 !w-7 !p-0 !min-h-0 grid place-items-center bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#474749] rounded-md !text-[#606060] dark:!text-[#9d9d9d] hover:!bg-[#f5f5f5] dark:hover:!bg-[#252526] hover:!text-[#1e1e1e] dark:hover:!text-[#cccccc]"
+                    >
+                        {!isRefreshing && (
+                            <span className={(isAdmitting || isTaskSubmitting) ? 'inline-block animate-spin' : 'inline-block'}>
+                                ↺
+                            </span>
+                        )}
+                    </Button>
+
+                    <div className="relative" ref={pauseMenuRef}>
+                        <div
+                            className={cn(
+                                'inline-flex items-stretch h-7 rounded-md border overflow-hidden transition-colors',
+                                (isPaused || isAutopilotPaused)
+                                    ? 'bg-amber-50 border-amber-300 dark:bg-amber-900/10 dark:border-amber-700/40'
+                                    : 'bg-white dark:bg-[#1e1e1e] border-[#e0e0e0] dark:border-[#474749]',
+                            )}
+                            data-testid="pause-toggle-group"
+                        >
+                            <button
+                                type="button"
+                                disabled={isPauseResumeLoading}
+                                onClick={() => isPaused ? onPauseResume() : setPauseMenuScope(pauseMenuScope === 'all' ? null : 'all')}
+                                title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
+                                data-testid="repo-pause-resume-btn"
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 px-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                    isPaused
+                                        ? 'hover:bg-amber-500/10'
+                                        : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                )}
+                            >
+                                <span className={cn(
+                                    'w-[7px] h-[7px] rounded-full flex-shrink-0',
+                                    isPaused
+                                        ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
+                                        : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                )} aria-hidden="true" />
+                                <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#9d9d9d] dark:text-[#7d7d7d]">ALL</span>
+                                <span
+                                    className={cn(
+                                        'text-[11.5px] font-semibold leading-none whitespace-nowrap',
+                                        isPaused
+                                            ? 'text-amber-700 dark:text-amber-400'
+                                            : 'text-emerald-600 dark:text-emerald-400',
+                                    )}
+                                    aria-label={isPaused ? '▶ Resume all tasks' : '⏸ Pause all tasks'}
+                                >
+                                    {isPaused ? (queuePauseRemaining || 'PAUSED') : 'ON'}
+                                </span>
+                            </button>
+                            {onPauseResumeAutopilot && (
+                                <>
+                                    <div className={cn(
+                                        'w-px self-stretch',
+                                        (isPaused || isAutopilotPaused)
+                                            ? 'bg-amber-300 dark:bg-amber-700/40'
+                                            : 'bg-[#e0e0e0] dark:bg-[#474749]',
+                                    )} />
+                                    <button
+                                        type="button"
+                                        disabled={isAutopilotPauseLoading}
+                                        onClick={() => isAutopilotPaused ? onPauseResumeAutopilot() : setPauseMenuScope(pauseMenuScope === 'autopilot' ? null : 'autopilot')}
+                                        title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
+                                        data-testid="autopilot-pause-resume-btn"
+                                        className={cn(
+                                            'inline-flex items-center gap-1.5 px-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                            isAutopilotPaused
+                                                ? 'hover:bg-amber-500/10'
+                                                : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            'w-[7px] h-[7px] rounded-full flex-shrink-0',
+                                            isAutopilotPaused
+                                                ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
+                                                : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                        )} aria-hidden="true" />
+                                        <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#9d9d9d] dark:text-[#7d7d7d]">AP</span>
+                                        <span
+                                            className={cn(
+                                                'text-[11.5px] font-semibold leading-none whitespace-nowrap',
+                                                isAutopilotPaused
+                                                    ? 'text-amber-700 dark:text-amber-400'
+                                                    : 'text-emerald-600 dark:text-emerald-400',
+                                            )}
+                                            aria-label={isAutopilotPaused ? '▶ Resume autopilot' : '⏸ Pause autopilot'}
+                                        >
+                                            {isAutopilotPaused ? (autopilotPauseRemaining || 'PAUSED') : 'ON'}
+                                        </span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        {pauseMenuScope && (
+                            <PauseDurationMenu scope={pauseMenuScope} onSelect={selectPauseDuration} />
+                        )}
+                    </div>
+                </div>
+
                 {/* Scope segmented control — Chats / Automations / All. Only
                     rendered in the Activity branch (`!activeTab`); Chats and
-                    Tasks tabs already have their own narrow scope. */}
+                    Tasks tabs already have their own narrow scope. Inner spans
+                    use `whitespace-nowrap` and `min-w-0 truncate` on the label
+                    so narrow widths show ellipsis on the longest label
+                    ("Automations") instead of wrapping the count below. */}
                 {!activeTab && (
                     <div
                         className="grid grid-cols-3 gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md"
@@ -1620,7 +1770,7 @@ export function ChatListPane({
                                     aria-selected={on}
                                     onClick={() => setActiveScope(scope.id)}
                                     className={cn(
-                                        'h-[26px] px-2 inline-flex items-center justify-center gap-1.5 text-[11.5px] leading-none font-medium rounded transition-[background-color,color,box-shadow] duration-100',
+                                        'h-[26px] min-w-0 px-1.5 inline-flex items-center justify-center gap-1 text-[11.5px] leading-none font-medium rounded transition-[background-color,color,box-shadow] duration-100',
                                         on
                                             ? 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] shadow-[0_1px_0_rgba(0,0,0,0.04),0_0_0_1px_rgba(224,224,224,0.7)] dark:shadow-[0_1px_0_rgba(0,0,0,0.20),0_0_0_1px_rgba(71,71,73,0.7)]'
                                             : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
@@ -1628,11 +1778,11 @@ export function ChatListPane({
                                     data-testid={`activity-scope-tab-${scope.id}`}
                                     data-active={on || undefined}
                                 >
-                                    {scope.icon && <span className="opacity-80">{scope.icon}</span>}
-                                    <span>{scope.label}</span>
+                                    {scope.icon && <span className="opacity-80 flex-shrink-0">{scope.icon}</span>}
+                                    <span className="min-w-0 truncate whitespace-nowrap">{scope.label}</span>
                                     <span
                                         className={cn(
-                                            'text-[10.5px] font-mono tabular-nums',
+                                            'text-[10.5px] font-mono tabular-nums whitespace-nowrap flex-shrink-0',
                                             on ? 'text-[#0078d4] dark:text-[#3794ff]' : 'text-[#9d9d9d] dark:text-[#7d7d7d]',
                                         )}
                                         data-testid={`activity-scope-count-${scope.id}`}
@@ -1645,84 +1795,16 @@ export function ChatListPane({
                     </div>
                 )}
 
-                <div className={cn('flex items-center gap-2 mb-1.5 md:mb-3')}>
-                    {availableFilters.length >= 1 && (
+                {availableFilters.length >= 1 && (
+                    <div className="flex items-center">
                         <FilterDropdown
                             items={availableFilters}
                             excludedValues={excludedTypes}
                             onChange={setExcludedTypes}
                             data-testid="queue-filter-dropdown"
                         />
-                    )}
-                    <div className="flex-1" />
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isRefreshing}
-                        loading={isRefreshing}
-                        onClick={onRefresh}
-                        title="Refresh queue"
-                        data-testid="queue-refresh-btn"
-                    >
-                        {!isRefreshing && (
-                            <span className={(isAdmitting || isTaskSubmitting) ? 'inline-block animate-spin' : 'inline-block'}>
-                                ↺
-                            </span>
-                        )}
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onNewChat ?? onOpenDialog}
-                        title="New chat"
-                        data-testid="toolbar-new-chat-btn"
-                    >
-                        💬<span className="hidden md:inline"> New Chat</span>
-                    </Button>
-                    <div className="relative" ref={pauseMenuRef}>
-                        <div
-                            className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
-                            data-testid="pause-toggle-group"
-                        >
-                            <button
-                                disabled={isPauseResumeLoading}
-                                onClick={() => isPaused ? onPauseResume() : setPauseMenuScope(pauseMenuScope === 'all' ? null : 'all')}
-                                title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
-                                data-testid="repo-pause-resume-btn"
-                                className={cn(
-                                    'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                    isPaused
-                                        ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
-                                        : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                                )}
-                            >
-                                {isPaused ? '▶' : '⏸'} All{isPaused && queuePauseRemaining ? ` ${queuePauseRemaining}` : ''}
-                            </button>
-                            {onPauseResumeAutopilot && (
-                                <>
-                                    <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#474749]" />
-                                    <button
-                                        disabled={isAutopilotPauseLoading}
-                                        onClick={() => isAutopilotPaused ? onPauseResumeAutopilot() : setPauseMenuScope(pauseMenuScope === 'autopilot' ? null : 'autopilot')}
-                                        title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
-                                        data-testid="autopilot-pause-resume-btn"
-                                        className={cn(
-                                            'flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                            isAutopilotPaused
-                                                ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
-                                                : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                                        )}
-                                    >
-                                        {isAutopilotPaused ? '▶' : '⏸'} AP{isAutopilotPaused && autopilotPauseRemaining ? ` ${autopilotPauseRemaining}` : ''}
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                        {pauseMenuScope && (
-                            <PauseDurationMenu scope={pauseMenuScope} onSelect={selectPauseDuration} />
-                        )}
                     </div>
-                </div>
+                )}
 
                 {/* Search bar — always visible on every tab to match the activity-compact reference. */}
                 <div className="relative">

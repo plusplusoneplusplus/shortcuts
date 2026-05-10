@@ -313,14 +313,18 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('queue-refresh-btn')).toBeTruthy();
         });
 
-        it('pause button shows ⏸ when not paused', () => {
+        it('pause button shows ALL ON state when not paused', () => {
             renderPane({ history: [makeHistoryTask()] });
-            expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('⏸');
+            const text = screen.getByTestId('repo-pause-resume-btn').textContent ?? '';
+            expect(text).toContain('ALL');
+            expect(text).toContain('ON');
         });
 
-        it('pause button shows ▶ when paused', () => {
+        it('pause button shows PAUSED state when paused indefinitely', () => {
             renderPane({ isPaused: true, history: [makeHistoryTask()] });
-            expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('▶');
+            const text = screen.getByTestId('repo-pause-resume-btn').textContent ?? '';
+            expect(text).toContain('ALL');
+            expect(text).toContain('PAUSED');
         });
 
         it('opens duration menu and pauses all tasks for selected hours', () => {
@@ -386,8 +390,92 @@ describe('ChatListPane', () => {
 
             expect(screen.getByTestId('queue-paused-banner').textContent).toContain('1h 30m');
             expect(screen.getByTestId('autopilot-paused-banner').textContent).toContain('1h 30m');
+            // Action-bar pause pill renders the remaining label inline next to the
+            // ALL / AP scope tag (e.g. "ALL · 1h 30m"). Both scopes share the same
+            // formatter so the substring assertion remains the contract.
             expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('1h 30m');
             expect(screen.getByTestId('autopilot-pause-resume-btn').textContent).toContain('1h 30m');
+        });
+
+        // ── Activity-compact action bar layout ─────────────────────────
+        // The ChatListPane action bar matches the activity-compact reference:
+        //   [+ New chat ⌘N] [↺] [● ALL ON | ● AP ON]
+        // Both Pause All and Pause AP toggles must remain visible in a single
+        // split pill; the pause functionality is unchanged from the legacy
+        // "⏸ All / ⏸ AP" buttons.
+        it('action bar groups New chat, refresh, and split pause pill into one row', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: vi.fn(),
+            });
+            const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
+            const refreshBtn = screen.getByTestId('queue-refresh-btn');
+            const pauseGroup = screen.getByTestId('pause-toggle-group');
+            const allBtn = screen.getByTestId('repo-pause-resume-btn');
+            const apBtn = screen.getByTestId('autopilot-pause-resume-btn');
+
+            expect(newChatBtn).toBeTruthy();
+            expect(refreshBtn).toBeTruthy();
+            expect(pauseGroup).toBeTruthy();
+            // Both pause toggles live inside the same split pill container.
+            expect(pauseGroup.contains(allBtn)).toBe(true);
+            expect(pauseGroup.contains(apBtn)).toBe(true);
+        });
+
+        it('AP pause button shows AP ON state when not paused', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: vi.fn(),
+            });
+            const text = screen.getByTestId('autopilot-pause-resume-btn').textContent ?? '';
+            expect(text).toContain('AP');
+            expect(text).toContain('ON');
+        });
+
+        it('AP pause button shows PAUSED state when autopilot is paused indefinitely', () => {
+            renderPane({
+                isAutopilotPaused: true,
+                onPauseResumeAutopilot: vi.fn(),
+                history: [makeHistoryTask()],
+            });
+            const text = screen.getByTestId('autopilot-pause-resume-btn').textContent ?? '';
+            expect(text).toContain('AP');
+            expect(text).toContain('PAUSED');
+        });
+
+        it('omits the AP pause toggle when no autopilot pause handler is provided', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: undefined,
+            });
+            expect(screen.queryByTestId('autopilot-pause-resume-btn')).toBeNull();
+            expect(screen.getByTestId('repo-pause-resume-btn')).toBeTruthy();
+        });
+
+        it('New chat button always shows the "New chat" label and a keyboard hint', () => {
+            renderPane({ history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+            expect(btn.textContent ?? '').toContain('New chat');
+            // ⌘N or Ctrl+N depending on the host platform — both tokens are accepted.
+            expect((btn.textContent ?? '').match(/⌘N|Ctrl\+N/)).not.toBeNull();
+        });
+
+        it('⌘N (or Ctrl+N) triggers the New chat handler when the activity pane is visible', () => {
+            const onNewChat = vi.fn();
+            renderPane({ history: [makeHistoryTask()], onNewChat });
+
+            // jsdom defaults navigator.platform to "" — Ctrl+N is the platform-neutral
+            // fallback. The handler intercepts both ⌘N and Ctrl+N to stay portable.
+            fireEvent.keyDown(document, { key: 'n', ctrlKey: true });
+            expect(onNewChat).toHaveBeenCalledTimes(1);
+        });
+
+        it('⌘N falls through to onOpenDialog when no onNewChat handler is provided', () => {
+            const onOpenDialog = vi.fn();
+            renderPane({ history: [makeHistoryTask()], onOpenDialog });
+
+            fireEvent.keyDown(document, { key: 'n', metaKey: true });
+            expect(onOpenDialog).toHaveBeenCalledTimes(1);
         });
     });
 
