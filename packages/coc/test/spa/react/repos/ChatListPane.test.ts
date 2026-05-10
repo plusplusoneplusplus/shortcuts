@@ -962,9 +962,16 @@ describe('ChatListPane: filter dropdown rework', () => {
         });
     });
 
-    describe('filter dropdown UI', () => {
-        it('renders filter dropdown instead of pill row', () => {
-            expect(source).toContain('data-testid="queue-filter-dropdown"');
+    describe('filter dropdown removed', () => {
+        // The activity-compact action bar surfaces chats vs automations through
+        // the scope segmented control instead of a type-filter dropdown. The
+        // legacy `queue-filter-dropdown`, `availableFilters`, and the
+        // `setExcludedTypes` dispatch path are gone.
+        it('does not render the legacy queue-filter-dropdown', () => {
+            expect(source).not.toContain('data-testid="queue-filter-dropdown"');
+        });
+
+        it('does not render the legacy queue-filter-pills row', () => {
             expect(source).not.toContain('data-testid="queue-filter-pills"');
         });
 
@@ -972,39 +979,20 @@ describe('ChatListPane: filter dropdown rework', () => {
             expect(source).not.toContain('data-testid="queue-filter-reset"');
         });
 
-        it('uses FilterDropdown component', () => {
-            expect(source).toContain('<FilterDropdown');
+        it('no longer imports the FilterDropdown component', () => {
+            expect(source).not.toContain('FilterDropdown,');
+            expect(source).not.toContain('FilterDropdown }');
+            expect(source).not.toContain('<FilterDropdown');
         });
 
-        it('imports FilterDropdown from ui', () => {
-            expect(source).toContain('FilterDropdown');
-            expect(source).toContain("from '../../ui'");
+        it('does not declare the unused availableFilters memo', () => {
+            expect(source).not.toContain('availableFilters = useMemo');
         });
 
-        it('passes availableFilters as items to FilterDropdown', () => {
-            expect(source).toContain('items={availableFilters}');
-        });
-
-        it('passes excludedTypes as excludedValues to FilterDropdown', () => {
-            expect(source).toContain('excludedValues={excludedTypes}');
-        });
-
-        it('passes setExcludedTypes as onChange to FilterDropdown', () => {
-            expect(source).toContain('onChange={setExcludedTypes}');
-        });
-
-        it('availableFilters uses FilterItem type', () => {
-            expect(source).toContain('FilterItem');
-        });
-
-        it('availableFilters nests chat mode children under chat parent', () => {
-            const fn = source.substring(
-                source.indexOf('availableFilters = useMemo'),
-                source.indexOf('availableFilters = useMemo') + 600,
-            );
-            expect(fn).toContain('children');
-            expect(fn).toContain("type === 'chat'");
-            expect(fn).toContain('CHAT_MODE_LABELS');
+        it('does not dispatch SET_MY_WORK_EXCLUDED_TYPES from this pane', () => {
+            // The dropdown was the sole writer of this action. Server-managed
+            // filters (via SET_WELCOME_PREFERENCES) still apply read-only.
+            expect(source).not.toContain('SET_MY_WORK_EXCLUDED_TYPES');
         });
     });
 

@@ -7,8 +7,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, cn, FilterDropdown } from '../../ui';
-import type { FilterItem } from '../../ui';
+import { Card, Button, cn } from '../../ui';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { buildRows } from './conversation/ConversationMetadataPopover';
@@ -344,11 +343,14 @@ export function ChatListPane({
         return false;
     }, [selectedTaskId]);
 
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
+    /**
+     * The activity tab no longer renders a type-filter dropdown — chats and
+     * automations are surfaced through the scope segmented control instead.
+     * `excludedTypes` is still read from `AppContext` so any filters persisted
+     * server-side via `SET_WELCOME_PREFERENCES` remain applied.
+     */
     const excludedTypes = useMemo(() => new Set(appState.myWorkExcludedTypes), [appState.myWorkExcludedTypes]);
-    const setExcludedTypes = useCallback((next: Set<string>) => {
-        appDispatch({ type: 'SET_MY_WORK_EXCLUDED_TYPES', value: [...next] });
-    }, [appDispatch]);
 
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -477,25 +479,6 @@ export function ChatListPane({
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
         [running, queued, history],
     );
-    const availableFilters = useMemo(() => {
-        const types = new Set(allTasks.map((t: any) => t.type as string));
-        const opts: FilterItem[] = [];
-        for (const [type, label] of Object.entries(TASK_TYPE_LABELS)) {
-            if (!types.has(type)) continue;
-            if (type === 'chat') {
-                const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
-                const modes = new Set(chatTasks.map((t: any) => (t.payload?.mode ?? t.mode) as string).filter(Boolean));
-                const children = Object.entries(CHAT_MODE_LABELS)
-                    .filter(([mode]) => modes.has(mode))
-                    .map(([mode, modeLabel]) => ({ value: mode, label: modeLabel }));
-                opts.push({ value: type, label, ...(children.length > 0 && { children }) });
-            } else {
-                opts.push({ value: type, label });
-            }
-        }
-        return opts;
-    }, [allTasks]);
-
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -1662,18 +1645,24 @@ export function ChatListPane({
                                         ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
                                         : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                 )} aria-hidden="true" />
-                                <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#9d9d9d] dark:text-[#7d7d7d]">ALL</span>
                                 <span
                                     className={cn(
-                                        'text-[11.5px] font-semibold leading-none whitespace-nowrap',
+                                        'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                         isPaused
                                             ? 'text-amber-700 dark:text-amber-400'
-                                            : 'text-emerald-600 dark:text-emerald-400',
+                                            : 'text-[#606060] dark:text-[#9d9d9d]',
                                     )}
-                                    aria-label={isPaused ? '▶ Resume all tasks' : '⏸ Pause all tasks'}
                                 >
-                                    {isPaused ? (queuePauseRemaining || 'PAUSED') : 'ON'}
+                                    ALL
                                 </span>
+                                {isPaused && (
+                                    <span
+                                        className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                        aria-label="▶ Resume all tasks"
+                                    >
+                                        {queuePauseRemaining || 'PAUSED'}
+                                    </span>
+                                )}
                             </button>
                             {onPauseResumeAutopilot && (
                                 <>
@@ -1702,18 +1691,24 @@ export function ChatListPane({
                                                 ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
                                                 : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                         )} aria-hidden="true" />
-                                        <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#9d9d9d] dark:text-[#7d7d7d]">AP</span>
                                         <span
                                             className={cn(
-                                                'text-[11.5px] font-semibold leading-none whitespace-nowrap',
+                                                'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                                 isAutopilotPaused
                                                     ? 'text-amber-700 dark:text-amber-400'
-                                                    : 'text-emerald-600 dark:text-emerald-400',
+                                                    : 'text-[#606060] dark:text-[#9d9d9d]',
                                             )}
-                                            aria-label={isAutopilotPaused ? '▶ Resume autopilot' : '⏸ Pause autopilot'}
                                         >
-                                            {isAutopilotPaused ? (autopilotPauseRemaining || 'PAUSED') : 'ON'}
+                                            AP
                                         </span>
+                                        {isAutopilotPaused && (
+                                            <span
+                                                className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                                aria-label="▶ Resume autopilot"
+                                            >
+                                                {autopilotPauseRemaining || 'PAUSED'}
+                                            </span>
+                                        )}
                                     </button>
                                 </>
                             )}
@@ -1792,17 +1787,6 @@ export function ChatListPane({
                                 </button>
                             );
                         })}
-                    </div>
-                )}
-
-                {availableFilters.length >= 1 && (
-                    <div className="flex items-center">
-                        <FilterDropdown
-                            items={availableFilters}
-                            excludedValues={excludedTypes}
-                            onChange={setExcludedTypes}
-                            data-testid="queue-filter-dropdown"
-                        />
                     </div>
                 )}
 

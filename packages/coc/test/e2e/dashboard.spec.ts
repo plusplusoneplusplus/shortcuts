@@ -129,77 +129,10 @@ test.describe('Dashboard — Processes tab', () => {
         }
     });
 
-    // ── Type filter actually filters the list (replaces search stub) ───────────
-
-    test('type filter dropdown shows only matching task type', async ({ page, serverUrl }) => {
-        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'filter1');
-        try {
-            // Seed two chat tasks with different modes and wait for both to complete.
-            // Filter dropdown splits chat tasks by sub-mode (ask, plan, autopilot).
-            const t1 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                displayName: 'Ask Task',
-                payload: { mode: 'ask', prompt: 'AlphaPromptText' },
-            }));
-            const t2 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                displayName: 'Autopilot Task',
-                payload: { mode: 'autopilot', prompt: 'BetaPromptText' },
-            }));
-            await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
-            await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
-
-            await page.goto(tasksTabUrl(serverUrl, wsId));
-            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
-
-            // Filter dropdown appears when chat tasks have multiple modes
-            const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-            await expect(dropdown).toBeVisible({ timeout: 5000 });
-
-            // Open the filter dropdown and exclude the 'ask' mode → only Autopilot remains
-            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-            await page.locator('[data-testid="filter-checkbox-ask"]').uncheck();
-            await expect(page.locator('text=BetaPromptText').first()).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('text=AlphaPromptText')).not.toBeVisible();
-        } finally {
-            cleanup();
-        }
-    });
-
-    // ── Type filter narrows to chat only (replaces status-filter stub) ─────────
-
-    test('type filter shows only chat tasks when chat selected', async ({ page, serverUrl }) => {
-        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'filter2');
-        try {
-            const t1 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                displayName: 'Ask Only Task',
-                payload: { mode: 'ask', prompt: 'GammaPromptText' },
-            }));
-            const t2 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                displayName: 'Autopilot Only Task',
-                payload: { mode: 'autopilot', prompt: 'DeltaPromptText' },
-            }));
-            await waitForTaskStatus(serverUrl, t1.id as string, ['completed', 'failed']);
-            await waitForTaskStatus(serverUrl, t2.id as string, ['completed', 'failed']);
-
-            await page.goto(tasksTabUrl(serverUrl, wsId));
-            await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
-
-            const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-            await expect(dropdown).toBeVisible({ timeout: 5000 });
-
-            // Open the filter dropdown and exclude the 'autopilot' mode → only Ask remains
-            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-            await page.locator('[data-testid="filter-checkbox-autopilot"]').uncheck();
-
-            await expect(page.locator('text=GammaPromptText').first()).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('text=DeltaPromptText')).not.toBeVisible();
-        } finally {
-            cleanup();
-        }
-    });
+    // The "type filter dropdown shows only matching task type" and
+    // "type filter shows only chat tasks when chat selected" tests were
+    // removed when the activity-tab type filter dropdown was retired in
+    // favor of the scope segmented control (chats / automations / all).
 
     // ── Completed Tasks section is expanded by default ─────────────────────────
 

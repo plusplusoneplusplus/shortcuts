@@ -313,14 +313,17 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('queue-refresh-btn')).toBeTruthy();
         });
 
-        it('pause button shows ALL ON state when not paused', () => {
+        it('pause button shows only the ALL scope tag when not paused (color signals state)', () => {
             renderPane({ history: [makeHistoryTask()] });
             const text = screen.getByTestId('repo-pause-resume-btn').textContent ?? '';
             expect(text).toContain('ALL');
-            expect(text).toContain('ON');
+            // The running/idle state is communicated by the green dot + scope-tag
+            // colour — no redundant "ON" copy clutters the pill.
+            expect(text).not.toContain('ON');
+            expect(text).not.toContain('PAUSED');
         });
 
-        it('pause button shows PAUSED state when paused indefinitely', () => {
+        it('pause button reveals PAUSED label when paused indefinitely', () => {
             renderPane({ isPaused: true, history: [makeHistoryTask()] });
             const text = screen.getByTestId('repo-pause-resume-btn').textContent ?? '';
             expect(text).toContain('ALL');
@@ -422,17 +425,18 @@ describe('ChatListPane', () => {
             expect(pauseGroup.contains(apBtn)).toBe(true);
         });
 
-        it('AP pause button shows AP ON state when not paused', () => {
+        it('AP pause button shows only the AP scope tag when not paused', () => {
             renderPane({
                 history: [makeHistoryTask()],
                 onPauseResumeAutopilot: vi.fn(),
             });
             const text = screen.getByTestId('autopilot-pause-resume-btn').textContent ?? '';
             expect(text).toContain('AP');
-            expect(text).toContain('ON');
+            expect(text).not.toContain('ON');
+            expect(text).not.toContain('PAUSED');
         });
 
-        it('AP pause button shows PAUSED state when autopilot is paused indefinitely', () => {
+        it('AP pause button reveals PAUSED label when autopilot is paused indefinitely', () => {
             renderPane({
                 isAutopilotPaused: true,
                 onPauseResumeAutopilot: vi.fn(),

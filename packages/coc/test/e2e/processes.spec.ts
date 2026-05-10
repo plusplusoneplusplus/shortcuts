@@ -13,7 +13,7 @@
  *
  * Uses existing data-testid attributes:
  *   ProcessesView:       data-testid="activity-split-panel"
- *   ChatListPane:        data-testid="queue-empty-state", data-testid="queue-filter-dropdown"
+ *   ChatListPane:        data-testid="queue-empty-state"
  *   ChatDetailPane:      data-testid="activity-detail-panel"
  *   ChatDetail:          data-testid="activity-chat-detail"
  *   ConversationMiniMap: data-testid="minimap-panel"
@@ -122,31 +122,9 @@ test.describe('ProcessesView – Desktop layout', () => {
         }
     });
 
-    test('P.3 filter dropdown is present', async ({ page, serverUrl }) => {
-        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p3');
-        try {
-            // Two tasks of different chat modes so the filter dropdown renders
-            // (it only appears when availableFilters.length > 0).
-            const t1 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                payload: { mode: 'ask', prompt: 'Filter test ask' },
-            }));
-            const t2 = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                payload: { mode: 'autopilot', prompt: 'Filter test auto' },
-            }));
-            await Promise.all([
-                waitForTaskComplete(serverUrl, t1.id as string).catch(() => {}),
-                waitForTaskComplete(serverUrl, t2.id as string).catch(() => {}),
-            ]);
-
-            await gotoActivity(page, serverUrl, wsId);
-            await page.waitForTimeout(500);
-            await expect(page.locator('[data-testid="queue-filter-dropdown"]')).toBeVisible({ timeout: 8_000 });
-        } finally {
-            cleanup();
-        }
-    });
+    // P.3 (legacy filter dropdown presence check) was removed when the type
+    // filter dropdown was retired in favor of the scope segmented control on
+    // the activity tab.
 });
 
 // ---------------------------------------------------------------------------
@@ -226,43 +204,9 @@ test.describe('ProcessesView – Task list', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('ProcessesView – Filtering', () => {
-    test('P.7 type filter dropdown changes the visible task list', async ({ page, serverUrl }) => {
-        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p7');
-        try {
-            // Two chat tasks with distinct modes so the filter dropdown surfaces
-            // both as toggleable items (the chat-mode is what the dropdown
-            // groups by in the activity view).
-            const askTask = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                payload: { mode: 'ask', prompt: 'Filter ask' },
-            }));
-            const autoTask = await seedQueueTask(serverUrl, wsTask(wsId, {
-                type: 'chat',
-                payload: { mode: 'autopilot', prompt: 'Filter auto' },
-            }));
-            await Promise.all([
-                waitForTaskComplete(serverUrl, askTask.id as string).catch(() => {}),
-                waitForTaskComplete(serverUrl, autoTask.id as string).catch(() => {}),
-            ]);
-
-            await gotoActivity(page, serverUrl, wsId);
-
-            const filterDd = page.locator('[data-testid="queue-filter-dropdown"]');
-            await expect(filterDd).toBeVisible({ timeout: 10_000 });
-
-            // Open the dropdown and uncheck one of the modes — verify it stays unchecked.
-            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-            const askCheckbox = page.locator('[data-testid="filter-checkbox-ask"]');
-            const autoCheckbox = page.locator('[data-testid="filter-checkbox-autopilot"]');
-            await expect(askCheckbox).toBeVisible({ timeout: 5_000 });
-            await expect(autoCheckbox).toBeVisible({ timeout: 5_000 });
-            await askCheckbox.uncheck();
-            await page.waitForTimeout(300);
-            await expect(askCheckbox).not.toBeChecked();
-        } finally {
-            cleanup();
-        }
-    });
+    // P.7 (type filter dropdown changes the visible task list) was removed
+    // when the type filter dropdown was retired. The activity tab now uses
+    // the scope segmented control (chats / automations / all) instead.
 });
 
 // ---------------------------------------------------------------------------

@@ -82,7 +82,10 @@ test.describe('Mobile Processes', () => {
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
     });
 
-    test('mobile: filters in collapsible section', async ({ page, serverUrl }) => {
+    test('mobile: queue task list renders on activity tab', async ({ page, serverUrl }) => {
+        // The queue filter dropdown was retired in favor of the scope
+        // segmented control (chats / automations / all); this test now just
+        // confirms that the queue task list renders on mobile.
         const wsId = 'ws-mob-proc-5';
         await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-5');
         await seedQueueTasks(serverUrl, [
@@ -92,12 +95,7 @@ test.describe('Mobile Processes', () => {
         await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
-
-        // The queue filter dropdown appears when multiple types are present
-        const filterDropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-        if (await filterDropdown.count() > 0) {
-            await expect(filterDropdown).toBeVisible();
-        }
+        await expect(page.locator('[data-testid="queue-filter-dropdown"]')).toHaveCount(0);
     });
 
     test('mobile: search input is accessible', async ({ page, serverUrl }) => {
@@ -113,7 +111,10 @@ test.describe('Mobile Processes', () => {
         expect(box!.width).toBeGreaterThan(280);
     });
 
-    test('mobile: status filter works on mobile', async ({ page, serverUrl }) => {
+    test('mobile: mixed-type queue list renders on mobile', async ({ page, serverUrl }) => {
+        // The activity tab no longer renders a type filter dropdown — task
+        // type narrowing is handled by the scope segmented control. This
+        // test now just confirms the mixed-type queue list renders.
         const wsId = 'ws-mob-proc-7';
         await seedWorkspace(serverUrl, wsId, 'mob-proc-repo-7');
         await seedQueueTasks(serverUrl, [
@@ -123,20 +124,8 @@ test.describe('Mobile Processes', () => {
         await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
-
-        // Type filter dropdown may appear for multiple task types
-        const filterDropdown = page.locator('[data-testid="queue-filter-dropdown"]');
-        if (await filterDropdown.count() > 0 && await filterDropdown.isVisible()) {
-            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
-            const chatCheckbox = page.locator('[data-testid="filter-checkbox-run-workflow"]');
-            if (await chatCheckbox.count() > 0) {
-                await chatCheckbox.uncheck();
-            }
-            await page.waitForTimeout(300);
-            const items = page.locator('[data-task-id]');
-            const count = await items.count();
-            expect(count).toBeGreaterThanOrEqual(0);
-        }
+        const count = await page.locator('[data-task-id]').count();
+        expect(count).toBeGreaterThanOrEqual(1);
     });
 
     test('mobile: tapping run-workflow task with repoId redirects to repo workflow detail', async ({ page, serverUrl }) => {
