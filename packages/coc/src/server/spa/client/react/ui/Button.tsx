@@ -3,7 +3,7 @@ import { cn } from './cn';
 import { Spinner } from './Spinner';
 
 export interface ButtonProps {
-    variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
     size?: 'sm' | 'md' | 'lg';
     id?: string;
     'data-testid'?: string;
@@ -22,6 +22,7 @@ const variantMap = {
     secondary: 'bg-transparent border border-[#e0e0e0] text-[#1e1e1e] hover:bg-black/[0.04] dark:border-[#3c3c3c] dark:text-[#cccccc] dark:hover:bg-white/[0.04]',
     danger: 'bg-[#f14c4c] text-white hover:bg-[#d43232] dark:bg-[#f48771] dark:hover:bg-[#f07060]',
     ghost: 'bg-transparent text-[#0078d4] hover:bg-[#0078d4]/10 dark:hover:bg-[#0078d4]/20',
+    success: 'bg-[#1f883d] text-white hover:bg-[#1a7f37] dark:bg-[#238636] dark:hover:bg-[#2ea043]',
 };
 
 const sizeMap = {

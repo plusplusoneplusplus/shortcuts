@@ -2,7 +2,7 @@
  * RepoDetail — right panel showing sub-tabs for the selected repo.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
@@ -67,6 +67,18 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
 export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
     ? SUB_TABS
     : SUB_TABS.filter(t => t.key !== 'wiki');
+
+/**
+ * Logical group buckets for the desktop tab strip — used to render thin
+ * vertical dividers between adjacent tabs that belong to different groups.
+ * Group identity is purely visual and does not affect functionality.
+ */
+const TAB_GROUP_INDEX: Record<string, number> = {
+    'chats': 1, 'activity': 1, 'git': 1,
+    'work-items': 2, 'schedules': 2, 'tasks': 2,
+    'explorer': 3, 'workflows': 3, 'pull-requests': 3, 'terminal': 3,
+    'notes': 4, 'settings': 4, 'wiki': 4,
+};
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
@@ -230,6 +242,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
+    const [overflowOpen, setOverflowOpen] = useState(false);
+    const overflowContainerRef = useRef<HTMLDivElement>(null);
 
     // Track tab strip scroll state for gradient affordance
     const updateTabScrollState = useCallback(() => {
@@ -268,6 +282,25 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             });
         }
     }, [activeSubTab]);
+
+    // Close the action overflow popover when the user clicks outside or hits Escape.
+    useEffect(() => {
+        if (!overflowOpen) return;
+        const onPointerDown = (e: MouseEvent) => {
+            if (overflowContainerRef.current && !overflowContainerRef.current.contains(e.target as Node)) {
+                setOverflowOpen(false);
+            }
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOverflowOpen(false);
+        };
+        document.addEventListener('mousedown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', onPointerDown);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [overflowOpen]);
 
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
@@ -352,15 +385,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot */}
             {!isMobile && (
-            <div className="repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-row items-center">
+            <div
+                className="repo-detail-header px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] flex flex-row items-center bg-white dark:bg-[#1e1e1e] gap-2"
+                style={{ minHeight: 44 }}
+            >
                 <>
-                    {/* Title */}
-                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                    {/* Title — name only, no color dot */}
+                        <div className="flex items-center min-w-0 max-w-[180px] flex-shrink-0 pl-1">
+                            <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-[#1f2328] dark:text-[#cccccc] flex-1 truncate leading-tight" title={ws.name}>{ws.name}</h1>
                         </div>
                         {/* Sub-tab bar */}
                         <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
@@ -380,137 +412,199 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             )}
                             <div
                                 ref={tabStripRef}
-                                className="flex pl-2 overflow-x-auto scrollbar-hide"
+                                className="flex items-center gap-0.5 px-1.5 overflow-x-auto scrollbar-hide border-x border-[#d8dee4] dark:border-[#3c3c3c]"
                                 style={{ WebkitOverflowScrolling: 'touch' }}
                                 data-testid="repo-sub-tab-strip"
                             >
-                            {visibleSubTabs.map(t => (
-                                <button
-                                    key={t.key}
-                                    data-subtab={t.key}
-                                    title={t.shortcut}
-                                    className={cn(
-                                        'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
-                                        'px-3 py-2',
-                                        activeSubTab === t.key
-                                            ? 'active text-[#0078d4] dark:text-[#3794ff]'
-                                            : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                            {visibleSubTabs.map((t, i) => {
+                                const prev = i > 0 ? visibleSubTabs[i - 1] : undefined;
+                                const groupChanged = !!prev && (TAB_GROUP_INDEX[prev.key] ?? 0) !== (TAB_GROUP_INDEX[t.key] ?? 0);
+                                const isActive = activeSubTab === t.key;
+                                return (
+                                <Fragment key={t.key}>
+                                    {groupChanged && (
+                                        <span className="flex-shrink-0 inline-block w-px h-[18px] mx-1 bg-[#d8dee4] dark:bg-[#3c3c3c]" data-testid="repo-sub-tab-divider" aria-hidden />
                                     )}
-                                    onClick={() => switchSubTab(t.key)}
-                                >
-                                    {t.label}
-                                    {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
-                                        <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
-                                            {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
-                                            {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
-                                        </span>
-                                    )}
-                                    {t.key === 'tasks' && taskCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
-                                    )}
-                                    {t.key === 'chats' && queueRunningCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
-                                    )}
-                                    {t.key === 'chats' && queueQueuedCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
-                                    )}
-                                    {t.key === 'activity' && queueRunningCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
-                                    )}
-                                    {t.key === 'activity' && queueQueuedCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
-                                    )}
-                                    {t.key === 'work-items' && unseenWorkItemCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="Work items with updates">{unseenWorkItemCount}</span>
-                                    )}
-                                    {t.key === 'wiki' && wikiGeneratingCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
-                                    )}
-                                    {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
-                                        <span
-                                            className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
-                                            data-testid="wiki-warning-badge"
-                                            title="Needs attention"
-                                        />
-                                    )}
-                                    {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && (
-                                        <span className="ml-1 text-[10px] bg-amber-600 text-white px-1 py-px rounded-full"
-                                              data-testid="notes-autocommit-badge" title="Auto-commit active">
-                                            ⏰
-                                        </span>
-                                    )}
-                                    {activeSubTab === t.key && (
-                                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
-                                    )}
-                                </button>
-                            ))}
+                                    <button
+                                        data-subtab={t.key}
+                                        title={t.shortcut}
+                                        className={cn(
+                                            'repo-sub-tab relative inline-flex items-center gap-1.5 min-h-[32px] px-2 rounded-md text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors',
+                                            isActive
+                                                ? 'active text-[#1f2328] dark:text-[#cccccc]'
+                                                : 'text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]'
+                                        )}
+                                        onClick={() => switchSubTab(t.key)}
+                                    >
+                                        {t.label}
+                                        {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
+                                            <span className="font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
+                                                {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
+                                                {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
+                                            </span>
+                                        )}
+                                        {t.key === 'tasks' && taskCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
+                                        )}
+                                        {t.key === 'chats' && queueRunningCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                                        )}
+                                        {t.key === 'chats' && queueQueuedCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                                        )}
+                                        {t.key === 'activity' && queueRunningCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                                        )}
+                                        {t.key === 'activity' && queueQueuedCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                                        )}
+                                        {t.key === 'work-items' && unseenWorkItemCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="Work items with updates">{unseenWorkItemCount}</span>
+                                        )}
+                                        {t.key === 'wiki' && wikiGeneratingCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
+                                        )}
+                                        {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
+                                            <span
+                                                className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
+                                                data-testid="wiki-warning-badge"
+                                                title="Needs attention"
+                                            />
+                                        )}
+                                        {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && (
+                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-amber-600 text-white px-1 py-px rounded-full"
+                                                  data-testid="notes-autocommit-badge" title="Auto-commit active">
+                                                ⏰
+                                            </span>
+                                        )}
+                                        {isActive && (
+                                            <span className="absolute left-2 right-2 -bottom-[5px] h-[2px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
+                                        )}
+                                    </button>
+                                </Fragment>
+                                );
+                            })}
                             </div>
                         </div>
                         {/* Vertical splitter between tabs and action buttons */}
-                        <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-2 my-1 flex-shrink-0" data-testid="repo-header-splitter" />
+                        <div className="w-px self-stretch bg-[#d8dee4] dark:bg-[#3c3c3c] mx-1 my-2 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={isPauseResumeLoading}
-                                    onClick={handleResumeQueue}
-                                    data-testid="repo-header-resume-btn"
-                                >
-                                    ▶ Resume Queue
-                                </Button>
-                            )}
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={isLaunchingCli}
-                                onClick={handleLaunchCli}
-                                title="Open CLI in terminal"
-                                data-testid="repo-launch-cli-btn"
-                            >
-                                &gt;_ Launch CLI
-                            </Button>
+                        <div ref={overflowContainerRef} className="flex items-center gap-1 flex-shrink-0 relative">
+                            {/* Classic-mode primary visible buttons (mirror reference layout). */}
                             {uiLayoutMode === 'classic' && (
-                                <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                                    title="Queue a new AI task (Alt+Q)"
-                                    data-testid="repo-queue-task-btn"
-                                >
-                                    🤖 Queue Task
-                                </Button>
+                                <>
+                                    <Button
+                                        variant="success"
+                                        size="sm"
+                                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                        title="Queue a new AI task (Alt+Q)"
+                                        data-testid="repo-queue-task-btn"
+                                        className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                    >
+                                        Queue Task
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                        title="Ask AI a question (read-only)"
+                                        data-testid="repo-ask-btn"
+                                        className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]"
+                                    >
+                                        Ask
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        id="repo-generate-btn"
+                                        data-testid="repo-generate-btn"
+                                        onClick={() => handleOpenGenerateDialog()}
+                                        className="relative !h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]"
+                                    >
+                                        Generate Plan
+                                        {generateDialog.open && generateDialog.minimized && (
+                                            <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                        )}
+                                    </Button>
+                                </>
                             )}
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })}
-                                title="Run a prompt or script in this repo"
-                                data-testid="repo-run-script-btn"
-                            >
-                                🛠️ Prompt & Script
-                            </Button>
-                            {uiLayoutMode === 'classic' && (
-                                <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                    title="Ask AI a question (read-only)"
-                                    data-testid="repo-ask-btn"
+                            {/*
+                              Container for "deferred" actions whose placement depends on layout
+                              mode. In classic mode this becomes the popover surface revealed by
+                              the "..." overflow toggle; in dev-workflow mode the same buttons
+                              render inline alongside the title row. Keeping them in a single JSX
+                              block ensures each data-testid appears exactly once in the DOM and
+                              that source order is preserved (Launch CLI before Prompt & Script).
+                            */}
+                            {(() => {
+                                const isOverflow = uiLayoutMode === 'classic';
+                                const containerCls = isOverflow
+                                    ? 'absolute top-full right-0 mt-1 z-20 flex flex-col items-stretch gap-0.5 min-w-[200px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-1.5'
+                                    : 'flex items-center gap-1';
+                                const secondaryItemCls = isOverflow
+                                    ? '!font-semibold !w-full !justify-start !min-h-[34px] !h-[34px] !px-2 !rounded-md !bg-transparent !border-transparent !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#f6f8fa] dark:hover:!bg-[#2d2d2d]'
+                                    : '!font-semibold !h-[30px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]';
+                                const primaryItemCls = isOverflow
+                                    ? secondaryItemCls
+                                    : '!font-semibold !h-[30px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#1f883d] hover:!bg-[#1a7f37] dark:!bg-[#238636] dark:hover:!bg-[#2ea043] !text-white !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]';
+                                return (
+                                <div
+                                    className={containerCls}
+                                    style={isOverflow ? { display: overflowOpen ? 'flex' : 'none' } : undefined}
+                                    role={isOverflow ? 'menu' : undefined}
+                                    data-testid={isOverflow ? 'repo-overflow-popover' : undefined}
                                 >
-                                    💡 Ask
-                                </Button>
-                            )}
-                            {uiLayoutMode === 'classic' && (
-                                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                                    📋 Generate Plan
-                                    {generateDialog.open && generateDialog.minimized && (
-                                        <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                    <Button
+                                        className={secondaryItemCls}
+                                        size="sm"
+                                        title="Open CLI in terminal"
+                                        onClick={() => { setOverflowOpen(false); void handleLaunchCli(); }}
+                                        disabled={isLaunchingCli}
+                                        variant="secondary"
+                                        data-testid="repo-launch-cli-btn"
+                                    >
+                                        Launch CLI
+                                    </Button>
+                                    <Button
+                                        className={primaryItemCls}
+                                        size="sm"
+                                        title="Run a prompt or script in this repo"
+                                        onClick={() => { setOverflowOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
+                                        variant="primary"
+                                        data-testid="repo-run-script-btn"
+                                    >
+                                        Prompt & Script
+                                    </Button>
+                                    {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
+                                        <Button
+                                            className={secondaryItemCls}
+                                            size="sm"
+                                            onClick={() => { setOverflowOpen(false); void handleResumeQueue(); }}
+                                            disabled={isPauseResumeLoading}
+                                            variant="secondary"
+                                            data-testid="repo-header-resume-btn"
+                                        >
+                                            Resume Queue
+                                        </Button>
                                     )}
-                                </Button>
+                                </div>
+                                );
+                            })()}
+                            {/* Overflow toggle — only rendered in classic mode where extra actions are tucked away */}
+                            {uiLayoutMode === 'classic' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setOverflowOpen(o => !o)}
+                                    aria-label="More repository actions"
+                                    aria-expanded={overflowOpen}
+                                    aria-haspopup="menu"
+                                    title="More actions"
+                                    data-testid="repo-overflow-toggle-btn"
+                                    className="inline-flex items-center justify-center h-[30px] w-[31px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#999] hover:bg-[#eaeef2] dark:hover:bg-[#333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]"
+                                >
+                                    <span className="text-[15px] leading-none -mt-1" aria-hidden>…</span>
+                                </button>
                             )}
-
                         </div>
                 </>
             </div>
