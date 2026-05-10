@@ -182,11 +182,8 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
             expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
-            // Resume in CLI is now an inline primary button at wide tier
-            const resumeBtn = screen.getByTestId('resume-cli-btn');
-            expect(resumeBtn).toBeTruthy();
-            expect(resumeBtn.textContent).toContain('Resume in CLI');
-            // Metadata popover still surfaced for richer detail inspection
+            // Resume in CLI is NOT a top-bar button — it lives inside the metadata popover only
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             const metadataPopover = screen.getByTestId('metadata-popover');
             expect(metadataPopover).toBeTruthy();
             expect(metadataPopover.getAttribute('data-resume-session-id')).toBe('session-1');
@@ -227,22 +224,16 @@ describe('ChatHeader', () => {
             expect(badge.textContent).toContain('5000ms');
         });
 
-        it('hides resume CLI when no session', () => {
-            render(<ChatHeader {...defaultProps({ resumeSessionId: null })} />);
-            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-        });
-
-        it('hides resume CLI when isPending', () => {
-            render(<ChatHeader {...defaultProps({ isPending: true })} />);
-            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-        });
-
-        it('hides resume CLI on mobile', () => {
-            mockBreakpoint.isMobile = true;
-            mockBreakpoint.isDesktop = false;
-            mockBreakpoint.breakpoint = 'mobile';
+        it('does not render an inline Resume in CLI button (lives in metadata popover)', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+        });
+
+        it('passes Resume in CLI props through to the metadata popover', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            const popover = screen.getByTestId('metadata-popover');
+            expect(popover.getAttribute('data-resume-session-id')).toBe('session-1');
+            expect(popover.getAttribute('data-has-resume-handler')).toBe('true');
         });
     });
 

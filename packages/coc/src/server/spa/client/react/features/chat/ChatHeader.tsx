@@ -401,21 +401,6 @@ export function ChatHeader({
 
             {/* Right side */}
             <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Resume in CLI — primary button when the session is resumable */}
-                {isWide && !isPending && resumeSessionId && !isMobile && (
-                    <button
-                        title="Resume in CLI (⌘R)"
-                        data-testid="resume-cli-btn"
-                        onClick={onLaunchInteractiveResume}
-                        disabled={resumeLaunching}
-                        className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md bg-[#1e1e1e] text-white border border-[#1e1e1e] dark:bg-[#3794ff] dark:border-[#3794ff] dark:text-white text-[12px] font-medium hover:bg-[#2d2d2d] dark:hover:bg-[#60aeff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                    >
-                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                            <path d="M5 3.2v9.6a.5.5 0 0 0 .77.42l7.5-4.8a.5.5 0 0 0 0-.84l-7.5-4.8A.5.5 0 0 0 5 3.2z" />
-                        </svg>
-                        <span>{resumeLaunching ? 'Launching…' : 'Resume in CLI'}</span>
-                    </button>
-                )}
                 {/* Open Scratchpad — inline in wide tier, overflow in narrower tiers */}
                 {isWide && showScratchpadButton && onOpenScratchpad && (
                     <button
