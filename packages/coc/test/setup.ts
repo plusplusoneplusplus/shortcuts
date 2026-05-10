@@ -42,6 +42,15 @@ if (typeof window !== 'undefined') {
             writable: true,
         });
     }
+    // jsdom does not implement ResizeObserver; provide a no-op stub so components
+    // that use it (e.g. DiffMiniMap) don't crash in unit tests.
+    if (typeof globalThis.ResizeObserver === 'undefined') {
+        globalThis.ResizeObserver = class ResizeObserver {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        } as unknown as typeof ResizeObserver;
+    }
 }
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {

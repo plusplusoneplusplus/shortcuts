@@ -178,8 +178,9 @@ describe('UnifiedDiffViewer — comments disabled', () => {
         expect(container.querySelectorAll('[data-testid="comment-badge"]')).toHaveLength(0);
     });
 
-    it('does not attach data-diff-line-index attributes when enableComments is false', () => {
+    it('still attaches data-diff-line-index attributes when enableComments is false (needed for minimap)', () => {
         const { container } = render(h(UnifiedDiffViewer, { diff: DIFF }));
-        expect(container.querySelectorAll('[data-diff-line-index]')).toHaveLength(0);
+        // data-diff-line-index is always emitted so the DiffMiniMap can measure line offsets
+        expect(container.querySelectorAll('[data-diff-line-index]').length).toBeGreaterThan(0);
     });
 });

@@ -120,6 +120,7 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWork
 // ── Utilities / config ──
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

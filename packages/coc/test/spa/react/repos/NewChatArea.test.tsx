@@ -54,6 +54,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
+    isRalphEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

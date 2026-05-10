@@ -1328,9 +1328,10 @@ describe('NewChatArea: chat-only UI', () => {
         expect(source).toContain('Shift');
     });
 
-    it('defaults mode to ask and sends selectedMode in the task payload', () => {
+    it('defaults mode to ask and sends mode in the task payload', () => {
         expect(source).toContain("'ask'");
-        expect(source).toContain('mode: selectedMode');
+        // mode is derived from selectedMode (with ralph aliasing) and sent as payload
+        expect(source).toContain('mode: mode');
     });
 
     it('still renders Start a new conversation hero text', () => {

@@ -90,7 +90,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useDraft
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
-    useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn() }),
+    useLongPress: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn(), onTouchMove: vi.fn(), didLongPress: vi.fn(() => false) }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
