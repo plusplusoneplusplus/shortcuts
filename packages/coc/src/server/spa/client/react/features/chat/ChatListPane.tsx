@@ -71,6 +71,13 @@ export function isChatTask(task: any): boolean {
 }
 const isChat = isChatTask;
 
+/** Returns true if a task is an automation (run-script or run-workflow).
+ *  Activity-tab scope-switcher uses this to surface the "Automations" segment. */
+export function isAutomationTask(task: any): boolean {
+    return task.type === 'run-script' || task.type === 'run-workflow';
+}
+const isAutomation = isAutomationTask;
+
 /** Get a display title for a chat task, falling back to a truncated prompt preview. */
 function getChatTitle(task: any): string {
     if (task.displayName) return task.displayName;
@@ -349,6 +356,27 @@ export function ChatListPane({
     const containerRef = useRef<HTMLDivElement>(null);
     const pauseMenuRef = useRef<HTMLDivElement>(null);
 
+    /**
+     * Activity-tab scope segmented control: filters by task source.
+     *   - 'chat' → only chat tasks
+     *   - 'auto' → only automations (run-script / run-workflow)
+     *   - 'all'  → no source filter
+     * Persisted in localStorage so the user's choice survives reloads.
+     * Default is 'all' to preserve the pre-existing behavior of showing every task.
+     */
+    const [activeScope, setActiveScopeState] = useState<'chat' | 'auto' | 'all'>(() => {
+        if (typeof window === 'undefined') return 'all';
+        try {
+            const saved = localStorage.getItem('coc-activity-scope');
+            if (saved === 'chat' || saved === 'auto' || saved === 'all') return saved;
+        } catch { /* ignore localStorage errors (e.g. private mode) */ }
+        return 'all';
+    });
+    const setActiveScope = useCallback((next: 'chat' | 'auto' | 'all') => {
+        setActiveScopeState(next);
+        try { localStorage.setItem('coc-activity-scope', next); } catch { /* ignore */ }
+    }, []);
+
     const setSearchQuery = useCallback((q: string) => {
         setSearchQueryRaw(q);
         onSearchQueryChange?.(q);
@@ -468,9 +496,47 @@ export function ChatListPane({
 
     // Tab-aware filtered arrays for empty state detection
     const isTaskItem = useCallback((t: any) => !isChat(t), []);
-    const tabFilteredRunning = useMemo(() => activeTab === 'chats' ? filteredRunning.filter(isChat) : activeTab === 'tasks' ? filteredRunning.filter(isTaskItem) : filteredRunning, [activeTab, filteredRunning, isTaskItem]);
-    const tabFilteredQueued = useMemo(() => activeTab === 'chats' ? [] : activeTab === 'tasks' ? filteredQueued.filter(isTaskItem) : filteredQueued, [activeTab, filteredQueued, isTaskItem]);
-    const tabFilteredHistory = useMemo(() => activeTab === 'chats' ? filteredHistory.filter(isChat) : activeTab === 'tasks' ? filteredHistory.filter(isTaskItem) : filteredHistory, [activeTab, filteredHistory, isTaskItem]);
+
+    /** Scope filter applied inside the Activity branch (`!activeTab`). The
+     *  Chats and Tasks branches keep their existing per-tab filters intact. */
+    const passesScope = useCallback((task: any): boolean => {
+        if (activeTab === 'chats' || activeTab === 'tasks') return true;
+        if (activeScope === 'all') return true;
+        if (activeScope === 'chat') return isChat(task);
+        if (activeScope === 'auto') return isAutomation(task);
+        return true;
+    }, [activeTab, activeScope]);
+
+    const tabFilteredRunning = useMemo(() => {
+        if (activeTab === 'chats') return filteredRunning.filter(isChat);
+        if (activeTab === 'tasks') return filteredRunning.filter(isTaskItem);
+        return filteredRunning.filter(passesScope);
+    }, [activeTab, filteredRunning, isTaskItem, passesScope]);
+    const tabFilteredQueued = useMemo(() => {
+        if (activeTab === 'chats') return [];
+        if (activeTab === 'tasks') return filteredQueued.filter(isTaskItem);
+        return filteredQueued.filter((t: any) => t.kind === 'pause-marker' || passesScope(t));
+    }, [activeTab, filteredQueued, isTaskItem, passesScope]);
+    const tabFilteredHistory = useMemo(() => {
+        if (activeTab === 'chats') return filteredHistory.filter(isChat);
+        if (activeTab === 'tasks') return filteredHistory.filter(isTaskItem);
+        return filteredHistory.filter(passesScope);
+    }, [activeTab, filteredHistory, isTaskItem, passesScope]);
+
+    /** Source-bucketed counts for the scope segmented control. Counts come
+     *  from the unfiltered task lists so the chips stay meaningful regardless
+     *  of which scope the user is currently viewing. */
+    const scopeCounts = useMemo(() => {
+        const liveQueue = queued.filter((t: any) => t.kind !== 'pause-marker');
+        const all = [...running, ...liveQueue, ...history];
+        let chat = 0;
+        let auto = 0;
+        for (const t of all) {
+            if (isChat(t)) chat++;
+            else if (isAutomation(t)) auto++;
+        }
+        return { chat, auto, all: all.length };
+    }, [running, queued, history]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -1510,6 +1576,75 @@ export function ChatListPane({
                         </Button>
                     </div>
                 )}
+
+                {/* Scope segmented control — Chats / Automations / All. Only
+                    rendered in the Activity branch (`!activeTab`); Chats and
+                    Tasks tabs already have their own narrow scope. */}
+                {!activeTab && (
+                    <div
+                        className="grid grid-cols-3 gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md"
+                        role="tablist"
+                        aria-label="Activity scope"
+                        data-testid="activity-scope-tabs"
+                    >
+                        {([
+                            {
+                                id: 'chat' as const,
+                                label: 'Chats',
+                                count: scopeCounts.chat,
+                                icon: (
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <path d="M2 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6l-3 2.5V10a2 2 0 0 1-1-1.7Z" />
+                                    </svg>
+                                ),
+                            },
+                            {
+                                id: 'auto' as const,
+                                label: 'Automations',
+                                count: scopeCounts.auto,
+                                icon: (
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <circle cx="7" cy="7" r="2" />
+                                        <path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.8 2.8l1.4 1.4M9.8 9.8l1.4 1.4M2.8 11.2l1.4-1.4M9.8 4.2l1.4-1.4" />
+                                    </svg>
+                                ),
+                            },
+                            { id: 'all' as const, label: 'All', count: scopeCounts.all, icon: null },
+                        ]).map(scope => {
+                            const on = activeScope === scope.id;
+                            return (
+                                <button
+                                    key={scope.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={on}
+                                    onClick={() => setActiveScope(scope.id)}
+                                    className={cn(
+                                        'h-[26px] px-2 inline-flex items-center justify-center gap-1.5 text-[11.5px] leading-none font-medium rounded transition-[background-color,color,box-shadow] duration-100',
+                                        on
+                                            ? 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] shadow-[0_1px_0_rgba(0,0,0,0.04),0_0_0_1px_rgba(224,224,224,0.7)] dark:shadow-[0_1px_0_rgba(0,0,0,0.20),0_0_0_1px_rgba(71,71,73,0.7)]'
+                                            : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                                    )}
+                                    data-testid={`activity-scope-tab-${scope.id}`}
+                                    data-active={on || undefined}
+                                >
+                                    {scope.icon && <span className="opacity-80">{scope.icon}</span>}
+                                    <span>{scope.label}</span>
+                                    <span
+                                        className={cn(
+                                            'text-[10.5px] font-mono tabular-nums',
+                                            on ? 'text-[#0078d4] dark:text-[#3794ff]' : 'text-[#9d9d9d] dark:text-[#7d7d7d]',
+                                        )}
+                                        data-testid={`activity-scope-count-${scope.id}`}
+                                    >
+                                        {scope.count}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
                 <div className={cn('flex items-center gap-2 mb-1.5 md:mb-3')}>
                     {availableFilters.length >= 1 && (
                         <FilterDropdown

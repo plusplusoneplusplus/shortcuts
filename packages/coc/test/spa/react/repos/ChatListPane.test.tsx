@@ -222,6 +222,9 @@ describe('ChatListPane', () => {
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
+        // Reset persisted scope so each test sees the default ('all'). The
+        // Activity-tab scope segmented control writes to this key.
+        try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
         // jsdom has no layout engine so offsetParent is always null.
         // Mock it to return document.body for connected elements so the
         // visibility guard in ChatListPane's Ctrl+F handler behaves correctly.
@@ -385,6 +388,146 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('autopilot-paused-banner').textContent).toContain('1h 30m');
             expect(screen.getByTestId('repo-pause-resume-btn').textContent).toContain('1h 30m');
             expect(screen.getByTestId('autopilot-pause-resume-btn').textContent).toContain('1h 30m');
+        });
+    });
+
+    // ── Activity scope tabs ────────────────────────────────────────────
+    describe('Activity scope tabs (Chats / Automations / All)', () => {
+        function makeMixedFixture() {
+            const chatA = makeHistoryTask({ id: 'chat-a', type: 'chat', displayName: 'Chat A' });
+            const chatB = makeHistoryTask({ id: 'chat-b', type: 'chat', displayName: 'Chat B' });
+            const scriptA = makeHistoryTask({ id: 'scr-a', type: 'run-script', displayName: 'Script A' });
+            const wfA = makeHistoryTask({ id: 'wf-a', type: 'run-workflow', displayName: 'Workflow A' });
+            return [chatA, chatB, scriptA, wfA];
+        }
+
+        it('renders the scope tabs container in the Activity branch (no activeTab prop)', () => {
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-tabs')).toBeTruthy();
+            expect(screen.getByTestId('activity-scope-tab-chat')).toBeTruthy();
+            expect(screen.getByTestId('activity-scope-tab-auto')).toBeTruthy();
+            expect(screen.getByTestId('activity-scope-tab-all')).toBeTruthy();
+        });
+
+        it('does not render the scope tabs in the Chats branch (activeTab="chats")', () => {
+            renderPane({ history: makeMixedFixture(), activeTab: 'chats' });
+            expect(screen.queryByTestId('activity-scope-tabs')).toBeNull();
+        });
+
+        it('does not render the scope tabs in the Tasks branch (activeTab="tasks")', () => {
+            renderPane({ history: makeMixedFixture(), activeTab: 'tasks' });
+            expect(screen.queryByTestId('activity-scope-tabs')).toBeNull();
+        });
+
+        it('shows correct counts for chat / auto / all', () => {
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-count-chat').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-auto').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-all').textContent).toBe('4');
+        });
+
+        it('counts include running, queued (non-pause-marker) and history tasks', () => {
+            renderPane({
+                running: [makeRunningTask({ id: 'run-chat', type: 'chat' })],
+                queued: [
+                    makeQueuedTask({ id: 'q-script', type: 'run-script' }),
+                    { id: 'pause', kind: 'pause-marker' } as any,
+                ],
+                history: [
+                    makeHistoryTask({ id: 'h-chat', type: 'chat' }),
+                    makeHistoryTask({ id: 'h-wf', type: 'run-workflow' }),
+                ],
+            });
+            expect(screen.getByTestId('activity-scope-count-chat').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-auto').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-all').textContent).toBe('4');
+        });
+
+        it('default scope is "all" — every row is visible', () => {
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-tab-all').getAttribute('data-active')).toBe('true');
+            expect(screen.getByText('Chat A')).toBeTruthy();
+            expect(screen.getByText('Chat B')).toBeTruthy();
+            expect(screen.getByText('Script A')).toBeTruthy();
+            expect(screen.getByText('Workflow A')).toBeTruthy();
+        });
+
+        it('clicking the Chats tab hides automations and keeps chats', () => {
+            renderPane({ history: makeMixedFixture() });
+            fireEvent.click(screen.getByTestId('activity-scope-tab-chat'));
+            expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('data-active')).toBe('true');
+            expect(screen.getByTestId('activity-scope-tab-all').getAttribute('data-active')).toBeNull();
+            expect(screen.getByText('Chat A')).toBeTruthy();
+            expect(screen.getByText('Chat B')).toBeTruthy();
+            expect(screen.queryByText('Script A')).toBeNull();
+            expect(screen.queryByText('Workflow A')).toBeNull();
+        });
+
+        it('clicking the Automations tab hides chats and keeps run-script + run-workflow', () => {
+            renderPane({ history: makeMixedFixture() });
+            fireEvent.click(screen.getByTestId('activity-scope-tab-auto'));
+            expect(screen.getByTestId('activity-scope-tab-auto').getAttribute('data-active')).toBe('true');
+            expect(screen.queryByText('Chat A')).toBeNull();
+            expect(screen.queryByText('Chat B')).toBeNull();
+            expect(screen.getByText('Script A')).toBeTruthy();
+            expect(screen.getByText('Workflow A')).toBeTruthy();
+        });
+
+        it('persists the active scope across remounts via localStorage', () => {
+            const { unmount } = renderPane({ history: makeMixedFixture() });
+            fireEvent.click(screen.getByTestId('activity-scope-tab-auto'));
+            expect(window.localStorage.getItem('coc-activity-scope')).toBe('auto');
+            unmount();
+
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-tab-auto').getAttribute('data-active')).toBe('true');
+            expect(screen.queryByText('Chat A')).toBeNull();
+            expect(screen.getByText('Script A')).toBeTruthy();
+        });
+
+        it('falls back to "all" when localStorage holds an invalid value', () => {
+            window.localStorage.setItem('coc-activity-scope', 'bogus');
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-tab-all').getAttribute('data-active')).toBe('true');
+        });
+
+        it('treats work-item executions as automations (not chats)', () => {
+            const workItem = makeHistoryTask({
+                id: 'wi-1',
+                type: 'chat',
+                displayName: 'Work Item Run',
+                workItemId: 'wi-123',
+            });
+            renderPane({ history: [...makeMixedFixture(), workItem] });
+            expect(screen.getByTestId('activity-scope-count-chat').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-auto').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-all').textContent).toBe('5');
+
+            fireEvent.click(screen.getByTestId('activity-scope-tab-chat'));
+            expect(screen.queryByText('Work Item Run')).toBeNull();
+        });
+
+        it('shows zero count for empty buckets (e.g. only chats present → auto count = 0)', () => {
+            renderPane({
+                history: [
+                    makeHistoryTask({ id: 'c1', type: 'chat' }),
+                    makeHistoryTask({ id: 'c2', type: 'chat' }),
+                ],
+            });
+            expect(screen.getByTestId('activity-scope-count-chat').textContent).toBe('2');
+            expect(screen.getByTestId('activity-scope-count-auto').textContent).toBe('0');
+            expect(screen.getByTestId('activity-scope-count-all').textContent).toBe('2');
+        });
+
+        it('exposes role="tablist" and aria-selected on the active tab', () => {
+            renderPane({ history: makeMixedFixture() });
+            expect(screen.getByTestId('activity-scope-tabs').getAttribute('role')).toBe('tablist');
+            expect(screen.getByTestId('activity-scope-tab-all').getAttribute('aria-selected')).toBe('true');
+            expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('aria-selected')).toBe('false');
+
+            fireEvent.click(screen.getByTestId('activity-scope-tab-chat'));
+            expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('aria-selected')).toBe('true');
+            expect(screen.getByTestId('activity-scope-tab-all').getAttribute('aria-selected')).toBe('false');
         });
     });
 
