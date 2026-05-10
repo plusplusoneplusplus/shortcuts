@@ -48,6 +48,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import type { ChatMode } from '../../repos/modeConfig';
+import { RalphStartPanel } from './RalphStartPanel';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -923,6 +924,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         />
                     )}
                     </div>
+                    {/* Ralph grilling complete — show Start Ralph panel */}
+                    {(() => {
+                        const ralphCtx = task?.payload?.context?.ralph;
+                        if (!ralphCtx) return null;
+                        if (ralphCtx.phase !== 'grilling') return null;
+                        if (task?.status !== 'completed') return null;
+                        return (
+                            <RalphStartPanel
+                                processId={processId ?? taskId}
+                                workspaceId={workspaceId}
+                                turns={turns}
+                                onStarted={(newProcessId) => {
+                                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                }}
+                            />
+                        );
+                    })()}
                     {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
                         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                             <div className="text-[#848484] text-sm text-center">

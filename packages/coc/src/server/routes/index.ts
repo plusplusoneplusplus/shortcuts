@@ -70,6 +70,7 @@ import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
+import { registerRalphRoutes } from './queue-ralph-routes';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -219,6 +220,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);
+
+    // Ralph routes
+    registerRalphRoutes(routes, { bridge, store });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });

@@ -46,6 +46,14 @@ const DEFAULT_OPTIONS: readonly ModePillOption[] = [
  */
 export const DEFAULT_MODE_PILL_OPTIONS = DEFAULT_OPTIONS;
 
+/** Pill option for Ralph mode — appended to DEFAULT_MODE_PILL_OPTIONS when Ralph is enabled. */
+export const RALPH_MODE_PILL_OPTION: ModePillOption = {
+    value: 'ralph',
+    label: 'Ralph',
+    dotClass: 'bg-purple-500',
+    title: 'Ralph — iterative AI coding loop with guided goal setting',
+};
+
 export function ModePillSelector({
     options,
     value,

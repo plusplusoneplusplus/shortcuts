@@ -1,7 +1,7 @@
 import type { ChatMode } from '../../repos/modeConfig';
 
 export function isChatMode(mode: unknown): mode is ChatMode {
-    return mode === 'ask' || mode === 'plan' || mode === 'autopilot';
+    return mode === 'ask' || mode === 'plan' || mode === 'autopilot' || mode === 'ralph';
 }
 
 export function resolveLoadedTaskMode(task: unknown): ChatMode | undefined {

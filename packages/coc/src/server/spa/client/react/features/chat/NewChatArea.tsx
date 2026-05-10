@@ -24,10 +24,11 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS } from './ModePillSelector';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { isRalphEnabled } from '../../utils/config';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -85,15 +86,33 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
             const attachmentPayload = toPayload();
+
+            let mode: string = selectedMode;
+            let contextOverride: Record<string, unknown> | undefined;
+
+            if (selectedMode === 'ralph') {
+                // Grilling phase: submit as ask mode with ralph context
+                mode = 'ask';
+                contextOverride = {
+                    skills: ['grill-me'],
+                    ralph: {
+                        phase: 'grilling',
+                        sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        maxIterations: 10,
+                    },
+                };
+            }
+
             const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: selectedMode,
+                    mode: mode as any,
                     prompt: trimmed,
                     workingDirectory: ws?.rootPath,
                     workspaceId,
+                    ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                     ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
                 },
@@ -276,7 +295,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     >
                         <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                             <ModePillSelector
-                                options={DEFAULT_MODE_PILL_OPTIONS}
+                                options={isRalphEnabled()
+                                    ? [...DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION]
+                                    : DEFAULT_MODE_PILL_OPTIONS}
                                 value={selectedMode}
                                 onChange={setSelectedMode}
                             />

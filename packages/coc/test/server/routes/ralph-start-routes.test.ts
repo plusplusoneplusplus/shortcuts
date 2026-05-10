@@ -1,0 +1,270 @@
+/**
+ * Tests for POST /api/processes/:id/ralph-start route.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import * as http from 'http';
+import { createRouter } from '../../../src/server/shared/router';
+import { registerRalphRoutes } from '../../../src/server/routes/queue-ralph-routes';
+import type { Route } from '../../../src/server/types';
+import { createMockProcessStore } from '../helpers/mock-process-store';
+import type { MockProcessStore } from '../helpers/mock-process-store';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function request(
+    baseUrl: string,
+    urlPath: string,
+    options: { method?: string; body?: string; headers?: Record<string, string> } = {},
+): Promise<{ status: number; body: string; json: () => any }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(urlPath, baseUrl);
+        const req = http.request(
+            {
+                hostname: parsed.hostname,
+                port: parsed.port,
+                path: parsed.pathname + parsed.search,
+                method: options.method || 'GET',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+            },
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk) => chunks.push(chunk));
+                res.on('end', () => {
+                    const bodyStr = Buffer.concat(chunks).toString('utf-8');
+                    resolve({
+                        status: res.statusCode || 0,
+                        body: bodyStr,
+                        json: () => JSON.parse(bodyStr),
+                    });
+                });
+            },
+        );
+        req.on('error', reject);
+        if (options.body) req.write(options.body);
+        req.end();
+    });
+}
+
+function post(baseUrl: string, urlPath: string, body: unknown) {
+    return request(baseUrl, urlPath, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('POST /api/processes/:id/ralph-start', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    let store: MockProcessStore;
+    let mockEnqueue: ReturnType<typeof vi.fn>;
+
+    beforeAll(async () => {
+        store = createMockProcessStore();
+        mockEnqueue = vi.fn().mockResolvedValue('new-task-id');
+
+        const mockBridge = {
+            enqueue: mockEnqueue,
+        } as any;
+
+        const routes: Route[] = [];
+        registerRalphRoutes(routes, { bridge: mockBridge, store });
+
+        const router = createRouter({ routes, spaHtml: '' });
+        server = http.createServer(router);
+
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', () => resolve());
+        });
+
+        const addr = server.address() as { port: number };
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    beforeEach(() => {
+        store.processes.clear();
+        mockEnqueue.mockClear();
+    });
+
+    // -----------------------------------------------------------------------
+    // Happy path
+    // -----------------------------------------------------------------------
+
+    it('returns 200 and a processId for a valid grilling process', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-process',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'grill me prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What do you want to build?',
+                workspaceId: 'ws-1',
+                workingDirectory: '/repos/myrepo',
+                context: {
+                    ralph: {
+                        phase: 'grilling',
+                        sessionId: 'ralph-session-abc',
+                        maxIterations: 10,
+                    },
+                },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-process/ralph-start', {
+            goalSpec: '## Goal\nBuild a feature',
+            workspaceId: 'ws-1',
+        });
+
+        expect(res.status).toBe(200);
+        const data = res.json();
+        expect(data.processId).toMatch(/^queue_/);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.type).toBe('chat');
+        expect(enqueueArg.payload.mode).toBe('ralph');
+        expect(enqueueArg.payload.context.ralph.phase).toBe('executing');
+        expect(enqueueArg.payload.context.ralph.originalGoal).toBe('## Goal\nBuild a feature');
+        expect(enqueueArg.payload.context.ralph.sessionId).toBe('ralph-session-abc');
+        expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
+        expect(enqueueArg.payload.context.ralph.maxIterations).toBe(10);
+    });
+
+    // -----------------------------------------------------------------------
+    // 404 — process not found
+    // -----------------------------------------------------------------------
+
+    it('returns 404 when process does not exist', async () => {
+        const res = await post(baseUrl, '/api/processes/nonexistent-id/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+        });
+        expect(res.status).toBe(404);
+    });
+
+    // -----------------------------------------------------------------------
+    // 400 — missing goalSpec
+    // -----------------------------------------------------------------------
+
+    it('returns 400 when goalSpec is missing', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-p2',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's1' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-p2/ralph-start', {});
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/goalSpec/i);
+    });
+
+    it('returns 400 when goalSpec is empty string', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's2' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-p3/ralph-start', {
+            goalSpec: '   ',
+        });
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/goalSpec/i);
+    });
+
+    // -----------------------------------------------------------------------
+    // 400 — not in grilling phase
+    // -----------------------------------------------------------------------
+
+    it('returns 400 when process is not in grilling phase (no ralph context)', async () => {
+        await store.addProcess({
+            id: 'queue_no-ralph',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Hello' },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_no-ralph/ralph-start', {
+            goalSpec: '## Goal\nSomething',
+        });
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/grilling/i);
+    });
+
+    it('returns 400 when process ralph phase is "executing" not "grilling"', async () => {
+        await store.addProcess({
+            id: 'queue_executing-ralph',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Begin',
+                context: { ralph: { phase: 'executing', sessionId: 'sx' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_executing-ralph/ralph-start', {
+            goalSpec: '## Goal\nSomething',
+        });
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/grilling/i);
+    });
+
+    // -----------------------------------------------------------------------
+    // 400 — process not completed
+    // -----------------------------------------------------------------------
+
+    it('returns 400 when process is still running', async () => {
+        await store.addProcess({
+            id: 'queue_running-grilling',
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's3' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_running-grilling/ralph-start', {
+            goalSpec: '## Goal\nSomething',
+        });
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/completed/i);
+    });
+});

@@ -233,6 +233,30 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
+        // When this is a Ralph grilling session, append the goal-spec instruction.
+        if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
+            const ralphGrillSuffix = [
+                'When you have gathered enough information, produce a concise goal spec:',
+                '',
+                '## Goal',
+                '<one-sentence goal>',
+                '',
+                '## Acceptance Criteria',
+                '<bullet list>',
+                '',
+                '## Constraints / Tech Context',
+                '<bullet list>',
+                '',
+                '## Out of Scope',
+                '<bullet list>',
+                '',
+                'This spec will be used to drive an automated coding loop. Be precise and concrete.',
+            ].join('\n');
+            systemMessage.content = systemMessage.content
+                ? systemMessage.content + '\n\n' + ralphGrillSuffix
+                : ralphGrillSuffix;
+        }
+
         const processId = toQueueProcessId(task.id);
 
         const toolBundle = buildChatToolBundle({
