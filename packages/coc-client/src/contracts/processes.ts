@@ -117,7 +117,20 @@ export interface ProcessMessageResponse extends JsonObject {}
 export interface PendingProcessMessage {
   id: string;
   content: string;
+  displayContent?: string;
   mode?: 'ask' | 'plan' | 'autopilot' | string;
+  model?: string;
+  images?: string[];
+  pasteExternalized?: boolean;
+  attachments?: unknown[];
+  imageTempDir?: string;
+  fileAttachmentMeta?: Array<{
+    name: string;
+    mimeType: string;
+    size: number;
+    category: 'image' | 'text' | 'binary';
+  }>;
+  skillNames?: string[];
   createdAt: string;
 }
 

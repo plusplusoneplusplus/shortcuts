@@ -7,7 +7,7 @@
  */
 
 import { AIBackendType } from './types';
-import type { TokenUsage } from '../copilot-sdk-wrapper/types';
+import type { TokenUsage, Attachment } from '../copilot-sdk-wrapper/types';
 import type {
     CodeReviewProcessMetadata,
     DiscoveryProcessMetadata,
@@ -289,6 +289,18 @@ export interface SerializedToolCall {
 }
 
 /**
+ * Lightweight, structural mirror of `FileAttachmentMeta` from the CoC server.
+ * Defined here to avoid coupling forge to the server package while still allowing
+ * pending messages to round-trip per-turn attachment display metadata.
+ */
+export interface PendingFileAttachmentMeta {
+    name: string;
+    mimeType: string;
+    size: number;
+    category: 'image' | 'text' | 'binary';
+}
+
+/**
  * A message queued on the server while an AI response is in progress.
  * Persisted on the AIProcess so it survives chat switches and page refreshes.
  */
@@ -307,6 +319,18 @@ export interface PendingMessage {
     model?: string;
     /** Interaction mode when the message was queued */
     mode?: string;
+    /**
+     * Processed SDK attachments (image / text / binary file references) that
+     * accompany this follow-up. File paths are runtime-local and only valid
+     * within the originating process's lifetime; durable image data lives in `images`.
+     */
+    attachments?: Attachment[];
+    /** Temp directory holding attachment files; cleaned up after the drained task runs. */
+    imageTempDir?: string;
+    /** Display metadata for non-image file attachments (preserved for the drained user turn). */
+    fileAttachmentMeta?: PendingFileAttachmentMeta[];
+    /** Selected skill names to inject as `context.skills` on the drained follow-up payload. */
+    skillNames?: string[];
     /** ISO 8601 timestamp of when the message was queued */
     createdAt: string;
 }

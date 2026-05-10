@@ -126,6 +126,7 @@ export {
     CodeReviewGroupMetadata,
     AIProcess,
     PendingMessage,
+    PendingFileAttachmentMeta,
     SerializedAIProcess,
     TrackedProcessFields,
     ConversationTurn,

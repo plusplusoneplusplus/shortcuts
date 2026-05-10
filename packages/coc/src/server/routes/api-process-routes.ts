@@ -593,6 +593,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     ...(isPasteExternalized ? { pasteExternalized: true } : {}),
                     ...(modelOverride ? { model: modelOverride } : {}),
                     ...(modeOverride ? { mode: modeOverride } : {}),
+                    ...(attachments ? { attachments } : {}),
+                    ...(imageTempDir ? { imageTempDir } : {}),
+                    ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
+                    ...(selectedSkillNames && selectedSkillNames.length > 0 ? { skillNames: selectedSkillNames } : {}),
                     createdAt: new Date().toISOString(),
                 };
                 const current = await store.getProcess(id);
