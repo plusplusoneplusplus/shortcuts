@@ -197,7 +197,7 @@ export function registerScheduleRoutes(
             if (body.model !== undefined) updates.model = body.model ? String(body.model).trim() : undefined;
             if (body.mode !== undefined) updates.mode = body.mode;
 
-            const schedule = manager.updateSchedule(repoId, scheduleId, updates);
+            const schedule = await manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {
                 return sendError(res, 404, 'Schedule not found');
             }
@@ -225,7 +225,7 @@ export function registerScheduleRoutes(
 
             if (existing.source === 'repo') {
                 try {
-                    manager.removeRepoSchedule(repoId, scheduleId);
+                    await manager.removeRepoSchedule(repoId, scheduleId);
                 } catch (err) {
                     const msg = getErrorMessage(err, 'Failed to delete repo schedule');
                     const status = msg.includes('not found') || msg.includes('not available') ? 404 : 500;

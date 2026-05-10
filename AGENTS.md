@@ -186,7 +186,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `workspaces/` — `global-workspace`, `my-work-{workspace,handler}`, `my-life-{workspace,handler}`, `workspace-summary-handler`
 - `processes/` — `in-memory-process-store`, `output-{file-manager,pruner}`, `stale-task-detector`, `pin-archive-handler`, `seen-state-handler`, `turn-actions-handler`, `process-{history,resume}-handler`, `commit-chat-binding-store`
 - `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-queue-router`, `image-blob-store`, `queue-partitioner`, `shared/`
-- `schedule/` — `schedule-{handler,manager,run-persistence,yaml-persistence}`, `sqlite-schedule-run-persistence`, `repo-schedule-{loader,overrides}`, `cron-utils`
+- `schedule/` — `schedule-{handler,manager,manager-types,run-persistence,yaml-persistence}`, `sqlite-schedule-run-persistence`, `repo-schedule-{loader,overrides,watcher}`, `schedule-{timer-registry,run-history,executor}`, `cron-utils`
 - `tasks/` — `task-{cache,migration,root-resolver,types,watcher,generation-handler}`, `tasks-{handler,read-handler,write-handler,handler-utils}`, plus `tasks/comments/` for `task-comments-*`, `diff-comments-*`, `base-comments-manager`, `comments-ai-helpers`
 - `notes/` — every `notes-*.ts` file (read/write/comments/AI/files), plus `notes/git/` for `notes-git-*.ts`
 - `workflows/` — `workflow-{constants,utils,watcher}`, `workflows-{handler,read-handler,write-handler}`
@@ -199,7 +199,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `executors/`, `infrastructure/`, `routes/`, `providers/`, `repos/`, `shared/`, `task-strategies/`, `work-items/`, `wiki/`, `terminal/`, `memory/`, `models/`, `spa/` — pre-existing folders kept intact
 
 **Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
-- `schedule/schedule-manager.ts` → cron utilities in `schedule/cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)
+- `schedule/schedule-manager.ts` → cron utilities in `schedule/cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName); shared types in `schedule-manager-types.ts`; collaborators `schedule-timer-registry.ts` (timer Map + 32-bit cap), `schedule-run-history.ts` (in-memory run map + SQLite persistence), `repo-schedule-watcher.ts` (fs.FSWatcher + debounce), `schedule-executor.ts` (executeRun + per-targetType enqueue + runningSchedules). All `.github/schedules/` disk I/O uses `fs.promises`; `updateSchedule` and `removeRepoSchedule` are async
 - `routes/api-git-routes.ts` → aggregator delegating to `api-git-commit-routes`, `api-git-branch-range-routes`, `api-git-branch-routes`, `api-git-working-tree-routes`
 - `tasks/comments/task-comments-handler.ts` → manager in `task-comments-manager.ts`, AI helpers in `task-comments-ai.ts`, relocation in `task-comments-relocation.ts`, shared AI in `comments-ai-helpers.ts`
 - `tasks/comments/diff-comments-handler.ts` → manager in `diff-comments-manager.ts`, AI helpers in `diff-comments-ai.ts`

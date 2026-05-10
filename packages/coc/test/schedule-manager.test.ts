@@ -261,7 +261,7 @@ describe('ScheduleManager', () => {
     });
 
     describe('updateSchedule', () => {
-        it('updates schedule properties', () => {
+        it('updates schedule properties', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'Original',
                 target: 'test.yaml',
@@ -271,18 +271,18 @@ describe('ScheduleManager', () => {
                 status: 'active',
             });
 
-            const updated = manager.updateSchedule(REPO_ID, schedule.id, { name: 'Updated', status: 'paused' });
+            const updated = await manager.updateSchedule(REPO_ID, schedule.id, { name: 'Updated', status: 'paused' });
             expect(updated).toBeDefined();
             expect(updated!.name).toBe('Updated');
             expect(updated!.status).toBe('paused');
         });
 
-        it('returns undefined for non-existent schedule', () => {
-            const result = manager.updateSchedule(REPO_ID, 'nonexistent', { name: 'X' });
+        it('returns undefined for non-existent schedule', async () => {
+            const result = await manager.updateSchedule(REPO_ID, 'nonexistent', { name: 'X' });
             expect(result).toBeUndefined();
         });
 
-        it('emits schedule-updated event', () => {
+        it('emits schedule-updated event', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'test.yaml',
@@ -295,7 +295,7 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             manager.on('change', (e: any) => events.push(e));
 
-            manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
+            await manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
 
             expect(events.some(e => e.type === 'schedule-updated')).toBe(true);
         });
@@ -698,7 +698,7 @@ describe('ScheduleManager', () => {
             expect(schedule.outputFolder).toBe('~/.coc/repos/myrepo/tasks');
         });
 
-        it('can be updated via updateSchedule', () => {
+        it('can be updated via updateSchedule', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'Update Output Folder',
                 target: 'prompt.md',
@@ -708,7 +708,7 @@ describe('ScheduleManager', () => {
                 status: 'paused',
             });
 
-            const updated = manager.updateSchedule(REPO_ID, schedule.id, { outputFolder: '/new/output' });
+            const updated = await manager.updateSchedule(REPO_ID, schedule.id, { outputFolder: '/new/output' });
             expect(updated!.outputFolder).toBe('/new/output');
         });
 
@@ -836,7 +836,7 @@ describe('ScheduleManager', () => {
             expect(schedule.model).toBe('claude-opus-4.6');
         });
 
-        it('can be updated via updateSchedule', () => {
+        it('can be updated via updateSchedule', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'Update Model',
                 target: 'prompt.md',
@@ -846,7 +846,7 @@ describe('ScheduleManager', () => {
                 status: 'paused',
             });
 
-            const updated = manager.updateSchedule(REPO_ID, schedule.id, { model: 'gpt-5.2' });
+            const updated = await manager.updateSchedule(REPO_ID, schedule.id, { model: 'gpt-5.2' });
             expect(updated!.model).toBe('gpt-5.2');
         });
 
@@ -945,7 +945,7 @@ describe('ScheduleManager', () => {
             expect(schedule.mode).toBe('ask');
         });
 
-        it('can be updated via updateSchedule', () => {
+        it('can be updated via updateSchedule', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'Update Mode',
                 target: 'prompt.md',
@@ -955,7 +955,7 @@ describe('ScheduleManager', () => {
                 status: 'paused',
             });
 
-            const updated = manager.updateSchedule(REPO_ID, schedule.id, { mode: 'plan' });
+            const updated = await manager.updateSchedule(REPO_ID, schedule.id, { mode: 'plan' });
             expect(updated!.mode).toBe('plan');
         });
 

@@ -250,7 +250,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             const s1FiresAfterFirst = firedBySchedule.get(s1.id) ?? 0;
 
             // Pause s2
-            manager.updateSchedule(REPO_ID, s2.id, { status: 'paused' });
+            await manager.updateSchedule(REPO_ID, s2.id, { status: 'paused' });
             const s2FiresAtPause = firedBySchedule.get(s2.id) ?? 0;
 
             // Advance more time

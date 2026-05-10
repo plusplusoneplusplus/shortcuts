@@ -104,32 +104,32 @@ describe('ScheduleManager — repo schedules', () => {
         expect(manager.getSchedule(REPO_ID, 'repo:daily')).toBeDefined();
     });
 
-    it('updateSchedule allows status change for repo schedule', () => {
+    it('updateSchedule allows status change for repo schedule', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        const updated = manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
+        const updated = await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
         expect(updated).toBeDefined();
         expect(updated!.status).toBe('active');
     });
 
-    it('updateSchedule persists status override for repo schedules', () => {
+    it('updateSchedule persists status override for repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
+        await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
 
         const overrides = overrideStore.load(REPO_ID);
         expect(overrides['repo:daily'].status).toBe('active');
     });
 
-    it('updateSchedule ignores non-status fields for repo schedules', () => {
+    it('updateSchedule ignores non-status fields for repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const original = manager.getSchedule(REPO_ID, 'repo:daily');
-        const updated = manager.updateSchedule(REPO_ID, 'repo:daily', {
+        const updated = await manager.updateSchedule(REPO_ID, 'repo:daily', {
             name: 'New Name',
             status: 'paused',
         } as any);
@@ -238,12 +238,12 @@ describe('ScheduleManager — repo schedules', () => {
         expect(schedule!.status).toBe('active');
     });
 
-    it('repo schedule override status is applied on reload', () => {
+    it('repo schedule override status is applied on reload', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         // Pause the schedule (saves override)
-        manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'paused' });
+        await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'paused' });
 
         // Reload — override should still apply
         manager.reloadRepoSchedules(REPO_ID);

@@ -133,7 +133,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         const runPromise = manager.triggerRun(REPO_ID, schedule.id);
 
         // PATCH the cron while run is in flight
-        manager.updateSchedule(REPO_ID, schedule.id, { cron: '0 10 * * *' });
+        await manager.updateSchedule(REPO_ID, schedule.id, { cron: '0 10 * * *' });
 
         // Run completes normally
         const run = await runPromise;
@@ -169,7 +169,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
             expect(firedIds.length).toBeGreaterThanOrEqual(1);
 
             // PATCH to new cron
-            manager.updateSchedule(REPO_ID, schedule.id, { cron: '0 10 * * *' });
+            await manager.updateSchedule(REPO_ID, schedule.id, { cron: '0 10 * * *' });
 
             const updatedSchedule = manager.getSchedule(REPO_ID, schedule.id);
             expect(updatedSchedule!.cron).toBe('0 10 * * *');
@@ -194,7 +194,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         // Trigger run
         const runPromise = manager.triggerRun(REPO_ID, schedule.id);
         // Pause schedule
-        manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
+        await manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
         // Run still completes
         const run = await runPromise;
         expect(run.status).toBe('completed');
@@ -230,7 +230,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
             expect(firstCount).toBeGreaterThanOrEqual(1);
 
             // Pause the schedule
-            manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
+            await manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
 
             // Advance time further — should not fire again
             await vi.advanceTimersByTimeAsync(120_000);
@@ -267,7 +267,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         expect(targetsUsed[0]).toContain('old.yaml');
 
         // Update target
-        manager.updateSchedule(REPO_ID, schedule.id, { target: 'pipelines/new.yaml' });
+        await manager.updateSchedule(REPO_ID, schedule.id, { target: 'pipelines/new.yaml' });
 
         // Second run uses new target
         const run2 = await manager.triggerRun(REPO_ID, schedule.id);
