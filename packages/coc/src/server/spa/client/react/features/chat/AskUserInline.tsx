@@ -15,6 +15,8 @@ export interface AskUserInlineProps {
     onAnswered: () => void;
 }
 
+const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
+
 export function AskUserInline({ question, processId, onAnswered }: AskUserInlineProps) {
     const [selected, setSelected] = useState<string | string[] | boolean | null>(() => {
         if (question.type === 'yes-no' || question.type === 'confirm') return null;
@@ -22,7 +24,11 @@ export function AskUserInline({ question, processId, onAnswered }: AskUserInline
         if (question.type === 'text') return (question.defaultValue as string | undefined) ?? '';
         return (question.defaultValue as string | undefined) ?? null;
     });
+    const [customText, setCustomText] = useState('');
     const [submitting, setSubmitting] = useState(false);
+
+    const isCustomSelected = question.type === 'select' && selected === CUSTOM_OPTION_VALUE;
+    const customTextTrimmed = customText.trim();
 
     const submit = useCallback(async (answer: string | string[] | boolean, skipped = false) => {
         setSubmitting(true);
@@ -67,6 +73,38 @@ export function AskUserInline({ question, processId, onAnswered }: AskUserInline
                             </div>
                         </label>
                     ))}
+                    <label className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                            type="radio"
+                            name={`ask-user-${question.questionId}`}
+                            value={CUSTOM_OPTION_VALUE}
+                            checked={isCustomSelected}
+                            onChange={() => setSelected(CUSTOM_OPTION_VALUE)}
+                            disabled={submitting}
+                            className="mt-0.5 accent-[#0078d4]"
+                            data-testid="ask-user-custom-radio"
+                        />
+                        <div className="flex-1">
+                            <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">Something else...</span>
+                            {isCustomSelected && (
+                                <input
+                                    type="text"
+                                    value={customText}
+                                    onChange={e => setCustomText(e.target.value)}
+                                    disabled={submitting}
+                                    placeholder="Type your answer..."
+                                    autoFocus
+                                    className="mt-1 w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && customTextTrimmed) {
+                                            void submit(customTextTrimmed);
+                                        }
+                                    }}
+                                    data-testid="ask-user-custom-input"
+                                />
+                            )}
+                        </div>
+                    </label>
                 </div>
             )}
 
@@ -169,9 +207,18 @@ export function AskUserInline({ question, processId, onAnswered }: AskUserInline
                 <div className="flex items-center gap-2 ml-7">
                     <button
                         onClick={() => {
-                            if (selected !== null) void submit(selected as string | string[]);
+                            if (isCustomSelected) {
+                                if (customTextTrimmed) void submit(customTextTrimmed);
+                            } else if (selected !== null) {
+                                void submit(selected as string | string[]);
+                            }
                         }}
-                        disabled={submitting || selected === null || (question.type === 'text' && typeof selected === 'string' && !selected.trim())}
+                        disabled={
+                            submitting ||
+                            selected === null ||
+                            (question.type === 'text' && typeof selected === 'string' && !selected.trim()) ||
+                            (isCustomSelected && !customTextTrimmed)
+                        }
                         className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
                         data-testid="ask-user-submit-btn"
                     >

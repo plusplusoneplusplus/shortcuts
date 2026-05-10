@@ -192,4 +192,132 @@ describe('AskUserInline', () => {
         expect(source).not.toMatch(/\bfetch\s*\(/);
         expect(source).toContain('getSpaCocClient');
     });
+
+    describe('select custom answer ("Something else...")', () => {
+        it('renders a "Something else..." radio option for select questions', () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            expect(screen.getByText('Something else...')).toBeInTheDocument();
+            expect(screen.getByTestId('ask-user-custom-radio')).toBeInTheDocument();
+            // Custom input is not visible until the radio is selected
+            expect(screen.queryByTestId('ask-user-custom-input')).not.toBeInTheDocument();
+        });
+
+        it('reveals a text input when "Something else..." is selected', () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            expect(screen.getByTestId('ask-user-custom-input')).toBeInTheDocument();
+        });
+
+        it('keeps Submit disabled until custom text contains non-whitespace content', () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            const submitBtn = screen.getByTestId('ask-user-submit-btn') as HTMLButtonElement;
+            expect(submitBtn.disabled).toBe(true);
+
+            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '   ' } });
+            expect(submitBtn.disabled).toBe(true);
+
+            fireEvent.change(input, { target: { value: 'green' } });
+            expect(submitBtn.disabled).toBe(false);
+        });
+
+        it('submits the trimmed custom text as the answer string', async () => {
+            const onAnswered = vi.fn();
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={onAnswered}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: '  green  ' } });
+            fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
+
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
+                    'proc-1',
+                    { questionId: 'q-1', answer: 'green' },
+                );
+            });
+            expect(onAnswered).toHaveBeenCalled();
+        });
+
+        it('submits custom text on Enter key', async () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'purple' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
+                    'proc-1',
+                    { questionId: 'q-1', answer: 'purple' },
+                );
+            });
+        });
+
+        it('preserves predefined option submission behavior', async () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion()}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            // Type into the custom input first, then switch back to a predefined option
+            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'ignored' } });
+
+            fireEvent.click(screen.getByDisplayValue('red'));
+            fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
+
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
+                    'proc-1',
+                    { questionId: 'q-1', answer: 'red' },
+                );
+            });
+        });
+
+        it('does not render the custom option for multi-select', () => {
+            render(
+                <AskUserInline
+                    question={makeQuestion({ type: 'multi-select' })}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            expect(screen.queryByText('Something else...')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('ask-user-custom-radio')).not.toBeInTheDocument();
+        });
+    });
 });
