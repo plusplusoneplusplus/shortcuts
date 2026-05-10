@@ -168,4 +168,31 @@ describe('toProcessHistoryItem', () => {
         const item = toProcessHistoryItem(proc);
         expect(item.id).toBe('queue-process-abc-123');
     });
+
+    it('forwards metadata.ralph verbatim when present', () => {
+        const proc = makeProcess({
+            metadata: {
+                type: 'pipeline-execution',
+                workspaceId: 'ws-abc',
+                mode: 'ralph',
+                ralph: {
+                    sessionId: 'ralph-1778429298422-15jh57',
+                    phase: 'executing',
+                    currentIteration: 3,
+                },
+            },
+        } as any);
+        const item = toProcessHistoryItem(proc);
+        expect(item.ralph).toEqual({
+            sessionId: 'ralph-1778429298422-15jh57',
+            phase: 'executing',
+            currentIteration: 3,
+        });
+    });
+
+    it('omits ralph when metadata.ralph is absent', () => {
+        const proc = makeProcess();
+        const item = toProcessHistoryItem(proc);
+        expect(item.ralph).toBeUndefined();
+    });
 });

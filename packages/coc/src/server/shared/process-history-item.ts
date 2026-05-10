@@ -41,6 +41,15 @@ export interface ProcessHistoryItem {
     // Pin & archive state
     pinnedAt?: string;
     archived?: boolean;
+
+    // Ralph session metadata (forwarded verbatim from proc.metadata.ralph).
+    // Required for grouping completed iterations on the SPA's chat list, where
+    // queue_task `payload.context.ralph` is no longer available.
+    ralph?: {
+        sessionId: string;
+        phase?: 'grilling' | 'executing' | 'complete';
+        currentIteration?: number;
+    };
 }
 
 export function toProcessHistoryItem(
@@ -75,5 +84,6 @@ export function toProcessHistoryItem(
         seenAt,
         pinnedAt: proc.pinnedAt,
         archived: proc.archived || undefined,
+        ralph: proc.metadata?.ralph as ProcessHistoryItem['ralph'],
     };
 }

@@ -21,14 +21,29 @@ export interface RalphSession {
 
 export type RalphHistoryEntry = RalphSession | (any & { kind?: undefined });
 
-/** Extract ralph.sessionId from a process/task. */
+/** Extract ralph.sessionId from a process/task.
+ *
+ * Live queue_tasks expose this on `payload.context.ralph`, while history items
+ * (from GET /api/workspaces/:id/history) expose it on the top-level `ralph`
+ * field forwarded by `toProcessHistoryItem()`.
+ */
 export function getRalphSessionId(task: any): string | undefined {
-    return task.payload?.context?.ralph?.sessionId as string | undefined;
+    return (task.payload?.context?.ralph?.sessionId ?? task.ralph?.sessionId) as string | undefined;
 }
 
-/** Extract ralph.phase from a process/task. */
+/** Extract ralph.phase from a process/task. Same fallback rule as above. */
 export function getRalphPhase(task: any): 'grilling' | 'executing' | 'complete' | undefined {
-    return task.payload?.context?.ralph?.phase as any;
+    return (task.payload?.context?.ralph?.phase ?? task.ralph?.phase) as any;
+}
+
+/** Extract ralph.currentIteration from a process/task. Same fallback rule. */
+function getRalphIteration(task: any): number {
+    return (task.payload?.context?.ralph?.currentIteration ?? task.ralph?.currentIteration ?? 0) as number;
+}
+
+/** Extract the task mode (live: payload.mode; history: top-level mode). */
+function getTaskMode(task: any): string | undefined {
+    return (task.payload?.mode ?? task.mode) as string | undefined;
 }
 
 /** Returns true if a task is part of a Ralph session. */
@@ -91,12 +106,8 @@ export function groupByRalphSession(
     for (const [sessionId, sessionItems] of bySession) {
         const grillingProcess = sessionItems.find(t => getRalphPhase(t) === 'grilling');
         const iterations = sessionItems
-            .filter(t => t.payload?.mode === 'ralph')
-            .sort((a: any, b: any) => {
-                const iterA = a.payload?.context?.ralph?.currentIteration ?? 0;
-                const iterB = b.payload?.context?.ralph?.currentIteration ?? 0;
-                return iterA - iterB;
-            });
+            .filter(t => getTaskMode(t) === 'ralph')
+            .sort((a: any, b: any) => getRalphIteration(a) - getRalphIteration(b));
 
         function getTs(t: any): number {
             const ts = t.lastActivityAt ?? t.endTime ?? t.completedAt ?? t.startedAt ?? t.startTime ?? t.createdAt ?? 0;

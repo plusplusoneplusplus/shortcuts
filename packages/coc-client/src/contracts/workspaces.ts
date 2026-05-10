@@ -114,6 +114,11 @@ export interface ProcessHistoryItem {
   seenAt?: string;
   pinnedAt?: string;
   archived?: boolean;
+  ralph?: {
+    sessionId: string;
+    phase?: 'grilling' | 'executing' | 'complete';
+    currentIteration?: number;
+  };
 }
 
 export interface ProcessHistoryResponse {

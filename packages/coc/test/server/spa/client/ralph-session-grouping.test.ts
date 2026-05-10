@@ -51,6 +51,31 @@ function makeIterationTask(sessionId: string, iteration: number, overrides: any 
     });
 }
 
+function makeIterationHistoryItem(sessionId: string, iteration: number, overrides: any = {}): any {
+    // History item shape (from GET /api/workspaces/:id/history): no `payload`,
+    // top-level `mode` and top-level `ralph`.
+    return makeTask({
+        mode: 'ralph',
+        ralph: {
+            sessionId,
+            phase: 'executing',
+            currentIteration: iteration,
+        },
+        ...overrides,
+    });
+}
+
+function makeGrillingHistoryItem(sessionId: string, overrides: any = {}): any {
+    return makeTask({
+        mode: 'ask',
+        ralph: {
+            sessionId,
+            phase: 'grilling',
+        },
+        ...overrides,
+    });
+}
+
 // ---------------------------------------------------------------------------
 // getRalphSessionId / getRalphPhase / isRalphTask
 // ---------------------------------------------------------------------------
@@ -63,6 +88,10 @@ describe('getRalphSessionId', () => {
         const task = makeGrillingTask('sess-1');
         expect(getRalphSessionId(task)).toBe('sess-1');
     });
+    it('returns sessionId from top-level ralph (history item shape)', () => {
+        const item = makeIterationHistoryItem('sess-2', 3);
+        expect(getRalphSessionId(item)).toBe('sess-2');
+    });
 });
 
 describe('getRalphPhase', () => {
@@ -74,6 +103,10 @@ describe('getRalphPhase', () => {
     });
     it('returns executing for iteration tasks', () => {
         expect(getRalphPhase(makeIterationTask('s', 1))).toBe('executing');
+    });
+    it('returns phase from top-level ralph (history item shape)', () => {
+        expect(getRalphPhase(makeIterationHistoryItem('s', 1))).toBe('executing');
+        expect(getRalphPhase(makeGrillingHistoryItem('s'))).toBe('grilling');
     });
 });
 
@@ -216,5 +249,45 @@ describe('groupByRalphSession', () => {
         const session = result[0] as RalphSession;
         expect(session.iterations[0].payload.context.ralph.currentIteration).toBe(1);
         expect(session.iterations[1].payload.context.ralph.currentIteration).toBe(2);
+    });
+
+    // ---------------------------------------------------------------------
+    // History-item shape (regression: completed Ralph runs)
+    // ---------------------------------------------------------------------
+
+    it('groups history items that carry ralph metadata at the top level', () => {
+        const grilling = makeGrillingHistoryItem('sess-h', { createdAt: 1000 });
+        const i1 = makeIterationHistoryItem('sess-h', 1, { createdAt: 2000 });
+        const i2 = makeIterationHistoryItem('sess-h', 2, { createdAt: 3000 });
+
+        const result = groupByRalphSession([grilling, i1, i2]);
+        expect(result).toHaveLength(1);
+        const session = result[0] as RalphSession;
+        expect(session.kind).toBe('ralph-session');
+        expect(session.sessionId).toBe('sess-h');
+        expect(session.grillingProcess).toBe(grilling);
+        expect(session.iterations).toHaveLength(2);
+        expect(session.iterations[0]).toBe(i1);
+        expect(session.iterations[1]).toBe(i2);
+    });
+
+    it('collapses mixed live queue_task + history items sharing one sessionId', () => {
+        const live = makeIterationTask('sess-mix', 1, { createdAt: 1000 });
+        const h2 = makeIterationHistoryItem('sess-mix', 2, { createdAt: 2000 });
+        const h3 = makeIterationHistoryItem('sess-mix', 3, { createdAt: 3000 });
+        const h4 = makeIterationHistoryItem('sess-mix', 4, { createdAt: 4000 });
+        const h5 = makeIterationHistoryItem('sess-mix', 5, { createdAt: 5000 });
+
+        const result = groupByRalphSession([live, h2, h3, h4, h5]);
+        expect(result).toHaveLength(1);
+        const session = result[0] as RalphSession;
+        expect(session.iterations).toHaveLength(5);
+        const iters = session.iterations.map(getRalphSessionId);
+        expect(iters.every(id => id === 'sess-mix')).toBe(true);
+        // Sorted ascending by currentIteration regardless of source shape.
+        const ordered = session.iterations.map((t: any) =>
+            t.payload?.context?.ralph?.currentIteration ?? t.ralph?.currentIteration,
+        );
+        expect(ordered).toEqual([1, 2, 3, 4, 5]);
     });
 });
