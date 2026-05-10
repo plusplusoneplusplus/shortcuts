@@ -867,12 +867,8 @@ describe('ChatDetail', () => {
     });
 
     describe('optimistic bubble rendering', () => {
-        it('defines QueuedBubble component', () => {
+        it('defines QueuedBubble component (deprecated wrapper)', () => {
             expect(QUEUED_BUBBLE_SOURCE).toContain('export function QueuedBubble');
-        });
-
-        it('QueuedBubble uses clock emoji for all queued items', () => {
-            expect(QUEUED_BUBBLE_SOURCE).toContain('🕐');
         });
 
         it('QueuedBubble renders message content', () => {
@@ -883,12 +879,46 @@ describe('ChatDetail', () => {
             expect(QUEUED_BUBBLE_SOURCE).toContain('data-status={msg.status}');
         });
 
-        it('renders pendingQueue as QueuedFollowUps component', () => {
-            expect(CONVERSATION_AREA_SOURCE).toContain('{pendingQueue.length > 0 && <QueuedFollowUps queue={pendingQueue} />}');
+        it('exposes a "Queued · N" mono-uppercase label per OpenDesign reference', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('Queued ·');
+            expect(QUEUED_BUBBLE_SOURCE).toContain("queued-label");
+        });
+
+        it('renders queued items with a dashed-border surface card (no clock emoji)', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('border-dashed');
+            expect(QUEUED_BUBBLE_SOURCE).not.toContain('🕐');
+        });
+
+        it('exposes an optional ✕ cancel button per item', () => {
+            expect(QUEUED_BUBBLE_SOURCE).toContain('queued-item-cancel');
+            expect(QUEUED_BUBBLE_SOURCE).toContain('aria-label="Cancel queued message"');
+        });
+
+        it('renders pendingQueue as QueuedFollowUps component with optional onCancel', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('<QueuedFollowUps queue={pendingQueue}');
+            expect(CONVERSATION_AREA_SOURCE).toContain('onCancel={onCancelPendingMessage}');
         });
 
         it('renders queued bubbles with data-status attribute', () => {
             expect(QUEUED_BUBBLE_SOURCE).toContain('data-status={msg.status}');
+        });
+    });
+
+    describe('queued-message cancellation wiring', () => {
+        it('defines a handleCancelPendingMessage callback in ChatDetail', () => {
+            expect(source).toContain('const handleCancelPendingMessage = useCallback');
+        });
+
+        it('routes cancellation through the coc client deletePendingMessage API', () => {
+            expect(source).toContain('deletePendingMessage(processId, messageId)');
+        });
+
+        it('passes the cancel handler down to ConversationArea via onCancelPendingMessage', () => {
+            expect(source).toContain('onCancelPendingMessage={handleCancelPendingMessage}');
+        });
+
+        it('declares onCancelPendingMessage on the ConversationArea props interface', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('onCancelPendingMessage?: (messageId: string) => void;');
         });
     });
 

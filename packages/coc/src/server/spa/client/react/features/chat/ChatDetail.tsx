@@ -762,6 +762,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         });
     }, [processId]);
 
+    const handleCancelPendingMessage = useCallback((messageId: string) => {
+        if (!processId) return;
+        let removed: QueuedMessage | undefined;
+        setPendingQueue(prev => {
+            removed = prev.find(m => m.id === messageId);
+            return prev.filter(m => m.id !== messageId);
+        });
+        getSpaCocClient().processes.deletePendingMessage(processId, messageId).catch(() => {
+            if (removed) {
+                setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
+            }
+        });
+    }, [processId]);
+
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;
         setResumeLaunching(true);
@@ -898,6 +912,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onUndoDelete={handleUndoDelete}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
+                        onCancelPendingMessage={handleCancelPendingMessage}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap

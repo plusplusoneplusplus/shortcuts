@@ -67,6 +67,8 @@ export interface ConversationAreaProps {
     }>;
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
+    /** Called when the user cancels a queued/pending follow-up message. */
+    onCancelPendingMessage?: (messageId: string) => void;
 }
 
 export function ConversationArea({
@@ -102,6 +104,7 @@ export function ConversationArea({
     onUndoDelete,
     noteEdits,
     processId,
+    onCancelPendingMessage,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     // Escape key exits selection mode
@@ -261,7 +264,9 @@ export function ConversationArea({
                                 onAnswered={onAskUserAnswered ?? (() => {})}
                             />
                         )}
-                        {pendingQueue.length > 0 && <QueuedFollowUps queue={pendingQueue} />}
+                        {pendingQueue.length > 0 && (
+                            <QueuedFollowUps queue={pendingQueue} onCancel={onCancelPendingMessage} />
+                        )}
                         {backgroundTasks && backgroundTasks.backgroundTotalActive > 0 && (
                             <BackgroundTasksIndicator backgroundTasks={backgroundTasks} />
                         )}

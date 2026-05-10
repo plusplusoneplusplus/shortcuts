@@ -208,6 +208,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 // QueuedBubble — stub
 vi.mock('../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({
     QueuedBubble: (props: any) => React.createElement('div', { 'data-testid': 'queued-bubble' }, props.msg?.content ?? ''),
+    QueuedFollowUps: (props: any) =>
+        React.createElement('div', { 'data-testid': 'queued-followups', 'data-count': props.queue?.length ?? 0 }),
 }));
 
 // BackgroundTasksIndicator — stub
