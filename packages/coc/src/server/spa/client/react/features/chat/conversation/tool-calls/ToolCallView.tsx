@@ -13,6 +13,8 @@ import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
 import { copyToClipboard } from '../../../../utils/format';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
+import { useToolCallVariant } from './ToolCallVariant';
+import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric } from './toolKindUtils';
 
 interface ToolCallData {
     id?: string;
@@ -488,6 +490,17 @@ export function ToolCallView({
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
     const isSql = name === 'sql';
 
+    const variant = useToolCallVariant();
+    const isWhisperRow = variant === 'whisper-row';
+    const kindInfo = useMemo(() => getToolKindInfo(name), [name]);
+    const kindPillClass = KIND_PILL_CLASSES[kindInfo.cls];
+    const metric = useMemo(
+        () => (isWhisperRow ? getToolMetric(name, argsObj, resultText, toolCall.error) : null),
+        [isWhisperRow, name, argsObj, resultText, toolCall.error],
+    );
+    const rowSummary = summary || (toolCall.error ? 'error' : '');
+    const isRunning = toolCall.status === 'running';
+
     const bashDescription = isShellLike && argsObj && typeof argsObj === 'object' && argsObj.description
         ? String(argsObj.description)
         : '';
@@ -562,6 +575,232 @@ export function ToolCallView({
             setHoverVisible(true);
         }
     }, [hasHoverResult]);
+
+    if (isWhisperRow) {
+        return (
+            <div
+                className={cn(
+                    'tool-call-row tool-call-row--whisper group/row',
+                    'border-b border-[#ececec] dark:border-[#3c3c3c] last:border-b-0',
+                    'bg-white dark:bg-[#252525]',
+                    'hover:bg-[#fafafa] dark:hover:bg-[#2a2a2a]',
+                    'select-text',
+                )}
+                data-tool-id={toolCall.id || toolCall.toolName || 'unknown'}
+                data-tool-variant="whisper-row"
+                data-tool-kind={kindInfo.cls}
+                style={depthLevel > 0 ? { marginLeft: `${depthLevel * (isMobile ? 8 : 12)}px` } : undefined}
+            >
+                <div
+                    ref={headerRef}
+                    className={cn(
+                        'tool-call-row-header flex items-center gap-2.5 px-3 py-1 font-mono text-[12px]',
+                        'text-[#2c2f33] dark:text-[#cccccc]',
+                        hasDetails && 'cursor-pointer',
+                        isRunning && 'tool-call-row--running',
+                    )}
+                    onClick={(e) => {
+                        if ((e.target as HTMLElement).closest?.('.file-path-link')) return;
+                        if (hasDetails) setExpanded(!expanded);
+                    }}
+                    onMouseEnter={!isMobile ? handleHeaderMouseEnter : undefined}
+                    onMouseLeave={!isMobile ? handleHeaderMouseLeave : undefined}
+                    role={hasDetails ? 'button' : undefined}
+                    aria-expanded={hasDetails ? expanded : undefined}
+                >
+                    <span
+                        className={cn(
+                            'tool-call-kind shrink-0 inline-block min-w-[42px] text-center px-2 py-px rounded-sm font-mono text-[11px] font-medium',
+                            isRunning
+                                ? 'bg-[#f5f5f4] text-[#6b7280] dark:bg-[#3c3c3c] dark:text-[#9aa0a6]'
+                                : kindPillClass,
+                        )}
+                        data-testid="tool-call-kind"
+                    >
+                        {kindInfo.label}
+                    </span>
+                    {hasSubtools && (
+                        <button
+                            type="button"
+                            className="text-[#9aa0a6] hover:text-[#1f2328] dark:hover:text-[#cccccc] shrink-0 text-[10px]"
+                            aria-label={subtoolsCollapsed ? 'Expand subtools' : 'Collapse subtools'}
+                            title={subtoolsCollapsed ? 'Expand subtools' : 'Collapse subtools'}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleSubtools?.();
+                            }}
+                        >
+                            {subtoolsCollapsed ? '▶' : '▼'}
+                        </button>
+                    )}
+                    <span
+                        className={cn(
+                            'tool-call-row-path flex-1 min-w-0 truncate text-[#2c2f33] dark:text-[#cccccc]',
+                            summaryIsPath && 'file-path-link',
+                        )}
+                        title={rowSummary}
+                        {...(summaryIsPath ? { 'data-full-path': argsObj?.path || argsObj?.filePath, 'data-no-preview-hover': '' } : {})}
+                    >
+                        {rowSummary || <span className="text-[#9aa0a6] italic">{name}</span>}
+                    </span>
+                    {metric && (
+                        <span
+                            className="tool-call-row-metric shrink-0 font-mono text-[11.5px] text-[#6b7280] dark:text-[#9aa0a6]"
+                            data-testid="tool-call-metric"
+                        >
+                            {metric.kind === 'diff' ? (
+                                <>
+                                    {(metric.insertions ?? 0) > 0 && (
+                                        <span className="text-[#1a7f37] dark:text-[#85e89d] font-medium">+{metric.insertions}</span>
+                                    )}
+                                    {(metric.insertions ?? 0) > 0 && (metric.deletions ?? 0) > 0 && ' '}
+                                    {(metric.deletions ?? 0) > 0 && (
+                                        <span className="text-[#cf222e] dark:text-[#f97583] font-medium">−{metric.deletions}</span>
+                                    )}
+                                </>
+                            ) : (
+                                metric.text
+                            )}
+                        </span>
+                    )}
+                    {duration && (
+                        <span className="tool-call-row-duration shrink-0 font-mono text-[11px] text-[#9aa0a6] dark:text-[#6b7280]">
+                            {duration}
+                        </span>
+                    )}
+                    {isMobile && hasHoverResult && (
+                        <button
+                            type="button"
+                            className="text-[#9aa0a6] hover:text-[#0969da] dark:hover:text-[#79c0ff] shrink-0 text-[11px]"
+                            aria-label="Preview result"
+                            title="Preview result"
+                            data-testid="mobile-preview-btn"
+                            onClick={handleMobilePreviewTap}
+                        >
+                            👁
+                        </button>
+                    )}
+                    {hasDetails && (
+                        <span className="text-[#9aa0a6] shrink-0 text-[10px]">{expanded ? '▼' : '▶'}</span>
+                    )}
+                </div>
+                {hasDetails && expanded && (
+                    <div className="tool-call-row-body border-t border-[#ececec] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#1e1e1e] px-3 py-1.5 space-y-1.5 text-xs select-text">
+                        {isShellLike && bashDescription && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Description</div>
+                                <div className="text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {bashDescription}
+                                </div>
+                            </div>
+                        )}
+                        {isShellLike && bashCommand && (
+                            <div>
+                                <div className="relative group/cmd flex items-center">
+                                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">Command</div>
+                                    <CopyCommandBtn command={bashCommand} />
+                                </div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{`$ ${bashCommand}`}</code>
+                                </pre>
+                            </div>
+                        )}
+                        {isShellLike && bashOptionsText && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Options</div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{bashOptionsText}</code>
+                                </pre>
+                            </div>
+                        )}
+                        {isSql && sqlDescription && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Description</div>
+                                <div className="text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {sqlDescription}
+                                </div>
+                            </div>
+                        )}
+                        {isSql && sqlQuery && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Query</div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{sqlQuery}</code>
+                                </pre>
+                            </div>
+                        )}
+                        {isSql && sqlOptionsText && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Options</div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{sqlOptionsText}</code>
+                                </pre>
+                            </div>
+                        )}
+                        {name === 'edit' && argsObj && <EditToolView args={argsObj} />}
+                        {name === 'create' && argsObj && <CreateToolView args={argsObj} />}
+                        {name === 'view' && argsObj && <ViewToolView args={argsObj} result={visibleResult} />}
+                        {name === 'apply_patch' && applyPatchText && <ApplyPatchToolView patchText={applyPatchText} />}
+                        {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && applyPatchText) && !isTaskComplete && args && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{args}</code>
+                                </pre>
+                            </div>
+                        )}
+                        {isTaskComplete && taskCompleteHtml && (
+                            <div
+                                className="markdown-body text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="task-complete-markdown"
+                                dangerouslySetInnerHTML={{ __html: taskCompleteHtml }}
+                            />
+                        )}
+                        {name !== 'view' && !isTaskComplete && resultText && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>
+                                {isImageDataUrl(resultText) ? (
+                                    <img
+                                        src={resultText}
+                                        alt="Tool result image"
+                                        className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer"
+                                        data-testid="tool-result-image"
+                                    />
+                                ) : (
+                                    <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                        <code>{visibleResult}</code>
+                                    </pre>
+                                )}
+                            </div>
+                        )}
+                        {toolCall.error && (
+                            <div>
+                                <div className="text-[10px] uppercase text-[#cf222e] mb-0.5">Error</div>
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#cf222e]">
+                                    <code>{toolCall.error}</code>
+                                </pre>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {children && (
+                    <div className={cn('tool-call-children', subtoolsCollapsed && 'subtree-collapsed')}>
+                        {children}
+                    </div>
+                )}
+                {hoverVisible && anchorRect && hasHoverResult && (
+                    <ToolResultPopover
+                        result={resultText}
+                        toolName={name}
+                        args={argsObj ?? undefined}
+                        anchorRect={anchorRect}
+                        onMouseEnter={handlePopoverMouseEnter}
+                        onMouseLeave={handlePopoverMouseLeave}
+                    />
+                )}
+            </div>
+        );
+    }
 
     return (
         <div

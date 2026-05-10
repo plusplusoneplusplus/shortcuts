@@ -9,6 +9,7 @@ import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './to
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
 import type { DetectedCommit } from '../commitDetection';
 import { CommitStrip } from '../CommitStrip';
+import { useToolCallVariant } from './ToolCallVariant';
 
 export interface RenderToolCall {
     id: string;
@@ -126,15 +127,20 @@ export function ToolCallGroupView({
     const startLabel   = groupStartLabel(toolCalls);
     const duration     = groupDuration(toolCalls);
     const isMinimal    = compactness === 2;
+    const variant      = useToolCallVariant();
+    const isWhisperRow = variant === 'whisper-row';
 
     return (
         <div
             className={cn(
-                'tool-call-group my-0.5 md:my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]',
-                'bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
+                'tool-call-group my-0.5 md:my-1 rounded border text-xs',
+                isWhisperRow
+                    ? 'tool-call-group--whisper rounded-md border-[#e5e7eb] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#1e1e1e] overflow-hidden'
+                    : 'border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e]',
                 isMinimal && !expanded && 'tool-call-group--minimal'
             )}
             data-category={category}
+            data-tool-variant={isWhisperRow ? 'whisper-row' : 'card'}
         >
             {/* ── Header row ────────────────────────────────────────── */}
             <div
@@ -142,45 +148,103 @@ export function ToolCallGroupView({
                 tabIndex={0}
                 aria-expanded={expanded}
                 className={cn(
-                    'tool-call-group-header flex items-center gap-1.5 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5',
-                    'cursor-pointer select-none',
-                    'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]',
+                    'tool-call-group-header flex items-center select-none cursor-pointer',
+                    isWhisperRow
+                        ? 'gap-2 px-3 py-2 text-[12.5px] text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f5f5f4] dark:hover:bg-[#252525]'
+                        : 'gap-1.5 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03]',
                     isMinimal && !expanded &&
                         'tool-call-group-header--minimal overflow-hidden max-h-6 transition-[max-height] duration-200'
                 )}
                 onClick={toggle}
                 onKeyDown={handleKeyDown}
             >
-                <span className="shrink-0">{statusIcon}</span>
-                <span className="shrink-0">{CATEGORY_ICONS[category]}</span>
+                <span
+                    className={cn(
+                        'shrink-0',
+                        isWhisperRow && 'text-[#1a7f37] dark:text-[#85e89d] text-[13px] w-[14px] text-center',
+                    )}
+                >
+                    {statusIcon}
+                </span>
+                {!isWhisperRow && (
+                    <span className="shrink-0">{CATEGORY_ICONS[category]}</span>
+                )}
 
-                <span className="tool-call-group-label font-medium text-[#0078d4] dark:text-[#3794ff] truncate min-w-0">
+                <span
+                    className={cn(
+                        'tool-call-group-label truncate min-w-0',
+                        isWhisperRow
+                            ? 'font-medium text-[#1f2328] dark:text-[#cccccc]'
+                            : 'font-medium text-[#0078d4] dark:text-[#3794ff]',
+                    )}
+                >
                     {summaryLabel}
                     {messageCount > 0 && (
-                        <span className="text-[#848484] font-normal">
+                        <span
+                            className={cn(
+                                'font-normal',
+                                isWhisperRow ? 'text-[#6b7280] dark:text-[#9aa0a6]' : 'text-[#848484]',
+                            )}
+                        >
                             {` + ${messageCount} message${messageCount > 1 ? 's' : ''}`}
                         </span>
                     )}
                 </span>
 
                 {statusSummary && (
-                    <span className="tool-call-group-status text-[#c4a000] dark:text-[#e0c862] font-medium shrink-0">
+                    <span
+                        className={cn(
+                            'tool-call-group-status font-medium shrink-0',
+                            isWhisperRow ? 'text-[#9a6700] dark:text-[#d4a72c]' : 'text-[#c4a000] dark:text-[#e0c862]',
+                        )}
+                    >
                         ({statusSummary})
                     </span>
                 )}
 
                 {!isMobile && startLabel && (
-                    <span className="text-[#848484] ml-auto shrink-0">{startLabel}</span>
+                    <span
+                        className={cn(
+                            'shrink-0 ml-auto',
+                            isWhisperRow
+                                ? 'text-[#6b7280] dark:text-[#9aa0a6] font-mono text-[11.5px]'
+                                : 'text-[#848484]',
+                        )}
+                    >
+                        {startLabel}
+                    </span>
                 )}
                 {duration && (
-                    <span className={cn('text-[#848484] shrink-0', (!startLabel || isMobile) && 'ml-auto')}>
+                    <span
+                        className={cn(
+                            'shrink-0',
+                            (!startLabel || isMobile) && 'ml-auto',
+                            isWhisperRow
+                                ? 'text-[#6b7280] dark:text-[#9aa0a6] font-mono text-[11.5px] before:content-["·"] before:mx-1.5 before:text-[#9aa0a6]'
+                                : 'text-[#848484]',
+                        )}
+                    >
                         {duration}
                     </span>
                 )}
 
-                <span className={cn('text-[#848484] shrink-0', !duration && (!startLabel || isMobile) && 'ml-auto')}>
-                    {expanded ? '▼' : '▶'}
-                </span>
+                {isWhisperRow ? (
+                    <span
+                        className={cn(
+                            'tool-call-group-toggle inline-flex items-center gap-1 shrink-0',
+                            'text-[#0969da] dark:text-[#79c0ff] text-[12px]',
+                            !duration && (!startLabel || isMobile) && 'ml-auto',
+                        )}
+                        data-testid="whisper-group-toggle"
+                    >
+                        <span>{expanded ? 'Hide' : 'Show'}</span>
+                        <span className="text-[9px]">{expanded ? '▾' : '▸'}</span>
+                    </span>
+                ) : (
+                    <span className={cn('text-[#848484] shrink-0', !duration && (!startLabel || isMobile) && 'ml-auto')}>
+                        {expanded ? '▼' : '▶'}
+                    </span>
+                )}
             </div>
 
             {/* ── Commit strip (visible in both collapsed and expanded states) ── */}
@@ -190,7 +254,14 @@ export function ToolCallGroupView({
 
             {/* ── Expanded body ──────────────────────────────────────── */}
             {expanded && (
-                <div className="tool-call-group-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] py-1">
+                <div
+                    className={cn(
+                        'tool-call-group-body border-t',
+                        isWhisperRow
+                            ? 'border-[#e5e7eb] dark:border-[#3c3c3c] bg-white dark:bg-[#252525]'
+                            : 'border-[#e0e0e0] dark:border-[#3c3c3c] py-1',
+                    )}
+                >
                     {orderedItems ? (
                         orderedItems.map(item =>
                             item.type === 'tool' ? (
@@ -198,7 +269,14 @@ export function ToolCallGroupView({
                                     {renderToolTree(item.toolId, 0)}
                                 </React.Fragment>
                             ) : (
-                                <div key={item.key} className="tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1"
+                                <div
+                                    key={item.key}
+                                    className={cn(
+                                        'tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs italic',
+                                        isWhisperRow
+                                            ? 'text-[#6b7280] dark:text-[#9aa0a6] border-b border-dashed border-[#ececec] dark:border-[#3c3c3c]'
+                                            : 'text-[#616161] dark:text-[#a0a0a0] border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1',
+                                    )}
                                     dangerouslySetInnerHTML={{ __html: item.html }}
                                 />
                             )
@@ -211,7 +289,14 @@ export function ToolCallGroupView({
                                 </React.Fragment>
                             ))}
                             {contentItems && contentItems.length > 0 && (
-                                <div className="tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                <div
+                                    className={cn(
+                                        'tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs italic',
+                                        isWhisperRow
+                                            ? 'text-[#6b7280] dark:text-[#9aa0a6] border-t border-dashed border-[#ececec] dark:border-[#3c3c3c]'
+                                            : 'text-[#616161] dark:text-[#a0a0a0] border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1',
+                                    )}
+                                >
                                     {contentItems.map(item => (
                                         <div key={item.key} dangerouslySetInnerHTML={{ __html: item.html }} />
                                     ))}

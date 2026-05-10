@@ -10,6 +10,7 @@ import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
+import { ToolCallVariantProvider } from './ToolCallVariant';
 import { MarkdownView } from '../../../../shared/MarkdownView';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import type { DetectedCommit } from '../commitDetection';
@@ -925,7 +926,8 @@ export function WhisperCollapsedGroup({
                 <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
             </button>
             {expanded && (
-                <div className="px-2 py-1.5 space-y-1.5 md:px-3 md:py-2 md:space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] opacity-80" data-testid="whisper-expanded-content">
+                <ToolCallVariantProvider value="whisper-row">
+                <div className="px-2 py-1.5 space-y-1.5 md:px-3 md:py-2 md:space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] opacity-80 bg-white dark:bg-[#252525]" data-testid="whisper-expanded-content">
                     {(() => {
                         const nodes: React.ReactNode[] = [];
                         let accHtml = '';
@@ -999,6 +1001,7 @@ export function WhisperCollapsedGroup({
                         return nodes;
                     })()}
                 </div>
+                </ToolCallVariantProvider>
             )}
         </div>
     );
