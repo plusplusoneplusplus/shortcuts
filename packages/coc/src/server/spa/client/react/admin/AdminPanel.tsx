@@ -90,6 +90,7 @@ export function AdminPanel() {
     const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
     const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
     const [serversEnabled, setServersEnabled] = useState(false);
+    const [ralphEnabled, setRalphEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -121,7 +122,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -214,7 +215,9 @@ export function AdminPanel() {
             setPullRequestsEnabled(pre);
             const svre = resolved.servers?.enabled ?? false;
             setServersEnabled(svre);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre });
+            const re = resolved.ralph?.enabled ?? false;
+            setRalphEnabled(re);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re });
         } catch (err: unknown) {
             const detail = getSpaCocClientErrorMessage(err, '');
             setConfigError(detail ? `Failed to load configuration: ${detail}` : 'Failed to load configuration');
@@ -288,7 +291,8 @@ export function AdminPanel() {
         scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
         workflowsEnabled !== featuresSnapshot.workflows ||
         pullRequestsEnabled !== featuresSnapshot.pullRequests ||
-        serversEnabled !== featuresSnapshot.servers;
+        serversEnabled !== featuresSnapshot.servers ||
+        ralphEnabled !== featuresSnapshot.ralph;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -437,16 +441,17 @@ export function AdminPanel() {
                 'workflows.enabled': workflowsEnabled,
                 'pullRequests.enabled': pullRequestsEnabled,
                 'servers.enabled': serversEnabled,
+                'ralph.enabled': ralphEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -458,6 +463,7 @@ export function AdminPanel() {
         setWorkflowsEnabled(featuresSnapshot.workflows);
         setPullRequestsEnabled(featuresSnapshot.pullRequests);
         setServersEnabled(featuresSnapshot.servers);
+        setRalphEnabled(featuresSnapshot.ralph);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1257,6 +1263,25 @@ export function AdminPanel() {
                                                     checked={serversEnabled}
                                                     onChange={e => setServersEnabled(e.target.checked)}
                                                     data-testid="toggle-servers-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Ralph Mode</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">Autonomous iterative coding loop — stateless agents with fresh context per iteration.</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['ralph.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={ralphEnabled}
+                                                    onChange={e => setRalphEnabled(e.target.checked)}
+                                                    data-testid="toggle-ralph-enabled"
                                                 />
                                                 <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                                             </label>

@@ -348,6 +348,7 @@ timeout: 300
                 workflows: { enabled: false },
                 pullRequests: { enabled: false },
                 servers: { enabled: false },
+                ralph: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -769,6 +770,8 @@ timeout: 300
                 'pullRequests:',
                 '  enabled: true',
                 'servers:',
+                '  enabled: true',
+                'ralph:',
                 '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',

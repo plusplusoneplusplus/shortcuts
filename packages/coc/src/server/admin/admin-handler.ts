@@ -216,7 +216,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled', 'servers.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled', 'servers.enabled', 'ralph.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -319,6 +319,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('servers.enabled' in body) {
                 if (typeof body['servers.enabled'] !== 'boolean') {
                     errors.push('servers.enabled must be a boolean');
+                }
+            }
+            if ('ralph.enabled' in body) {
+                if (typeof body['ralph.enabled'] !== 'boolean') {
+                    errors.push('ralph.enabled must be a boolean');
                 }
             }
 
@@ -445,6 +450,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('servers.enabled' in body) {
                 if (!existing.servers) { existing.servers = {}; }
                 existing.servers.enabled = body['servers.enabled'] as boolean;
+            }
+
+            // Handle nested ralph.enabled field
+            if ('ralph.enabled' in body) {
+                if (!existing.ralph) { existing.ralph = {}; }
+                existing.ralph.enabled = body['ralph.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

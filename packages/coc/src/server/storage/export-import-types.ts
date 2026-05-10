@@ -74,6 +74,9 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    ralph?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

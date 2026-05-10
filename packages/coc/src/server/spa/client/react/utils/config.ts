@@ -16,6 +16,7 @@ interface DashboardConfig {
     workflowsEnabled?: boolean;
     pullRequestsEnabled?: boolean;
     serversEnabled?: boolean;
+    ralphEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -72,4 +73,8 @@ export function isPullRequestsEnabled(): boolean {
 
 export function isServersEnabled(): boolean {
     return getConfig().serversEnabled === true;
+}
+
+export function isRalphEnabled(): boolean {
+    return getConfig().ralphEnabled === true;
 }

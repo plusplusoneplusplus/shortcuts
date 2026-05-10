@@ -90,6 +90,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         workflowsEnabled,
         pullRequestsEnabled,
         serversEnabled,
+        ralphEnabled,
         reviewFilePath,
         projectDir,
     } = options;
@@ -132,7 +133,8 @@ ${getBundleCss()}
             scratchpadLayout: '${scratchpadLayout || 'horizontal'}',
             workflowsEnabled: ${!!workflowsEnabled},
             pullRequestsEnabled: ${!!pullRequestsEnabled},
-            serversEnabled: ${!!serversEnabled}
+            serversEnabled: ${!!serversEnabled},
+            ralphEnabled: ${!!ralphEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

@@ -29,6 +29,8 @@ export interface DashboardOptions {
     pullRequestsEnabled?: boolean;
     /** Whether the servers feature is enabled in server config. */
     serversEnabled?: boolean;
+    /** Whether the Ralph mode feature is enabled in server config. */
+    ralphEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

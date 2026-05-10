@@ -108,6 +108,10 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    /** Ralph mode configuration (autonomous iterative coding loop). Disabled by default. */
+    ralph?: {
+        enabled?: boolean;
+    };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -256,6 +260,10 @@ export interface ResolvedCLIConfig {
     servers: {
         enabled: boolean;
     };
+    /** Ralph orchestration mode configuration. */
+    ralph: {
+        enabled: boolean;
+    };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -367,6 +375,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     servers: {
         enabled: false,
     },
+    ralph: {
+        enabled: false,
+    },
     features: {
         autoMemoryPromotion: false,
     },
@@ -420,6 +431,7 @@ export const CONFIG_SOURCE_KEYS = [
     'workflows.enabled',
     'pullRequests.enabled',
     'servers.enabled',
+    'ralph.enabled',
     'features.autoMemoryPromotion',
     'memoryPromotion.batchSize',
     'memoryPromotion.timeoutMs',
@@ -591,6 +603,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         servers: {
             enabled: override.servers?.enabled ?? base.servers.enabled,
         },
+        ralph: {
+            enabled: override.ralph?.enabled ?? base.ralph?.enabled ?? DEFAULT_CONFIG.ralph.enabled,
+        },
         features: {
             autoMemoryPromotion: override.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? DEFAULT_CONFIG.features.autoMemoryPromotion,
         },
@@ -703,6 +718,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('servers.')) {
         const subKey = key.slice('servers.'.length) as keyof NonNullable<CLIConfig['servers']>;
         return fileConfig.servers?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('ralph.')) {
+        const subKey = key.slice('ralph.'.length) as keyof NonNullable<CLIConfig['ralph']>;
+        return fileConfig.ralph?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     if (key.startsWith('features.')) {
