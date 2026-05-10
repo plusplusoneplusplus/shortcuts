@@ -926,7 +926,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     </div>
                     {/* Ralph grilling complete — show Start Ralph panel */}
                     {(() => {
-                        const ralphCtx = task?.payload?.context?.ralph;
+                        const ralphCtx = task?.payload?.context?.ralph ?? (task?.metadata as any)?.ralph;
                         if (!ralphCtx) return null;
                         if (ralphCtx.phase !== 'grilling') return null;
                         if (task?.status !== 'completed') return null;

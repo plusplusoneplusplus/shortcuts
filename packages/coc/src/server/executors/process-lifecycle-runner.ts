@@ -262,6 +262,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 noteTitle: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
                     ? task.payload.context?.noteChat?.noteTitle
                     : undefined,
+                ralph: isChatPayload(task.payload)
+                    ? task.payload.context?.ralph
+                    : undefined,
             },
         };
 
