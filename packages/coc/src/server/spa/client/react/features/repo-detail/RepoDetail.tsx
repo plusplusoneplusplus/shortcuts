@@ -390,9 +390,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 style={{ minHeight: 44 }}
             >
                 <>
-                    {/* Title — name only, no color dot */}
-                        <div className="flex items-center min-w-0 max-w-[180px] flex-shrink-0 pl-1">
-                            <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-[#1f2328] dark:text-[#cccccc] flex-1 truncate leading-tight" title={ws.name}>{ws.name}</h1>
+                    {/* Title — original styling: color dot + bold name */}
+                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
+                            <span
+                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
+                                style={{ background: color }}
+                            />
+                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
                         </div>
                         {/* Sub-tab bar */}
                         <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
@@ -534,7 +538,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                               the "..." overflow toggle; in dev-workflow mode the same buttons
                               render inline alongside the title row. Keeping them in a single JSX
                               block ensures each data-testid appears exactly once in the DOM and
-                              that source order is preserved (Launch CLI before Prompt & Script).
+                              that source order is preserved (Launch CLI before Run Prompt / Script).
                             */}
                             {(() => {
                                 const isOverflow = uiLayoutMode === 'classic';
@@ -573,7 +577,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                         variant="primary"
                                         data-testid="repo-run-script-btn"
                                     >
-                                        Prompt & Script
+                                        Run Prompt / Script
                                     </Button>
                                     {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
                                         <Button

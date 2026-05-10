@@ -308,9 +308,13 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Run a prompt or script in this repo"');
     });
 
-    it('MobileTabBar actions include Prompt & Script option', () => {
-        // Prompt & Script is now in MobileTabBar actions, not a separate overflow menu
-        expect(REPO_DETAIL_SOURCE).toContain('Prompt & Script');
+    it('Run Prompt / Script button label is rendered in the desktop header', () => {
+        // The desktop overflow popover (classic) and inline action bar (dev-workflow)
+        // both render the script-runner button using the user-facing label
+        // "Run Prompt / Script" (renamed from the legacy "Prompt & Script"
+        // wording, which is still used by the underlying dialog title and the
+        // global product-name references elsewhere in the SPA).
+        expect(REPO_DETAIL_SOURCE).toContain('Run Prompt / Script');
     });
 });
 
