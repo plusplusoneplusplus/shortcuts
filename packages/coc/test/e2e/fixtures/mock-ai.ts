@@ -26,6 +26,20 @@ export interface MockFn<TReturn = unknown> {
     mockReset(): MockFn<TReturn>;
 }
 
+/**
+ * Recognize background/system AI prompts (title generation, follow-up
+ * suggestions, etc.) so they don't consume per-test `mockImplementationOnce`
+ * slots intended for primary user prompts. Background calls always fall
+ * through to the default implementation.
+ */
+function isBackgroundPrompt(prompt: string | undefined): boolean {
+    if (!prompt) return false;
+    return (
+        prompt.startsWith('Summarise the following conversation as a short title')
+        || prompt.startsWith('Generate a title for:')
+    );
+}
+
 function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TReturn): MockFn<TReturn> {
     const initialImpl = defaultImpl;
     let currentImpl = defaultImpl;
@@ -33,7 +47,11 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
 
     const fn = ((...args: unknown[]) => {
         fn.calls.push(args);
-        if (onceQueue.length > 0) {
+        const opts = (args.length >= 3 ? args[2] : args[0]) as
+            | { prompt?: string }
+            | undefined;
+        const prompt = typeof opts?.prompt === 'string' ? opts.prompt : undefined;
+        if (onceQueue.length > 0 && !isBackgroundPrompt(prompt)) {
             return onceQueue.shift()!(...args);
         }
         return currentImpl(...args);

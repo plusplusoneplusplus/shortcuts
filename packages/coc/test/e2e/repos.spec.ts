@@ -1228,9 +1228,10 @@ test.describe('Activity Tab — Task List', () => {
         await page.click('button[data-subtab="activity"]');
         await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
 
-        // The task should appear in the list — either in queued, running, or history section
-        // Mock AI processes tasks quickly so it may be in history as completed
-        await expect(page.locator('text=Activity List Task')).toBeVisible({ timeout: 10000 });
+        // The task should appear in the list — either in queued, running, or history
+        // section. Use the per-row `data-task-id` attribute since the displayed
+        // title is now derived from the AI response, not the original displayName.
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
     });
 
     test('clicking a task in the list shows detail in the right pane', async ({ page, serverUrl }) => {
@@ -1254,12 +1255,13 @@ test.describe('Activity Tab — Task List', () => {
         await page.click('button[data-subtab="activity"]');
         await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
 
-        // Wait for task to appear (in queued, running, or history section)
-        const taskItem = page.locator('text=Detail Pane Task');
+        // Wait for the task row to appear (selector uses `data-task-id` because
+        // the displayed title is no longer guaranteed to match `displayName`).
+        const taskItem = page.locator('[data-task-id]').first();
         await expect(taskItem).toBeVisible({ timeout: 10000 });
 
         // Click the task item card
-        await taskItem.first().click();
+        await taskItem.click();
 
         // After selecting a task, the detail pane should show something other than empty state
         // The empty state only shows when no tasks exist at all

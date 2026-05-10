@@ -96,7 +96,31 @@ function seedExclusiveTask(
     });
 }
 
-/** Poll until mockAI.mockSendMessage.calls.length reaches `count`. */
+/**
+ * Filter mock SDK call args down to "primary" user-prompt calls, ignoring
+ * background AI calls (title generation, prewarm, etc.) so per-test
+ * assertions stay focused on what the executor sent for the queued task.
+ */
+function isBackgroundPrompt(prompt: string | undefined): boolean {
+    if (!prompt) return false;
+    return (
+        prompt.startsWith('Summarise the following conversation as a short title')
+        || prompt.startsWith('Generate a title for:')
+    );
+}
+
+function primarySendMessageCalls(
+    mockAI: { mockSendMessage: { calls: unknown[][] } },
+): unknown[][] {
+    return mockAI.mockSendMessage.calls.filter((args) => {
+        const opts = (args.length >= 3 ? args[2] : args[0]) as
+            | { prompt?: string }
+            | undefined;
+        return !isBackgroundPrompt(opts?.prompt);
+    });
+}
+
+/** Poll until the number of primary (non-background) AI calls reaches `count`. */
 async function waitForAICalls(
     mockAI: { mockSendMessage: { calls: unknown[][] } },
     count: number,
@@ -104,11 +128,11 @@ async function waitForAICalls(
 ): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        if (mockAI.mockSendMessage.calls.length >= count) return;
+        if (primarySendMessageCalls(mockAI).length >= count) return;
         await new Promise((r) => setTimeout(r, 250));
     }
     throw new Error(
-        `Expected ${count} AI calls but got ${mockAI.mockSendMessage.calls.length} within ${timeoutMs}ms`,
+        `Expected ${count} primary AI calls but got ${primarySendMessageCalls(mockAI).length} within ${timeoutMs}ms`,
     );
 }
 
@@ -175,8 +199,9 @@ test.describe('Queue Drain Behavior', () => {
             resolve3({ success: true, response: 'Response 3', sessionId: 'sess-3' });
             await waitForTaskStatus(serverUrl, t3.id as string, ['completed']);
 
-            // All 3 AI calls were executed
-            expect(mockAI.mockSendMessage.calls.length).toBe(3);
+            // All 3 primary AI calls were executed (background title-gen
+            // calls are filtered out because they vary in count and timing).
+            expect(primarySendMessageCalls(mockAI).length).toBe(3);
         } finally {
             cleanup();
         }
@@ -207,8 +232,8 @@ test.describe('Queue Drain Behavior', () => {
             await waitForTaskStatus(serverUrl, t1.id as string, ['completed'], 20_000);
             await waitForTaskStatus(serverUrl, t2.id as string, ['completed'], 20_000);
 
-            // Verify both tasks actually ran
-            expect(mockAI.mockSendMessage.calls.length).toBe(2);
+            // Verify both tasks actually ran (filter background title-gen calls)
+            expect(primarySendMessageCalls(mockAI).length).toBe(2);
         } finally {
             cleanup();
         }

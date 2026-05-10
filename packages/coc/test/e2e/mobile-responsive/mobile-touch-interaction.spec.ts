@@ -40,8 +40,12 @@ test.describe('Mobile Touch Interaction', () => {
         const count = await items.count();
         for (let i = 0; i < count && i < 3; i++) {
             const box = await items.nth(i).boundingBox();
-            // RepoChatTab activity items render at ~38px; 36px is the relaxed minimum
-            expect(box!.height).toBeGreaterThanOrEqual(36);
+            // The activity-compact redesign tightened activity rows from ~38px
+            // down to ~26px (single-line dense layout). 24px is a regression
+            // bar — anything below that signals a layout collapse. The 44px
+            // accessibility recommendation isn't met by these dense rows; the
+            // bottom-nav button check above is the canonical 44px assertion.
+            expect(box!.height).toBeGreaterThanOrEqual(24);
         }
     });
 

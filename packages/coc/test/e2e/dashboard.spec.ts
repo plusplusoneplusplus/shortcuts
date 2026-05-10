@@ -219,10 +219,15 @@ test.describe('Dashboard — Processes tab', () => {
             // Paused banner should be visible
             await expect(page.locator('[data-testid="queue-paused-banner"]')).toBeVisible({ timeout: 8000 });
 
-            // Pause/resume button should show the Resume (▶) icon
+            // Pause/resume button: in the activity-compact split pause pill
+            // the visible label is "ALL"+"PAUSED" (or remaining time). The
+            // button advertises the resume action via its title attribute and
+            // is wrapped in the `pause-toggle-group` container which shows the
+            // amber "paused" border treatment when the queue is paused.
             const pauseResumeBtn = page.locator('[data-testid="repo-pause-resume-btn"]');
             await expect(pauseResumeBtn).toBeVisible();
-            await expect(pauseResumeBtn).toContainText('▶');
+            await expect(pauseResumeBtn).toHaveAttribute('title', 'Resume all tasks');
+            await expect(pauseResumeBtn).toContainText('PAUSED');
 
             // Click resume
             await pauseResumeBtn.click();

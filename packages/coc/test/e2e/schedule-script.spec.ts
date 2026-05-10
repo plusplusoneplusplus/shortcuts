@@ -76,8 +76,11 @@ test.describe('Schedule Script', () => {
         // Wait for the schedules tab to finish loading (empty state means loading=false)
         await expect(page.locator('[data-testid="user-schedules-dropzone"]')).toBeVisible({ timeout: 10_000 });
 
-        // Open the create form (exact match avoids "+ New Chat")
+        // Open the create form (exact match avoids "+ New Chat"). The default
+        // form is now the streamlined PromptScheduleForm; we need to switch to
+        // the advanced (CreateScheduleForm) view to access the action cards.
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
+        await page.click('[data-testid="switch-to-advanced"]');
         await expect(page.locator('[data-testid="schedule-action-cards"]')).toBeVisible({ timeout: 10_000 });
 
         // Explicitly select Script action.
@@ -248,8 +251,10 @@ test.describe('Schedule Script', () => {
         await navigateToSchedules(page, serverUrl);
         await expect(page.locator('[data-testid="user-schedules-dropzone"]')).toBeVisible({ timeout: 10_000 });
 
-        // Open create form
+        // Open create form. The default form is now PromptScheduleForm — switch
+        // to the advanced view so we can drive the existing action-cards flow.
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
+        await page.click('[data-testid="switch-to-advanced"]');
         await expect(page.locator('[data-testid="schedule-action-cards"]')).toBeVisible({ timeout: 10_000 });
 
         // Fill name and prompt (default type is prompt, no need to switch)

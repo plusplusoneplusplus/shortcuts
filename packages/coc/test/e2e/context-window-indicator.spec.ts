@@ -11,13 +11,15 @@
  * Tests mock both the queue task API (to return 'running') and the SSE
  * stream (to inject token-usage events).
  *
- * The indicator has class `hidden sm:flex` — tests run at default 1280×720
- * so the sm: breakpoint applies and the indicator is visible once data arrives.
- *
- * Relies on data-testid attributes added in this task:
- *   data-testid="context-window-indicator"
- *   data-testid="context-window-bar"
- *   data-testid="context-window-label"
+ * The OpenDesign chat-header redesign moved context-window state from the
+ * inline header into the composer toolbar (`ComposerMetaStrip`); the
+ * legacy `ContextWindowIndicator` element only renders inside the
+ * (closed-by-default) metadata popover. These tests therefore assert on
+ * the composer fuel-gauge testids:
+ *   data-testid="composer-ctx-fuel" — wrapper (visible when tokenLimit > 0)
+ *   data-testid="composer-ctx-bar"  — bar background
+ *   data-testid="composer-ctx-fill" — fill (carries `style="width: X%"`)
+ *   data-testid="composer-ctx-pct"  — percentage label
  */
 
 import * as fs from 'fs';
@@ -191,8 +193,9 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 10_000);
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            // After the token-usage SSE event, the indicator should become visible
-            await expect(page.locator('[data-testid="context-window-indicator"]')).toBeVisible({ timeout: 8_000 });
+            // After the token-usage SSE event, the composer fuel gauge should
+            // become visible (rendered only when sessionTokenLimit > 0).
+            await expect(page.locator('[data-testid="composer-ctx-fuel"]')).toBeVisible({ timeout: 8_000 });
         } finally {
             cleanup();
         }
@@ -206,8 +209,8 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 50_000);
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            await expect(page.locator('[data-testid="context-window-label"]')).toBeVisible({ timeout: 8_000 });
-            const labelText = await page.locator('[data-testid="context-window-label"]').textContent();
+            await expect(page.locator('[data-testid="composer-ctx-pct"]')).toBeVisible({ timeout: 8_000 });
+            const labelText = await page.locator('[data-testid="composer-ctx-pct"]').textContent();
             expect(labelText).toBeTruthy();
             expect(labelText).toMatch(/\d/);
         } finally {
@@ -223,7 +226,7 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 100_000);
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            await expect(page.locator('[data-testid="context-window-bar"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('[data-testid="composer-ctx-bar"]')).toBeVisible({ timeout: 8_000 });
         } finally {
             cleanup();
         }
@@ -237,10 +240,11 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 100_000); // exactly 50%
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            await expect(page.locator('[data-testid="context-window-bar"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('[data-testid="composer-ctx-bar"]')).toBeVisible({ timeout: 8_000 });
 
-            const barStyle = await page.locator('[data-testid="context-window-bar"]').getAttribute('style');
-            expect(barStyle).toMatch(/width\s*:/);
+            // The width style lives on the inner fill element, not the bar wrapper.
+            const fillStyle = await page.locator('[data-testid="composer-ctx-fill"]').getAttribute('style');
+            expect(fillStyle).toMatch(/width\s*:/);
         } finally {
             cleanup();
         }
@@ -254,8 +258,8 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 180_000); // 90%
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            await expect(page.locator('[data-testid="context-window-indicator"]')).toBeVisible({ timeout: 8_000 });
-            await expect(page.locator('[data-testid="context-window-bar"]')).toBeVisible();
+            await expect(page.locator('[data-testid="composer-ctx-fuel"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('[data-testid="composer-ctx-bar"]')).toBeVisible();
         } finally {
             cleanup();
         }
