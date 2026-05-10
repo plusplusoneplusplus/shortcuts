@@ -44,7 +44,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: Ra
         setStarting(true);
         setError(null);
         try {
-            const resp = await fetch(`${getApiBase()}/api/processes/${encodeURIComponent(processId)}/ralph-start`, {
+            const resp = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ goalSpec: trimmed, workspaceId }),
