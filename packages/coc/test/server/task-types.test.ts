@@ -20,6 +20,7 @@ import {
     hasNoteCreateContext,
     hasRalphContext,
     isRalphMode,
+    resolveInstructionMode,
     TaskDefs,
     getTaskDef,
     VISIBLE_TASK_TYPE_LABELS,
@@ -607,5 +608,34 @@ describe('isRalphMode', () => {
             mode: 'ralph',
         };
         expect(isRalphMode(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// resolveInstructionMode
+// ============================================================================
+
+describe('resolveInstructionMode', () => {
+    it('maps ask -> ask', () => {
+        expect(resolveInstructionMode('ask')).toBe('ask');
+    });
+
+    it('maps plan -> plan', () => {
+        expect(resolveInstructionMode('plan')).toBe('plan');
+    });
+
+    it('maps autopilot -> autopilot', () => {
+        expect(resolveInstructionMode('autopilot')).toBe('autopilot');
+    });
+
+    it('maps ralph -> autopilot (aliases autopilot instructions)', () => {
+        expect(resolveInstructionMode('ralph')).toBe('autopilot');
+    });
+
+    it('returns a value for every ChatMode member', () => {
+        const modes = ['ask', 'plan', 'autopilot', 'ralph'] as const;
+        for (const mode of modes) {
+            expect(['ask', 'plan', 'autopilot']).toContain(resolveInstructionMode(mode));
+        }
     });
 });

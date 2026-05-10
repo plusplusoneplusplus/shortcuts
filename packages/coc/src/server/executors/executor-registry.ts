@@ -1,7 +1,8 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload, isRalphMode } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
+import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -183,7 +184,7 @@ export class ExecutorRegistry {
         const mode = payload.mode;
         if (mode === 'plan') return this.planExecutor;
         if (mode === 'autopilot') return this.autopilotExecutor;
-        if (isRalphMode(task.payload)) return this.ralphExecutor;
+        if (mode === 'ralph') return this.ralphExecutor;
         return this.chatExecutor;
     }
 

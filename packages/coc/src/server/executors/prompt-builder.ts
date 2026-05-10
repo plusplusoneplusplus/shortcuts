@@ -42,6 +42,7 @@ import {
     isChatPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
+    resolveInstructionMode,
 } from '../tasks/task-types';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -142,7 +143,7 @@ export async function withRepoInstructions(
     if (!workingDirectory || !mode) return systemMessage;
     let instructions: string | undefined;
     try {
-        instructions = await loadInstructions(workingDirectory, mode === 'ralph' ? 'autopilot' : mode);
+        instructions = await loadInstructions(workingDirectory, resolveInstructionMode(mode));
     } catch {
         return systemMessage;
     }

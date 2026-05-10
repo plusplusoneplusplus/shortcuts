@@ -25,6 +25,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import type { ChatMode } from '../tasks/task-types';
+import { resolveInstructionMode } from '../tasks/task-types';
 
 // ============================================================================
 // Internal step types
@@ -78,7 +79,7 @@ class SystemMessageBuilder {
             kind: 'async',
             resolve: async () => {
                 try {
-                    return (await loadInstructions(workingDir, mode === 'ralph' ? 'autopilot' : mode)) ?? undefined;
+                    return (await loadInstructions(workingDir, resolveInstructionMode(mode))) ?? undefined;
                 } catch {
                     return undefined;
                 }

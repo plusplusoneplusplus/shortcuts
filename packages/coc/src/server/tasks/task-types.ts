@@ -107,6 +107,22 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script';
 /** Controls permissions and concurrency for chat tasks. */
 export type ChatMode = 'ask' | 'plan' | 'autopilot' | 'ralph';
 
+/** Instruction folder names that loadInstructions accepts (no ralph — it aliases autopilot). */
+export type InstructionMode = 'ask' | 'plan' | 'autopilot';
+
+/** Maps each ChatMode to the instruction folder used by loadInstructions. */
+const INSTRUCTION_MODE_MAP: Record<ChatMode, InstructionMode> = {
+    ask: 'ask',
+    plan: 'plan',
+    autopilot: 'autopilot',
+    ralph: 'autopilot',
+};
+
+/** Returns the instruction folder name for a given ChatMode. */
+export function resolveInstructionMode(mode: ChatMode): InstructionMode {
+    return INSTRUCTION_MODE_MAP[mode];
+}
+
 // ============================================================================
 // Chat Context
 // ============================================================================
