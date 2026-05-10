@@ -1577,6 +1577,15 @@ export function ChatListPane({
                 )}
 
                 {/*
+                 * Activity toolbar wrapper — the action bar, scope segmented
+                 * control, and search input form a tight 3-row block. The
+                 * parent container's `gap-2 md:gap-3` is too loose between
+                 * these rows, so they get their own sub-container with a
+                 * compact `gap-1.5` spacing. Each row's own `mb-*` margins
+                 * have been removed to avoid double-spacing.
+                 */}
+                <div className="flex flex-col gap-1.5">
+                {/*
                  * Action bar — primary "New chat", refresh utility, and a split
                  * pause pill that exposes BOTH "Pause All" and "Pause AP" toggles
                  * in the activity-compact reference style. Functionality is
@@ -1584,7 +1593,7 @@ export function ChatListPane({
                  * legacy "⏸ All / ⏸ AP" buttons used (open duration menu when
                  * running, resume immediately when paused).
                  */}
-                <div className={cn('flex items-center gap-1.5 mb-1.5 md:mb-3')}>
+                <div className={cn('flex items-center gap-1.5')}>
                     <button
                         type="button"
                         onClick={onNewChat ?? onOpenDialog}
@@ -1829,6 +1838,7 @@ export function ChatListPane({
                             >✕</button>
                         </div>
                     )}
+                </div>
                 </div>
 
                 {tabFilteredRunning.length > 0 && (

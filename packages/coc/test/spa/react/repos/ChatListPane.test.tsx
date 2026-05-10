@@ -425,6 +425,34 @@ describe('ChatListPane', () => {
             expect(pauseGroup.contains(apBtn)).toBe(true);
         });
 
+        it('action bar, scope tabs, and search share a tight gap-1.5 toolbar wrapper', () => {
+            // The three header rows (action bar / scope tabs / search) get
+            // their own sub-container with `gap-1.5` (6px) so they sit closer
+            // together than the parent's `gap-2 md:gap-3` would allow. This
+            // also means each row no longer needs an `mb-*` margin of its own.
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: vi.fn(),
+            });
+            const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
+            const scopeTabs = screen.getByTestId('activity-scope-tabs');
+            const searchInput = screen.getByTestId('queue-search-input');
+
+            const actionBar = newChatBtn.parentElement!;
+            const wrapper = actionBar.parentElement!;
+            const wrapperClass = wrapper.className ?? '';
+            expect(wrapperClass).toContain('flex-col');
+            expect(wrapperClass).toContain('gap-1.5');
+
+            expect(wrapper.contains(scopeTabs)).toBe(true);
+            expect(wrapper.contains(searchInput)).toBe(true);
+
+            // The action bar itself no longer carries a redundant bottom margin
+            // — the wrapper's gap is the single source of vertical rhythm.
+            expect(actionBar.className).not.toContain('mb-1.5');
+            expect(actionBar.className).not.toContain('md:mb-3');
+        });
+
         it('AP pause button shows only the AP scope tag when not paused', () => {
             renderPane({
                 history: [makeHistoryTask()],
