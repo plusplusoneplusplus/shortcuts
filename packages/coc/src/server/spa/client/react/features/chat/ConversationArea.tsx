@@ -207,10 +207,17 @@ export function ConversationArea({
                                     }
                                     if (hasPriorTurns && prevModel !== turn.model) {
                                         modelDivider = (
-                                            <div className="flex items-center gap-2 py-1 text-xs text-[#848484]" data-testid="model-change-divider">
-                                                <div className="flex-1 border-t border-dashed border-[#d0d0d0] dark:border-[#3c3c3c]" />
-                                                <span>🤖 switched to <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{turn.model}</span></span>
-                                                <div className="flex-1 border-t border-dashed border-[#d0d0d0] dark:border-[#3c3c3c]" />
+                                            <div
+                                                className="model-divider flex items-center gap-3 mt-3.5 mb-2 ml-9"
+                                                data-testid="model-change-divider"
+                                            >
+                                                <span className="model-divider-label font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#6b7280] dark:text-[#9aa0a6] whitespace-nowrap">
+                                                    switched to{' '}
+                                                    <strong className="font-semibold text-[#1f2328] dark:text-[#cccccc]">
+                                                        {turn.model}
+                                                    </strong>
+                                                </span>
+                                                <div className="model-divider-rule flex-1 h-px bg-[#e5e7eb] dark:bg-[#3c3c3c]" />
                                             </div>
                                         );
                                     }

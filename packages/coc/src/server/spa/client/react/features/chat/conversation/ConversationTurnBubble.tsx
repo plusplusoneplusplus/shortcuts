@@ -969,9 +969,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     >
                         {isUser ? 'You' : isScript ? 'Script Output' : 'Assistant'}
                     </span>
-                    {turn.isError && (
-                        <span className="text-[#f14c4c] error-indicator text-[10px] font-medium">⚠ Error</span>
-                    )}
                     {turn.timestamp && (() => {
                         const d = new Date(turn.timestamp);
                         return (
@@ -985,16 +982,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     )}
                     {!isUser && !turn.streaming && (turn.tokenUsage || turn.costTimeMs != null) && (
                         <AssistantStatsBadge tokenUsage={turn.tokenUsage} costTimeMs={turn.costTimeMs} />
-                    )}
-                    {!isUser && turn.isError && onRetry && (
-                        <button
-                            className="bubble-retry-btn text-[#f14c4c] hover:text-[#d32f2f] transition-colors text-[10px] font-medium"
-                            title="Retry this message"
-                            onClick={onRetry}
-                            data-testid="retry-turn-btn"
-                        >
-                            ↺ Retry
-                        </button>
                     )}
                     {jsonDetected && !showRaw && (
                         <button
@@ -1062,6 +1049,61 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                 )}
 
                 <div className="space-y-2 chat-message-content">
+                    {!isUser && turn.isError && (
+                        <aside
+                            className={cn(
+                                'error-indicator error-strip flex items-start gap-2.5',
+                                'rounded-md border px-3 py-2.5',
+                                'border-[#f5c2c2] bg-[#ffebe9]',
+                                'dark:border-[#7a3030] dark:bg-[#3a1a1a]',
+                            )}
+                            role="alert"
+                            data-testid="error-strip"
+                        >
+                            <span
+                                className="err-icon shrink-0 text-[#cf222e] dark:text-[#f87171] text-[14px] leading-[1.4] select-none"
+                                aria-hidden="true"
+                            >
+                                ⚠
+                            </span>
+                            <div className="err-body flex-1 min-w-0">
+                                <div
+                                    className="err-title text-[12.5px] font-semibold text-[#cf222e] dark:text-[#f87171] mb-0.5"
+                                    data-testid="error-strip-title"
+                                >
+                                    Stream interrupted
+                                </div>
+                                {turn.content && (
+                                    <div
+                                        className="err-detail text-[12.5px] leading-snug text-[#2c2f33] dark:text-[#cccccc] [&_code]:font-mono [&_code]:text-[12px] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded [&_code]:bg-[#fff] dark:[&_code]:bg-[#1e1e1e] [&_code]:border [&_code]:border-[#f5c2c2] dark:[&_code]:border-[#7a3030]"
+                                        data-testid="error-strip-detail"
+                                    >
+                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled })} />
+                                    </div>
+                                )}
+                                {onRetry && (
+                                    <button
+                                        type="button"
+                                        className={cn(
+                                            'bubble-retry-btn mt-2 inline-flex items-center gap-1.5',
+                                            'rounded border px-2.5 py-1 text-[12px] font-medium leading-none',
+                                            'border-[#f5c2c2] bg-white text-[#cf222e]',
+                                            'hover:bg-[#cf222e] hover:text-white hover:border-[#cf222e]',
+                                            'dark:border-[#7a3030] dark:bg-[#1e1e1e] dark:text-[#f87171]',
+                                            'dark:hover:bg-[#cf222e] dark:hover:text-white',
+                                            'transition-colors disabled:opacity-70 disabled:cursor-wait',
+                                        )}
+                                        title="Retry this turn"
+                                        onClick={onRetry}
+                                        data-testid="retry-turn-btn"
+                                    >
+                                        <span aria-hidden="true">↺</span>
+                                        <span>Retry this turn</span>
+                                    </button>
+                                )}
+                            </div>
+                        </aside>
+                    )}
                     {isUser && turn.skillNames && turn.skillNames.length > 0 && (
                         <div className="flex flex-wrap gap-1 skill-badges">
                             {turn.skillNames.map(skill => (
@@ -1119,17 +1161,17 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             📎 Content saved as file reference
                         </div>
                     )}
-                    {!isUser && showRaw && (
+                    {!isUser && !turn.isError && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
                             <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
                                 <code>{buildRawContent(turn)}</code>
                             </pre>
                         </div>
                     )}
-                    {!isUser && !showRaw && jsonDetected && viewMode === 'json' && (
+                    {!isUser && !turn.isError && !showRaw && jsonDetected && viewMode === 'json' && (
                         <JsonResponseView content={turn.content!} />
                     )}
-                    {!isUser && !showRaw && !(jsonDetected && viewMode === 'json') && assistantRender && (() => {
+                    {!isUser && !turn.isError && !showRaw && !(jsonDetected && viewMode === 'json') && assistantRender && (() => {
                         const nodes: React.ReactNode[] = [];
                         let accHtml = '';
                         let accKey = '';
