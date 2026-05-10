@@ -29,6 +29,7 @@ vi.mock('fs', async (importOriginal) => {
         promises: {
             ...actual.promises,
             readdir: vi.fn().mockResolvedValue([]),
+            mkdir: vi.fn().mockResolvedValue(undefined),
         },
     };
 });
