@@ -11,6 +11,9 @@ export { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
 export { JsonResponseView } from '../../../ui/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
+export { ScriptTerminalBlock, highlightTerminalLine } from './ScriptTerminalBlock';
+export { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
+export type { ParsedScriptOutput, ScriptStatus } from './scriptOutputParser';
 export { getConversationTurns } from './chatConversationUtils';
 
 // Utilities

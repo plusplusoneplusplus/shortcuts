@@ -351,6 +351,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                         turn={turn}
                         onRetry={turn.isError ? handleRetry : undefined}
                         wsId={wsId}
+                        processType={proc?.type}
                     />
                 ))}
                 <div ref={scrollRef} />

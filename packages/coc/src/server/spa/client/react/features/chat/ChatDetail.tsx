@@ -913,6 +913,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onUndoDelete={handleUndoDelete}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
+                        processType={fullTask?.type ?? task?.type}
                         onCancelPendingMessage={handleCancelPendingMessage}
                     />
                     {variant !== 'floating' && !isMobile && (

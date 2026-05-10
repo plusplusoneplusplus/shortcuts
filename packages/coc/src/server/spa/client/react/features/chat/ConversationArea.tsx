@@ -67,6 +67,12 @@ export interface ConversationAreaProps {
     }>;
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
+    /**
+     * Process type (e.g. `'run-script'`, `'chat'`) — propagated to
+     * ConversationTurnBubble so it can render script output as a styled
+     * terminal block instead of plain markdown.
+     */
+    processType?: string;
     /** Called when the user cancels a queued/pending follow-up message. */
     onCancelPendingMessage?: (messageId: string) => void;
 }
@@ -104,6 +110,7 @@ export function ConversationArea({
     onUndoDelete,
     noteEdits,
     processId,
+    processType,
     onCancelPendingMessage,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
@@ -158,6 +165,7 @@ export function ConversationArea({
                                                 onDeleteTurn={onDeleteTurn}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
+                                                processType={processType}
                                             />
                                         ))}
                                     </div>
@@ -257,6 +265,7 @@ export function ConversationArea({
                                                     onArchiveTurn={onArchiveTurn}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
+                                                    processType={processType}
                                                 />
                                             </div>
                                         </div>

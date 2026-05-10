@@ -29,6 +29,8 @@ import { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
+import { ScriptTerminalBlock } from './ScriptTerminalBlock';
+import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 
 function escapeAttr(value: string): string {
     return value
@@ -778,6 +780,14 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     }, [isUser, turn.streaming, turn.content]);
     const [viewMode, setViewMode] = useState<'json' | 'rendered'>('json');
 
+    // Parse run-script bodies once per turn so the terminal block + exit-code
+    // suffix in the header stay consistent.
+    const parsedScript = useMemo(
+        () => (isScript ? parseScriptOutput(turn.content || '') : null),
+        [isScript, turn.content],
+    );
+    const scriptExitLabel = parsedScript ? describeScriptExit(parsedScript) : undefined;
+
     // Pre-compute section markdown slices for section-level copy buttons on assistant turns.
     const sectionMarkdown = useMemo(() => {
         if (isUser || !turn.content) return undefined;
@@ -977,6 +987,25 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             </span>
                         );
                     })()}
+                    {isScript && scriptExitLabel && (
+                        <>
+                            <span className="text-[#9aa0a6]" aria-hidden="true">·</span>
+                            <span
+                                className={cn(
+                                    'script-exit whitespace-nowrap font-mono tabular-nums',
+                                    parsedScript?.status === 'success'
+                                        ? 'text-[#15703a] dark:text-[#4ade80]'
+                                        : parsedScript?.status === 'failed' || parsedScript?.status === 'timeout'
+                                            ? 'text-[#cf222e] dark:text-[#f87171]'
+                                            : 'text-[#848484]'
+                                )}
+                                data-testid="script-exit-label"
+                                title={parsedScript?.durationMs != null ? `${parsedScript.durationMs}ms` : undefined}
+                            >
+                                {scriptExitLabel}
+                            </span>
+                        </>
+                    )}
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator inline-flex items-center gap-1 uppercase tracking-wide font-mono text-[10px]">Live</span>
                     )}
@@ -1168,10 +1197,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             </pre>
                         </div>
                     )}
+                    {!isUser && !turn.isError && !showRaw && isScript && parsedScript?.recognised && (
+                        <ScriptTerminalBlock parsed={parsedScript} />
+                    )}
                     {!isUser && !turn.isError && !showRaw && jsonDetected && viewMode === 'json' && (
                         <JsonResponseView content={turn.content!} />
                     )}
-                    {!isUser && !turn.isError && !showRaw && !(jsonDetected && viewMode === 'json') && assistantRender && (() => {
+                    {!isUser && !turn.isError && !showRaw && !(jsonDetected && viewMode === 'json') && !(isScript && parsedScript?.recognised) && assistantRender && (() => {
                         const nodes: React.ReactNode[] = [];
                         let accHtml = '';
                         let accKey = '';
