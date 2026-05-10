@@ -10,6 +10,7 @@ import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { getRalphContext } from '../tasks/task-types';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -65,7 +66,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
 
             // Validate: must be grilling phase
             const procPayload = (proc as any).payload as Record<string, any> | undefined;
-            const ralphCtx = procPayload?.context?.ralph ?? (proc.metadata as any)?.ralph;
+            const ralphCtx = getRalphContext(proc);
             if (!ralphCtx || ralphCtx.phase !== 'grilling') {
                 return sendError(res, 400, 'Process is not in grilling phase');
             }

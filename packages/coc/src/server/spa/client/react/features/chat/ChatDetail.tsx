@@ -49,6 +49,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
+import { getRalphContext } from '../../../../../tasks/task-types';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -927,7 +928,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     </div>
                     {/* Ralph grilling complete — show Start Ralph panel */}
                     {(() => {
-                        const ralphCtx = task?.payload?.context?.ralph ?? (task?.metadata as any)?.ralph;
+                        const ralphCtx = getRalphContext(task);
                         if (!ralphCtx) return null;
                         if (ralphCtx.phase !== 'grilling') return null;
                         if (task?.status !== 'completed') return null;

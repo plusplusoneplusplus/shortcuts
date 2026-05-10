@@ -9,6 +9,15 @@
  * All former AI task types (follow-prompt, ai-clarification, code-review,
  * resolve-comments, task-generation, replicate-template, custom) are now
  * expressed as `type: 'chat'` with the appropriate mode and context.
+ *
+ * ----------------------------------------------------------------------------
+ * Ralph orchestration context lives in three places by design:
+ *   - payload.context.ralph  : authoritative on queue tasks (grilling + execution)
+ *   - payload.mode==='ralph' : execution-phase routing flag (mode='ask' for grilling)
+ *   - metadata.ralph         : denormalized projection for AIProcess history items
+ * ALWAYS read context via getRalphContext() — never combine these inline.
+ * The payload→metadata projection is centralized in serializeRalphMetadata().
+ * ----------------------------------------------------------------------------
  */
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
@@ -188,20 +197,23 @@ export interface ChatContext {
     scheduleId?: string;
     scheduleParams?: Record<string, string>;
     /** Ralph-mode orchestration metadata. */
-    ralph?: {
-        /** Confirmed goal spec (plain text or structured Markdown). */
-        originalGoal: string;
-        /** AI-provided learnings accumulated across prior iterations. */
-        accumulatedProgress?: string;
-        /** Maximum iterations before the loop stops (default: 10). */
-        maxIterations?: number;
-        /** 1-based iteration counter, incremented on each re-enqueue. */
-        currentIteration?: number;
-        /** Links the grill-me task and all iteration tasks in the UI. */
-        sessionId?: string;
-        /** Current stage of the Ralph session. */
-        phase?: 'grilling' | 'executing' | 'complete';
-    };
+    ralph?: RalphContext;
+}
+
+/** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
+export interface RalphContext {
+    /** Confirmed goal spec (plain text or structured Markdown). */
+    originalGoal: string;
+    /** AI-provided learnings accumulated across prior iterations. */
+    accumulatedProgress?: string;
+    /** Maximum iterations before the loop stops (default: 10). */
+    maxIterations?: number;
+    /** 1-based iteration counter, incremented on each re-enqueue. */
+    currentIteration?: number;
+    /** Links the grill-me task and all iteration tasks in the UI. */
+    sessionId?: string;
+    /** Current stage of the Ralph session. */
+    phase?: 'grilling' | 'executing' | 'complete';
 }
 
 // ============================================================================
@@ -361,4 +373,55 @@ export function hasRalphContext(payload: Record<string, unknown>): boolean {
 /** Check whether a chat payload is in Ralph mode. */
 export function isRalphMode(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && payload.mode === 'ralph';
+}
+
+// ============================================================================
+// Ralph Context Accessors (single source of truth)
+// ============================================================================
+
+/**
+ * Resolves Ralph orchestration context from any task-or-process shape, or null.
+ *
+ * Precedence:
+ *   1. `payload.context.ralph` (authoritative for live queue tasks)
+ *   2. `metadata.ralph`        (denormalized projection on AIProcess history)
+ *   3. `null`
+ *
+ * `payload.mode === 'ralph'` is intentionally NOT consulted — it is a routing
+ * flag, not a context source.
+ */
+export function getRalphContext(
+    source: { payload?: unknown; metadata?: unknown } | null | undefined,
+): RalphContext | null {
+    if (!source) return null;
+    const payload = source.payload as { context?: { ralph?: unknown } } | undefined;
+    const fromPayload = payload?.context?.ralph;
+    if (fromPayload && typeof fromPayload === 'object') {
+        return fromPayload as RalphContext;
+    }
+    const metadata = source.metadata as { ralph?: unknown } | undefined;
+    const fromMetadata = metadata?.ralph;
+    if (fromMetadata && typeof fromMetadata === 'object') {
+        return fromMetadata as RalphContext;
+    }
+    return null;
+}
+
+/** True iff the source carries any Ralph orchestration context (any phase). */
+export function isRalphTask(
+    source: { payload?: unknown; metadata?: unknown } | null | undefined,
+): boolean {
+    return getRalphContext(source) !== null;
+}
+
+/**
+ * Computes the value to assign to `AIProcess.metadata.ralph` from a queued task
+ * payload. Returns `undefined` for non-chat payloads or chat payloads without
+ * ralph context. This is the single payload→metadata projection point.
+ */
+export function serializeRalphMetadata(payload: unknown): RalphContext | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
+    const ralph = (payload as ChatPayload).context?.ralph;
+    return ralph ?? undefined;
 }

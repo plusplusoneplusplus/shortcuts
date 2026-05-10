@@ -50,6 +50,7 @@ import {
     isRunScriptPayload,
     hasNoteChatContext,
     isRalphMode,
+    serializeRalphMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
@@ -262,9 +263,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 noteTitle: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
                     ? task.payload.context?.noteChat?.noteTitle
                     : undefined,
-                ralph: isChatPayload(task.payload)
-                    ? task.payload.context?.ralph
-                    : undefined,
+                ralph: serializeRalphMetadata(task.payload),
             },
         };
 
