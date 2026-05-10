@@ -237,6 +237,38 @@ describe('FollowUpInputArea — Send button tooltip', () => {
     });
 });
 
+describe('FollowUpInputArea — composer metadata strip', () => {
+    it('renders the cwd chip when workingDirectory is provided (stacked layout)', () => {
+        render(<FollowUpInputArea {...makeProps({ workingDirectory: '/Users/yh/proj/shortcuts' })} />);
+        const chip = screen.getByTestId('composer-cwd-chip');
+        expect(chip).toBeTruthy();
+        expect(chip.textContent).toContain('shortcuts');
+    });
+
+    it('renders the ctx fuel gauge when token limit is provided (stacked layout)', () => {
+        render(<FollowUpInputArea {...makeProps({ sessionTokenLimit: 200_000, sessionCurrentTokens: 84_300 })} />);
+        expect(screen.getByTestId('composer-ctx-fuel')).toBeTruthy();
+        expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('42%');
+    });
+
+    it('renders nothing for the strip when neither cwd nor ctx is provided (stacked layout)', () => {
+        render(<FollowUpInputArea {...makeProps()} />);
+        expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
+    });
+
+    it('does not render the strip in the compact (single-row) layout', () => {
+        render(<FollowUpInputArea {...makeProps({
+            compactModeSelector: true,
+            workingDirectory: '/Users/yh/proj',
+            sessionTokenLimit: 200_000,
+            sessionCurrentTokens: 100_000,
+        })} />);
+        // Compact layout (legacy) is single-row; the relocated metadata strip is intentionally
+        // omitted because there is no second-row toolbar to host it.
+        expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
+    });
+});
+
 describe('FollowUpInputArea — dismiss suggestions', () => {
     it('shows dismiss button when suggestions are present', () => {
         render(<FollowUpInputArea {...makeProps({ suggestions: ['Option A', 'Option B', 'Option C'] })} />);

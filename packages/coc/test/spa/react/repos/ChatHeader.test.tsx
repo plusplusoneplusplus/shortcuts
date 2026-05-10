@@ -28,12 +28,26 @@ vi.mock('../../../../src/server/spa/client/react/ui', async () => {
     const actual = await vi.importActual('../../../../src/server/spa/client/react/ui');
     return {
         ...actual,
-        Badge: ({ children, status }: any) => <span data-testid="badge" data-status={status}>{children}</span>,
         Button: ({ children, onClick, loading }: any) => (
-            <button onClick={onClick} disabled={loading} data-testid="resume-cli-btn">{children}</button>
+            <button onClick={onClick} disabled={loading}>{children}</button>
         ),
     };
 });
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatStatusPill', () => ({
+    ChatStatusPill: ({ status, type, durationMs, showDuration, iconOnly, 'data-testid': testId }: any) => (
+        <span
+            data-testid={testId ?? 'chat-status-pill'}
+            data-status={status}
+            data-type={type ?? ''}
+            data-icon-only={iconOnly ? 'true' : 'false'}
+        >
+            {iconOnly
+                ? (status === 'completed' ? '✅' : '⏳')
+                : `${status === 'completed' ? '✅' : '⏳'} ${status}${showDuration && durationMs != null ? ` · ${durationMs}ms` : ''}`}
+        </span>
+    ),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/ui/ReferencesDropdown', () => ({
     deduplicateReferenceFiles: (_planPath: any, files: any) => files ?? [],
@@ -74,8 +88,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatConversationAsText: vi.fn().mockReturnValue('text'),
     formatConversationAsHtml: vi.fn().mockReturnValue('<html>'),
     formatDuration: (ms: number) => `${ms}ms`,
-    statusIcon: (s: string) => s === 'completed' ? '✅' : '⏳',
-    statusLabel: (s: string) => s,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
@@ -159,14 +171,22 @@ describe('ChatHeader', () => {
         it('renders all elements inline', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.getByText('Test Chat')).toBeTruthy();
-            expect(screen.getByTestId('badge')).toBeTruthy();
+            // Status pill — replaces the legacy Badge; ships with inline duration in wide tier
+            const pill = screen.getByTestId('badge');
+            expect(pill).toBeTruthy();
+            expect(pill.getAttribute('data-icon-only')).toBe('false');
+            expect(pill.textContent).toContain('5000ms');
             expect(screen.getByTestId('references-dropdown')).toBeTruthy();
-            expect(screen.getByText('5000ms')).toBeTruthy();
-            expect(screen.getByTestId('context-window')).toBeTruthy();
+            // Context window indicator no longer rendered in the header (moved to composer)
+            expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
             expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
-            // Resume CLI and Fork are now inside the metadata popover (not standalone inline buttons)
+            // Resume in CLI is now an inline primary button at wide tier
+            const resumeBtn = screen.getByTestId('resume-cli-btn');
+            expect(resumeBtn).toBeTruthy();
+            expect(resumeBtn.textContent).toContain('Resume in CLI');
+            // Metadata popover still surfaced for richer detail inspection
             const metadataPopover = screen.getByTestId('metadata-popover');
             expect(metadataPopover).toBeTruthy();
             expect(metadataPopover.getAttribute('data-resume-session-id')).toBe('session-1');
@@ -200,20 +220,38 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('overflow-menu')).toBeNull();
         });
 
-        it('shows full status label in badge', () => {
+        it('shows full status label in pill', () => {
             render(<ChatHeader {...defaultProps()} />);
             const badge = screen.getByTestId('badge');
             expect(badge.textContent).toContain('completed');
+            expect(badge.textContent).toContain('5000ms');
+        });
+
+        it('hides resume CLI when no session', () => {
+            render(<ChatHeader {...defaultProps({ resumeSessionId: null })} />);
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+        });
+
+        it('hides resume CLI when isPending', () => {
+            render(<ChatHeader {...defaultProps({ isPending: true })} />);
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+        });
+
+        it('hides resume CLI on mobile', () => {
+            mockBreakpoint.isMobile = true;
+            mockBreakpoint.isDesktop = false;
+            mockBreakpoint.breakpoint = 'mobile';
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
         });
     });
 
     describe('medium tier (500-699px)', () => {
         beforeEach(() => setTier('medium'));
 
-        it('hides inline references, duration, resume CLI, context window', () => {
+        it('hides inline references, resume CLI, context window', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
-            expect(screen.queryByText('5000ms')).toBeNull();
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             expect(screen.queryByTestId('context-window')).toBeNull();
         });
@@ -230,11 +268,12 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('overflow-menu')).toBeTruthy();
         });
 
-        it('shows icon-only status badge (no label)', () => {
+        it('shows icon-only status pill (no label)', () => {
             render(<ChatHeader {...defaultProps()} />);
-            const badge = screen.getByTestId('badge');
-            expect(badge.textContent).not.toContain('completed');
-            expect(badge.textContent).toContain('✅');
+            const pill = screen.getByTestId('badge');
+            expect(pill.getAttribute('data-icon-only')).toBe('true');
+            expect(pill.textContent).not.toContain('completed');
+            expect(pill.textContent).toContain('✅');
         });
 
         it('still shows copy button directly', () => {
@@ -255,7 +294,6 @@ describe('ChatHeader', () => {
         it('hides inline secondary items', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
-            expect(screen.queryByText('5000ms')).toBeNull();
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
@@ -320,18 +358,8 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('badge')).toBeNull();
         });
 
-        it('hides resume CLI when isPending', () => {
-            render(<ChatHeader {...defaultProps({ isPending: true })} />);
-            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-        });
-
-        it('hides resume CLI when no session', () => {
-            render(<ChatHeader {...defaultProps({ resumeSessionId: null })} />);
-            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-        });
-
-        it('hides context window when no token limit', () => {
-            render(<ChatHeader {...defaultProps({ sessionTokenLimit: undefined })} />);
+        it('does not render context window in header even when token limit set', () => {
+            render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('context-window')).toBeNull();
         });
 
@@ -355,9 +383,10 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
         });
 
-        it('hides duration when task has no duration', () => {
+        it('omits duration suffix in pill when task has no duration', () => {
             render(<ChatHeader {...defaultProps({ task: { status: 'completed' } })} />);
-            expect(screen.queryByText('5000ms')).toBeNull();
+            const pill = screen.getByTestId('badge');
+            expect(pill.textContent).not.toContain('ms');
         });
     });
 

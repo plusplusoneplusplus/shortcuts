@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge } from '../../ui';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { ConversationMetadataPopover } from './conversation/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
-import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../../utils/format';
+import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
+import { ChatStatusPill } from './ChatStatusPill';
 import { chatMarkdownToHtml } from './conversation/ConversationTurnBubble';
 import { snapshotConversation, openPrintPreview } from '../../utils/snapshot-copy-utils';
 import { cn } from '../../ui/cn';
@@ -384,29 +384,38 @@ export function ChatHeader({
                     {title ?? 'Chat'}
                 </span>
                 {task && (
-                    <Badge status={task.status}>
-                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status, task.type)}` : ''}
-                    </Badge>
+                    <ChatStatusPill
+                        data-testid="badge"
+                        status={task.status}
+                        type={task.type}
+                        durationMs={task.duration ?? undefined}
+                        showDuration={isWide}
+                        iconOnly={!isWide}
+                    />
                 )}
-                {/* References, duration, Resume In CLI, context window — only in wide tier */}
+                {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (
-                    <>
-                        <ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />
-                        {task?.duration != null && (
-                            <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
-                        )}
-                        <ContextWindowIndicator
-                            tokenLimit={sessionTokenLimit}
-                            currentTokens={sessionCurrentTokens}
-                            modelName={sessionModel}
-                            className="flex ml-2 max-w-[180px]"
-                        />
-                    </>
+                    <ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />
                 )}
             </div>
 
             {/* Right side */}
             <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Resume in CLI — primary button when the session is resumable */}
+                {isWide && !isPending && resumeSessionId && !isMobile && (
+                    <button
+                        title="Resume in CLI (⌘R)"
+                        data-testid="resume-cli-btn"
+                        onClick={onLaunchInteractiveResume}
+                        disabled={resumeLaunching}
+                        className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md bg-[#1e1e1e] text-white border border-[#1e1e1e] dark:bg-[#3794ff] dark:border-[#3794ff] dark:text-white text-[12px] font-medium hover:bg-[#2d2d2d] dark:hover:bg-[#60aeff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M5 3.2v9.6a.5.5 0 0 0 .77.42l7.5-4.8a.5.5 0 0 0 0-.84l-7.5-4.8A.5.5 0 0 0 5 3.2z" />
+                        </svg>
+                        <span>{resumeLaunching ? 'Launching…' : 'Resume in CLI'}</span>
+                    </button>
+                )}
                 {/* Open Scratchpad — inline in wide tier, overflow in narrower tiers */}
                 {isWide && showScratchpadButton && onOpenScratchpad && (
                     <button

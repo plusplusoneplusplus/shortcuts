@@ -1,0 +1,117 @@
+/* @vitest-environment jsdom */
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import React from 'react';
+
+import { ComposerMetaStrip } from '../../../../src/server/spa/client/react/features/chat/ComposerMetaStrip';
+
+describe('ComposerMetaStrip', () => {
+    it('renders nothing when both cwd and context window are absent', () => {
+        const { container } = render(<ComposerMetaStrip />);
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('renders the cwd chip when working directory is provided', () => {
+        render(<ComposerMetaStrip workingDirectory="/Users/yh/proj/shortcuts" />);
+        const chip = screen.getByTestId('composer-cwd-chip');
+        expect(chip).toBeTruthy();
+        // Path shown in chip content (full path or shortened version)
+        expect(chip.textContent).toContain('shortcuts');
+        // Title carries the full working directory for hover detail
+        expect(chip.getAttribute('title')).toBe('Working directory: /Users/yh/proj/shortcuts');
+    });
+
+    it('shortens long paths from the head', () => {
+        const long = '/Users/yihengtao/Documents/Projects/shortcuts/a/very/deep/path/that/keeps/going/and/going';
+        render(<ComposerMetaStrip workingDirectory={long} />);
+        const chip = screen.getByTestId('composer-cwd-chip');
+        // Full path stored in title for inspection
+        expect(chip.getAttribute('title')).toContain(long);
+        // Visual chip text has an ellipsis prefix indicating truncation
+        const code = chip.querySelector('code');
+        expect(code?.textContent?.startsWith('…')).toBe(true);
+    });
+
+    it('renders the ctx fuel gauge when token limit is provided', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={84_300} />);
+        expect(screen.getByTestId('composer-ctx-fuel')).toBeTruthy();
+        const pct = screen.getByTestId('composer-ctx-pct');
+        expect(pct.textContent).toBe('42%');
+        const fill = screen.getByTestId('composer-ctx-fill');
+        // 42% rounded fill width
+        expect(fill.getAttribute('style')).toContain('width: 42');
+    });
+
+    it('uses green fill at low usage (<60%)', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={50_000} />);
+        const fill = screen.getByTestId('composer-ctx-fill');
+        expect(fill.className).toContain('bg-[#16825d]');
+    });
+
+    it('uses amber fill in the warn range (60-80%)', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={140_000} />);
+        const fill = screen.getByTestId('composer-ctx-fill');
+        expect(fill.className).toContain('bg-[#e8912d]');
+    });
+
+    it('uses red fill in the error range (>80%)', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={180_000} />);
+        const fill = screen.getByTestId('composer-ctx-fill');
+        expect(fill.className).toContain('bg-[#f14c4c]');
+    });
+
+    it('clamps fill width to 100% when usage exceeds limit', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={100_000} sessionCurrentTokens={250_000} />);
+        const fill = screen.getByTestId('composer-ctx-fill');
+        const styleAttr = fill.getAttribute('style') ?? '';
+        const match = styleAttr.match(/width:\s*(\d+)/);
+        const width = match ? parseInt(match[1], 10) : NaN;
+        expect(width).toBeLessThanOrEqual(100);
+    });
+
+    it('renders a non-zero fill width even when usage is 0', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={0} />);
+        const fill = screen.getByTestId('composer-ctx-fill');
+        const styleAttr = fill.getAttribute('style') ?? '';
+        const match = styleAttr.match(/width:\s*(\d+)/);
+        const width = match ? parseInt(match[1], 10) : 0;
+        // Floor of 2% so the bar is visible at 0% usage
+        expect(width).toBeGreaterThanOrEqual(2);
+    });
+
+    it('hides the ctx fuel gauge when token limit is missing', () => {
+        render(<ComposerMetaStrip workingDirectory="/x" sessionCurrentTokens={50_000} />);
+        expect(screen.queryByTestId('composer-ctx-fuel')).toBeNull();
+        expect(screen.getByTestId('composer-cwd-chip')).toBeTruthy();
+    });
+
+    it('renders both chips with a divider when both are present', () => {
+        render(<ComposerMetaStrip workingDirectory="/x" sessionTokenLimit={100_000} sessionCurrentTokens={10_000} />);
+        const root = screen.getByTestId('composer-meta-strip');
+        // The divider is the only span with a fixed-width separator
+        const divider = root.querySelector('span[aria-hidden="true"][class*="bg-[#e0e0e0]"]');
+        expect(divider).toBeTruthy();
+    });
+
+    it('omits the divider when only one chip renders', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={100_000} sessionCurrentTokens={10_000} />);
+        const root = screen.getByTestId('composer-meta-strip');
+        const divider = root.querySelector('span[aria-hidden="true"][class*="bg-[#e0e0e0]"]');
+        expect(divider).toBeNull();
+    });
+
+    it('includes the model name in the ctx tooltip when provided', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={100_000} sessionModel="sonnet-4.5" />);
+        const fuel = screen.getByTestId('composer-ctx-fuel');
+        const title = fuel.getAttribute('title') ?? '';
+        expect(title).toContain('sonnet-4.5');
+        expect(title).toContain('200');
+        expect(title).toContain('100');
+    });
+
+    it('treats an all-whitespace working directory as empty', () => {
+        const { container } = render(<ComposerMetaStrip workingDirectory="   " />);
+        // Strip should render nothing (no cwd, no ctx)
+        expect(container.firstChild).toBeNull();
+    });
+});

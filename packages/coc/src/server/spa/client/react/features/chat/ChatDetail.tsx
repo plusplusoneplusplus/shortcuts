@@ -190,6 +190,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+    const workingDirectory: string | undefined = metadataProcess?.workingDirectory
+        || metadataProcess?.payload?.workingDirectory
+        || metadataProcess?.metadata?.workingDirectory
+        || undefined;
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
     // Detect .plan.md created mid-conversation and elevate to planPath slot
@@ -949,6 +953,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             hideModeSelector={hideModeSelector}
                             allowedModes={allowedModes}
                             compactModeSelector={compactModeSelector}
+                            workingDirectory={workingDirectory}
+                            sessionTokenLimit={sessionTokenLimit}
+                            sessionCurrentTokens={sessionCurrentTokens}
                         />
                     )}
                 </div>
@@ -1050,6 +1057,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     hideModeSelector={hideModeSelector}
                     allowedModes={allowedModes}
                     compactModeSelector={compactModeSelector}
+                    workingDirectory={workingDirectory}
+                    sessionTokenLimit={sessionTokenLimit}
+                    sessionCurrentTokens={sessionCurrentTokens}
                 />
             )}
             {isMobileScratchpad && (

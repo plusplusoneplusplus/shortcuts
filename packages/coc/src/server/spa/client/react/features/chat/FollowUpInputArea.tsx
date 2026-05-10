@@ -10,6 +10,7 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
+import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
@@ -94,6 +95,12 @@ export interface FollowUpInputAreaProps {
      * stacked layout would not fit.
      */
     compactModeSelector?: boolean;
+    /** Working directory the chat operates in. Drives the cwd chip in the toolbar's meta strip. */
+    workingDirectory?: string;
+    /** Total context window size in tokens. Drives the ctx fuel gauge. */
+    sessionTokenLimit?: number;
+    /** Tokens currently occupying the context. Drives the ctx fuel gauge fill + percent. */
+    sessionCurrentTokens?: number;
 }
 
 export function FollowUpInputArea({
@@ -128,6 +135,9 @@ export function FollowUpInputArea({
     hideModeSelector = false,
     allowedModes,
     compactModeSelector = false,
+    workingDirectory,
+    sessionTokenLimit,
+    sessionCurrentTokens,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -632,6 +642,14 @@ export function FollowUpInputArea({
                                 </svg>
                             </button>
                             <div className="flex-1 min-w-0" />
+                            {/* Live metadata: cwd + context-window fuel gauge */}
+                            <ComposerMetaStrip
+                                className="mr-1"
+                                workingDirectory={workingDirectory}
+                                sessionTokenLimit={sessionTokenLimit}
+                                sessionCurrentTokens={sessionCurrentTokens}
+                                sessionModel={sessionModel}
+                            />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending}

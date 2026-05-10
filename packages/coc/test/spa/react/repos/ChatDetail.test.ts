@@ -985,18 +985,18 @@ describe('ChatDetail', () => {
             expect(CHAT_HEADER_SRC).toContain("import { ReferencesDropdown");
         });
 
-        it('renders ReferencesDropdown with planPath and files after the status Badge', () => {
+        it('renders ReferencesDropdown with planPath and files after the status pill', () => {
             const headerBlock = CHAT_HEADER_SRC.substring(
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 800,
+                CHAT_HEADER_SRC.indexOf('<ChatStatusPill'),
+                CHAT_HEADER_SRC.indexOf('<ChatStatusPill') + 800,
             );
             expect(headerBlock).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
         });
 
-        it('ReferencesDropdown is placed after the status Badge in the header', () => {
+        it('ReferencesDropdown is placed after the status pill in the header', () => {
             const headerSection = CHAT_HEADER_SRC.substring(
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
-                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 800,
+                CHAT_HEADER_SRC.indexOf('<ChatStatusPill'),
+                CHAT_HEADER_SRC.indexOf('<ChatStatusPill') + 800,
             );
             expect(headerSection).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
         });
