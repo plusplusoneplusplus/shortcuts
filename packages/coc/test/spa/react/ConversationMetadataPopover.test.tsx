@@ -465,3 +465,93 @@ describe('ConversationMetadataPopover – system prompt row', () => {
         expect(screen.queryByText('Some system prompt.')).toBeNull();
     });
 });
+
+describe('buildRows – Ralph orchestration rows', () => {
+    it('emits no Ralph rows when ralph context is absent', () => {
+        const rows = buildRows({ id: 'p-1', metadata: {} });
+        expect(rows.find(r => r.label.startsWith('Ralph'))).toBeUndefined();
+    });
+
+    it('emits Ralph · Phase / Session ID / Iteration / Goal when context is present (payload)', () => {
+        const rows = buildRows({
+            id: 'p-2',
+            payload: { context: { ralph: {
+                phase: 'executing',
+                sessionId: 'ralph-sess-1',
+                currentIteration: 3,
+                originalGoal: 'Make the tests green',
+            } } },
+        });
+        const get = (label: string) => rows.find(r => r.label === label);
+        expect(get('Ralph · Phase')!.value).toBe('executing');
+        const sessionRow = get('Ralph · Session ID')!;
+        expect(sessionRow.value).toBe('ralph-sess-1');
+        expect(sessionRow.breakAll).toBe(true);
+        expect(sessionRow.mono).toBe(true);
+        expect(get('Ralph · Iteration')!.value).toBe('3');
+        expect(get('Ralph · Goal')!.value).toBe('Make the tests green');
+    });
+
+    it('reads Ralph context from metadata when payload is absent (history projection)', () => {
+        const rows = buildRows({
+            id: 'p-3',
+            metadata: { ralph: { phase: 'complete', sessionId: 'sess-meta', originalGoal: 'g' } },
+        });
+        expect(rows.find(r => r.label === 'Ralph · Phase')!.value).toBe('complete');
+        expect(rows.find(r => r.label === 'Ralph · Session ID')!.value).toBe('sess-meta');
+    });
+
+    it('omits Ralph · Iteration when currentIteration is undefined', () => {
+        const rows = buildRows({
+            id: 'p-4',
+            payload: { context: { ralph: { phase: 'grilling', sessionId: 's', originalGoal: 'g' } } },
+        });
+        expect(rows.find(r => r.label === 'Ralph · Iteration')).toBeUndefined();
+    });
+
+    it('omits Ralph · Progress when accumulatedProgress is empty', () => {
+        const rows = buildRows({
+            id: 'p-5',
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: '' } } },
+        });
+        expect(rows.find(r => r.label === 'Ralph · Progress')).toBeUndefined();
+    });
+
+    it('emits Ralph · Progress when accumulatedProgress is a non-empty string', () => {
+        const rows = buildRows({
+            id: 'p-6',
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: 'step 1\nstep 2' } } },
+        });
+        expect(rows.find(r => r.label === 'Ralph · Progress')!.value).toBe('step 1\nstep 2');
+    });
+
+    it('joins array accumulatedProgress with newlines', () => {
+        const rows = buildRows({
+            id: 'p-7',
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: ['a', 'b', 'c'] as any } } },
+        });
+        expect(rows.find(r => r.label === 'Ralph · Progress')!.value).toBe('a\nb\nc');
+    });
+
+    it('truncates long originalGoal to ~200 chars with an ellipsis', () => {
+        const long = 'x'.repeat(500);
+        const rows = buildRows({
+            id: 'p-8',
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: long } } },
+        });
+        const goal = rows.find(r => r.label === 'Ralph · Goal')!.value;
+        expect(goal.length).toBe(200);
+        expect(goal.endsWith('…')).toBe(true);
+    });
+
+    it('truncates long accumulatedProgress to ~200 chars with an ellipsis', () => {
+        const long = 'y'.repeat(500);
+        const rows = buildRows({
+            id: 'p-9',
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: long } } },
+        });
+        const prog = rows.find(r => r.label === 'Ralph · Progress')!.value;
+        expect(prog.length).toBe(200);
+        expect(prog.endsWith('…')).toBe(true);
+    });
+});

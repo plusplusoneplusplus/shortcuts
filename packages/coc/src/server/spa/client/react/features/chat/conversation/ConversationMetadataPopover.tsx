@@ -5,6 +5,14 @@ import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
+import { getRalphContext } from '../../../../../../tasks/task-types';
+
+const RALPH_FIELD_TRUNCATE = 200;
+
+function truncate(value: string, max: number): string {
+    if (value.length <= max) return value;
+    return value.slice(0, max - 1) + '…';
+}
 
 interface MetaRow {
     label: string;
@@ -91,6 +99,28 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
         push('Turns', turnsCount);
     }
     push('File Path', process.dataFilePath, { breakAll: true, mono: true });
+
+    const ralph = getRalphContext(process);
+    if (ralph) {
+        push('Ralph · Phase', ralph.phase);
+        push('Ralph · Session ID', ralph.sessionId, { breakAll: true, mono: true });
+        if (typeof ralph.currentIteration === 'number') {
+            push('Ralph · Iteration', ralph.currentIteration);
+        }
+        if (ralph.originalGoal) {
+            push('Ralph · Goal', truncate(ralph.originalGoal, RALPH_FIELD_TRUNCATE), { breakAll: true });
+        }
+        const progressRaw = ralph.accumulatedProgress;
+        let progressStr: string | null = null;
+        if (typeof progressRaw === 'string') {
+            progressStr = progressRaw;
+        } else if (Array.isArray(progressRaw)) {
+            progressStr = (progressRaw as unknown[]).filter(v => typeof v === 'string').join('\n');
+        }
+        if (progressStr && progressStr.trim()) {
+            push('Ralph · Progress', truncate(progressStr, RALPH_FIELD_TRUNCATE), { breakAll: true });
+        }
+    }
 
     return rows;
 }

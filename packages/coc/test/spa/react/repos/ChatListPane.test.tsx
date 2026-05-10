@@ -25,6 +25,8 @@ import {
     taskMatchesSearch,
     getTaskTypeIcon,
     getTaskPromptPreview,
+    getTaskModeKey,
+    getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -1561,6 +1563,48 @@ describe('ChatListPane', () => {
             });
             expect(container.textContent).toContain('SCRP');
         });
+
+        it('chat ralph renders RLPH pill (execution phase)', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({
+                    type: 'chat',
+                    payload: { mode: 'ralph', context: { ralph: { sessionId: 's-1', phase: 'executing', originalGoal: 'g' } } },
+                })],
+            });
+            expect(container.textContent).toContain('RLPH');
+            expect(container.textContent).not.toContain('AUTO');
+        });
+
+        it('chat ask + ralph context renders RLPH pill (grilling phase)', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({
+                    type: 'chat',
+                    payload: { mode: 'ask', context: { ralph: { sessionId: 's-2', phase: 'grilling', originalGoal: 'g' } } },
+                })],
+            });
+            expect(container.textContent).toContain('RLPH');
+            expect(container.textContent).not.toContain('ASK');
+        });
+
+        it('plain ask (no ralph context) still renders ASK', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
+            });
+            expect(container.textContent).toContain('ASK');
+            expect(container.textContent).not.toContain('RLPH');
+        });
+
+        it('ralph pill uses purple text class', () => {
+            const { container } = renderPane({
+                running: [makeRunningTask({
+                    type: 'chat',
+                    payload: { mode: 'ralph', context: { ralph: { sessionId: 's-3', phase: 'executing', originalGoal: 'g' } } },
+                })],
+            });
+            const pill = Array.from(container.querySelectorAll('span')).find(el => el.textContent === 'RLPH');
+            expect(pill).toBeDefined();
+            expect(pill!.className).toContain('text-purple-600');
+        });
     });
 
     // ── Dense mode ─────────────────────────────────────────────────────
@@ -2133,5 +2177,49 @@ describe('getTaskPromptPreview: promptPreview field', () => {
 
     it('returns empty for skill invocation prompt', () => {
         expect(getTaskPromptPreview({ promptPreview: 'Use the impl skill.' })).toBe('');
+    });
+});
+
+describe('getTaskModeKey / getTaskModeLabel — Ralph', () => {
+    it('returns ralph for chat task with payload.mode === ralph', () => {
+        const t = { type: 'chat', payload: { mode: 'ralph', context: { ralph: { sessionId: 's1' } } } };
+        expect(getTaskModeKey(t)).toBe('ralph');
+        expect(getTaskModeLabel(t)).toBe('RLPH');
+    });
+
+    it('returns ralph for chat task with mode=ask + ralph context (grilling phase)', () => {
+        const t = { type: 'chat', payload: { mode: 'ask', context: { ralph: { sessionId: 's2', phase: 'grilling' } } } };
+        expect(getTaskModeKey(t)).toBe('ralph');
+        expect(getTaskModeLabel(t)).toBe('RLPH');
+    });
+
+    it('returns ralph when ralph context lives on metadata (history projection)', () => {
+        const t = { type: 'chat', payload: { mode: 'autopilot' }, metadata: { ralph: { sessionId: 's3' } } };
+        expect(getTaskModeKey(t)).toBe('ralph');
+        expect(getTaskModeLabel(t)).toBe('RLPH');
+    });
+
+    it('returns ask for plain ask task without ralph context (regression)', () => {
+        const t = { type: 'chat', payload: { mode: 'ask' } };
+        expect(getTaskModeKey(t)).toBe('ask');
+        expect(getTaskModeLabel(t)).toBe('ASK');
+    });
+
+    it('returns auto for plain autopilot chat task', () => {
+        const t = { type: 'chat', payload: { mode: 'autopilot' } };
+        expect(getTaskModeKey(t)).toBe('auto');
+        expect(getTaskModeLabel(t)).toBe('AUTO');
+    });
+});
+
+describe('getTaskTypeIcon — Ralph', () => {
+    it('returns the loop icon for chat task with ralph context (grilling phase, mode=ask)', () => {
+        const t = { type: 'chat', payload: { mode: 'ask', context: { ralph: { sessionId: 's-g' } } } };
+        expect(getTaskTypeIcon(t)).toBe('🔄');
+    });
+
+    it('returns the loop icon for chat task with payload.mode === ralph', () => {
+        const t = { type: 'chat', payload: { mode: 'ralph' } };
+        expect(getTaskTypeIcon(t)).toBe('🔄');
     });
 });

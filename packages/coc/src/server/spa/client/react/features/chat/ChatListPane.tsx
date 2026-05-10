@@ -30,6 +30,7 @@ import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/History
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
 import { RalphSessionRow } from './RalphSessionRow';
 import { isRalphEnabled } from '../../utils/config';
+import { isRalphTask } from '../../../../../tasks/task-types';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -121,6 +122,7 @@ export function getTaskTypeIcon(task: any): string {
     const mode = payload.mode ?? task.mode;
     if (payload.scheduleId || task.scheduleId) return '📅';
     if (type === 'chat') {
+        if (isRalphTask(task)) return '🔄';
         if (mode === 'ask') return '💡';
         if (mode === 'plan') return '📋';
         if (mode === 'ralph') return '🔄';
@@ -140,11 +142,13 @@ export function getTaskTypeIcon(task: any): string {
  *   - run-script → SCRP (scheduled / one-shot script)
  *   - run-workflow / replicate-template / memory-promote / generate / default → AUTO
  */
-export function getTaskModeKey(task: any): 'ask' | 'plan' | 'auto' | 'script' {
+export function getTaskModeKey(task: any): 'ask' | 'plan' | 'auto' | 'script' | 'ralph' {
     const type = task.type as string;
     if (type === 'run-script') return 'script';
     if (type === 'chat') {
+        if (isRalphTask(task)) return 'ralph';
         const mode = (task.payload?.mode ?? task.mode) as string | undefined;
+        if (mode === 'ralph') return 'ralph';
         if (mode === 'ask') return 'ask';
         if (mode === 'plan') return 'plan';
         return 'auto';
@@ -152,11 +156,12 @@ export function getTaskModeKey(task: any): 'ask' | 'plan' | 'auto' | 'script' {
     return 'auto';
 }
 
-export function getTaskModeLabel(task: any): 'ASK' | 'PLAN' | 'AUTO' | 'SCRP' {
+export function getTaskModeLabel(task: any): 'ASK' | 'PLAN' | 'AUTO' | 'SCRP' | 'RLPH' {
     const key = getTaskModeKey(task);
     if (key === 'ask') return 'ASK';
     if (key === 'plan') return 'PLAN';
     if (key === 'script') return 'SCRP';
+    if (key === 'ralph') return 'RLPH';
     return 'AUTO';
 }
 
@@ -1112,7 +1117,9 @@ export function ChatListPane({
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
         const modeTitle = task.type === 'chat'
-            ? (CHAT_MODE_LABELS[task.payload?.mode ?? task.mode ?? 'autopilot'] || 'Autopilot')
+            ? (isRalphTask(task)
+                ? 'Ralph'
+                : (CHAT_MODE_LABELS[task.payload?.mode ?? task.mode ?? 'autopilot'] || 'Autopilot'))
             : task.type === 'run-script' ? 'Script' : 'Workflow';
 
         // Display title: prefer displayName / title; fall back to chat-title helper (uses prompt
@@ -1139,10 +1146,12 @@ export function ChatListPane({
             !isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
             !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
             !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
+            !isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/70 dark:border-purple-500/60 bg-purple-50/60 dark:bg-purple-500/10',
             isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/30 dark:border-amber-500/25 bg-transparent',
             isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/25 dark:border-[#3794ff]/25 bg-transparent',
             isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-500/25 bg-transparent',
             isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/25 dark:border-[#9d9d9d]/20 bg-transparent',
+            isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/30 dark:border-purple-500/25 bg-transparent',
         );
 
         const dotClasses = cn(
