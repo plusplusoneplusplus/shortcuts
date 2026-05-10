@@ -5,13 +5,16 @@
  * URL format: `/?workspace=<wsId>#popout/markdown/<encodedFilePath>?fetchMode=tasks|auto&displayPath=<encodedDisplayPath>`
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../ui';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
+import { NoteEditor } from '../features/notes/editor/NoteEditor';
+import { noopCommentBackend } from '../features/notes/editor/NoteEditorCommentBackend';
+import { createTasksNoteEditorIO } from '../tasks/TasksNoteEditorIO';
 import { useMdPopOutChannel, type MdPopOutMessage } from '../contexts/MarkdownPopOutContext';
 import { getHostname } from '../utils/config';
 
@@ -81,6 +84,8 @@ function PopOutMarkdownContent({ params }: { params: PopOutMarkdownParams }) {
         document.title = `${title} — ${brand}`;
     }, [params.displayPath]);
 
+    const tasksIO = useMemo(() => createTasksNoteEditorIO(), []);
+
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-markdown-shell">
@@ -95,13 +100,23 @@ function PopOutMarkdownContent({ params }: { params: PopOutMarkdownParams }) {
                 </div>
                 {/* Full-screen editor */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                    <MarkdownReviewEditor
-                        wsId={params.wsId}
-                        filePath={params.filePath}
-                        taskRootPath={params.taskRootPath}
-                        fetchMode={params.fetchMode}
-                        showAiButtons={true}
-                    />
+                    {params.fetchMode === 'tasks' ? (
+                        <NoteEditor
+                            workspaceId={params.wsId}
+                            notePath={params.filePath}
+                            io={tasksIO}
+                            commentBackend={noopCommentBackend}
+                            notesRoot={params.taskRootPath}
+                        />
+                    ) : (
+                        <MarkdownReviewEditor
+                            wsId={params.wsId}
+                            filePath={params.filePath}
+                            taskRootPath={params.taskRootPath}
+                            fetchMode={params.fetchMode}
+                            showAiButtons={true}
+                        />
+                    )}
                 </div>
             </div>
             <ToastContainer toasts={toasts} removeToast={removeToast} />
