@@ -1234,6 +1234,32 @@ describe('ChatListPane', () => {
             expect(screen.getByText(/tasks selected/)).toBeTruthy();
         });
 
+        it('expanded child rows are marked with data-group-child', () => {
+            renderGrouped();
+            // Groups auto-collapse when all children are seen — expand both groups
+            // by clicking their chevrons before asserting on child rows.
+            const chevrons = screen.getAllByTestId('group-chevron');
+            chevrons.forEach(c => fireEvent.click(c));
+            const g1a = document.querySelector('[data-task-id="g1-a"]') as HTMLElement | null;
+            const standalone = document.querySelector('[data-task-id="standalone"]') as HTMLElement | null;
+            expect(g1a).toBeTruthy();
+            expect(standalone).toBeTruthy();
+            expect(g1a!.getAttribute('data-group-child')).toBe('true');
+            expect(standalone!.getAttribute('data-group-child')).toBeNull();
+        });
+
+        it('expanded children container has guide-line border classes', () => {
+            renderGrouped();
+            const chevrons = screen.getAllByTestId('group-chevron');
+            chevrons.forEach(c => fireEvent.click(c));
+            const containers = screen.getAllByTestId('history-group-children');
+            expect(containers.length).toBeGreaterThan(0);
+            const cls = containers[0].className;
+            expect(cls).toContain('border-l');
+            expect(cls).toContain('pl-2');
+            expect(cls).toContain('ml-3');
+        });
+
     });
 
     // ── Search ─────────────────────────────────────────────────────────

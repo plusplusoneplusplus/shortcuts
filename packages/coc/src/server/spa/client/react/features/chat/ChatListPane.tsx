@@ -1088,6 +1088,10 @@ export function ChatListPane({
         dataTestid?: string;
         /** Override status derivation when caller knows the section the row is rendered in. */
         taskStatus?: 'running' | 'queued' | 'completed';
+        /** True when the row is rendered as a child under an expanded HistoryGroupHeader.
+         *  Enables muted mode-pill variant + a `data-group-child` marker so the row
+         *  reads as nested rather than a sibling top-level chat. */
+        isGroupChild?: boolean;
     }) => {
         const isUnseen = unseenProcessIds?.has(task.id) ?? false;
         const hasDraft = !!getDraft(task.id);
@@ -1124,14 +1128,21 @@ export function ChatListPane({
             ? statusLabel('running', task.type)
             : (ts ? formatRelativeTime(new Date(ts).toISOString()) : '');
 
-        // Mode badge: tinted border + soft tinted background, font:9.5px/1 mono uppercase
+        // Mode badge: tinted border + soft tinted background, font:9.5px/1 mono uppercase.
+        // When rendered as a group child, render a muted variant (lower-contrast border/bg,
+        // same text color) so the parent's aggregate-mode pill remains the dominant anchor.
+        const isGroupChild = !!options?.isGroupChild;
         const modeBadgeClasses = cn(
             'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
             'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
-            modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
-            modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
-            modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
-            modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
+            !isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
+            !isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
+            !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
+            !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
+            isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/30 dark:border-amber-500/25 bg-transparent',
+            isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/25 dark:border-[#3794ff]/25 bg-transparent',
+            isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-500/25 bg-transparent',
+            isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/25 dark:border-[#9d9d9d]/20 bg-transparent',
         );
 
         const dotClasses = cn(
@@ -1192,6 +1203,7 @@ export function ChatListPane({
                     data-selected={isHistorySelected || undefined}
                     data-pinned={isPinned ? 'true' : undefined}
                     data-archived={isArchived ? 'true' : undefined}
+                    data-group-child={isGroupChild ? 'true' : undefined}
                     title={titleText}
                 >
                     <span className={dotClasses} aria-label={`status: ${isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
@@ -2116,7 +2128,7 @@ export function ChatListPane({
                                                     key={entry.planFilePath}
                                                     data-testid="history-group"
                                                     data-expanded={expanded ? 'true' : 'false'}
-                                                    className={cn(expanded && 'bg-[#f7f7f8]/60 dark:bg-[#1f1f20]/60')}
+                                                    className={cn(expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80')}
                                                 >
                                                     <HistoryGroupHeader
                                                         group={entry}
@@ -2135,10 +2147,10 @@ export function ChatListPane({
                                                     />
                                                     {expanded && (
                                                         <div
-                                                            className="flex flex-col"
+                                                            className="flex flex-col ml-3 pl-2 border-l border-[#e0e0e0] dark:border-[#3c3c3c]"
                                                             data-testid="history-group-children"
                                                         >
-                                                            {entry.children.map((task: any) => renderChatListRow(task, entry.children, { taskStatus: 'completed' }))}
+                                                            {entry.children.map((task: any) => renderChatListRow(task, entry.children, { taskStatus: 'completed', isGroupChild: true }))}
                                                         </div>
                                                     )}
                                                 </div>
