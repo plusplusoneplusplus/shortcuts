@@ -142,7 +142,7 @@ export async function withRepoInstructions(
     if (!workingDirectory || !mode) return systemMessage;
     let instructions: string | undefined;
     try {
-        instructions = await loadInstructions(workingDirectory, mode);
+        instructions = await loadInstructions(workingDirectory, mode === 'ralph' ? 'autopilot' : mode);
     } catch {
         return systemMessage;
     }

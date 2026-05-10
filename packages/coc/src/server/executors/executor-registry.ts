@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload, isRalphMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -11,6 +11,7 @@ import { FollowUpExecutor } from './follow-up-executor';
 import { ChatExecutor } from './chat-executor';
 import { PlanExecutor } from './plan-executor';
 import { AutopilotExecutor } from './autopilot-executor';
+import { RalphExecutor } from './ralph-executor';
 import { TaskGenerationExecutor } from './task-generation-executor';
 import { ResolveCommentsExecutor } from './resolve-comments-executor';
 import { CommitChatExecutor } from './commit-chat-executor';
@@ -63,6 +64,7 @@ export class ExecutorRegistry {
     private readonly chatExecutor: ChatExecutor;
     private readonly planExecutor: PlanExecutor;
     private readonly autopilotExecutor: AutopilotExecutor;
+    private readonly ralphExecutor: RalphExecutor;
     private readonly taskGenerationExecutor: TaskGenerationExecutor;
     private readonly resolveCommentsExecutor: ResolveCommentsExecutor;
     private readonly commitChatExecutor: CommitChatExecutor;
@@ -98,6 +100,7 @@ export class ExecutorRegistry {
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.planExecutor = new PlanExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
+        this.ralphExecutor = new RalphExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
@@ -180,6 +183,7 @@ export class ExecutorRegistry {
         const mode = payload.mode;
         if (mode === 'plan') return this.planExecutor;
         if (mode === 'autopilot') return this.autopilotExecutor;
+        if (isRalphMode(task.payload)) return this.ralphExecutor;
         return this.chatExecutor;
     }
 

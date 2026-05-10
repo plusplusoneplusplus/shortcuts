@@ -51,6 +51,7 @@ const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ask: 'interactive',
     plan: 'plan',
     autopilot: 'autopilot',
+    ralph: 'autopilot',
 };
 
 function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {

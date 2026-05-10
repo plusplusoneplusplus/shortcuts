@@ -105,7 +105,7 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script';
 // ============================================================================
 
 /** Controls permissions and concurrency for chat tasks. */
-export type ChatMode = 'ask' | 'plan' | 'autopilot';
+export type ChatMode = 'ask' | 'plan' | 'autopilot' | 'ralph';
 
 // ============================================================================
 // Chat Context
@@ -171,6 +171,21 @@ export interface ChatContext {
     /** Schedule-specific metadata. */
     scheduleId?: string;
     scheduleParams?: Record<string, string>;
+    /** Ralph-mode orchestration metadata. */
+    ralph?: {
+        /** Confirmed goal spec (plain text or structured Markdown). */
+        originalGoal: string;
+        /** AI-provided learnings accumulated across prior iterations. */
+        accumulatedProgress?: string;
+        /** Maximum iterations before the loop stops (default: 10). */
+        maxIterations?: number;
+        /** 1-based iteration counter, incremented on each re-enqueue. */
+        currentIteration?: number;
+        /** Links the grill-me task and all iteration tasks in the UI. */
+        sessionId?: string;
+        /** Current stage of the Ralph session. */
+        phase?: 'grilling' | 'executing' | 'complete';
+    };
 }
 
 // ============================================================================
@@ -320,4 +335,14 @@ export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
 /** Check whether a chat payload carries note-create context. */
 export function hasNoteCreateContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteCreate;
+}
+
+/** Check whether a chat payload carries Ralph-mode orchestration context. */
+export function hasRalphContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.ralph;
+}
+
+/** Check whether a chat payload is in Ralph mode. */
+export function isRalphMode(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && payload.mode === 'ralph';
 }

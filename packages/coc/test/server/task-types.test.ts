@@ -18,6 +18,8 @@ import {
     hasReplicationContext,
     hasCommitChatContext,
     hasNoteCreateContext,
+    hasRalphContext,
+    isRalphMode,
     TaskDefs,
     getTaskDef,
     VISIBLE_TASK_TYPE_LABELS,
@@ -543,5 +545,67 @@ describe('CocTaskKind type', () => {
     it('accepts all valid task kind strings at type level', () => {
         const kinds: CocTaskKind[] = ['chat', 'run-workflow', 'run-script', 'memory-promote', 'background-review'];
         expect(kinds).toHaveLength(5);
+    });
+});
+
+// ============================================================================
+// hasRalphContext
+// ============================================================================
+
+describe('hasRalphContext', () => {
+    it('returns true for chat payload with context.ralph', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            mode: 'ralph',
+            prompt: 'Build a REST API',
+            context: { ralph: { originalGoal: 'Build a REST API' } },
+        };
+        expect(hasRalphContext(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload without ralph context', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', mode: 'ralph', prompt: 'Build something' };
+        expect(hasRalphContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            context: { ralph: { originalGoal: 'test' } },
+        };
+        expect(hasRalphContext(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// isRalphMode
+// ============================================================================
+
+describe('isRalphMode', () => {
+    it('returns true for chat payload with mode: ralph', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', mode: 'ralph', prompt: 'Build something' };
+        expect(isRalphMode(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload with mode: ask', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', mode: 'ask', prompt: 'hello' };
+        expect(isRalphMode(payload)).toBe(false);
+    });
+
+    it('returns false for chat payload with mode: autopilot', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', mode: 'autopilot', prompt: 'do it' };
+        expect(isRalphMode(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            mode: 'ralph',
+        };
+        expect(isRalphMode(payload)).toBe(false);
     });
 });

@@ -78,7 +78,7 @@ class SystemMessageBuilder {
             kind: 'async',
             resolve: async () => {
                 try {
-                    return (await loadInstructions(workingDir, mode)) ?? undefined;
+                    return (await loadInstructions(workingDir, mode === 'ralph' ? 'autopilot' : mode)) ?? undefined;
                 } catch {
                     return undefined;
                 }
