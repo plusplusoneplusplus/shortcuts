@@ -222,3 +222,52 @@ describe('parseProgressSections', () => {
         expect(out[0].iteration).toBe(2);
     });
 });
+
+describe('RalphSessionStore — size cap', () => {
+    it('truncates progress.md to ~500 KB + banner once it exceeds 10 MB', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 2 });
+
+        // Pre-fill the file directly to ~10 MB so the next append crosses
+        // the cap. Direct file write keeps the test fast (no 10 000 small
+        // appendProgressSection calls).
+        const progressPath = store.getProgressPath(WS, SID);
+        const blob = 'A'.repeat(10 * 1024 * 1024 + 200 * 1024);
+        await fs.promises.appendFile(progressPath, blob, 'utf-8');
+
+        const before = await fs.promises.stat(progressPath);
+        expect(before.size).toBeGreaterThan(10 * 1024 * 1024);
+
+        // Triggering one more append runs enforceSizeCap.
+        await store.appendProgressSection(WS, SID, {
+            iteration: 1,
+            signal: 'RALPH_NEXT',
+            timestamp: '2026-05-11T00:00:00.000Z',
+            body: 'tail-section',
+        });
+
+        const after = await fs.promises.stat(progressPath);
+        // Kept tail (~500 KB) + small banner. Allow some slack for the
+        // banner text and the appended section itself.
+        expect(after.size).toBeLessThan(700 * 1024);
+
+        const contents = await fs.promises.readFile(progressPath, 'utf-8');
+        expect(contents).toContain('Ralph Session (truncated)');
+        expect(contents).toContain('earlier content removed');
+        // The most recent append must survive the truncation.
+        expect(contents).toContain('## Iteration 1 — RALPH_NEXT');
+        expect(contents).toContain('tail-section');
+    });
+
+    it('does not touch progress.md while it is below the 10 MB cap', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 2 });
+        await store.appendProgressSection(WS, SID, {
+            iteration: 1,
+            signal: 'RALPH_NEXT',
+            timestamp: 't',
+            body: 'small body',
+        });
+        const contents = await fs.promises.readFile(store.getProgressPath(WS, SID), 'utf-8');
+        expect(contents).not.toContain('Ralph Session (truncated)');
+        expect(contents).toContain('## Iteration 1 — RALPH_NEXT — t');
+    });
+});
