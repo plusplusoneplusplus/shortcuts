@@ -277,7 +277,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                 type="button"
                 aria-label={open ? 'Hide conversation metadata' : 'Show conversation metadata'}
                 title="Conversation metadata"
-                className="h-6 w-6 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-semibold text-[#4f4f4f] dark:text-[#cccccc] bg-white dark:bg-[#1f1f1f] hover:border-[#0078d4] dark:hover:border-[#3794ff] transition-colors"
+                className="inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[12px] font-semibold italic text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
                 onClick={handleToggle}
             >
                 i

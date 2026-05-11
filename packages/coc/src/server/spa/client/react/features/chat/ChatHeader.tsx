@@ -14,6 +14,33 @@ import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
 
+/**
+ * Shared icon-button class for the right-side chat header actions.
+ *
+ * Visual contract (matches the conversation-redesign-3 mockup `.icon-btn` token):
+ *   - Fixed 26×26 hit target for comfortable touch on mobile + visual consistency
+ *   - Rounded 4px corners, muted resting color, surface-2 hover bg + fg-strong text
+ *   - Disabled state preserves the existing 40% opacity contract used across the SPA
+ */
+const ICON_BTN_CLASS =
+    'inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[#848484] '
+    + 'hover:text-[#1e1e1e] dark:hover:text-[#cccccc] '
+    + 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] '
+    + 'disabled:opacity-40 disabled:cursor-not-allowed '
+    + 'transition-colors flex-shrink-0';
+
+/**
+ * Companion class for inline text-label action chips (HTML / PDF / Select).
+ * Matches `ICON_BTN_CLASS` vertical metrics (h-[26px]) for a level row, but allows
+ * the button width to flex with its text content.
+ */
+const TEXT_BTN_CLASS =
+    'inline-flex items-center justify-center h-[26px] px-1.5 rounded text-[10px] '
+    + 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] '
+    + 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] '
+    + 'disabled:opacity-40 disabled:cursor-not-allowed '
+    + 'transition-colors flex-shrink-0';
+
 export interface ChatHeaderProps {
     task: any;
     metadataProcess: any;
@@ -400,14 +427,34 @@ export function ChatHeader({
             </div>
 
             {/* Right side */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center flex-shrink-0">
+                {/*
+                  Vertical divider visually separates the identity/status area
+                  from the action group, matching the redesign mockup's
+                  `.chat-header .divider`. Hidden in floating variant where
+                  the chrome is intentionally minimal.
+                */}
+                {variant !== 'floating' && (
+                    <span
+                        aria-hidden="true"
+                        className="hidden sm:inline-block w-px self-stretch my-1 mx-1 bg-[#e0e0e0] dark:bg-[#3c3c3c] flex-shrink-0"
+                    />
+                )}
+                {/*
+                  Action group. `gap-0.5` ties the icon buttons together
+                  visually as a single cluster (matches `.chat-header .actions`
+                  `gap:2px` in the mockup). `flex-wrap` lets the cluster wrap
+                  to a second line on extremely narrow mobile widths instead
+                  of horizontally overflowing.
+                */}
+                <div className="inline-flex items-center gap-0.5 flex-wrap justify-end flex-shrink-0">
                 {/* Open Scratchpad — inline in wide tier, overflow in narrower tiers */}
                 {isWide && showScratchpadButton && onOpenScratchpad && (
                     <button
                         title="Open scratchpad"
                         data-testid="open-scratchpad-btn"
                         onClick={onOpenScratchpad}
-                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        className={ICON_BTN_CLASS}
                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
                             <line x1="3" y1="4" x2="13" y2="4" />
@@ -422,7 +469,7 @@ export function ChatHeader({
                         title="Float in current window"
                         data-testid="activity-chat-float-btn"
                         onClick={onFloat}
-                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        className={ICON_BTN_CLASS}
                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" strokeWidth="1.5"/>
@@ -435,7 +482,7 @@ export function ChatHeader({
                         title="Pop out to new window"
                         data-testid="activity-chat-popout-btn"
                         onClick={onPopOut}
-                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        className={ICON_BTN_CLASS}
                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -455,7 +502,7 @@ export function ChatHeader({
                             setTimeout(() => setCopied(false), 2000);
                         });
                     }}
-                    className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    className={ICON_BTN_CLASS}
                 >
                     {copied ? (
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -477,7 +524,7 @@ export function ChatHeader({
                             data-testid="copy-conversation-html-btn"
                             disabled={loading || turns.length === 0}
                             onClick={() => void handleCopyHtml()}
-                            className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                            className={TEXT_BTN_CLASS}
                         >
                             {copiedHtml ? '✓' : 'HTML'}
                         </button>
@@ -486,7 +533,7 @@ export function ChatHeader({
                             data-testid="export-conversation-pdf-btn"
                             disabled={loading || turns.length === 0}
                             onClick={handleExportPdf}
-                            className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                            className={TEXT_BTN_CLASS}
                         >
                             PDF
                         </button>
@@ -496,7 +543,7 @@ export function ChatHeader({
                                 data-testid="select-turns-btn"
                                 onClick={onToggleSelecting}
                                 className={cn(
-                                    'inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0',
+                                    'inline-flex items-center justify-center h-[26px] px-1.5 rounded text-[10px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0',
                                     isSelecting
                                         ? 'text-[#0078d4] dark:text-[#3794ff] font-medium'
                                         : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
@@ -520,6 +567,7 @@ export function ChatHeader({
                 )}
                 {/* Overflow menu — shown at < 700px */}
                 {!isWide && <ChatHeaderOverflowMenu items={overflowItems} wsId={wsId} />}
+                </div>
             </div>
 
             {/* Standalone References BottomSheet for mobile — rendered outside the overflow menu */}

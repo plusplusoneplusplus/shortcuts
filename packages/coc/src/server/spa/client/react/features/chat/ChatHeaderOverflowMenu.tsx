@@ -97,12 +97,18 @@ export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuPr
                 title="More actions"
                 data-testid="chat-header-overflow-btn"
                 onClick={handleToggle}
-                className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                className="inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
             >
+                {/*
+                  Horizontal three-dot glyph matches the redesign mockup
+                  `⋯` overflow trigger; horizontal dots read more naturally
+                  as "more actions" than the prior vertical kebab in a row of
+                  same-height icon buttons.
+                */}
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <circle cx="8" cy="3" r="1.5" fill="currentColor" />
+                    <circle cx="3" cy="8" r="1.5" fill="currentColor" />
                     <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-                    <circle cx="8" cy="13" r="1.5" fill="currentColor" />
+                    <circle cx="13" cy="8" r="1.5" fill="currentColor" />
                 </svg>
             </button>
 
