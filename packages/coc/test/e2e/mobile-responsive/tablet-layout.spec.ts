@@ -29,6 +29,9 @@ test.describe('Tablet Layout', () => {
         // At tablet width (768px), visible TopBar entries remain available,
         // while the Memory view stays direct-routable without a topbar icon.
         await expect(page.locator('[data-tab="repos"]')).toBeVisible({ timeout: 10000 });
+        // Skills lives inside the Tools dropdown — open it first.
+        await page.click('#tools-toggle');
+        await expect(page.locator('#tools-popover')).toBeVisible();
         await expect(page.locator('[data-tab="skills"]')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
     });

@@ -1,8 +1,17 @@
 /**
  * TopBar — top navigation bar with tab switching and theme toggle.
+ *
+ * Right-side layout matches the v2 topbar refinement design:
+ *   [Connected pill] [NotificationBell] [Tools ▾] [Admin] [Theme]
+ *
+ * The Skills / Logs / Usage / Models / Servers nav targets are grouped
+ * inside the Tools dropdown menu rather than rendered as individual icon
+ * buttons. Each menu row keeps its original DOM id, aria-label, title and
+ * navigation behavior for backward compatibility with existing callers and
+ * tests.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
@@ -52,6 +61,15 @@ export interface TopBarProps {
     onLogsOpen?: () => void;
 }
 
+interface ToolMenuItem {
+    id: string;
+    tab: DashboardTab | null;
+    label: string;
+    description: string;
+    icon: string;
+    onClick: () => void;
+}
+
 export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { state: queueState } = useQueue();
@@ -60,6 +78,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const [popoverOpen, setPopoverOpen] = useState(false);
+    const [toolsOpen, setToolsOpen] = useState(false);
+    const toolsContainerRef = useRef<HTMLDivElement>(null);
+    const toolsButtonRef = useRef<HTMLButtonElement>(null);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
@@ -116,6 +137,97 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [dispatch, queueState.selectedTaskIdByRepo, state]);
 
     const isOnReposTab = state.activeTab === 'repos';
+
+    // ── Tools dropdown ─────────────────────────────────────────────
+    const closeTools = useCallback(() => setToolsOpen(false), []);
+    const toggleTools = useCallback(() => setToolsOpen(prev => !prev), []);
+
+    // Close tools popover on outside click / Escape
+    useEffect(() => {
+        if (!toolsOpen) return;
+        const onPointerDown = (e: MouseEvent) => {
+            if (toolsContainerRef.current && !toolsContainerRef.current.contains(e.target as Node)) {
+                closeTools();
+            }
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') closeTools();
+        };
+        document.addEventListener('mousedown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', onPointerDown);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [toolsOpen, closeTools]);
+
+    const toolItems: ToolMenuItem[] = useMemo(() => {
+        const items: ToolMenuItem[] = [
+            {
+                id: 'skills-toggle',
+                tab: 'skills',
+                label: 'Skills',
+                description: 'Installed capabilities',
+                icon: '⚡',
+                onClick: () => switchTab('skills'),
+            },
+            {
+                id: 'logs-toggle',
+                // 'logs' is a routable tab; the parent's onLogsOpen handler
+                // navigates to #logs which Router resolves to the Logs view.
+                // Tagging the menu row with `tab: 'logs'` keeps the active
+                // accent and `[data-tab="logs"]` selector working.
+                tab: 'logs',
+                label: 'Logs',
+                description: 'Runtime events',
+                icon: '📋',
+                onClick: () => { onLogsOpen?.(); },
+            },
+        ];
+        if (SHOW_MEMORY_TAB) {
+            items.push({
+                id: 'memory-toggle',
+                tab: 'memory',
+                label: 'Memory',
+                description: 'Bounded recall',
+                icon: '🧠',
+                onClick: () => switchTab('memory'),
+            });
+        }
+        items.push(
+            {
+                id: 'stats-toggle',
+                tab: 'stats',
+                label: 'Usage',
+                description: 'Model and task stats',
+                icon: '📊',
+                onClick: () => switchTab('stats'),
+            },
+            {
+                id: 'models-toggle',
+                tab: 'models',
+                label: 'Models',
+                description: 'Model selection and limits',
+                icon: '⚛',
+                onClick: () => switchTab('models'),
+            },
+        );
+        if (serversEnabled) {
+            items.push({
+                id: 'servers-toggle',
+                tab: 'servers',
+                label: 'Servers',
+                description: 'Connected tools',
+                icon: '🖥',
+                onClick: () => switchTab('servers'),
+            });
+        }
+        return items;
+    }, [serversEnabled, onLogsOpen, switchTab]);
+
+    const wsStatus = state.wsStatus ?? 'closed';
+    const wsConfig = wsStatusConfig[wsStatus];
+    const toolsActive = toolItems.some(item => item.tab !== null && state.activeTab === item.tab);
 
     return (
         <>
@@ -208,112 +320,108 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     </nav>
                 )}
             </div>
-            <div className="flex items-center gap-1" data-testid="topbar-actions">
+            <div className="flex items-center gap-1.5" data-testid="topbar-actions">
+                {/* WS status — pill on desktop, bare dot on mobile to save space */}
                 <span
-                    className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
-                    title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
-                    aria-label={`Connection: ${wsStatusConfig[state.wsStatus ?? 'closed']?.label}`}
+                    className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs font-medium text-[#656d76] dark:text-[#999]"
+                    title={wsConfig.label}
+                    aria-label={`Connection: ${wsConfig.label}`}
                     data-testid="ws-status-indicator"
+                    data-ws-status={wsStatus}
                 >
                     <span
-                        className={`inline-block w-2 h-2 rounded-full ${wsStatusConfig[state.wsStatus ?? 'closed']?.color}${wsStatusConfig[state.wsStatus ?? 'closed']?.pulse ? ' animate-pulse' : ''}`}
+                        className={`inline-block w-2 h-2 rounded-full ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
+                        aria-hidden="true"
+                    />
+                    <span data-testid="ws-status-label">{wsConfig.label}</span>
+                </span>
+                <span
+                    className="md:hidden inline-flex items-center justify-center h-7 w-7"
+                    title={wsConfig.label}
+                    aria-label={`Connection: ${wsConfig.label}`}
+                    data-testid="ws-status-indicator-mobile"
+                    data-ws-status={wsStatus}
+                >
+                    <span
+                        className={`inline-block w-2 h-2 rounded-full ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
                     />
                 </span>
                 <NotificationBell />
-                <button
-                    id="skills-toggle"
-                    data-tab="skills"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'skills'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Skills"
-                    title="Skills"
-                    onClick={() => switchTab('skills')}
-                >
-                    &#9889;
-                </button>
-                <button
-                    id="logs-toggle"
-                    data-tab="logs"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'logs'
-                            ? 'active bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Logs"
-                    title="Logs"
-                    onClick={onLogsOpen}
-                >
-                    &#128203;
-                </button>
-                {SHOW_MEMORY_TAB && (
+                <div ref={toolsContainerRef} className="relative hidden md:inline-flex">
                     <button
-                        id="memory-toggle"
-                        data-tab="memory"
+                        ref={toolsButtonRef}
+                        id="tools-toggle"
+                        type="button"
+                        aria-label="Tools"
+                        title="Tools"
+                        aria-haspopup="menu"
+                        aria-expanded={toolsOpen}
+                        data-testid="tools-toggle"
+                        data-tools-active={toolsActive ? 'true' : 'false'}
+                        onClick={toggleTools}
                         className={
-                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                            (state.activeTab === 'memory'
-                                ? 'bg-[#0078d4] text-white'
-                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                            `inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[13px] font-semibold leading-none touch-target transition-colors ` +
+                            (toolsOpen || toolsActive
+                                ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/20 border-[#0969da]/40 dark:border-[#3794ff]/50 text-[#0969da] dark:text-[#79c0ff]'
+                                : 'bg-white dark:bg-[#1e1e1e] border-[#d0d7de] dark:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]')
                         }
-                        aria-label="Memory"
-                        title="Memory"
-                        onClick={() => switchTab('memory')}
                     >
-                        &#129504;
+                        <span aria-hidden="true" className="text-[14px] leading-none">&#9776;</span>
+                        <span>Tools</span>
                     </button>
-                )}
-                <button
-                    id="stats-toggle"
-                    data-tab="stats"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'stats'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Usage"
-                    title="Usage"
-                    onClick={() => switchTab('stats')}
-                >
-                    &#128202;
-                </button>
-                <button
-                    id="models-toggle"
-                    data-tab="models"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'models'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Models"
-                    title="Models"
-                    onClick={() => switchTab('models')}
-                >
-                    &#9883;
-                </button>
-                {serversEnabled && (
-                    <button
-                        id="servers-toggle"
-                        data-tab="servers"
-                        className={
-                            `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                            (state.activeTab === 'servers'
-                                ? 'bg-[#0078d4] text-white'
-                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                        }
-                        aria-label="Servers"
-                        title="Servers"
-                        onClick={() => switchTab('servers')}
-                    >
-                        &#128421;
-                    </button>
-                )}
+                    {toolsOpen && (
+                        <div
+                            id="tools-popover"
+                            role="menu"
+                            aria-label="Tools"
+                            data-testid="tools-popover"
+                            className="absolute right-0 top-full mt-1.5 z-[10001] min-w-[260px] rounded-lg border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden"
+                        >
+                            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[#656d76] dark:text-[#999]">
+                                Global tools
+                            </div>
+                            <div className="p-1.5">
+                                {toolItems.map(item => {
+                                    const isActive = item.tab !== null && state.activeTab === item.tab;
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            id={item.id}
+                                            data-tab={item.tab ?? undefined}
+                                            data-testid={item.id}
+                                            type="button"
+                                            role="menuitem"
+                                            aria-label={item.label}
+                                            title={item.label}
+                                            onClick={() => { item.onClick(); closeTools(); }}
+                                            className={
+                                                `w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-left transition-colors touch-target ` +
+                                                (isActive
+                                                    ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]'
+                                                    : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]')
+                                            }
+                                        >
+                                            <span
+                                                aria-hidden="true"
+                                                className="inline-flex items-center justify-center w-6 h-6 text-base leading-none flex-shrink-0"
+                                            >
+                                                {item.icon}
+                                            </span>
+                                            <span className="flex-1 min-w-0 flex flex-col leading-tight">
+                                                <span className="text-[13px] font-semibold truncate">
+                                                    {item.label}
+                                                </span>
+                                                <span className="text-[12px] text-[#656d76] dark:text-[#999] truncate">
+                                                    {item.description}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
                 <button
                     id="admin-toggle"
                     data-tab="admin"

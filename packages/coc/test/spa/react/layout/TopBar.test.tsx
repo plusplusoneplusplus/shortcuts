@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { mockViewport } from '../../helpers/viewport-mock';
 import { SHOW_MEMORY_TAB, TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 
@@ -126,50 +126,52 @@ describe('TopBar responsive behavior', () => {
         expect(document.getElementById('theme-toggle')).toBeTruthy();
     });
 
-    it('inactive icon buttons do not have active border class', () => {
+    it('inactive Tools dropdown items do not show the active accent', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        // skills is not active (activeTab is 'repos')
+        // Open the Tools dropdown so menu items mount in the DOM.
+        fireEvent.click(document.getElementById('tools-toggle')!);
         const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).not.toContain('active');
-        expect(btn.className).not.toContain('border-b-2');
-    });
-    it('skills button has hidden md:inline-flex classes (hidden on mobile)', () => {
-        viewportCleanup = mockViewport(375);
-        render(<TopBar />);
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).toContain('hidden');
-        expect(btn.className).toContain('md:inline-flex');
+        expect(btn.className).not.toContain('bg-[#ddf4ff]');
     });
 
-    it('logs button has hidden md:inline-flex classes (hidden on mobile)', () => {
+    it('Tools button has hidden md:inline-flex container (mobile uses BottomNav)', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
-        const btn = document.getElementById('logs-toggle')!;
-        expect(btn.className).toContain('hidden');
-        expect(btn.className).toContain('md:inline-flex');
+        const btn = document.getElementById('tools-toggle')!;
+        // The Tools popover container is the element that hides on mobile.
+        const container = btn.parentElement!;
+        expect(container.className).toContain('hidden');
+        expect(container.className).toContain('md:inline-flex');
+    });
+
+    it('Skills/Logs are reachable via Tools dropdown (not as standalone buttons)', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        // Closed dropdown: items are not in the DOM.
+        expect(document.getElementById('skills-toggle')).toBeNull();
+        expect(document.getElementById('logs-toggle')).toBeNull();
+        // Open the dropdown and the items appear.
+        fireEvent.click(document.getElementById('tools-toggle')!);
+        expect(document.getElementById('skills-toggle')).toBeTruthy();
+        expect(document.getElementById('logs-toggle')).toBeTruthy();
     });
 
     it('does not render the memory button while SHOW_MEMORY_TAB is false', () => {
         expect(SHOW_MEMORY_TAB).toBe(false);
-        viewportCleanup = mockViewport(375);
+        viewportCleanup = mockViewport(1024);
         render(<TopBar />);
+        // Even with the Tools dropdown opened, no memory entry is rendered.
+        fireEvent.click(document.getElementById('tools-toggle')!);
         expect(document.getElementById('memory-toggle')).toBeNull();
         expect(document.querySelector('[data-tab="memory"]')).toBeNull();
     });
 
-    it('models button renders atom symbol icon', () => {
+    it('models entry renders atom symbol icon inside Tools dropdown', () => {
         render(<TopBar />);
+        fireEvent.click(document.getElementById('tools-toggle')!);
         const btn = document.getElementById('models-toggle')!;
         expect(btn.textContent).toContain('⚛');
-    });
-
-    it('models button has hidden md:inline-flex classes (hidden on mobile)', () => {
-        viewportCleanup = mockViewport(375);
-        render(<TopBar />);
-        const btn = document.getElementById('models-toggle')!;
-        expect(btn.className).toContain('hidden');
-        expect(btn.className).toContain('md:inline-flex');
     });
 
     it('admin button does NOT have hidden class (always visible)', () => {

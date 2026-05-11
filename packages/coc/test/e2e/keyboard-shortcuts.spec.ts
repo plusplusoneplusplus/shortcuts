@@ -64,8 +64,10 @@ test.describe('Keyboard shortcuts', () => {
     test("keyboard shortcuts are ignored when not on Repos tab", async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // Switch to Skills tab — repo sub-tab shortcuts only fire when
-        // `state.activeTab === 'repos'` AND a repo is selected.
+        // Switch to Skills tab via Tools dropdown — repo sub-tab shortcuts
+        // only fire when `state.activeTab === 'repos'` AND a repo is selected.
+        await page.click('#tools-toggle');
+        await expect(page.locator('#tools-popover')).toBeVisible();
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 

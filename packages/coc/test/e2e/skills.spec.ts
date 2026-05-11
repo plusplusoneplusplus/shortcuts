@@ -22,9 +22,19 @@ import type { Page } from '@playwright/test';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Navigate to the Skills tab and wait for the view to render. */
+/**
+ * Navigate to the Skills tab and wait for the view to render.
+ *
+ * Skills lives inside the Tools dropdown — open it before clicking the
+ * underlying menu row.
+ */
 async function gotoSkills(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
+    const trigger = page.locator('#tools-toggle');
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+        await trigger.click();
+    }
+    await expect(page.locator('#tools-popover')).toBeVisible();
     await page.click('[data-tab="skills"]');
     await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 }

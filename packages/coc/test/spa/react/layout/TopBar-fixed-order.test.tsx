@@ -87,12 +87,11 @@ describe('TopBar fixed action order', () => {
     it('renders top-bar actions in the fixed code-defined order', () => {
         renderTopBar();
 
+        // Skills/Logs/Usage/Models live inside the Tools dropdown; the top-level
+        // action row exposes only the high-level buttons.
         expect(actionLabels()).toEqual([
             'Notifications',
-            'Skills',
-            'Logs',
-            'Usage',
-            'Models',
+            'Tools',
             'Admin',
             'Toggle theme',
         ]);
@@ -109,13 +108,13 @@ describe('TopBar fixed action order', () => {
     it('keeps long press and drag gestures from changing action order', () => {
         renderTopBar();
         const before = actionLabels();
-        const skills = screen.getByLabelText('Skills');
+        const tools = screen.getByLabelText('Tools');
         const admin = screen.getByLabelText('Admin');
 
-        fireEvent.pointerDown(skills, { pointerId: 1, clientX: 1, clientY: 1 });
-        fireEvent.pointerMove(skills, { pointerId: 1, clientX: 20, clientY: 1 });
-        fireEvent.pointerUp(skills, { pointerId: 1, clientX: 20, clientY: 1 });
-        fireEvent.dragStart(skills);
+        fireEvent.pointerDown(tools, { pointerId: 1, clientX: 1, clientY: 1 });
+        fireEvent.pointerMove(tools, { pointerId: 1, clientX: 20, clientY: 1 });
+        fireEvent.pointerUp(tools, { pointerId: 1, clientX: 20, clientY: 1 });
+        fireEvent.dragStart(tools);
         fireEvent.drop(admin);
 
         expect(actionLabels()).toEqual(before);
@@ -125,6 +124,8 @@ describe('TopBar fixed action order', () => {
     it('still activates the fixed action buttons', () => {
         renderTopBar();
 
+        // Logs lives inside the Tools dropdown — open it before clicking.
+        fireEvent.click(screen.getByLabelText('Tools'));
         fireEvent.click(screen.getByLabelText('Logs'));
         fireEvent.click(screen.getByLabelText('Admin'));
         fireEvent.click(screen.getByLabelText('Toggle theme'));

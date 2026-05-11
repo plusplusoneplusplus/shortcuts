@@ -6,12 +6,22 @@
  * which shares the same module singleton as the test server.
  */
 
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/server-fixture';
 import { request } from './fixtures/seed';
 
 // Import captureEntry from the compiled server module.
 // This is the same singleton used by the running test server.
 const { captureEntry, clearLogBuffer } = require('../../dist/server/index');
+
+/** Open the Tools popover so its menu rows become visible/clickable. */
+async function openToolsPopover(page: Page): Promise<void> {
+    const trigger = page.locator('#tools-toggle');
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+        await trigger.click();
+    }
+    await expect(page.locator('#tools-popover')).toBeVisible();
+}
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -36,10 +46,10 @@ test.afterEach(() => {
 // ── Navigation ─────────────────────────────────────────────────────────────
 
 test.describe('Logs tab — navigation', () => {
-    test('clicking the Logs tab shows the Logs view', async ({ page, serverUrl }) => {
+    test('clicking the Logs entry inside Tools dropdown shows the Logs view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl + '/#repos');
 
-        // Click Logs tab
+        await openToolsPopover(page);
         await page.locator('[data-tab="logs"]').click();
 
         await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8000 });
@@ -51,13 +61,17 @@ test.describe('Logs tab — navigation', () => {
         await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8000 });
     });
 
-    test('Logs tab is highlighted when active', async ({ page, serverUrl }) => {
+    test('Logs entry inside Tools dropdown is highlighted when active', async ({ page, serverUrl }) => {
         await page.goto(serverUrl + '/#logs');
+        await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8000 });
 
+        // Tools trigger reflects the active state via data attribute.
+        await expect(page.locator('#tools-toggle')).toHaveAttribute('data-tools-active', 'true');
+
+        await openToolsPopover(page);
         const logsTab = page.locator('[data-tab="logs"]');
         await expect(logsTab).toBeVisible({ timeout: 8000 });
-        await expect(logsTab).toHaveClass(/bg-\[#0078d4\]/);
-        await expect(logsTab).toHaveClass(/text-white/);
+        await expect(logsTab).toHaveClass(/bg-\[#ddf4ff\]/);
     });
 });
 

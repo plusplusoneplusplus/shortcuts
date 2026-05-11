@@ -77,4 +77,11 @@ describe('TopBar touch targets', () => {
         const link = document.getElementById('admin-toggle')!;
         expect(link.className).toContain('touch-target');
     });
+
+    it('tools dropdown trigger has touch-target class', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const btn = document.getElementById('tools-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
 });

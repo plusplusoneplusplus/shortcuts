@@ -5,11 +5,24 @@
  *
  * Note: the legacy global "Processes" top-level tab was removed. Activity
  * (queue task list + chat detail) now lives under the per-repo `activity`
- * sub-tab. These tests assert the remaining top-level tabs (Repos, Skills,
- * Logs, Admin), the direct-routable Memory view, and legacy hash redirects.
+ * sub-tab. The Skills / Logs / Usage / Models / Servers entries live inside
+ * the Tools dropdown — open it via `#tools-toggle` before clicking the
+ * underlying menu row. These tests assert the remaining top-level tabs
+ * (Repos, Admin, Tools dropdown rows), the direct-routable Memory view, and
+ * legacy hash redirects.
  */
 
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/server-fixture';
+
+/** Open the Tools popover so its menu rows become visible/clickable. */
+async function openToolsPopover(page: Page): Promise<void> {
+    const trigger = page.locator('#tools-toggle');
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+        await trigger.click();
+    }
+    await expect(page.locator('#tools-popover')).toBeVisible();
+}
 
 test.describe('Navigation', () => {
     test('default view is Repos tab', async ({ page, serverUrl }) => {
@@ -23,9 +36,10 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-processes')).toHaveCount(0);
     });
 
-    test('clicking Skills tab switches to skills view', async ({ page, serverUrl }) => {
+    test('clicking Skills inside Tools dropdown switches to skills view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
+        await openToolsPopover(page);
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
@@ -39,6 +53,7 @@ test.describe('Navigation', () => {
     test('can switch back to Repos from Skills', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
+        await openToolsPopover(page);
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
@@ -56,6 +71,8 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
 
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
+        // Skills lives inside the Tools dropdown; open it before asserting.
+        await openToolsPopover(page);
         await expect(page.locator('[data-tab="skills"]')).toBeVisible();
     });
 
@@ -67,9 +84,10 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-repos')).toBeVisible();
     });
 
-    test('Skills tab navigation switches to Skills view', async ({ page, serverUrl }) => {
+    test('Skills entry navigation switches to Skills view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
+        await openToolsPopover(page);
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
@@ -77,6 +95,8 @@ test.describe('Navigation', () => {
     test('Memory topbar icon is hidden', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
+        // Even with the Tools popover opened, no memory entry is rendered.
+        await openToolsPopover(page);
         await expect(page.locator('#memory-toggle')).toHaveCount(0);
         await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
     });
@@ -110,8 +130,9 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
         const hamburger = page.locator('#hamburger-btn');
 
-        // Switch to Skills tab — hamburger should now navigate back to repos
-        // rather than toggle the popover.
+        // Switch to Skills (via Tools dropdown) — hamburger should now navigate
+        // back to repos rather than toggle the popover.
+        await openToolsPopover(page);
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
@@ -146,8 +167,13 @@ test.describe('Navigation', () => {
     test('hash navigation routes to Skills tab', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#skills`);
 
-        await expect(page.locator('[data-tab="skills"]')).toHaveClass(/bg-\[#0078d4\]/);
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
+
+        // Skills row inside the Tools dropdown reflects the active tab once opened.
+        await openToolsPopover(page);
+        await expect(page.locator('[data-tab="skills"]')).toHaveClass(/bg-\[#ddf4ff\]/);
+        // Tools trigger itself signals the active state via data-tools-active.
+        await expect(page.locator('#tools-toggle')).toHaveAttribute('data-tools-active', 'true');
     });
 
     test('hash navigation routes to Admin panel', async ({ page, serverUrl }) => {

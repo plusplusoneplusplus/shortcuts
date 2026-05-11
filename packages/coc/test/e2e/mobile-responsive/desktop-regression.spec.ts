@@ -81,6 +81,9 @@ test.describe('Desktop Regression', () => {
 
         // Memory remains directly routable, but its topbar icon is hidden by default.
         await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
+        // Skills lives inside the Tools dropdown — open it first.
+        await page.click('#tools-toggle');
+        await expect(page.locator('#tools-popover')).toBeVisible();
         await expect(page.locator('[data-tab="skills"]')).toBeVisible();
 
         // repos tab link is visible as the brand name
@@ -135,6 +138,9 @@ test.describe('Desktop Regression', () => {
         await page.goto(`${serverUrl}/#memory`);
         await expect(page.locator('#view-memory')).toBeVisible();
 
+        // Skills lives inside the Tools dropdown.
+        await page.click('#tools-toggle');
+        await expect(page.locator('#tools-popover')).toBeVisible();
         await page.click('[data-tab="skills"]');
         await expect(page.locator('#view-skills')).toBeVisible();
     });
