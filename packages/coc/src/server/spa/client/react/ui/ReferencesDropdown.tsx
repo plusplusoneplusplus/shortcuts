@@ -131,7 +131,7 @@ export function ReferenceList({ planPath, files }: { planPath?: string; files?: 
     );
 }
 
-/** Header + footer chrome shared by the desktop popover and mobile sheet. */
+/** Header chrome shared by the desktop popover and mobile sheet. */
 function ReferencesPanelChrome({
     planCount,
     pinnedCount,
@@ -170,10 +170,6 @@ function ReferencesPanelChrome({
             )}
             <div className="flex flex-col p-1">
                 {children}
-            </div>
-            <div className="flex items-center justify-between gap-2.5 px-3 py-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#1e1e1e] text-[11.5px] text-[#6b7280] dark:text-[#9aa0a6]">
-                <span>From planPath + .md/.txt/.yaml/.yml/.json writes</span>
-                <span className="text-[#2c2f33] dark:text-[#cccccc]">Scratchpad .md files are excluded</span>
             </div>
         </div>
     );

@@ -73,13 +73,16 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('z-50');
     });
 
-    it('renders header + footer chrome around the list', () => {
+    it('renders header chrome around the list', () => {
         // Header has the "References" title + subtitle + count pill
         expect(SOURCE).toContain('<h2');
         expect(SOURCE).toContain('References');
-        // Footer hints at the planPath + .md/.txt/.yaml/.yml/.json source
-        expect(SOURCE).toContain('From planPath + .md/.txt/.yaml/.yml/.json writes');
-        expect(SOURCE).toContain('Scratchpad .md files are excluded');
+    });
+
+    it('does not render the explanatory footer text', () => {
+        // Footer hint was removed per design feedback
+        expect(SOURCE).not.toContain('From planPath + .md/.txt/.yaml/.yml/.json writes');
+        expect(SOURCE).not.toContain('Scratchpad .md files are excluded');
     });
 
     it('classifies items as plan vs pinned for icon and pill styling', () => {
