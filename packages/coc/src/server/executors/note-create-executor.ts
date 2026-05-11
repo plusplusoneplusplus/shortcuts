@@ -184,11 +184,15 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const userPrompt = noteCreate?.prompt ?? prompt;
 
         // Inject the note model preference when no explicit model
+        // Resolution: task.config.model > defaultModels.note > lastModels.note > 'claude-sonnet-4.6'.
         if (!task.config.model) {
             const repoPrefs = this.dataDir && wsId
                 ? readRepoPreferences(this.dataDir, wsId)
                 : undefined;
-            const noteModel = repoPrefs?.lastModels?.note ?? 'claude-sonnet-4.6';
+            const noteModel = repoPrefs?.defaultModels?.note
+                ?? repoPrefs?.defaultModel
+                ?? repoPrefs?.lastModels?.note
+                ?? 'claude-sonnet-4.6';
             task = { ...task, config: { ...task.config, model: noteModel } };
         }
 

@@ -280,7 +280,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
             const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
-            const reasoningModel = model ?? processModel;
+            let reasoningModel = model ?? processModel;
+            // Resolve per-repo default model when no explicit or process model is set.
+            if (!reasoningModel && this.dataDir && wsId) {
+                const { resolveDefaultModel } = await import('../preferences-handler');
+                reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
+            }
             const reasoningSelection = resolveReasoningSelection({
                 modelId: reasoningModel,
                 model: await this.getModelMetadataForReasoning(reasoningModel),

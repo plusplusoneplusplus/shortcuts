@@ -41,6 +41,20 @@ export interface LastModelsByMode {
     note?: string;
 }
 
+/** Mode keys for the per-repo default model overrides. */
+export type DefaultModelMode = 'task' | 'ask' | 'plan' | 'note' | 'schedule' | 'followUp' | 'memory';
+
+/** Per-mode default model overrides. Take precedence over the repo-wide defaultModel. */
+export interface DefaultModelsByMode {
+    task?: string;
+    ask?: string;
+    plan?: string;
+    note?: string;
+    schedule?: string;
+    followUp?: string;
+    memory?: string;
+}
+
 export type AutoPromoteMode = 'off' | 'threshold' | 'cron' | 'cron+threshold';
 
 export interface BoundedMemoryAutoPromoteConfig {
@@ -209,6 +223,10 @@ export interface PerRepoPreferences {
      * - `string[]` — tools whose name matches an entry are disabled.
      */
     disabledLlmTools?: string[];
+    /** Repo-wide default model used when no explicit model is provided. */
+    defaultModel?: string;
+    /** Per-mode default model overrides. Take precedence over defaultModel. */
+    defaultModels?: DefaultModelsByMode;
 }
 
 export interface SkillUsageEntry {
@@ -659,6 +677,23 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         result.disabledLlmTools = tools;
     }
 
+    if (typeof obj.defaultModel === 'string' && obj.defaultModel.length <= 100) {
+        result.defaultModel = obj.defaultModel;
+    }
+
+    if (typeof obj.defaultModels === 'object' && obj.defaultModels !== null && !Array.isArray(obj.defaultModels)) {
+        const raw = obj.defaultModels as Record<string, unknown>;
+        const validated: DefaultModelsByMode = {};
+        for (const mode of ['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const) {
+            if (typeof raw[mode] === 'string' && (raw[mode] as string).length <= 100) {
+                validated[mode] = raw[mode] as string;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.defaultModels = validated;
+        }
+    }
+
     return result;
 }
 
@@ -735,6 +770,26 @@ export function readRepoPreferences(dataDir: string, workspaceId: string): PerRe
     } catch {
         return {};
     }
+}
+
+/**
+ * Resolve the per-repo default model for a given mode.
+ *
+ * Resolution order (highest → lowest):
+ * 1. Per-mode default from `defaultModels[mode]`.
+ * 2. Repo-wide default from `defaultModel`.
+ * 3. `undefined` — caller falls through to its own default or CLI default.
+ *
+ * Callers should check `task.config.model` (explicit model) before calling this.
+ */
+export function resolveDefaultModel(
+    dataDir: string,
+    workspaceId: string,
+    mode?: DefaultModelMode,
+): string | undefined {
+    const prefs = readRepoPreferences(dataDir, workspaceId);
+    if (mode && prefs.defaultModels?.[mode]) return prefs.defaultModels[mode];
+    return prefs.defaultModel || undefined;
 }
 
 /**
@@ -907,6 +962,27 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing task/plan values.
             if (patch.lastModels && existingRepo.lastModels) {
                 merged.lastModels = { ...existingRepo.lastModels, ...patch.lastModels };
+            }
+
+            // Deep-merge defaultModels so that patching { defaultModels: { task: 'x' } }
+            // preserves existing per-mode overrides.
+            if (patch.defaultModels && existingRepo.defaultModels) {
+                merged.defaultModels = { ...existingRepo.defaultModels, ...patch.defaultModels };
+            }
+            // Remove per-mode entries explicitly cleared by the client (empty string = clear).
+            if (merged.defaultModels) {
+                for (const mode of ['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const) {
+                    if (merged.defaultModels[mode] === '') {
+                        delete merged.defaultModels[mode];
+                    }
+                }
+                if (Object.keys(merged.defaultModels).length === 0) {
+                    delete merged.defaultModels;
+                }
+            }
+            // Clear defaultModel when explicitly set to empty string.
+            if ((body as any).defaultModel === '') {
+                delete merged.defaultModel;
             }
 
             // Deep-merge activityFilters so that patching { activityFilters: { statusFilter: 'x' } }

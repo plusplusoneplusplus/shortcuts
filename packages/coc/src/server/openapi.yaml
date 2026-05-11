@@ -393,6 +393,7 @@ paths:
         - `lastSkills`: merges per-mode (task/ask/plan) individually; an empty
           array for a mode clears that mode.
         - `lastModels`: merges per-mode (task/ask/plan) individually.
+        - `defaultModels`: merges per-mode individually; empty string clears a mode.
         - `linkedRepoIds`: sending an empty array `[]` deletes the key entirely.
         Omitted keys are preserved. Unknown keys are silently dropped.
       tags: [Preferences]
@@ -1075,6 +1076,18 @@ components:
         ask: { type: string }
         plan: { type: string }
 
+    DefaultModelsByMode:
+      type: object
+      description: Per-mode default model overrides. Take precedence over the repo-wide defaultModel.
+      properties:
+        task: { type: string }
+        ask: { type: string }
+        plan: { type: string }
+        note: { type: string }
+        schedule: { type: string }
+        followUp: { type: string }
+        memory: { type: string }
+
     ScriptTemplateEntry:
       type: object
       description: A saved run-script template.
@@ -1194,6 +1207,12 @@ components:
           type: string
           enum: [flat, tree]
           description: Preferred file-list display mode across all git views.
+        defaultModel:
+          type: string
+          maxLength: 100
+          description: Repo-wide default model used when no explicit model is provided.
+        defaultModels:
+          $ref: '#/components/schemas/DefaultModelsByMode'
         boundedMemory:
           type: object
           description: >-

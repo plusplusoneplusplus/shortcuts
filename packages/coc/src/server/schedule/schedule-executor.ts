@@ -17,6 +17,7 @@ import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { TaskDefs, type MemoryPromotePayload } from '../tasks/task-types';
 import { getErrorMessage } from '../shared/fs-utils';
+import { resolveDefaultModel } from '../preferences-handler';
 import type {
     ScheduleEntry,
     ScheduleRunRecord,
@@ -37,6 +38,7 @@ export class ScheduleExecutor {
         private readonly history: ScheduleRunHistory,
         private readonly emit: ScheduleEventEmit,
         private readonly onFailureStop: ScheduleFailureStopHandler,
+        private readonly dataDir?: string,
     ) {}
 
     isRunning(scheduleId: string): boolean {
@@ -99,6 +101,9 @@ export class ScheduleExecutor {
         if (!schedule.targetType || schedule.targetType === 'prompt') {
             const effectiveOutputFolder = schedule.outputFolder || `~/.coc/repos/${repoId}/tasks`;
             const outputPrefix = `Output folder: ${effectiveOutputFolder}\n\n`;
+            const model = schedule.model
+                || (this.dataDir ? resolveDefaultModel(this.dataDir, repoId, 'schedule') : undefined)
+                || undefined;
             const taskId = this.queueManager.enqueue({
                 type: 'chat',
                 priority: 'normal',
@@ -113,7 +118,7 @@ export class ScheduleExecutor {
                     },
                     workingDirectory: '',
                 },
-                config: { model: schedule.model || undefined },
+                config: { model },
                 displayName: `[Schedule] ${schedule.name}`,
                 repoId,
             });
@@ -149,6 +154,9 @@ export class ScheduleExecutor {
                 const payload = task.payload as Partial<MemoryPromotePayload>;
                 return payload.workspaceId === repoId && payload.target === target;
             });
+            const model = schedule.model
+                || (this.dataDir ? resolveDefaultModel(this.dataDir, repoId, 'memory') : undefined)
+                || undefined;
             const taskId = existing?.id ?? this.queueManager.enqueue({
                 type: TaskDefs.memoryPromote.kind,
                 priority: 'low',
@@ -159,7 +167,7 @@ export class ScheduleExecutor {
                     trigger: 'auto-cron',
                     ...(schedule.params?.gates ? { gates: JSON.parse(schedule.params.gates) } : {}),
                 } as MemoryPromotePayload as unknown as Record<string, unknown>,
-                config: { model: schedule.model || undefined },
+                config: { model },
                 displayName: `[Schedule] ${schedule.name}`,
                 repoId,
             });

@@ -22,6 +22,16 @@ const selectClass = 'flex-1 px-2 py-0.5 text-sm rounded border border-[#e0e0e0] 
 const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
 const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
 
+const MODE_LABELS: Record<string, string> = {
+    task: 'Task',
+    ask: 'Ask',
+    plan: 'Plan',
+    note: 'Note',
+    schedule: 'Schedule',
+    followUp: 'Follow-up',
+    memory: 'Memory',
+};
+
 export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionProps) {
     const { addToast } = useGlobalToast();
     const prefs = usePreferences(workspaceId);
@@ -48,11 +58,27 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             .finally(() => setSkillsLoading(false));
     }, [workspaceId]);
 
+    // Default model preferences
+    const [defaultModel, setDefaultModelState] = useState('');
+    const [defaultModels, setDefaultModelsState] = useState<Record<string, string>>({});
+    const [showPerModeDefaults, setShowPerModeDefaults] = useState(false);
+
     // Fetch linked repo IDs from preferences
     useEffect(() => {
         setLinkedRepoLoading(true);
         getSpaCocClient().preferences.getRepo(workspaceId)
-            .then(data => setLinkedRepoIds(data?.linkedRepoIds ?? []))
+            .then(data => {
+                setLinkedRepoIds(data?.linkedRepoIds ?? []);
+                setDefaultModelState(typeof data?.defaultModel === 'string' ? data.defaultModel : '');
+                const dm = data?.defaultModels;
+                if (dm && typeof dm === 'object') {
+                    const cleaned: Record<string, string> = {};
+                    for (const [k, v] of Object.entries(dm)) {
+                        if (typeof v === 'string' && v) cleaned[k] = v;
+                    }
+                    setDefaultModelsState(cleaned);
+                }
+            })
             .catch(() => setLinkedRepoIds([]))
             .finally(() => setLinkedRepoLoading(false));
     }, [workspaceId]);
@@ -109,6 +135,27 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         }
     }, [workspaceId, linkedRepoIds, addToast]);
 
+    // Default model handlers
+    const handleDefaultModelChange = useCallback((value: string) => {
+        const v = value === 'default' ? '' : value;
+        setDefaultModelState(v);
+        getSpaCocClient().preferences.patchRepo(workspaceId, { defaultModel: v }).catch(() => {});
+    }, [workspaceId]);
+
+    const handleDefaultModelModeChange = useCallback((mode: string, value: string) => {
+        const v = value === 'repo-default' ? '' : value;
+        setDefaultModelsState(prev => {
+            const next = { ...prev };
+            if (v) {
+                next[mode] = v;
+            } else {
+                delete next[mode];
+            }
+            return next;
+        });
+        getSpaCocClient().preferences.patchRepo(workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
+    }, [workspaceId]);
+
     // Available repos for linked repo picker (exclude self and already-linked)
     const linkableRepos = repos
         .map(r => r.workspace)
@@ -128,8 +175,64 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         <div id="repo-preferences-section" data-testid="repo-preferences-section">
             <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Preferences</h3>
 
+            {/* ── Default Model ── */}
+            <div className={sectionHeadClass} data-testid="section-default-model">Default Model</div>
+            <div className="flex flex-col gap-2 mb-1">
+                <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                        <label className={labelClass}>Repo Default</label>
+                        <select
+                            className={selectClass}
+                            value={defaultModel || 'default'}
+                            onChange={e => handleDefaultModelChange(e.target.value)}
+                            data-testid="pref-default-model"
+                        >
+                            <option value="default">CLI default</option>
+                            {enabledModels.map(m => (
+                                <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <p className="text-[11px] text-[#848484] ml-28 pl-2">
+                        Fallback model when no explicit model is selected for a task.
+                    </p>
+                </div>
+                <button
+                    className="text-xs text-[#0078d4] hover:underline text-left ml-28 pl-2"
+                    onClick={() => setShowPerModeDefaults(prev => !prev)}
+                    data-testid="toggle-per-mode-defaults"
+                >
+                    {showPerModeDefaults ? '▾ Per-mode overrides' : '▸ Per-mode overrides'}
+                </button>
+                {showPerModeDefaults && (
+                    <div className="flex flex-col gap-2 ml-4">
+                        {(['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const).map(mode => (
+                            <div key={mode} className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                                <label className={labelClass}>{MODE_LABELS[mode]}</label>
+                                <select
+                                    className={selectClass}
+                                    value={defaultModels[mode] || 'repo-default'}
+                                    onChange={e => handleDefaultModelModeChange(mode, e.target.value)}
+                                    data-testid={`pref-default-model-${mode}`}
+                                >
+                                    <option value="repo-default">Use repo default</option>
+                                    {enabledModels.map(m => (
+                                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ))}
+                        <p className="text-[11px] text-[#848484] ml-28 pl-2">
+                            Precedence: explicit selection &gt; per-mode default &gt; repo default &gt; CLI default
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            <div className={dividerClass} />
+
             {/* ── Models ── */}
-            <div className={sectionHeadClass} data-testid="section-models">Models</div>
+            <div className={sectionHeadClass} data-testid="section-models">Last Used Models</div>
             <div className="flex flex-col gap-2 mb-1">
                 <ModelRow label="Task Model" mode="task" value={prefs.models.task} models={enabledModels} onChange={handleModelChange} />
                 <ModelRow label="Ask Model" mode="ask" value={prefs.models.ask} models={enabledModels} onChange={handleModelChange} />

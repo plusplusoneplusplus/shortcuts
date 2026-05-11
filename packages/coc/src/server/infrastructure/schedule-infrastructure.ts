@@ -70,6 +70,7 @@ export function createScheduleInfrastructure(
         schedulePersistence,
         queueFacade,
         scheduleOverrideStore,
+        dataDir,
     );
     scheduleManager.restore();
     scheduleManager.restoreRunHistory(scheduleRunPersistence);

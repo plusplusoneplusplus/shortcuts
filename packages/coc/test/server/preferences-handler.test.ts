@@ -27,6 +27,7 @@ import {
     validatePerRepoPreferences,
     validateGlobalPreferences,
     normalizeGlobalPreferencesForRead,
+    resolveDefaultModel,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
 import type { PreferencesFile } from '../../src/server/preferences-handler';
@@ -493,6 +494,42 @@ describe('readPreferences / writePreferences', () => {
         writePreferences(tmpDir, { global: { linkHandlers: { teams: true, onenote: false } } });
         const loaded = readPreferences(tmpDir);
         expect(loaded.global?.linkHandlers).toEqual({ teams: true, onenote: false });
+    });
+
+    it('round-trips defaultModel through write and read', () => {
+        writeRepoPreferences(tmpDir, 'r', { defaultModel: 'claude-sonnet-4.6' });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.defaultModel).toBe('claude-sonnet-4.6');
+    });
+
+    it('round-trips defaultModels through write and read', () => {
+        writeRepoPreferences(tmpDir, 'r', {
+            defaultModels: { task: 'gpt-4', ask: 'claude-3', schedule: 'gpt-5-mini' },
+        });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.defaultModels).toEqual({ task: 'gpt-4', ask: 'claude-3', schedule: 'gpt-5-mini' });
+    });
+
+    it('validates defaultModel max length', () => {
+        const longModel = 'a'.repeat(101);
+        const result = validatePerRepoPreferences({ defaultModel: longModel });
+        expect(result.defaultModel).toBeUndefined();
+    });
+
+    it('validates defaultModels mode values max length', () => {
+        const longModel = 'a'.repeat(101);
+        const result = validatePerRepoPreferences({ defaultModels: { task: longModel, ask: 'ok' } });
+        expect(result.defaultModels).toEqual({ ask: 'ok' });
+    });
+
+    it('strips invalid defaultModels (not an object)', () => {
+        const result = validatePerRepoPreferences({ defaultModels: 'not-an-object' });
+        expect(result.defaultModels).toBeUndefined();
+    });
+
+    it('strips unknown mode keys from defaultModels', () => {
+        const result = validatePerRepoPreferences({ defaultModels: { task: 'gpt-4', unknownMode: 'val' } } as any);
+        expect(result.defaultModels).toEqual({ task: 'gpt-4' });
     });
 });
 
@@ -2193,5 +2230,117 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await putJSON(repoUrl(repoId), { activityFilters: { statusFilter: 'failed', typeFilter: 'ask' } });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'failed', typeFilter: 'ask' });
+    });
+
+    it('PATCH deep-merges defaultModels preserving existing per-mode values', async () => {
+        await patchJSON(repoUrl(repoId), { defaultModels: { task: 'gpt-4' } });
+        const res = await patchJSON(repoUrl(repoId), { defaultModels: { ask: 'claude-3' } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.defaultModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
+    });
+
+    it('PATCH defaultModel sets repo-wide default', async () => {
+        const res = await patchJSON(repoUrl(repoId), { defaultModel: 'gpt-5-mini' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).defaultModel).toBe('gpt-5-mini');
+    });
+
+    it('PATCH defaultModel empty string clears the value', async () => {
+        await patchJSON(repoUrl(repoId), { defaultModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { defaultModel: '' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).defaultModel).toBeUndefined();
+    });
+
+    it('PATCH defaultModels empty string clears per-mode value', async () => {
+        await patchJSON(repoUrl(repoId), { defaultModels: { task: 'gpt-4', ask: 'claude-3' } });
+        const res = await patchJSON(repoUrl(repoId), { defaultModels: { task: '' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).defaultModels).toEqual({ ask: 'claude-3' });
+    });
+
+    it('PATCH does not affect defaultModel when patching other fields', async () => {
+        await patchJSON(repoUrl(repoId), { defaultModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { lastDepth: 'deep' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.defaultModel).toBe('gpt-4');
+        expect(body.lastDepth).toBe('deep');
+    });
+});
+
+// ============================================================================
+// resolveDefaultModel
+// ============================================================================
+
+describe('resolveDefaultModel', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-resolve-model-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('returns undefined when no preferences are set', () => {
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'task')).toBeUndefined();
+    });
+
+    it('returns repo-wide defaultModel when no per-mode override exists', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', { defaultModel: 'gpt-4' });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'task')).toBe('gpt-4');
+    });
+
+    it('returns per-mode override when set', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', {
+            defaultModel: 'gpt-4',
+            defaultModels: { task: 'claude-sonnet-4.6' },
+        });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'task')).toBe('claude-sonnet-4.6');
+    });
+
+    it('falls back to repo-wide defaultModel for modes without override', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', {
+            defaultModel: 'gpt-4',
+            defaultModels: { task: 'claude-sonnet-4.6' },
+        });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'ask')).toBe('gpt-4');
+    });
+
+    it('returns undefined when mode is omitted and no defaultModel is set', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', { defaultModels: { task: 'gpt-4' } });
+        expect(resolveDefaultModel(tmpDir, 'ws-1')).toBeUndefined();
+    });
+
+    it('returns defaultModel when mode is omitted and defaultModel is set', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', { defaultModel: 'gpt-4' });
+        expect(resolveDefaultModel(tmpDir, 'ws-1')).toBe('gpt-4');
+    });
+
+    it('per-mode override for schedule mode works', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', {
+            defaultModel: 'gpt-4',
+            defaultModels: { schedule: 'gpt-5-mini' },
+        });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'schedule')).toBe('gpt-5-mini');
+    });
+
+    it('per-mode override for memory mode works', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', {
+            defaultModel: 'gpt-4',
+            defaultModels: { memory: 'claude-haiku-4.5' },
+        });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'memory')).toBe('claude-haiku-4.5');
+    });
+
+    it('per-mode override for followUp mode works', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', {
+            defaultModel: 'gpt-4',
+            defaultModels: { followUp: 'gpt-5.4' },
+        });
+        expect(resolveDefaultModel(tmpDir, 'ws-1', 'followUp')).toBe('gpt-5.4');
     });
 });

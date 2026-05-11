@@ -31,6 +31,8 @@ interface PerRepoPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     lastSkills?: LastSkillsByMode;
     notesGit?: { enabled: boolean; autoCommit?: { enabled: boolean; intervalMs?: number } };
+    defaultModel?: string;
+    defaultModels?: Record<string, string | undefined>;
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -49,6 +51,11 @@ function hasSkillValue(val: string | string[] | undefined): boolean {
     if (!val) return false;
     if (Array.isArray(val)) return val.length > 0;
     return val.length > 0;
+}
+
+/** Resolve the effective default model for a mode. */
+function effectiveDefault(prefs: PerRepoPreferences, mode: string): string {
+    return prefs.defaultModels?.[mode] || prefs.defaultModel || 'CLI default';
 }
 
 export function RepoInfoTab({ repo }: RepoInfoTabProps) {
@@ -192,6 +199,8 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     !preferences.lastModel &&
                     !preferences.lastDepth &&
                     !preferences.lastEffort &&
+                    !preferences.defaultModel &&
+                    !preferences.defaultModels &&
                     !hasSkillValue(preferences.lastSkills?.task) &&
                     !hasSkillValue(preferences.lastSkills?.ask) &&
                     !hasSkillValue(preferences.lastSkills?.plan)
@@ -199,9 +208,15 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
                 ) : (
                     <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" id="repo-preferences-grid">
+                        {preferences.defaultModel && (
+                            <MetaRow label="Default Model" value={preferences.defaultModel} />
+                        )}
                         <MetaRow label="Task Model" value={preferences.lastModels?.task || preferences.lastModel || 'default'} />
+                        <MetaRow label="Task Default" value={effectiveDefault(preferences, 'task')} valueClass="text-[#848484]" />
                         <MetaRow label="Ask Model" value={preferences.lastModels?.ask || preferences.lastModel || 'default'} />
+                        <MetaRow label="Ask Default" value={effectiveDefault(preferences, 'ask')} valueClass="text-[#848484]" />
                         <MetaRow label="Note Model" value={preferences.lastModels?.note || 'claude-sonnet-4.6'} />
+                        <MetaRow label="Note Default" value={effectiveDefault(preferences, 'note')} valueClass="text-[#848484]" />
                         <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
                         <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />

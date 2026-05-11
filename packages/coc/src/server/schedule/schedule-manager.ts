@@ -72,6 +72,7 @@ export class ScheduleManager extends EventEmitter {
         persistence: ScheduleYamlPersistence,
         queueManager: TaskQueueManager | null = null,
         overrideStore: RepoScheduleOverrideStore | null = null,
+        dataDir?: string,
     ) {
         super();
         this.persistence = persistence;
@@ -81,6 +82,7 @@ export class ScheduleManager extends EventEmitter {
             this.history,
             (event) => this.emit('change', event as ScheduleChangeEvent),
             (repoId, scheduleId) => this.handleFailureStop(repoId, scheduleId),
+            dataDir,
         );
     }
 

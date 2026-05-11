@@ -56,12 +56,15 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const wsId = payload.workspaceId;
 
         // Inject the note model preference when the task has no explicit model.
-        // Task-level model (task.config.model) always takes precedence.
+        // Resolution: task.config.model > defaultModels.note > lastModels.note > 'claude-sonnet-4.6'.
         if (!task.config.model) {
             const repoPrefs = this.dataDir && wsId
                 ? readRepoPreferences(this.dataDir, wsId)
                 : undefined;
-            const noteModel = repoPrefs?.lastModels?.note ?? 'claude-sonnet-4.6';
+            const noteModel = repoPrefs?.defaultModels?.note
+                ?? repoPrefs?.defaultModel
+                ?? repoPrefs?.lastModels?.note
+                ?? 'claude-sonnet-4.6';
             task = { ...task, config: { ...task.config, model: noteModel } };
         }
 

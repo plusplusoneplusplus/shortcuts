@@ -33,6 +33,10 @@ export interface PerRepoPreferences {
   linkedRepoIds?: string[];
   disabledLlmTools?: string[];
   filesViewMode?: 'flat' | 'tree';
+  /** Repo-wide default model used when no explicit model is provided. */
+  defaultModel?: string;
+  /** Per-mode default model overrides. Take precedence over defaultModel. */
+  defaultModels?: Record<string, string | undefined>;
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;

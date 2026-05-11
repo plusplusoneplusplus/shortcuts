@@ -48,6 +48,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
+import { resolveDefaultModel } from '../preferences-handler';
 import {
     assertNoAskUserConflict,
     buildBoundedMemoryAddon,
@@ -412,10 +413,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // The SDK's native onUserInputRequest must NOT be set at the same time.
             assertNoAskUserConflict({ tools: sendTools });
 
+            // Resolve per-repo default model when no explicit model is set on the task.
+            let effectiveModel = task.config.model;
+            if (!effectiveModel && this.dataDir && payload.workspaceId) {
+                const chatMode = payload.mode;
+                const defaultModelMode = chatMode === 'autopilot' || chatMode === 'ralph'
+                    ? 'task' as const
+                    : chatMode as 'ask' | 'plan';
+                effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
+            }
+
             const reasoningSelection = resolveReasoningSelection({
-                modelId: task.config.model,
+                modelId: effectiveModel,
                 requestedEffort: task.config.reasoningEffort,
-                model: await this.getModelMetadataForReasoning(task.config.model),
+                model: await this.getModelMetadataForReasoning(effectiveModel),
             });
 
             const sendOptions = {
