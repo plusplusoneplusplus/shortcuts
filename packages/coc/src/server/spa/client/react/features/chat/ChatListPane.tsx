@@ -407,7 +407,7 @@ export function ChatListPane({
     const queuePauseRemaining = formatPauseRemaining(pausedUntil, now);
     const autopilotPauseRemaining = formatPauseRemaining(autopilotPausedUntil, now);
     const queuePauseResumeTime = formatPauseResumeTime(pausedUntil);
-    const autopilotPauseResumeTime = formatPauseResumeTime(autopilotPausedUntil);
+
 
     const selectPauseDuration = useCallback((scope: PauseMenuScope, options?: QueuePauseOptions) => {
         if (scope === 'all') {
@@ -1647,28 +1647,7 @@ export function ChatListPane({
                         </Button>
                     </div>
                 )}
-                {isAutopilotPaused && (
-                    <div
-                        className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-1.5 text-xs flex items-center gap-2"
-                        data-testid="autopilot-paused-banner"
-                    >
-                        <span className="flex-1">
-                            {autopilotPauseRemaining
-                                ? <>🤖⏸ Autopilot is paused for {autopilotPauseRemaining}{autopilotPauseResumeTime ? <> — resumes at {autopilotPauseResumeTime}.</> : <>.</>}</>
-                                : <>🤖⏸ Autopilot is paused — queued autopilot tasks will not start.</>
-                            }
-                        </span>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={isAutopilotPauseLoading}
-                            onClick={onPauseResumeAutopilot}
-                            data-testid="autopilot-banner-resume-btn"
-                        >
-                            🤖▶ Resume
-                        </Button>
-                    </div>
-                )}
+
 
                 {/*
                  * Activity toolbar wrapper — the action bar, scope segmented

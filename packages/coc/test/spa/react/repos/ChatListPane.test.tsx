@@ -299,14 +299,6 @@ describe('ChatListPane', () => {
             expect(screen.queryByText('Paused')).toBeNull();
         });
 
-        it('shows autopilot paused banner', () => {
-            renderPane({
-                isAutopilotPaused: true,
-                onPauseResumeAutopilot: vi.fn(),
-                history: [makeHistoryTask()],
-            });
-            expect(screen.getByTestId('autopilot-paused-banner')).toBeTruthy();
-        });
     });
 
     // ── Toolbar ────────────────────────────────────────────────────────
@@ -395,7 +387,6 @@ describe('ChatListPane', () => {
             });
 
             expect(screen.getByTestId('queue-paused-banner').textContent).toContain('1h 30m');
-            expect(screen.getByTestId('autopilot-paused-banner').textContent).toContain('1h 30m');
             // Action-bar pause pill renders the remaining label inline next to the
             // ALL / AP scope tag (e.g. "ALL · 1h 30m"). Both scopes share the same
             // formatter so the substring assertion remains the contract.
