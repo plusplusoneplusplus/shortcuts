@@ -1363,8 +1363,8 @@ describe('ChatDetail semantic hooks', () => {
                             id: processId,
                             status: 'completed',
                             conversationTurns: [
-                                { role: 'user', content: 'X', timeline: [] },
-                                { role: 'assistant', content: 'Y', timeline: [] },
+                                { role: 'user', content: 'ping', timeline: [] },
+                                { role: 'assistant', content: 'pong', timeline: [] },
                             ],
                         },
                     }),
@@ -1389,7 +1389,7 @@ describe('ChatDetail semantic hooks', () => {
             </Wrap>
         );
 
-        await screen.findByText('Y');
+        await screen.findByText('pong');
         const btn = container.querySelector('[title="Scroll to bottom"]');
         expect(btn).toBeDefined();
         // Not scrolled up so should not have visible class

@@ -1315,6 +1315,20 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     })()}
                 </div>
             </div>
+            {isUser && (
+                <span
+                    className={cn(
+                        'turn-avatar flex-shrink-0 mt-0.5 ml-3 inline-flex items-center justify-center w-6 h-6 rounded-full select-none border',
+                        'bg-[#ddf4ff] text-[#0969da] border-[#b6e3ff]',
+                        'dark:bg-[#0c2d6b] dark:text-[#79c0ff] dark:border-[#1f4988]',
+                        'text-[11.5px] font-semibold'
+                    )}
+                    title="You"
+                    aria-hidden="true"
+                >
+                    Y
+                </span>
+            )}
         </div>
     );
 }

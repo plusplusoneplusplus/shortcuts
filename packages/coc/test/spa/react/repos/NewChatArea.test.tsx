@@ -174,6 +174,15 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
     });
 
+    it('root container declares theme-aware background (white in light, #1e1e1e in dark)', () => {
+        // Regression: previously the new-chat empty state inherited no
+        // explicit background, which rendered as pure black in dark mode.
+        render(<NewChatArea workspaceId="ws-1" />);
+        const root = screen.getByTestId('new-chat-area');
+        expect(root.className).toContain('bg-white');
+        expect(root.className).toContain('dark:bg-[#1e1e1e]');
+    });
+
     it('send button is disabled when input is empty', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn') as HTMLButtonElement;

@@ -169,7 +169,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     }
 
     return (
-        <div className="flex flex-col h-full" data-testid="new-chat-area">
+        <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]" data-testid="new-chat-area">
             {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
             {onBack && (
                 <div className="flex items-center border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2">

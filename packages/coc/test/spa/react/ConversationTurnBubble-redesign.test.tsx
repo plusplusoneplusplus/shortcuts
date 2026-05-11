@@ -1,6 +1,6 @@
 /**
  * Tests for ConversationTurnBubble — visual redesign:
- * - User turns render as a right-aligned soft-gray bubble (no avatar).
+ * - User turns render as a right-aligned soft-gray bubble with a trailing "Y" avatar.
  * - Assistant / script turns show an avatar tile to the left of a borderless body.
  * - Role label is screen-reader-only (visual identity comes from layout + avatar).
  * - User-turn meta row floats above the bubble on hover.
@@ -43,9 +43,21 @@ describe('ConversationTurnBubble redesign — avatar tile', () => {
         vi.restoreAllMocks();
     });
 
-    it('does not render an avatar for user turns', () => {
+    it('renders an avatar for user turns with the letter "Y"', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
-        expect(container.querySelector('.turn-avatar')).toBeNull();
+        const avatar = container.querySelector('.turn-avatar') as HTMLElement;
+        expect(avatar).toBeTruthy();
+        expect(avatar.textContent).toBe('Y');
+        expect(avatar.getAttribute('title')).toBe('You');
+        expect(avatar.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('user avatar uses a blue palette to distinguish from the assistant avatar', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
+        const avatar = container.querySelector('.turn-avatar') as HTMLElement;
+        expect(avatar.className).toContain('bg-[#ddf4ff]');
+        expect(avatar.className).toContain('dark:bg-[#0c2d6b]');
+        expect(avatar.className).toContain('ml-3');
     });
 
     it('renders an avatar for assistant turns with the letter "C"', () => {
@@ -210,11 +222,13 @@ describe('ConversationTurnBubble redesign — outer wrapper layout', () => {
         expect(children[1].classList.contains('turn-body')).toBe(true);
     });
 
-    it('outer wrapper for a user turn renders only the bubble (no avatar)', () => {
+    it('outer wrapper for a user turn places the bubble before a trailing avatar', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
         const wrapper = container.querySelector('.chat-message') as HTMLElement;
         const children = Array.from(wrapper.children);
-        expect(children.length).toBe(1);
+        // bubble + avatar. ContextMenu is only rendered when a position is set, so absent here.
+        expect(children.length).toBe(2);
         expect(children[0].classList.contains('turn-bubble')).toBe(true);
+        expect(children[1].classList.contains('turn-avatar')).toBe(true);
     });
 });
