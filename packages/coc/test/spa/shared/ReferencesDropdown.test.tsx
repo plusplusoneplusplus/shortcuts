@@ -31,7 +31,10 @@ describe('ReferencesDropdown component', () => {
     });
 
     it('shows count badge in button label', () => {
-        expect(SOURCE).toContain('References ({total}) ▾');
+        // Redesign splits the label into separate spans: "References", count chip, caret
+        expect(SOURCE).toContain('<span>References</span>');
+        expect(SOURCE).toContain('{total}');
+        expect(SOURCE).toContain('▾');
     });
 
     it('uses click-outside via useRef and useEffect', () => {
@@ -40,9 +43,8 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('mousedown');
     });
 
-    it('renders plan file row with SVG file icon (no emoji)', () => {
+    it('renders plan file row with no emoji (uses text icon label instead)', () => {
         expect(SOURCE).not.toContain('📄');
-        expect(SOURCE).toContain('<svg');
         expect(SOURCE).toContain('aria-hidden="true"');
         expect(SOURCE).toContain('planPath &&');
     });
@@ -55,12 +57,34 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('data-testid="references-dropdown-btn"');
     });
 
+    it('renders the redesigned button with count chip + caret separators', () => {
+        // Button text is split into label / count / caret spans for the redesign
+        expect(SOURCE).toContain('<span>References</span>');
+        expect(SOURCE).toContain('▾');
+        expect(SOURCE).toContain('aria-haspopup="dialog"');
+    });
+
     it('uses correct dropdown panel classes supporting light and dark mode', () => {
         expect(SOURCE).toContain('bg-white');
         expect(SOURCE).toContain('dark:bg-[#252526]');
         expect(SOURCE).toContain('dark:border-[#3c3c3c]');
-        expect(SOURCE).toContain('min-w-[420px]');
+        // New design uses a fixed 520px popover at sm+ instead of min-w-[420px]
+        expect(SOURCE).toContain('sm:w-[520px]');
         expect(SOURCE).toContain('z-50');
+    });
+
+    it('renders header + footer chrome around the list', () => {
+        // Header has the "References" title + subtitle + count pill
+        expect(SOURCE).toContain('<h2');
+        expect(SOURCE).toContain('References');
+        // Footer hints at the planPath + .md/.txt/.yaml/.yml/.json source
+        expect(SOURCE).toContain('From planPath + .md/.txt/.yaml/.yml/.json writes');
+        expect(SOURCE).toContain('Scratchpad .md files are excluded');
+    });
+
+    it('classifies items as plan vs pinned for icon and pill styling', () => {
+        expect(SOURCE).toContain("kind=\"plan\"");
+        expect(SOURCE).toContain("kind=\"pinned\"");
     });
 });
 

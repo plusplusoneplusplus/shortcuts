@@ -52,24 +52,34 @@ describe('ReferencesDropdown — desktop', () => {
 
     it('renders button with count of references (planPath only)', () => {
         render(<ReferencesDropdown planPath="/some/plan.md" />);
-        expect(screen.getByTestId('references-dropdown-btn').textContent).toContain('References (1)');
+        const btn = screen.getByTestId('references-dropdown-btn');
+        expect(btn.textContent).toContain('References');
+        expect(btn.textContent).toContain('1');
     });
 
     it('renders button with count of references (files only)', () => {
+        // .ts is filtered out by PINNED_EXTENSIONS in the conversation scanner,
+        // but ReferencesDropdown itself doesn't filter — it shows whatever its
+        // caller passes in. The mobile-only "(N)" label test below covers
+        // the BottomSheet title which uses the same total.
         render(
-            <ReferencesDropdown files={[{ filePath: '/a.ts' }, { filePath: '/b.ts' }]} />
+            <ReferencesDropdown files={[{ filePath: '/a.md' }, { filePath: '/b.md' }]} />
         );
-        expect(screen.getByTestId('references-dropdown-btn').textContent).toContain('References (2)');
+        const btn = screen.getByTestId('references-dropdown-btn');
+        expect(btn.textContent).toContain('References');
+        expect(btn.textContent).toContain('2');
     });
 
     it('renders button with combined count', () => {
         render(
             <ReferencesDropdown
                 planPath="/plan.md"
-                files={[{ filePath: '/a.ts' }, { filePath: '/b.ts' }]}
+                files={[{ filePath: '/a.md' }, { filePath: '/b.md' }]}
             />
         );
-        expect(screen.getByTestId('references-dropdown-btn').textContent).toContain('References (3)');
+        const btn = screen.getByTestId('references-dropdown-btn');
+        expect(btn.textContent).toContain('References');
+        expect(btn.textContent).toContain('3');
     });
 
     it('dropdown is hidden by default', () => {
@@ -117,19 +127,18 @@ describe('ReferencesDropdown — desktop', () => {
         expect(document.querySelector('[data-full-path="/plan.md"]')).toBeNull();
     });
 
-    it('popover has responsive max-width constraint', () => {
+    it('popover has fixed width at sm+ breakpoint', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        // Desktop panel uses sm:max-w-[800px] for responsive sizing
-        const popover = document.querySelector('.sm\\:max-w-\\[800px\\]');
+        // Redesigned desktop panel uses sm:w-[520px] (single fixed width)
+        const popover = document.querySelector('.sm\\:w-\\[520px\\]');
         expect(popover).not.toBeNull();
     });
 
-    it('popover has responsive min-width on sm+ screens', () => {
+    it('popover has matching sm+ max-width to prevent overflow', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        // Desktop panel uses sm:min-w-[420px] instead of hard min-w-[420px]
-        const popover = document.querySelector('.sm\\:min-w-\\[420px\\]');
+        const popover = document.querySelector('.sm\\:max-w-\\[520px\\]');
         expect(popover).not.toBeNull();
     });
 
@@ -137,17 +146,27 @@ describe('ReferencesDropdown — desktop', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         // Base width class for narrow (mobile-sized) viewports
-        const popover = document.querySelector('.w-\\[calc\\(100vw-32px\\)\\]');
+        const popover = document.querySelector('.w-\\[calc\\(100vw-24px\\)\\]');
         expect(popover).not.toBeNull();
     });
 
-    it('FilePathLink inside dropdown uses noTruncate (break-all) and sans-serif font', () => {
+    it('reference row carries data-full-path so global preview/click delegation resolves it', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         const link = document.querySelector('[data-full-path="/plan.md"]');
-        expect(link?.className).toContain('break-all');
-        expect(link?.className).toContain('text-xs');
-        expect(link?.className).toContain('font-sans');
+        expect(link).not.toBeNull();
+        expect(link?.className).toContain('file-path-link');
+    });
+
+    it('reference row renders fileName as a sans-serif title for legibility', () => {
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        // The .file-path-link wrapper defaults to mono via global CSS, but the
+        // visible filename inside is explicitly font-sans for the redesign.
+        const link = document.querySelector('[data-full-path="/plan.md"]');
+        const title = link?.querySelector('.font-sans');
+        expect(title).not.toBeNull();
+        expect(title?.textContent).toBe('plan.md');
     });
 
     it('does not render BottomSheet on desktop', () => {
@@ -171,8 +190,10 @@ describe('ReferencesDropdown — mobile', () => {
     });
 
     it('renders button with correct count on mobile', () => {
-        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/a.ts' }]} />);
-        expect(screen.getByTestId('references-dropdown-btn').textContent).toContain('References (2)');
+        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/a.md' }]} />);
+        const btn = screen.getByTestId('references-dropdown-btn');
+        expect(btn.textContent).toContain('References');
+        expect(btn.textContent).toContain('2');
     });
 
     it('BottomSheet is closed by default', () => {
@@ -187,16 +208,16 @@ describe('ReferencesDropdown — mobile', () => {
     });
 
     it('BottomSheet title shows reference count', () => {
-        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/a.ts' }]} />);
+        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/a.md' }]} />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         expect(screen.getByTestId('bottomsheet-mock').dataset['title']).toBe('References (2)');
     });
 
     it('BottomSheet renders file paths inside', () => {
-        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/src/app.ts' }]} />);
+        render(<ReferencesDropdown planPath="/plan.md" files={[{ filePath: '/src/notes.md' }]} />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         expect(document.querySelector('[data-full-path="/plan.md"]')).toBeTruthy();
-        expect(document.querySelector('[data-full-path="/src/app.ts"]')).toBeTruthy();
+        expect(document.querySelector('[data-full-path="/src/notes.md"]')).toBeTruthy();
     });
 
     it('closing BottomSheet dismisses it', () => {
@@ -211,7 +232,7 @@ describe('ReferencesDropdown — mobile', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         // No inline dropdown div — content is in BottomSheet
-        expect(document.querySelector('.w-\\[calc\\(100vw-32px\\)\\]')).toBeNull();
+        expect(document.querySelector('.w-\\[calc\\(100vw-24px\\)\\]')).toBeNull();
     });
 
     it('stamps data-ws-id on BottomSheet content div when wsId is provided', () => {
