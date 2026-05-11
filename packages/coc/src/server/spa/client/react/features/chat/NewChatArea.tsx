@@ -7,7 +7,7 @@
  * inline tool buttons, and the "Send" button.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
@@ -23,6 +23,7 @@ import { useModels } from '../../hooks/useModels';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import type { SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
@@ -42,6 +43,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [skills, setSkills] = useState<SkillItem[]>([]);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -56,11 +58,26 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const augmentedSkills = useMemo(
-        () => [{ name: 'model', description: 'Switch AI model' }],
-        [],
+        () => [...skills, { name: 'model', description: 'Switch AI model' }],
+        [skills],
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
+
+    // Fetch skills when workspaceId changes
+    useEffect(() => {
+        setSkills([]);
+        if (!workspaceId) return;
+        getSpaCocClient().skills.listAllWorkspace(workspaceId)
+            .then((data: any) => {
+                if (data?.merged && Array.isArray(data.merged)) {
+                    setSkills(data.merged);
+                } else if (data?.skills && Array.isArray(data.skills)) {
+                    setSkills(data.skills);
+                }
+            })
+            .catch(() => { /* ignore */ });
+    }, [workspaceId]);
 
     // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
@@ -100,6 +117,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
             const attachmentPayload = toPayload();
+            const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(trimmed);
 
             let mode: string = selectedMode;
             let contextOverride: Record<string, unknown> | undefined;
@@ -108,14 +126,18 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 // Grilling phase: submit as ask mode with ralph context
                 mode = 'ask';
                 contextOverride = {
-                    skills: ['grill-me'],
+                    skills: [...extractedSkills, 'grill-me'],
                     ralph: {
                         phase: 'grilling',
                         sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                         maxIterations: 10,
                     },
                 };
+            } else if (extractedSkills.length > 0) {
+                contextOverride = { skills: extractedSkills };
             }
+
+            const effectivePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
 
             const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',
@@ -123,7 +145,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 payload: {
                     kind: 'chat',
                     mode: mode as any,
-                    prompt: trimmed,
+                    prompt: effectivePrompt,
                     workingDirectory: ws?.rootPath,
                     workspaceId,
                     ...(contextOverride ? { context: contextOverride } : {}),
@@ -274,6 +296,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                         richTextRef.current?.setValue('');
                                         slashCommands.dismissMenu();
                                         modelCommand.showModelMenu();
+                                    } else if (skill) {
+                                        slashCommands.selectSkill(skill.name, input, setInput, richTextRef);
+                                        richTextRef.current?.focus();
                                     }
                                 }
                                 return;
@@ -455,6 +480,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 richTextRef.current?.setValue('');
                                 slashCommands.dismissMenu();
                                 modelCommand.showModelMenu();
+                                richTextRef.current?.focus();
+                            } else {
+                                slashCommands.selectSkill(name, input, setInput, richTextRef);
                                 richTextRef.current?.focus();
                             }
                         }}
