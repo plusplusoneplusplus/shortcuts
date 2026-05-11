@@ -636,6 +636,18 @@ export function ChatListPane({
      * first, then plan-group only the non-ralph residuals.
      */
     const dateBucketedHistory = useMemo(() => {
+        // Resolve the sort timestamp for any entry kind. ralph-session and
+        // plan-file group entries carry a precomputed `latestTimestamp`
+        // (already phase-aware for ralph — completed sessions use end-time,
+        // not lastActivityAt; see ralph-session-grouping.ts). Standalone
+        // tasks fall back to the activity-aware chain.
+        const resolveTs = (entry: any): number => {
+            const ts = entry.kind === 'group' || entry.kind === 'ralph-session'
+                ? entry.latestTimestamp
+                : (entry.lastActivityAt ?? entry.endTime ?? entry.completedAt ?? entry.startTime ?? entry.startedAt ?? entry.createdAt ?? 0);
+            return typeof ts === 'number' ? ts : +new Date(ts);
+        };
+
         let entries: Array<HistoryGroup | RalphSession | (any & { kind?: undefined })>;
         if (listModeConfig.enableRalphGrouping && isRalphEnabled()) {
             const ralphEntries = groupByRalphSession(filteredUnpinned, unseenProcessIds);
@@ -644,7 +656,11 @@ export function ChatListPane({
             const planned = (historyGrouping && listModeConfig.enablePlanGrouping)
                 ? groupHistoryByPlanFile(nonRalph, unseenProcessIds)
                 : nonRalph;
-            entries = [...ralphSessions, ...planned] as any;
+            // Merge ralph sessions and plan-file groups, then sort by their
+            // resolved timestamp descending. Without this sort, ralph sessions
+            // would always cluster at the top regardless of recency, even
+            // after lastActivityAt drift was fixed in ralph-session-grouping.
+            entries = [...ralphSessions, ...planned].sort((a: any, b: any) => resolveTs(b) - resolveTs(a)) as any;
         } else if (groupedUnpinned) {
             entries = groupedUnpinned as any;
         } else {
@@ -655,12 +671,7 @@ export function ChatListPane({
         const older: typeof entries = [];
         const nowMs = Date.now();
         for (const entry of entries) {
-            const ts = (entry as any).kind === 'group'
-                ? (entry as HistoryGroup).latestTimestamp
-                : (entry as any).kind === 'ralph-session'
-                    ? (entry as RalphSession).latestTimestamp
-                    : ((entry as any).lastActivityAt ?? (entry as any).endTime ?? (entry as any).completedAt ?? (entry as any).startTime ?? (entry as any).startedAt ?? (entry as any).createdAt ?? 0);
-            const time = typeof ts === 'number' ? ts : +new Date(ts);
+            const time = resolveTs(entry);
             const ageH = time ? (nowMs - time) / 3600000 : Infinity;
             if (ageH < 24) today.push(entry);
             else if (ageH < 24 * 7) week.push(entry);

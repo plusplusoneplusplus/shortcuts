@@ -270,4 +270,58 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         const todaySection = container.querySelector('[data-section="completed-today"]');
         expect(todaySection?.querySelector('.tabular-nums')?.textContent?.trim()).toBe('3');
     });
+
+    it('regression: completed ralph session does not pin to top above newer standalone chats', () => {
+        // Ralph session ended 8h ago; a standalone chat completed "just now".
+        // Before the fix, ChatListPane concatenated [...ralphSessions, ...planned]
+        // without a final timestamp sort, so the ralph session always appeared
+        // first regardless of recency (matches the user-reported bug: 8h-old
+        // Ralph row pinned above a "just now" Auto chat).
+        const EIGHT_H = 8 * 3600_000;
+        const eightHAgo = NOW - EIGHT_H;
+        const justNow = NOW - 1000;
+
+        const ralphIters = [1, 2, 3].map(iter => ({
+            id: `ralph-old-${iter}`,
+            type: 'chat',
+            status: 'completed',
+            displayName: `Ralph iteration ${iter}`,
+            endTime: new Date(eightHAgo).toISOString(),
+            completedAt: new Date(eightHAgo).toISOString(),
+            // Late post-completion turn appends bumped lastActivityAt forward.
+            lastActivityAt: justNow,
+            payload: {
+                mode: 'ralph',
+                context: { ralph: { sessionId: 'old-ralph-sess', phase: 'executing', currentIteration: iter } },
+            },
+        }));
+        const fresherChat = {
+            id: 'fresh-auto',
+            type: 'chat',
+            status: 'completed',
+            displayName: 'Implementing RalphSessionRow',
+            endTime: new Date(NOW - 60_000).toISOString(),
+            completedAt: new Date(NOW - 60_000).toISOString(),
+            lastActivityAt: NOW - 60_000,
+            payload: { mode: 'auto' },
+        };
+
+        const { container } = renderActivity([...ralphIters, fresherChat]);
+        const todaySection = container.querySelector('[data-section="completed-today"]');
+        expect(todaySection).not.toBeNull();
+
+        // Walk the Today section in document order; the fresher standalone
+        // chat must precede the ralph-session-row.
+        const rowsRoot = todaySection!;
+        const ralphRow = rowsRoot.querySelector('[data-testid="ralph-session-row"]');
+        const freshRow = rowsRoot.querySelector('[data-task-id="fresh-auto"]');
+        expect(ralphRow).not.toBeNull();
+        expect(freshRow).not.toBeNull();
+
+        // DOCUMENT_POSITION_FOLLOWING (4) means freshRow follows ralphRow in
+        // document order. We assert the opposite — freshRow must appear first.
+        const pos = ralphRow!.compareDocumentPosition(freshRow!);
+        // eslint-disable-next-line no-bitwise
+        expect(pos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
 });
