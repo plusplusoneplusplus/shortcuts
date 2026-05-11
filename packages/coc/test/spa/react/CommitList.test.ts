@@ -422,7 +422,10 @@ describe('CommitList', () => {
         });
 
         it('shows separator at boundary index between unpushed and pushed', () => {
-            expect(source).toContain('index === unpushedCount');
+            // The unpushed group always starts at index 0 of `commits`; group
+            // boundaries are looked up via the precomputed commitGroupsByStart map.
+            expect(source).toContain('commitGroupsByStart');
+            expect(source).toContain("startIdx: 0");
         });
 
         it('separator has accessible aria-label', () => {

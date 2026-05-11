@@ -1483,24 +1483,29 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         {actionError}
                     </div>
                 )}
-                <BranchChanges
-                    workspaceId={workspaceId}
-                    branchRangeData={branchRangeData}
-                    initialFiles={branchRangeFiles}
-                    onDefaultBranch={onDefaultBranch}
-                    onFileSelect={handleFileSelect}
-                    selectedFile={selectedBranchFile}
-                    onBranchContextMenu={handleBranchContextMenu}
-                    onBranchRangeSelect={handleBranchRangeSelect}
-                />
-                <WorkingTree
-                    workspaceId={workspaceId}
-                    onRefresh={refreshAll}
-                    onFileSelect={handleWorkingTreeFileSelect}
-                    selectedFilePath={selectedWorkingTreeFile}
-                    refreshKey={workingChangesRefreshKey}
-                    onAllCommentsClick={handleAllWorkingCommentsClick}
-                />
+                <div
+                    className="repo-sections grid gap-2 px-2 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                    data-testid="git-repo-sections"
+                >
+                    <BranchChanges
+                        workspaceId={workspaceId}
+                        branchRangeData={branchRangeData}
+                        initialFiles={branchRangeFiles}
+                        onDefaultBranch={onDefaultBranch}
+                        onFileSelect={handleFileSelect}
+                        selectedFile={selectedBranchFile}
+                        onBranchContextMenu={handleBranchContextMenu}
+                        onBranchRangeSelect={handleBranchRangeSelect}
+                    />
+                    <WorkingTree
+                        workspaceId={workspaceId}
+                        onRefresh={refreshAll}
+                        onFileSelect={handleWorkingTreeFileSelect}
+                        selectedFilePath={selectedWorkingTreeFile}
+                        refreshKey={workingChangesRefreshKey}
+                        onAllCommentsClick={handleAllWorkingCommentsClick}
+                    />
+                </div>
                 {repoState && repoState.operation !== 'none' && (
                     <div
                         className="mx-2 my-2 p-3 rounded border border-[#e5a100] dark:border-[#cca700] bg-[#fff3cd] dark:bg-[#3d3522] text-xs"

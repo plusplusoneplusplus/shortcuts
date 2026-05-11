@@ -159,36 +159,60 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
 
     const baseShort = rangeInfo.baseRef.replace(/^origin\//, '');
     const branchLabel = rangeInfo.branchName || rangeInfo.headRef;
+    const headShort = rangeInfo.headRef.replace(/^origin\//, '');
 
     return (
-        <div className="branch-changes" data-testid="branch-changes">
+        <section
+            className="branch-changes rounded-md border border-[#0078d4]/30 dark:border-[#3794ff]/35 border-l-[3px] border-l-[#0078d4] dark:border-l-[#3794ff] bg-white dark:bg-[#1e1e1e] overflow-hidden"
+            data-testid="branch-changes"
+            aria-label={`Branch Changes: ${branchLabel}`}
+        >
             <button
-                className="w-full flex items-center gap-2 px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#0078d4]/[0.05] dark:bg-[#3794ff]/[0.08] hover:bg-[#0078d4]/[0.09] dark:hover:bg-[#3794ff]/[0.14] text-left cursor-pointer transition-colors min-h-[38px]"
                 onClick={() => { setExpanded(prev => !prev); onBranchRangeSelect?.(); }}
                 onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
                 data-testid="branch-changes-header"
+                aria-expanded={expanded}
             >
-                <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-[#616161] dark:text-[#999]">
-                        Branch Changes: {branchLabel}
-                    </div>
-                    <div className="text-xs text-[#616161] dark:text-[#999] mt-0.5" data-testid="branch-changes-summary">
+                <span className="text-[10px] text-[#848484] dark:text-[#9d9d9d] flex-shrink-0 w-3 text-center">
+                    {expanded ? '▼' : '▶'}
+                </span>
+                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                        <span
+                            className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#0078d4] dark:text-[#3794ff] bg-[#ddf4ff] dark:bg-[#3794ff]/15 border border-[#0078d4]/30 dark:border-[#3794ff]/35 whitespace-nowrap flex-shrink-0"
+                            data-testid="branch-changes-badge"
+                        >
+                            Branch Range
+                        </span>
+                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate" title={`Review changes against ${baseShort}`}>
+                            Review changes against {baseShort}
+                        </span>
+                    </span>
+                    <span
+                        className="text-[10.5px] text-[#616161] dark:text-[#999] truncate"
+                        data-testid="branch-changes-summary"
+                        title={`${baseShort}...${headShort} · ${rangeInfo.commitCount} commit${rangeInfo.commitCount !== 1 ? 's' : ''} ahead · +${rangeInfo.additions} −${rangeInfo.deletions}`}
+                    >
+                        {baseShort}...{headShort}
+                        {' · '}
                         {rangeInfo.commitCount} commit{rangeInfo.commitCount !== 1 ? 's' : ''} ahead of {baseShort}
                         {' · '}
-                        <span className="text-[#16825d]">+{rangeInfo.additions}</span>
+                        <span className="text-[#16825d] dark:text-[#3fb950]">+{rangeInfo.additions}</span>
                         {' '}
-                        <span className="text-[#d32f2f]">−{rangeInfo.deletions}</span>
-                        {' · '}
-                        {rangeInfo.fileCount} file{rangeInfo.fileCount !== 1 ? 's' : ''}
-                    </div>
-                </div>
-                <span className="text-[10px] text-[#848484] flex-shrink-0">
-                    {expanded ? '▼' : '▶'}
+                        <span className="text-[#d32f2f] dark:text-[#f85149]">−{rangeInfo.deletions}</span>
+                    </span>
+                </span>
+                <span
+                    className="ml-auto inline-flex items-center justify-center min-w-[44px] px-1.5 py-0.5 rounded-full bg-white dark:bg-[#1e1e1e] border border-[#0078d4]/35 dark:border-[#3794ff]/40 text-[#0078d4] dark:text-[#3794ff] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0"
+                    data-testid="branch-changes-file-count"
+                >
+                    {rangeInfo.fileCount} files
                 </span>
             </button>
 
             {expanded && (
-                <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="branch-changes-files">
+                <div className="px-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="branch-changes-files">
                     {filesLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="branch-changes-files-loading">
                             <Spinner size="sm" /> Loading files...
@@ -260,6 +284,6 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                     )}
                 </div>
             )}
-        </div>
+        </section>
     );
 }

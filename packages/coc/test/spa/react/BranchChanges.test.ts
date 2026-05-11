@@ -204,7 +204,7 @@ describe('BranchChanges', () => {
     });
 
     describe('rendering — collapsed state', () => {
-        it('shows branch name in header', () => {
+        it('shows branch name as the aria-label / accessible label', () => {
             expect(source).toContain('branchLabel');
             expect(source).toContain('Branch Changes:');
         });
@@ -219,17 +219,21 @@ describe('BranchChanges', () => {
             expect(source).toContain('−{rangeInfo.deletions}');
         });
 
-        it('shows file count in summary', () => {
+        it('shows file count in dedicated pill badge', () => {
             expect(source).toContain('rangeInfo.fileCount');
+            expect(source).toContain('data-testid="branch-changes-file-count"');
         });
 
         it('extracts short base ref name', () => {
             expect(source).toContain("baseRef.replace(/^origin\\//, '')");
         });
 
-        it('uses header styling matching CommitList', () => {
-            expect(source).toContain('text-xs font-semibold uppercase tracking-wide');
-            expect(source).toContain('bg-[#f5f5f5] dark:bg-[#252526]');
+        it('uses the new branch-range card header treatment', () => {
+            // Card-style: blue-accent left border + colored badge replace the
+            // legacy uppercase-tracked banner shared with CommitList.
+            expect(source).toContain('border-l-[#0078d4]');
+            expect(source).toContain('data-testid="branch-changes-badge"');
+            expect(source).toContain('Branch Range');
         });
     });
 

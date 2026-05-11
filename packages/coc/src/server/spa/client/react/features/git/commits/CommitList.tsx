@@ -38,6 +38,79 @@ export interface GitCommitItem {
 const isTouchOnly = (): boolean =>
     typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
+// Deterministic-color palette used for author avatar badges.
+const AVATAR_PALETTE: ReadonlyArray<{ bg: string; fg: string }> = [
+    { bg: 'linear-gradient(135deg, #6366f1, #3730a3)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #1a7f37, #14532d)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #cf222e, #7f1d1d)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #f59e0b, #b45309)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #06b6d4, #155e75)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #8b5cf6, #5b21b6)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #ec4899, #9d174d)', fg: '#fff' },
+    { bg: 'linear-gradient(135deg, #0078d4, #0050b3)', fg: '#fff' },
+];
+
+function getAuthorInitials(name: string): string {
+    const trimmed = (name ?? '').trim();
+    if (!trimmed) return '?';
+    const parts = trimmed.split(/[\s/_\-.]+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return trimmed.slice(0, 2).toUpperCase();
+}
+
+function getAuthorPalette(name: string): { bg: string; fg: string } {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+    return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
+}
+
+interface CommitGroup {
+    label: string;
+    isUnpushed: boolean;
+    startIdx: number;
+    count: number;
+}
+
+/** Group commits into Unpushed / Today / Yesterday / This week / This month / Older. */
+function computeCommitGroups(commits: GitCommitItem[], unpushedCount: number): CommitGroup[] {
+    const groups: CommitGroup[] = [];
+    if (unpushedCount > 0) {
+        groups.push({ label: 'Unpushed', isUnpushed: true, startIdx: 0, count: Math.min(unpushedCount, commits.length) });
+    }
+    const startOfToday = (() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
+    })();
+    const startOfYesterday = startOfToday - 86_400_000;
+    const weekStart = startOfToday - 7 * 86_400_000;
+    const monthStart = startOfToday - 30 * 86_400_000;
+
+    let lastLabel: string | null = null;
+    let groupStart = unpushedCount;
+    for (let i = unpushedCount; i < commits.length; i++) {
+        const parsed = new Date(commits[i].date).getTime();
+        let label: string;
+        if (!Number.isFinite(parsed)) label = 'Older';
+        else if (parsed >= startOfToday) label = 'Today';
+        else if (parsed >= startOfYesterday) label = 'Yesterday';
+        else if (parsed >= weekStart) label = 'This week';
+        else if (parsed >= monthStart) label = 'This month';
+        else label = 'Older';
+        if (label !== lastLabel) {
+            if (lastLabel !== null) {
+                groups.push({ label: lastLabel, isUnpushed: false, startIdx: groupStart, count: i - groupStart });
+            }
+            lastLabel = label;
+            groupStart = i;
+        }
+    }
+    if (lastLabel !== null) {
+        groups.push({ label: lastLabel, isUnpushed: false, startIdx: groupStart, count: commits.length - groupStart });
+    }
+    return groups;
+}
+
 interface CommitListProps {
     title: string;
     commits: GitCommitItem[];
@@ -429,14 +502,24 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const isDimmed = isEmpty;
     const titleTestId = `commit-list-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
+    // Map { startIdx -> CommitGroup } so we can render a date-group separator
+    // right before the first commit of each group at zero scan cost per row.
+    const commitGroupsByStart = useMemo(() => {
+        const map = new Map<number, CommitGroup>();
+        for (const g of computeCommitGroups(commits, unpushedCount)) {
+            map.set(g.startIdx, g);
+        }
+        return map;
+    }, [commits, unpushedCount]);
+
     return (
         <div className="commit-list" data-testid={titleTestId}>
             <button
-                className="w-full text-left flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] sticky top-0 z-10 cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                className="w-full text-left flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.07em] px-3 py-1 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] sticky top-0 z-10 cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
                 onClick={() => setCollapsed(prev => !prev)}
                 data-testid={`${titleTestId}-toggle`}
             >
-                <span className="text-[10px] text-[#848484] flex-shrink-0">
+                <span className="text-[9px] text-[#848484] flex-shrink-0">
                     {collapsed ? '▶' : '▼'}
                 </span>
                 <span className={isDimmed ? 'text-[#848484]' : 'text-[#616161] dark:text-[#999]'}>
@@ -503,7 +586,8 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         const files = fileCache[commit.hash];
                         const isFilesLoading = filesLoading === commit.hash;
                         const isUnpushed = unpushedCount > 0 && index < unpushedCount;
-                        const showSeparator = unpushedCount > 0 && index === unpushedCount;
+                        const isMerge = (commit.parentHashes?.length ?? 0) > 1;
+                        const group = commitGroupsByStart.get(index);
                         const canDrag = reorderable && isUnpushed;
                         const isDragOver = dragOverIndex === index && dragIndex !== index;
 
@@ -517,6 +601,12 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                             : targetGroup
                                 ? groupColors[targetGroup.colorSlot]
                                 : undefined;
+                        const commentCount = commitTotals.get(commit.hash)?.open ?? 0;
+                        const palette = getAuthorPalette(commit.author);
+                        const initials = getAuthorInitials(commit.author);
+                        const isLastInGroup = group
+                            ? index === group.startIdx + group.count - 1
+                            : index === commits.length - 1 || commitGroupsByStart.has(index + 1);
 
                         return (
                             <div
@@ -528,20 +618,29 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                 onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
                             >
-                                {showSeparator && (
+                                {group && group.isUnpushed && (
                                     <div
-                                        className="px-3 py-1 text-[11px] text-[#f57c00] dark:text-[#ffb74d] border-b border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8f0] dark:bg-[#2a1f00] flex items-center gap-1"
+                                        className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.07em] text-[#f57c00] dark:text-[#ffb74d] border-b border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8f0] dark:bg-[#2a1f00] flex items-center gap-1.5 sticky top-[26px] z-[1]"
                                         data-testid="unpushed-separator"
-                                        aria-label={`${unpushedCount} unpushed commit${unpushedCount !== 1 ? 's' : ''}`}
+                                        aria-label={`${group.count} unpushed commit${group.count !== 1 ? 's' : ''}`}
                                     >
-                                        ↑ {unpushedCount} unpushed
+                                        <span aria-hidden="true">↑</span>
+                                        Unpushed · {group.count} commit{group.count !== 1 ? 's' : ''}
+                                    </div>
+                                )}
+                                {group && !group.isUnpushed && (
+                                    <div
+                                        className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.07em] text-[#616161] dark:text-[#999] border-b border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#1f1f1f] flex items-center sticky top-[26px] z-[1]"
+                                        data-testid={`commit-date-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
+                                    >
+                                        {group.label} · {group.count} commit{group.count !== 1 ? 's' : ''}
                                     </div>
                                 )}
                                 <button
                                     role="option"
                                     aria-selected={isSelected}
                                     data-hash={commit.hash}
-                                    className={`commit-row w-full flex items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
+                                    className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
                                     onClick={(e) => handleCommitClick(commit, e)}
                                     onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
@@ -553,29 +652,36 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                     data-fixup-type={fixupEntry?.type}
                                     data-fixup-target={fixupEntry?.targetHash}
                                 >
-                                    {canDrag && (
-                                        <span className="text-[10px] mt-0.5 flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder">⠿</span>
-                                    )}
-                                    {isMobileSelecting && (
+                                    {/* Graph column: dot + connector line down to the next commit */}
+                                    <span className="flex flex-col items-center self-stretch pt-1 leading-none">
                                         <span
-                                            className="text-[13px] mt-0.5 flex-shrink-0 text-[#0078d4] dark:text-[#3794ff]"
+                                            className={`text-[10px] flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : isMerge ? 'text-[#8250df] dark:text-[#a371f7]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}
+                                            style={groupColor ? { color: groupColor } : undefined}
+                                            data-testid={groupColor ? `fixup-dot-${commit.shortHash}` : undefined}
                                             aria-hidden="true"
-                                            data-testid={`commit-mobile-select-indicator-${commit.shortHash}`}
                                         >
-                                            {isSelected ? '☑' : '☐'}
+                                            {isUnpushed ? '●' : '○'}
                                         </span>
-                                    )}
-                                    <span
-                                        className="text-[10px] mt-0.5 flex-shrink-0"
-                                        style={groupColor ? { color: groupColor } : undefined}
-                                        data-testid={groupColor ? `fixup-dot-${commit.shortHash}` : undefined}
-                                    >
-                                        {isUnpushed ? '●' : '○'}
+                                        {!isLastInGroup && (
+                                            <span className="flex-1 w-px bg-[#e0e0e0] dark:bg-[#3c3c3c] mt-0.5" aria-hidden="true" />
+                                        )}
                                     </span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start gap-2">
-                                            <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
-                                            {/* Fixup pill badge */}
+
+                                    {/* Body column: subject (line 1) + meta (line 2) */}
+                                    <span className="min-w-0 flex flex-col gap-0.5">
+                                        <span className="flex items-start gap-1.5 min-w-0">
+                                            {canDrag && (
+                                                <span className="text-[10px] flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder" aria-hidden="true">⠿</span>
+                                            )}
+                                            {isMobileSelecting && (
+                                                <span
+                                                    className="text-[13px] flex-shrink-0 text-[#0078d4] dark:text-[#3794ff]"
+                                                    aria-hidden="true"
+                                                    data-testid={`commit-mobile-select-indicator-${commit.shortHash}`}
+                                                >
+                                                    {isSelected ? '☑' : '☐'}
+                                                </span>
+                                            )}
                                             {fixupEntry && (
                                                 <span
                                                     className="text-[10px] font-bold px-1.5 py-0 rounded-full leading-[18px] flex-shrink-0"
@@ -586,37 +692,66 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                     {fixupEntry.pillLabel}
                                                 </span>
                                             )}
-                                            {(() => {
-                                                const count = commitTotals.get(commit.hash)?.open ?? 0;
-                                                return count > 0 ? (
-                                                    <span
-                                                        className="text-xs text-[#848484] flex-shrink-0"
-                                                        title={`${count} active comment${count > 1 ? 's' : ''}`}
-                                                        data-testid={`commit-comment-badge-${commit.hash}`}
-                                                    >
-                                                        💬{count}
-                                                    </span>
-                                                ) : null;
-                                            })()}
-                                            <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">
+                                            <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0 leading-snug">
                                                 {isFixup ? fixupEntry!.displaySubject : commit.subject}
                                             </span>
-                                            {/* Target commit fixup count */}
-                                            {hasFixups && (
-                                                <span
-                                                    className="text-[10px] flex-shrink-0 ml-auto whitespace-nowrap"
-                                                    style={{ color: groupColor }}
-                                                    title={`Fixups: ${targetGroup!.fixupHashes.map(h => h.substring(0, 7)).join(', ')}`}
-                                                    data-testid={`fixup-count-${commit.shortHash}`}
-                                                >
-                                                    ×{targetGroup!.fixupHashes.length} fix
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="text-[11px] text-[#848484] mt-0.5">
-                                            {formatRelativeTime(commit.date)} · {commit.author}
-                                        </div>
-                                    </div>
+                                        </span>
+                                        <span className="flex items-center gap-1.5 text-[11px] text-[#848484] dark:text-[#9d9d9d] min-w-0">
+                                            <span className={`font-mono ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
+                                            <span
+                                                className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[8px] font-semibold flex-shrink-0"
+                                                style={{ background: palette.bg, color: palette.fg }}
+                                                aria-hidden="true"
+                                            >
+                                                {initials}
+                                            </span>
+                                            <span className="truncate">{commit.author}</span>
+                                            <span className="whitespace-nowrap">· {formatRelativeTime(commit.date)}</span>
+                                        </span>
+                                    </span>
+
+                                    {/* Right column: per-commit mini-flags (comments, fixup count, merge, unpushed) */}
+                                    <span className="flex items-center gap-1 flex-shrink-0 self-center">
+                                        {commentCount > 0 && (
+                                            <span
+                                                className="inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-semibold border border-[#0078d4]/30 dark:border-[#3794ff]/35 bg-[#ddf4ff] dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#3794ff] tabular-nums"
+                                                title={`${commentCount} active comment${commentCount > 1 ? 's' : ''}`}
+                                                data-testid={`commit-comment-badge-${commit.hash}`}
+                                            >
+                                                {commentCount}
+                                            </span>
+                                        )}
+                                        {hasFixups && (
+                                            <span
+                                                className="inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-semibold border border-[#f5d9a1] bg-[#fff8c5] dark:bg-[#9a6700]/25 text-[#9a6700] dark:text-[#ffb74d] tabular-nums whitespace-nowrap"
+                                                style={{ color: groupColor }}
+                                                title={`Fixups: ${targetGroup!.fixupHashes.map(h => h.substring(0, 7)).join(', ')}`}
+                                                data-testid={`fixup-count-${commit.shortHash}`}
+                                            >
+                                                ×{targetGroup!.fixupHashes.length} fix
+                                            </span>
+                                        )}
+                                        {isMerge && (
+                                            <span
+                                                className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full text-[9px] font-semibold border border-[#8250df]/30 dark:border-[#a371f7]/35 bg-[#f3e8ff] dark:bg-[#a371f7]/15 text-[#8250df] dark:text-[#a371f7]"
+                                                title="Merge commit"
+                                                data-testid={`commit-merge-flag-${commit.shortHash}`}
+                                                aria-label="Merge commit"
+                                            >
+                                                M
+                                            </span>
+                                        )}
+                                        {isUnpushed && (
+                                            <span
+                                                className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full text-[9px] font-semibold border border-[#f5d9a1] bg-[#fff8c5] dark:bg-[#9a6700]/25 text-[#9a6700] dark:text-[#ffb74d]"
+                                                title="Unpushed commit"
+                                                data-testid={`commit-unpushed-flag-${commit.shortHash}`}
+                                                aria-label="Unpushed commit"
+                                            >
+                                                ↑
+                                            </span>
+                                        )}
+                                    </span>
                                 </button>
                                 {touchOnly && !isMobileSelecting && onCommitContextMenu && (
                                     <button

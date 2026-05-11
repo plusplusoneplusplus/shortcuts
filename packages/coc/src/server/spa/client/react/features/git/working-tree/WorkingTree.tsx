@@ -444,7 +444,11 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     }
 
     return (
-        <div className="working-tree" data-testid="working-tree">
+        <section
+            className="working-tree rounded-md border border-[#16825d]/30 dark:border-[#3fb950]/35 border-l-[3px] border-l-[#16825d] dark:border-l-[#3fb950] bg-white dark:bg-[#1e1e1e] overflow-hidden"
+            data-testid="working-tree"
+            aria-label="Working Changes"
+        >
             {actionError && (
                 <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="working-tree-action-error">
                     {actionError}
@@ -455,29 +459,52 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                 <div
                     role="button"
                     tabIndex={0}
-                    className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                    aria-expanded={workingChangesExpanded}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#16825d]/[0.05] dark:bg-[#3fb950]/[0.08] hover:bg-[#16825d]/[0.09] dark:hover:bg-[#3fb950]/[0.14] text-left cursor-pointer transition-colors min-h-[38px]"
                     onClick={() => setWorkingChangesExpanded(prev => !prev)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWorkingChangesExpanded(prev => !prev); } }}
                     data-testid="working-changes-header"
                 >
-                    <span className="text-[10px] text-[#848484] flex-shrink-0">{workingChangesExpanded ? '▼' : '▶'}</span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[#616161] dark:text-[#999] flex-1">
-                        Working Changes
+                    <span className="text-[10px] text-[#848484] dark:text-[#9d9d9d] flex-shrink-0 w-3 text-center">{workingChangesExpanded ? '▼' : '▶'}</span>
+                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                            <span
+                                className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#16825d] dark:text-[#3fb950] bg-[#dafbe1] dark:bg-[#3fb950]/15 border border-[#16825d]/30 dark:border-[#3fb950]/35 whitespace-nowrap flex-shrink-0"
+                                data-testid="working-tree-badge"
+                            >
+                                Local Tree
+                            </span>
+                            <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate">
+                                Working changes
+                            </span>
+                        </span>
+                        <span
+                            className="text-[10.5px] text-[#616161] dark:text-[#999] truncate"
+                            data-testid="working-tree-summary"
+                            title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
+                        >
+                            {staged.length} staged · {unstaged.length} modified · {untracked.length} untracked
+                        </span>
                     </span>
-                    <span className="text-xs text-[#848484] flex-shrink-0 mr-1">{totalCount}</span>
+                    <span
+                        className="ml-auto inline-flex items-center justify-center min-w-[44px] px-1.5 py-0.5 rounded-full bg-white dark:bg-[#1e1e1e] border border-[#16825d]/35 dark:border-[#3fb950]/40 text-[#16825d] dark:text-[#3fb950] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0"
+                        data-testid="working-tree-file-count"
+                    >
+                        {totalCount} files
+                    </span>
                     {onAllCommentsClick && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAllCommentsClick(); }}
                             title="Show all working-tree comments"
-                            className="text-xs px-1.5 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] flex-shrink-0"
+                            className="ml-1 inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-transparent hover:border-[#0078d4]/35 dark:hover:border-[#3794ff]/35 text-[#616161] dark:text-[#9d9d9d] hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors flex-shrink-0"
                             data-testid="working-tree-all-comments-btn"
                         >
-                            💬 {allWorkingComments.length > 0 ? allWorkingComments.length : ''}
+                            💬 Comments {allWorkingComments.length > 0 ? allWorkingComments.length : ''}
                         </button>
                     )}
                 </div>
                 {workingChangesExpanded && (
-                    <div data-testid="working-changes-content">
+                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="working-changes-content">
                         <Section
                             title="Staged"
                             count={staged.length}
@@ -511,6 +538,6 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                     </div>
                 )}
             </div>
-        </div>
+        </section>
     );
 }
