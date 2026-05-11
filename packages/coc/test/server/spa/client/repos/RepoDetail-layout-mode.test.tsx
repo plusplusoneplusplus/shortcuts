@@ -332,4 +332,51 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         expect(screen.getByTestId('repo-run-script-btn')).toBeTruthy();
         expect(screen.getByTestId('repo-launch-cli-btn')).toBeTruthy();
     });
+
+    it('classic mode: Ask button background matches ask-mode yellow', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        const askBtn = screen.getByTestId('repo-ask-btn');
+        const cls = askBtn.className;
+        // Yellow background tracks MODE_BORDER_COLORS.ask (yellow-500 / yellow-400)
+        expect(cls).toMatch(/!bg-yellow-500\b/);
+        expect(cls).toMatch(/dark:!bg-yellow-400\b/);
+        expect(cls).toMatch(/hover:!bg-yellow-600\b/);
+        // Yellow needs a dark text colour for AA contrast.
+        expect(cls).toMatch(/!text-\[#1e1e1e\]/);
+        // No leftover grey surface from the previous neutral styling.
+        expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
+    });
+
+    it('classic mode: Generate Plan button background matches plan-mode blue', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        const generateBtn = screen.getByTestId('repo-generate-btn');
+        const cls = generateBtn.className;
+        // Blue background tracks MODE_BORDER_COLORS.plan (blue-500 / blue-400)
+        expect(cls).toMatch(/!bg-blue-500\b/);
+        expect(cls).toMatch(/dark:!bg-blue-400\b/);
+        expect(cls).toMatch(/hover:!bg-blue-600\b/);
+        // White text in light mode for AA contrast on saturated blue.
+        expect(cls).toMatch(/!text-white\b/);
+        // No leftover grey surface from the previous neutral styling.
+        expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
+    });
+
+    it('classic mode: Queue Task button keeps the success (green) variant — no yellow/blue overrides', () => {
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        const queueBtn = screen.getByTestId('repo-queue-task-btn');
+        const cls = queueBtn.className;
+        // Queue Task inherits the success variant from Button (#1f883d / #238636).
+        // Make sure the new ask/plan colour overrides did not leak into it.
+        expect(cls).not.toMatch(/!bg-yellow-/);
+        expect(cls).not.toMatch(/!bg-blue-/);
+    });
 });
