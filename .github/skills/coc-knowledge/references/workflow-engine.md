@@ -1,0 +1,91 @@
+# Workflow Engine
+
+DAG-based workflow execution engine in `packages/forge/src/workflow/`.
+
+## Overview
+
+Converts YAML pipeline/workflow definitions into executable DAGs and runs them with concurrency control, cancellation support, and structured progress events.
+
+## Key Exports
+
+| Symbol | Purpose |
+|--------|---------|
+| `compileToWorkflow(yamlContent)` | Converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig` |
+| `executeWorkflow(config, options)` | Runs the DAG with full lifecycle management |
+| `flattenWorkflowResult(result)` | Flattens workflow result for flat display output |
+
+## Architecture
+
+```
+YAML → compileToWorkflow() → WorkflowConfig → executeWorkflow() → WorkflowResult
+                                    ↓
+                              Graph Builder → DAG
+                                    ↓
+                              Scheduler (topological order + concurrency)
+                                    ↓
+                              Node Executors (per-type)
+```
+
+## Node Types
+
+| Type | Executor | Description |
+|------|----------|-------------|
+| `load` | LoadNodeExecutor | Load data from files/URLs |
+| `map` | MapNodeExecutor | Transform each item |
+| `ai` | AINodeExecutor | AI invocation with tools |
+| `reduce` | ReduceNodeExecutor | Aggregate items |
+| `filter` | FilterNodeExecutor | Filter items by condition |
+| `script` | ScriptNodeExecutor | Execute shell scripts |
+| `merge` | MergeNodeExecutor | Combine multiple inputs |
+| `transform` | TransformNodeExecutor | Data transformation |
+
+## WorkflowConfig
+
+```typescript
+interface WorkflowConfig {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  settings?: WorkflowSettings;
+  parameters?: Record<string, string>;
+}
+
+interface WorkflowSettings {
+  model?: string;
+  concurrency?: number;
+  timeout?: number;
+  workingDirectory?: string;
+  toolCallCache?: boolean;
+}
+```
+
+## Features
+
+- **Concurrency control:** `ConcurrencyLimiter` enforces max parallel node execution
+- **Cancellation:** `AbortSignal` checked before/after node and AI invocations
+- **Skill resolution:** Per-node `skill`/`skills` field for single or multi-skill prompt injection
+- **Parameters:** Template substitution via `parameters` map
+- **Progress events:** Structured `WorkflowProgressEvent` and per-item `WorkflowItemProcessEvent`
+- **Validation:** Graph validator checks for cycles, missing dependencies, type compatibility
+
+## Map-Reduce (`packages/forge/src/map-reduce/`)
+
+Higher-level abstraction for parallel processing:
+
+| Component | Purpose |
+|-----------|---------|
+| `MapReduceExecutor` | Orchestrates split → map → reduce |
+| `MapReduceJob` | Job configuration and state |
+| Splitters | File/Chunk/Rule-based input splitting |
+| Reducers | AI/Deterministic/Hybrid result aggregation |
+
+## Pipeline Compatibility
+
+`workflow/pipeline-compat.ts` contains legacy pipeline YAML config types used by the compiler. The old `pipeline/` directory has been deleted — all execution goes through the workflow engine.
+
+## Template Engine
+
+`utils/pipeline-template.ts` provides Mustache-style template substitution for workflow parameters, supporting `{{param}}` syntax in node configurations.
+
+## Filter Executor
+
+`utils/filter-executor.ts` evaluates filter expressions against items, supporting comparison operators, regex matching, and logical combinators.

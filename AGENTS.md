@@ -98,197 +98,53 @@ Entry point: `packages/vscode-extension/src/extension.ts`. Feature modules under
 
 Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HTTP/WebSocket, REST API, SSE streaming, SPA dashboard, wiki serving) is integrated directly into `packages/coc/src/server/`.
 
-**Commands:** `coc run <path>` (execute workflow), `coc validate <path>`, `coc list [dir]`, `coc serve` (AI dashboard + wiki serving), `coc wipe-data`.
+**Commands:** `coc run <path>`, `coc validate <path>`, `coc list [dir]`, `coc serve`, `coc skills`, `coc wipe-data`.
 
-**Key `run` flags:** `-m` model, `-p` parallel, `-o` output format (table/json/csv/markdown), `-f` output file, `--param key=value`, `--dry-run`, `--approve-permissions`, `--timeout`, `-v` verbose.
+**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Default process store backend is SQLite.
 
-**Key `serve` flags:** `-p` port (default 4000), `-H` host, `-d` data-dir (`~/.coc`), `--theme`, `--no-open`.
+**Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 
-**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT. Default process store backend is SQLite (`store.backend: sqlite`); use `createProcessStore(dataDir, backend?)` from `src/config.ts` to instantiate the correct store.
-
-**Architecture:** `src/cli.ts` (Commander setup) → `src/commands/` (run, validate, list, serve, wipe-data) → `src/server/` (HTTP router, API handler, WebSocket, SSE, queue, scheduling, tasks, wiki integration, SPA dashboard).
-
-**Testing:** 114+ Vitest test files covering CLI, commands, server handlers, queue, wiki, SPA, e2e.
+> **Deep reference:** See `.github/skills/coc-knowledge/` for detailed architecture, module layout, REST API catalog, memory system, LLM tools, and dashboard SPA documentation.
 
 ## CoC Client (`packages/coc-client/`)
 
-Framework-free TypeScript client for CoC REST and realtime APIs. It exposes domain clients for admin, generic DB browsing, git, health, memory, models, notes, preferences, processes, pull requests, queue, schedules, seen-state, skills, tasks, templates, wiki, work items, workspaces, and workflows, plus WebSocket events and per-process SSE streaming helpers.
-
-**Testing:** Vitest tests cover HTTP transport, URL encoding, domain clients, realtime adapters, and real-server contract routes. `test/mock-server/` provides a lightweight Node `http` + `ws` harness for HTTP, WebSocket, and SSE tests that need status/header/body programming, request recording, scripted socket behavior, SSE chunks, network drops, delays, and idempotent cleanup on `127.0.0.1:0`.
+Framework-free TypeScript client for CoC REST and realtime APIs. Exposes domain clients for all server endpoints plus WebSocket events and per-process SSE streaming helpers.
 
 ## Deep Wiki (`packages/deep-wiki/`)
 
-CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `forge`.
+CLI that generates comprehensive wikis via a six-phase AI pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website). Consumes `forge`.
 
-**Commands:** `deep-wiki seeds <repo>` (theme seeds), `deep-wiki discover <repo>` (Phase 1 only), `deep-wiki generate <repo>` (full pipeline), `deep-wiki theme <repo> [name]` (cross-cutting theme articles), `deep-wiki init` (template config).
+**Commands:** `deep-wiki seeds`, `deep-wiki discover`, `deep-wiki generate`, `deep-wiki theme`, `deep-wiki init`.
 
-**Six-Phase Pipeline:**
-1. **Seeds** (optional) — AI identifies key themes/domains. Heuristic fallback from directory names.
-2. **Discovery** — AI with MCP tools produces `ComponentGraph` JSON. Large repo support (3000+ files): multi-round or iterative breadth-first using seeds.
-3. **Consolidation** — Rule-based + AI clustering to merge/refine components. Skip with `--no-cluster`.
-4. **Analysis** — Per-component deep analysis with MCP tools. Incremental via git-hash caching.
-5. **Writing** — Article generation + reduce/synthesis for overviews.
-6. **Website** — Static HTML with themes (light/dark/auto), Mermaid zoom/pan support.
+**Testing:** 64 Vitest test files.
 
-**Key concepts:** Components (smallest code unit, always present), Domains (top-level dirs, large repos only), Themes (cross-cutting concerns spanning components).
-
-**Theme pipeline:** `deep-wiki theme` runs: Probe → Outline → Analysis → Articles → Wiki Integration (updates `module-graph.json`, cross-links).
-
-**Key flags:** `--output`, `--model`, `--concurrency`, `--depth` (shallow/normal/deep), `--seeds` (auto or file), `--phase` (start from N), `--force`, `--use-cache`, `--skip-website`, `--no-cluster`.
-
-**Caching:** `.wiki-cache/` with git-hash invalidation. Per-phase: seeds, probes, discovery, consolidation, analysis, articles. `--force` bypasses; `--use-cache` ignores hash.
-
-**Testing:** 64 Vitest test files covering all phases, theme module, cache, commands, rendering.
+> **Deep reference:** See `.github/skills/coc-knowledge/references/deep-wiki.md`.
 
 ## forge (`packages/forge/`)
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Process store (`SqliteProcessStore` default — single `processes.db` file; legacy `FileProcessStore` — per-repo JSON files under `~/.coc/repos/<workspaceId>/processes/`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider, skill resolver), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader, prompt resolver, filter executor, input generator).
+**Key modules:** Logger, Errors, Runtime policies, Task queue, AI SDK (CopilotSDKService, session-per-request), Workflow engine (DAG), Map-Reduce, Process store (SQLite default), Git CLI, Memory system, Skills, Utilities.
 
-**Module layout (post pipeline/ deletion):**
-- Pipeline YAML config types → `workflow/pipeline-compat.ts` (used by compiler)
-- Pipeline phase/event types → `pipeline-types.ts` (used by process-store, coc SPA)
-- Workspace execution / WSL routing → `utils/workspace-execution.ts` (shared execution-context detection, WSL command args, repo path normalization)
-- CSV reader → `utils/csv-reader.ts`
-- Prompt resolver → `utils/prompt-resolver.ts`
-- Skill resolver → `skills/skill-resolver.ts`
-- Template engine (pipeline) → `utils/pipeline-template.ts`
-- Filter executor (pipeline) → `utils/filter-executor.ts`
-- Input generator → `utils/input-generator.ts`
-- Retry utils → `utils/retry-utils.ts`
-- Paste context manager → `utils/paste-context-manager.ts` (large prompt externalization to temp files)
-
-**Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
+**Workflow execution:** `compileToWorkflow(yamlContent)` → `executeWorkflow(config, options)` → `flattenWorkflowResult(result)`.
 
 **Testing:** 156 Vitest test files.
 
-## Server Layer (`packages/coc/src/server/`)
+> **Deep reference:** See `.github/skills/coc-knowledge/` for SDK wrapper, workflow engine, memory system, and process store details.
 
-HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `coc-server` package, now merged into `coc`.
+## Key Conventions
 
-**Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import. **Directory history import:** `DirectoryHistoryImporter` in `directory-history-importer.ts` scans a `repos/` directory for file-based process history, matches against registered workspaces, and imports into SQLite via `INSERT OR IGNORE` (additive, no server restart needed). Reuses `serializeProcessToRow`/`serializeTurnToRow` from `storage-migration.ts`. Admin routes: `POST /api/admin/storage/scan-directory`, `GET /api/admin/storage/import-directory-token`, `POST /api/admin/storage/import-directory` (SSE streaming). UI in `StorageSection.tsx` when backend is SQLite. **Startup auto-migration:** On startup, `migrateWorkspaceRegistryIfNeeded()` migrates workspace/wiki registries from JSON, then `migrateProcessHistoryIfNeeded()` migrates file-based process histories into SQLite. Both are idempotent, non-destructive (rename source to `.migrated`), and no-ops for file-based backends.
+**Convention — repo-scoped data:** All runtime data specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data.
 
-**Follow-up routing:** When a follow-up message arrives via `POST /api/processes/:id/message`, the handler routes based on task state: immediate + running tasks attempt steering via `bridge.steerProcess()`; running/queued tasks buffer into `pendingMessages` on the process; terminal tasks (failed/cancelled) enqueue a fresh task. The `ProcessLifecycleRunner` drains one pending message after each task completion via `onDrainPendingMessages`, chaining follow-ups server-side. The SPA client always sends follow-ups through `/message` — the server is the single authority for routing. The client does not call `/pending-messages` directly; queued follow-ups appear in the UI only after server confirmation via SSE `pending-message-added` events. `QueuedFollowUps` (in `features/chat/QueuedBubble.tsx`) renders server-confirmed pending messages as a compact section indented to align with the assistant avatar gutter (`ml-9`): a `Queued · N` mono-uppercase muted label, then one dashed-border surface card per item (`bg-[#fafafa]`/`#252526`, `border-dashed border-[#e5e7eb]/[#3c3c3c]`) with single-line truncation and an optional `✕` cancel button (hover error palette `#ffebe9`/`#cf222e`). The cancel button is wired through `ConversationArea.onCancelPendingMessage` → `ChatDetail.handleCancelPendingMessage`, which optimistically removes the entry from `pendingQueue` and calls `client.processes.deletePendingMessage(processId, messageId)`, restoring the entry on API failure.
-
-**WebSocket upgrade dispatch:** `attachWebSocketUpgradeHandler(server, processWs, terminalWs?)` in `websocket.ts` routes upgrades by URL pathname: `/ws` → `ProcessWebSocketServer`, `/ws/terminal` → `TerminalWebSocketServer` (if provided), else `socket.destroy()`. Both WS servers expose a `handleUpgrade(req, socket, head)` method. `ProcessWebSocketServer.attach(server)` is a backward-compat shim that self-registers its own upgrade listener.
-
-**Terminal layer:** `TerminalWebSocketServer` in `terminal/terminal-ws-server.ts` manages WebSocket connections at `/ws/terminal?workspaceId=X`. Each connection is workspace-scoped; clients send `terminal-create` messages to spawn PTY sessions, `terminal-attach` to reattach surviving sessions, then `terminal-input`/`terminal-resize`/`terminal-close` to interact. Multiple sessions per connection are supported. PTY management is delegated to `TerminalSessionManager`; pinned sessions survive WebSocket disconnects, unpinned sessions are destroyed on disconnect, idle cleanup skips pinned sessions, and `closeAll()` destroys every session during server shutdown. Instantiated only when `resolvedConfig.terminal.enabled` is true.
-
-**WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code. For Copilot SDK and interactive terminal launches on Windows, translate WSL repo roots to host UNC paths and run the Windows-hosted CLI instead of assuming `copilot` exists inside WSL.
-
-**Server module layout (`packages/coc/src/server/`):** Files are grouped by feature domain. Cross-cutting plumbing (`index.ts`, `router.ts`, `types.ts`, `paths.ts`, `errors.ts`, `preferences-handler.ts`) stays at the root. Major domain folders:
-
-- `core/` — `api-handler`, `attachment-utils`, `image-utils`, `hostname-utils`, `build-info` (auto-generated, gitignored)
-- `streaming/` — `websocket`, `sse-handler`
-- `logging/` — `server-logger`, `server-log-capture`, `logs-routes`
-- `admin/` — `admin-handler`, generic allowlisted `db-browser-handler`/`db-browser-core`, `heap-monitor`, `stats-handler`
-- `workspaces/` — `global-workspace`, `my-work-{workspace,handler}`, `my-life-{workspace,handler}`, `workspace-summary-handler`
-- `processes/` — `in-memory-process-store`, `output-{file-manager,pruner}`, `stale-task-detector`, `pin-archive-handler`, `seen-state-handler`, `turn-actions-handler`, `process-{history,resume}-handler`, `commit-chat-binding-store`
-- `queue/` — `queue-handler`, `queue-executor-bridge`, `multi-repo-queue-router`, `image-blob-store`, `queue-partitioner`, `shared/`
-- `schedule/` — `schedule-{handler,manager,manager-types,run-persistence,yaml-persistence}`, `sqlite-schedule-run-persistence`, `repo-schedule-{loader,overrides,watcher}`, `schedule-{timer-registry,run-history,executor}`, `cron-utils`
-- `tasks/` — `task-{cache,migration,root-resolver,types,watcher,generation-handler}`, `tasks-{handler,read-handler,write-handler,handler-utils}`, plus `tasks/comments/` for `task-comments-*`, `diff-comments-*`, `base-comments-manager`, `comments-ai-helpers`
-- `notes/` — every `notes-*.ts` file (read/write/comments/AI/files), plus `notes/git/` for `notes-git-*.ts`
-- `workflows/` — `workflow-{constants,utils,watcher}`, `workflows-{handler,read-handler,write-handler}`
-- `templates/` — `template-watcher`, `templates-handler`, `replicate-apply-handler`
-- `skills/` — `skill-handler`, `skill-route-handlers`, `global-skill-handler`, `instruction-handler`
-- `prompts/` — `prompt-handler`, `prompt-utils`
-- `git/` — `git-cache`, `git-info-cache`, `repo-utils`
-- `storage/` — `storage-migration`, `startup-{process,workspace}-migration`, `directory-history-importer`, `data-{exporter,importer,wiper}`, `export-import-types`
-- `llm-tools/` — AI tool factories including `create-bug-tool`, `create-work-item-tool`, `update-work-item-tool`, `memory-read-tools`, plus the existing `llm-tool-registry`, `add-diff-comment-tool`, `diff-line-mapper`, etc.
-- `executors/`, `infrastructure/`, `routes/`, `providers/`, `repos/`, `shared/`, `task-strategies/`, `work-items/`, `wiki/`, `terminal/`, `memory/`, `models/`, `spa/` — pre-existing folders kept intact
-
-**Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
-- `schedule/schedule-manager.ts` → cron utilities in `schedule/cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName); shared types in `schedule-manager-types.ts`; collaborators `schedule-timer-registry.ts` (timer Map + 32-bit cap), `schedule-run-history.ts` (in-memory run map + SQLite persistence), `repo-schedule-watcher.ts` (fs.FSWatcher + debounce), `schedule-executor.ts` (executeRun + per-targetType enqueue + runningSchedules). All `.github/schedules/` disk I/O uses `fs.promises`; `updateSchedule` and `removeRepoSchedule` are async
-- `routes/api-git-routes.ts` → aggregator delegating to `api-git-commit-routes`, `api-git-branch-range-routes`, `api-git-branch-routes`, `api-git-working-tree-routes`
-- `tasks/comments/task-comments-handler.ts` → manager in `task-comments-manager.ts`, AI helpers in `task-comments-ai.ts`, relocation in `task-comments-relocation.ts`, shared AI in `comments-ai-helpers.ts`
-- `tasks/comments/diff-comments-handler.ts` → manager in `diff-comments-manager.ts`, AI helpers in `diff-comments-ai.ts`
-- `tasks/tasks-handler.ts` → `tasks-read-handler.ts`, `tasks-write-handler.ts`, `tasks-handler-utils.ts`
-- `workflows/workflows-handler.ts` → `workflows-read-handler.ts`, `workflows-write-handler.ts`, `workflow-constants.ts`, `workflow-utils.ts`
-- `notes/notes-handler.ts` → re-exports `notes-{read,write,comments,image,file-preview,ai}-handler` plus `notes/git/notes-git-{handler,autocommit-handler}`
-
-**Storage layout — `~/.coc/` (top-level, global):**
-- `config.yaml` — server configuration
-- `processes.db` — SQLite process store (default backend; schema version 8); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), per-turn pin/archive/delete state (`conversation_turns.pinned_at`, `archived`, `deleted_at`), and FTS5 `conversation_search` index on `conversation_turns.content`
-- `preferences.json` — global UI preferences (theme, etc.)
-- `memory/` — system-level bounded memory (`memory/system/MEMORY.md`)
-- `skills/` — global skill definitions
-
-**Storage layout — `~/.coc/repos/<workspaceId>/` (per-repo):**
-- `queues.json` — queue state
-- `schedules.json` — schedule definitions
-- `git-ops.json` — background git operations
-- `preferences.json` — per-repo UI preferences
-- `tasks/` — task and plan files
-- `processes/` — legacy file-based process store (used only when `store.backend: file` in config)
-- `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
-- `memory/` — per-repo bounded memory (`memory/MEMORY.md`); injected into all chat executors by default
-- `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
-
-Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
-
-**Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path.
-
-**Convention — creating work items:** Work items are stored as JSON files in `~/.coc/repos/<workspaceId>/work-items/` (NOT as `.plan.md` files in `tasks/`). `.plan.md` files appear in the **Tasks tab**; work item JSON files appear in the **Work Items tab**. These are completely separate systems.
-- **ALWAYS use the REST API** to create/update work items when the CoC server is running (default port 4000):
+**Convention — creating work items:** Work items are stored as JSON files in `~/.coc/repos/<workspaceId>/work-items/` (NOT as `.plan.md` files in `tasks/`).
+- **ALWAYS use the REST API** to create/update work items when the CoC server is running:
   ```
   POST http://localhost:4000/api/workspaces/<workspaceId>/work-items
   Body: { title, description, priority, tags, source }
   ```
-- **Never write work-item JSON files directly** via file I/O — the server uses an atomic write-queue and direct writes will be silently overwritten on the next server-side write.
-- The API also broadcasts a `work-item-added` WebSocket event so the dashboard UI updates immediately without a page refresh.
+- **Never write work-item JSON files directly** — the server uses an atomic write-queue.
 
-**Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration. Handler deduplication: `wiki-backend.ts` defines shared `ResolvedAskContext`/`ResolvedExploreContext`/`WikiProvider` interfaces; `handleAskCore()`/`handleExploreCore()` are the single-path implementations shared by both multi-wiki (native) and standalone handlers; `api-handlers.ts` directly creates context objects and delegates to core handlers; `standalone-admin-handlers.ts` and `standalone-config-loader.ts` handle deep-wiki-specific admin (seeds, config); generate handlers accept `WikiProvider` (satisfied by `WikiManager` or `createSingleWikiProvider()`).
-
-**Onboarding layer:** `WelcomeTour` (full-screen first-run modal with 5 stepped panels — Welcome / Modes / Queue / Multi-repo / Servers — branded with the inline `CocIcon` SVG component, scoped self-contained styles, keyboard navigation via Enter/→/←/Esc; "Get started" persists `hasSeenWelcome+hasCompletedTour`, "Skip"/"Esc"/"X" persists `hasSeenWelcome+dismissed`), `FirstStepsCard` (guided checklist replacing empty repos state), `FeatureTip` (contextual dismissible tips). State in `GlobalPreferences` (`hasSeenWelcome`, `onboardingProgress`, `dismissedTips`), gated by `SHOW_WELCOME_TUTORIAL` compile-time flag.
-
-**Memory layer:** `MemoryConfig` (`storageDir`, `backend`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, explore-cache browsing routes (`GET /api/memory/explore-cache/levels`, `GET /api/memory/explore-cache/raw`, `GET /api/memory/explore-cache/raw/:filename`, `GET /api/memory/explore-cache/consolidated`, `GET /api/memory/explore-cache/consolidated/:id`). Bounded memory routes (`GET/PUT/DELETE /api/memory/bounded/*`) serve per-repo and system `MEMORY.md` content. Per-repo memory CRUD at `/api/repos/:repoId/memory/*` via `repo-memory-handler.ts`. Dashboard UI: `MemoryView` → `MemoryConfigPanel` + bounded memory viewer. The bounded-memory settings panel includes the main repo memory toggle, write frequency, and the disabled-by-default read-tools toggle for `memory_search` and `memory_get`.
-
-**Seen-state layer:** `seen-state-handler.ts` (`registerSeenStateRoutes`) exposes per-process read/unread tracking via `GET/PATCH /api/workspaces/:id/seen-state`, `DELETE /api/workspaces/:id/seen-state/:processId`, `GET /api/workspaces/:id/seen-state/count`. Backed by `seen_at TEXT` column on `processes` table. `@plusplusoneplusplus/coc-client` exposes these routes through `client.seenState`. SPA helpers in `hooks/preferences/seenStateApi.ts` call the typed client domain while preserving the local React hook API for `useUnseenChat`, which loads from server on mount and uses optimistic local state plus debounced fire-and-forget updates. One-time localStorage migration from `coc-unseen-*` keys on first load.
-
-**Turn actions layer:** `turn-actions-handler.ts` (`registerTurnActionRoutes`) exposes per-message delete, pin, and archive on conversation turns. Routes: `DELETE /api/processes/:id/turns/:turnIndex` (soft-delete), `PATCH .../restore`, `PATCH .../pin`, `PATCH .../archive`, `GET /api/processes/:id/turns/pinned`. Backed by `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER` columns on `conversation_turns` table. SPA: `ConversationTurnBubble` context menu (Delete/Pin/Archive), `ProcessDetail` renders collapsible Pinned Messages section, archived toggle, undo-delete toast.
-
-**SPA module layout (`packages/coc/src/server/spa/client/react/`):**
-- `chat/` — Reusable conversation rendering: `ConversationTurnBubble`, `ConversationMiniMap`, `ConversationMetadataPopover`, tool call components (`ToolCallView`, `ToolCallGroupView`, `ToolResultPopover`, `WhisperCollapsedGroup`), `CommitStrip`, `NoteEditCard`, and utilities (`commitDetection`, `toolGroupUtils`, `timeline-utils`, `chatConversationUtils`). Barrel: `chat/index.ts`. `ConversationTurnBubble` renders a leading `C` avatar (`mr-3`, green palette) for assistant turns and a trailing `Y` avatar (`ml-3`, blue palette `bg-[#ddf4ff]`/`dark:bg-[#0c2d6b]`) for user turns; both avatars are 24×24 circles with `aria-hidden` so the screen-reader-only `role-label` carries the semantic role. The activity tab's empty-state `NewChatArea` carries a theme-aware root background (`bg-white dark:bg-[#1e1e1e]`) so it tracks the active theme instead of defaulting to pure black in dark mode. `ConversationMiniMap` classifies each turn into one of seven kinds (`user`, `assistant`, `whisper` = heavy plain-tool activity, `agent` = sub-agent via `read_agent`/`task`, `error`, `pinned`, `historical`) plus an animated `streaming` overlay (priority: streaming > error > pinned > historical > role-based). Each strip carries `data-kind`, `minimap-strip-<kind>` class, and inline `backgroundColor: var(--minimap-<kind>)` (streaming uses the CSS gradient class only). Landmarks: `▶` first user, `🔇` whisper, `🤖` sub-agent, `⚠` error, `📌` pinned, `●` streaming. The currently-in-viewport strip carries `.active` + `aria-current="location"` and scales `scaleX(1.12)`. Viewport indicator + active-strip detection are coalesced through `requestAnimationFrame`; click navigation uses container-relative `getBoundingClientRect` math with a 14-px breathing-room offset (`sc.scrollTo({ top: target − 14 })`) so the scroll stays inside the conversation container even when turns are nested in wrapper divs. Tooltip position is smart-clamped on both axes against measured `offsetWidth`/`offsetHeight`. The `Latest ↓` jump pill appears whenever a streaming strip exists *and* the user has scrolled away from the bottom.
-- `processes/` — Process-list/detail UI: `ProcessDetail`, `ProcessesView`, `ProcessesSidebar`, `ProcessFilters`, `QueueTaskSkeleton`, `WorkflowResultCard`, `MarkdownReviewDialog`, plus `dag/` sub-module for workflow DAG visualization.
-- `shared/` — Feature-level shared components: `MarkdownView`, `MarkdownReviewEditor`, `RichTextInput`, `SourceEditor`, `FollowPromptDialog`, `ResolveContextDialog`, `FilePreview`, `NotificationBell`, `SkillDetailPanel`, etc. Barrel: `shared/index.ts`.
-- `ui/` — Generic UI primitives: `Button`, `Card`, `Dialog`, `Spinner`, `Badge`, `Toast`, `cn`, `ImageGallery`, `FilePathLink`, `ContextWindowIndicator`, `JsonResponseView`, `json-utils`, etc. Barrel: `ui/index.ts`.
-- `repos/` — Per-repo views: `ReposView`, `ReposGrid`. Consumes `features/` components directly.
-- `tasks/` — Task/plan/comment management. Consumes `shared/MarkdownView`.
-
-**Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
-
-## Memory System (`packages/forge/src/memory/`)
-
-Bounded, file-backed persistence layer that lets AI chat sessions learn from past interactions. The AI writes `write_memory` tool calls (add/replace/remove), which are applied immediately to `MEMORY.md`; the frozen snapshot is injected into subsequent prompts. There is no batch-consolidation pipeline or raw-observations staging area.
-
-**Storage layout:** `~/.coc/repos/<workspaceId>/memory/MEMORY.md` (per-repo), `~/.coc/memory/system/MEMORY.md` (global system). `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
-
-**Key symbols in `forge`:**
-
-| Symbol | Role |
-|--------|------|
-| `MemoryStore` (interface) | Full CRUD contract |
-| `BoundedMemoryStore` | File-backed store; add/replace/remove/setEntries/appendEntries with substring matching, char limits, `§` delimiters, mkdir-based file locking. `setEntries()` is a trusted explicit rewrite operation; `appendEntries()` is the automatic promotion path and preserves existing serialized memory |
-| `scanMemoryContent()` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
-| `MemoryPromptBuilder` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` at construction, optionally selects ranked entries through `MemoryRecallIndex`, and renders immutable `═══`-separated blocks with usage headers + `MEMORY_GUIDANCE` for system prompt injection |
-| `MemoryRecallIndex` | SQLite-backed FTS5 recall index for bounded-memory entries. Syncs clean `MEMORY.md` entries into `memory_recall_entries`, searches by BM25, always keeps protected entries, and records recall events/counts for future promotion signals |
-| `createWriteMemoryTool()` | Factory returning an AI-callable `memory` tool + `getWrittenFacts()` accessor. Supports `bounded` mode (direct MEMORY.md mutation) and `capture` mode (raw record append to `RawMemoryRecordStore`, `replace`/`remove` disabled) |
-| `RawMemoryRecordStore` | SQLite-backed append-only store for raw memory candidates; supports claim/release/complete batch lifecycle for aggregation. Per-scope DB at `~/.coc/repos/<workspaceId>/memory/raw-records.db` (repo) or `~/.coc/memory/system/raw-records.db` (system) |
-| `prepareReconciliationContext()` | Deterministic pre-processing: dedup raw records, stable-sort, build content→recordId map for post-AI tracking |
-| `validateProposedEntries()` | Validates AI-proposed bounded entry list: type/empty/duplicate/security/char-limit checks |
-| `buildApplyPlan()` | Maps validated entries back to raw record IDs, classifying each as aggregated or dropped |
-| `applyReconciliation()` | Atomically appends promoted entries to MEMORY.md via `BoundedMemoryStore.appendEntries()` |
-
-**Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
-
-**Bounded Memory Addons** (CoC server integration): `buildBoundedMemoryAddon()` in `packages/coc/src/server/executors/bounded-memory-addon.ts` creates per-request repo/system `BoundedMemoryStore` instances, a `MemoryPromptBuilder` snapshot for system prompt injection, and an AI-callable write-side `memory` tool via `createMemoryTool()`. Repo memory is file-backed at `~/.coc/repos/<workspaceId>/memory/MEMORY.md`; system memory is file-backed at `~/.coc/memory/system/MEMORY.md`. Gated by `PerRepoPreferences.boundedMemory.enabled` (opt-in per repo, default false). When the caller supplies the latest user prompt, prompt injection syncs clean `MEMORY.md` entries into `~/.coc/repos/<workspaceId>/memory/recall-index.db` and injects protected system entries plus top-ranked relevant entries under `boundedMemory.recall` limits (`enabled`, `maxEntries`, `charBudget`, `maxBm25Score`). Without a recall query, it injects the full bounded-memory snapshot. Accepts optional `captureContext` to switch the tool to capture mode, where `add` appends candidates to `memory/raw-memory.db` instead of mutating `MEMORY.md` directly. `appendBoundedMemoryContext()` in `prompt-builder.ts` appends the frozen memory block to chat system messages. All chat executors wire the addon.
-
-`buildMemoryReadToolsAddon()` in `packages/coc/src/server/executors/prompt-builder.ts` creates opt-in read-side `memory_search` and `memory_get` tools from `packages/coc/src/server/llm-tools/memory-read-tools.ts`. These tools are repo-scoped only, gated by `PerRepoPreferences.boundedMemory.enabled` and `boundedMemory.readTools.enabled`, use `getRepoDataPath(dataDir, workspaceId, "memory/...")`, sync repo `MEMORY.md` entries into `memory/recall-index.db`, and return bounded context payloads with source metadata. `memory_search` uses `MemoryRecallIndex.recall()` with repo scope; `memory_get` resolves exact entries by stable id or zero-based ordinal through `MemoryRecallIndex.listEntries()`. Tool result memory content is untrusted context, not instructions.
-
-**LLM Tool Preferences** (per-repo tool enable/disable): `llm-tools/llm-tool-registry.ts` defines `LLM_TOOL_REGISTRY` — the canonical list of user-toggleable AI tools with metadata (`name`, `label`, `description`, `enabledByDefault`). Registry-level defaults disable `tavily_web_search`; effective defaults are mode-aware via `getEffectiveDefaultDisabledTools(uiLayoutMode)`, which also disables `create_work_item` and `create_bug` in classic mode. Explicit `PerRepoPreferences.disabledLlmTools` values override mode-aware defaults, including an empty array to enable every tool. `readEffectiveDisabledLlmTools(dataDir, workspaceId)` is the server-side helper for executor defaults. `applyLlmToolPreferences()` in `prompt-builder.ts` filters assembled tools + suffixes by the disabled list. API: `GET/PUT /api/workspaces/:id/llm-tools-config`. SPA: `LlmToolsPanel` in Repo Settings → LLM Tools tab.
-
-**Per-Repo Default Model** (model fallback resolution): `PerRepoPreferences.defaultModel` sets a repo-wide default model; `PerRepoPreferences.defaultModels` provides per-mode overrides (task/ask/plan/note/schedule/followUp/memory). Resolution order: explicit `task.config.model` > `defaultModels[mode]` > `defaultModel` > CLI default (`undefined`). `resolveDefaultModel(dataDir, workspaceId, mode?)` in `preferences-handler.ts` is the canonical resolver. Wired into `chat-base-executor.ts`, `follow-up-executor.ts`, `note-chat-executor.ts`, `note-create-executor.ts`, and `schedule-executor.ts`. PATCH deep-merges `defaultModels`; empty string clears a per-mode entry. SPA: `RepoPreferencesSection.tsx` renders a "Default Model" section with repo-wide dropdown and expandable per-mode overrides; `RepoInfoTab.tsx` displays effective defaults.
+**Convention — model resolution:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
 
 ## Development Notes
 
