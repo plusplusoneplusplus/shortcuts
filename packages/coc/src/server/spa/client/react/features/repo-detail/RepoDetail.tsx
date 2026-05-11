@@ -432,11 +432,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <button
                                         data-subtab={t.key}
                                         title={t.shortcut}
+                                        aria-current={isActive ? 'page' : undefined}
                                         className={cn(
-                                            'repo-sub-tab relative inline-flex items-center gap-1.5 min-h-[32px] px-2 rounded-md text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors',
+                                            'repo-sub-tab relative inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-md text-[13px] whitespace-nowrap shrink-0 transition-colors',
                                             isActive
-                                                ? 'active text-[#1f2328] dark:text-[#cccccc]'
-                                                : 'text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]'
+                                                ? 'active bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff] font-bold ring-1 ring-inset ring-[#0969da]/30 dark:ring-[#3794ff]/40'
+                                                : 'font-semibold text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]'
                                         )}
                                         onClick={() => switchSubTab(t.key)}
                                     >
@@ -482,7 +483,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             </span>
                                         )}
                                         {isActive && (
-                                            <span className="absolute left-2 right-2 -bottom-[5px] h-[2px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
+                                            <span className="absolute left-1.5 right-1.5 -bottom-[5px] h-[3px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
                                         )}
                                     </button>
                                 </Fragment>
