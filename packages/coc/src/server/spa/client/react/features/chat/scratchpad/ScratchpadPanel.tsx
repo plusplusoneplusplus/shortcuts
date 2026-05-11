@@ -17,6 +17,8 @@ export interface ScratchpadHeaderBarProps {
     onSplitReset: () => void;
     files?: string[];
     onSelectFile?: (path: string) => void;
+    /** Absolute workspace root used to copy scratchpad tab paths as full paths. */
+    workspaceRootPath?: string;
     /** When true, the expand-mode buttons are omitted. Used on mobile. */
     hideModeControls?: boolean;
 }
@@ -172,6 +174,7 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                     onClose={onClose}
                     files={headerBar.files}
                     onSelectFile={headerBar.onSelectFile}
+                    workspaceRootPath={headerBar.workspaceRootPath}
                     layout="horizontal"
                     panelHeader
                     hideModeControls={headerBar.hideModeControls}

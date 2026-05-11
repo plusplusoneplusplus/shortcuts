@@ -175,6 +175,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const { scratchpadLayout } = useDisplaySettings();
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
+    const workspaceRootPath = useMemo(() => {
+        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
+        return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
+    }, [appState.workspaces, workspaceId]);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -1039,6 +1043,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onClose={scratchpad.close}
                             files={scratchpad.knownFiles}
                             onSelectFile={scratchpad.setLinkedNotePath}
+                            workspaceRootPath={workspaceRootPath}
                             layout={scratchpadLayout}
                             renderMode={isVerticalScratchpad ? 'drag-handle' : 'header-bar'}
                         />
@@ -1060,6 +1065,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                 onSplitReset: () => scratchpad.setExpandMode('split'),
                                 files: scratchpad.knownFiles,
                                 onSelectFile: scratchpad.setLinkedNotePath,
+                                workspaceRootPath,
                             } : isMobileScratchpad ? {
                                 expandMode: scratchpad.expandMode,
                                 isDragging: scratchpad.isDragging,
@@ -1068,6 +1074,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                 onSplitReset: () => scratchpad.setExpandMode('split'),
                                 files: scratchpad.knownFiles,
                                 onSelectFile: scratchpad.setLinkedNotePath,
+                                workspaceRootPath,
                                 hideModeControls: true,
                             } : undefined}
                         />

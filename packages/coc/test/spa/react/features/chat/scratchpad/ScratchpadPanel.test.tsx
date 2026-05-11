@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ScratchpadPanel } from '../../../../../../src/server/spa/client/react/features/chat/scratchpad/ScratchpadPanel';
 
 vi.mock('../../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
@@ -55,6 +56,33 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/com
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar', () => ({
     CommentsSidebar: () => <div data-testid="mock-comments-sidebar" />,
 }));
+
+afterEach(() => {
+    cleanup();
+});
+
+function renderScratchpadWithTabs(workspaceRootPath = 'C:\\repo\\project\\') {
+    const onSelectFile = vi.fn();
+    render(
+        <ScratchpadPanel
+            workspaceId="ws-1"
+            notePath="tasks/coc/foo.md"
+            onClose={vi.fn()}
+            height="50%"
+            headerBar={{
+                expandMode: 'split',
+                isDragging: false,
+                onExpandTop: vi.fn(),
+                onExpandBottom: vi.fn(),
+                onSplitReset: vi.fn(),
+                files: ['tasks/coc/foo.md', 'tasks/coc/bar.md'],
+                onSelectFile,
+                workspaceRootPath,
+            }}
+        />,
+    );
+    return { onSelectFile };
+}
 
 describe('ScratchpadPanel — headerBar prop', () => {
     it('does NOT render scratchpad-divider when headerBar is not provided', () => {
@@ -235,5 +263,109 @@ describe('ScratchpadPanel', () => {
         render(<ScratchpadPanel workspaceId="ws-1" notePath="note.md" onClose={vi.fn()} height="50%" />);
         const editor = screen.getByTestId('mock-note-editor');
         expect(editor.getAttribute('data-has-comment-create')).toBe('true');
+    });
+});
+
+describe('ScratchpadPanel — tab copy path context menu', () => {
+    const writeText = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        writeText.mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText },
+        });
+    });
+
+    it('opens the copy-path menu on tab context-menu and prevents the native menu', () => {
+        renderScratchpadWithTabs();
+
+        const prevented = !fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), {
+            clientX: 40,
+            clientY: 50,
+        });
+
+        expect(prevented).toBe(true);
+        expect(screen.getByTestId('scratchpad-tab-context-menu')).toBeTruthy();
+        expect(screen.getByText('Copy Absolute Path')).toBeTruthy();
+        expect(screen.getByText('Copy Relative Path')).toBeTruthy();
+    });
+
+    it('copies the exact relative path for the selected tab', async () => {
+        renderScratchpadWithTabs();
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+        fireEvent.click(screen.getByTestId('scratchpad-copy-relative-path'));
+
+        await waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith('tasks/coc/bar.md');
+        });
+    });
+
+    it('copies a normalized absolute path with stripped root slash and no duplicate slash', async () => {
+        renderScratchpadWithTabs('C:\\repo\\project\\');
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+        fireEvent.click(screen.getByTestId('scratchpad-copy-absolute-path'));
+
+        await waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith('C:/repo/project/tasks/coc/bar.md');
+        });
+    });
+
+    it('disables absolute path copy when the workspace root path is empty', () => {
+        renderScratchpadWithTabs('');
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+
+        const absolute = screen.getByTestId('scratchpad-copy-absolute-path') as HTMLButtonElement;
+        expect(absolute.disabled).toBe(true);
+        expect(absolute.title).toBe('Workspace has no root path');
+        expect(screen.getByTestId('scratchpad-copy-relative-path')).toBeTruthy();
+    });
+
+    it('closes the menu on outside click and Escape', () => {
+        renderScratchpadWithTabs();
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('scratchpad-tab-context-menu')).toBeNull();
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('scratchpad-tab-context-menu')).toBeNull();
+    });
+
+    it('keeps left-click tab selection behavior unchanged', async () => {
+        const user = userEvent.setup();
+        const { onSelectFile } = renderScratchpadWithTabs();
+
+        await user.click(screen.getByTestId('scratchpad-tab-bar'));
+
+        expect(onSelectFile).toHaveBeenCalledWith('tasks/coc/bar.md');
+    });
+
+    it('supports arrow-key focus movement and Enter activation', async () => {
+        renderScratchpadWithTabs();
+
+        fireEvent.contextMenu(screen.getByTestId('scratchpad-tab-bar'), { clientX: 40, clientY: 50 });
+        await waitFor(() => {
+            expect(document.activeElement).toBe(screen.getByTestId('scratchpad-copy-absolute-path'));
+        });
+
+        fireEvent.keyDown(screen.getByTestId('scratchpad-tab-context-menu'), { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByTestId('scratchpad-copy-relative-path'));
+
+        fireEvent.keyDown(screen.getByTestId('scratchpad-tab-context-menu'), { key: 'Tab' });
+        expect(document.activeElement).toBe(screen.getByTestId('scratchpad-copy-absolute-path'));
+
+        fireEvent.keyDown(screen.getByTestId('scratchpad-tab-context-menu'), { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByTestId('scratchpad-copy-relative-path'));
+
+        fireEvent.keyDown(screen.getByTestId('scratchpad-tab-context-menu'), { key: 'Enter' });
+        await waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith('tasks/coc/bar.md');
+        });
     });
 });

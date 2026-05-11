@@ -3,6 +3,8 @@ import {
     ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon,
     SplitIcon, CloseIcon, GripDotsIcon, GripDotsHorizontalIcon, FileIcon,
 } from './icons';
+import { ScratchpadTabContextMenu } from './ScratchpadTabContextMenu';
+import { useScratchpadTabContextMenu } from './useScratchpadTabContextMenu';
 
 /** Normalize path separators and extract the filename without .md extension. */
 function fileBaseName(filePath: string): string {
@@ -23,6 +25,8 @@ export interface ScratchpadDividerProps {
     files?: string[];
     /** Called when a file tab is clicked; receives the file path. */
     onSelectFile?: (path: string) => void;
+    /** Absolute workspace root used to copy tab paths as full paths. */
+    workspaceRootPath?: string;
     /** Layout direction: horizontal (top/bottom) or vertical (left/right). */
     layout?: ScratchpadLayout;
     /**
@@ -48,13 +52,14 @@ export function ScratchpadDivider({
     linkedNotePath, expandMode, isDragging,
     onMouseDown, onOpenFilePicker,
     onExpandTop, onExpandBottom, onSplitReset, onClose,
-    files = [], onSelectFile, layout = 'horizontal',
+    files = [], onSelectFile, workspaceRootPath, layout = 'horizontal',
     renderMode = 'header-bar', panelHeader = false, hideModeControls = false,
 }: ScratchpadDividerProps) {
     const isVertical = layout === 'vertical';
     const displayName = linkedNotePath ? fileBaseName(linkedNotePath) : 'Scratchpad';
 
     const showTabs = files.length >= 2;
+    const { ctxMenu, openContextMenu, closeContextMenu } = useScratchpadTabContextMenu();
 
     const activeFileName = linkedNotePath ? fileBaseName(linkedNotePath) : 'Scratchpad';
 
@@ -153,7 +158,7 @@ export function ScratchpadDivider({
                     className="relative flex-1 min-w-0"
                     data-testid="scratchpad-file-tabs"
                 >
-                    <div className="flex items-stretch overflow-x-auto gap-0 scrollbar-none">
+                    <div className="flex items-stretch overflow-x-auto gap-0 scrollbar-none" onScroll={closeContextMenu}>
                         {files.map(f => {
                             const name = fileBaseName(f);
                             const isActive = linkedNotePath !== null &&
@@ -168,10 +173,12 @@ export function ScratchpadDivider({
                                             : 'text-[#848484] dark:text-[#888] border-transparent hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] hover:text-[#0078d4]',
                                     ].join(' ')}
                                     onClick={(e) => { e.stopPropagation(); onSelectFile?.(f); }}
+                                    onContextMenu={(e) => openContextMenu(e, f)}
                                     title={f}
                                     type="button"
                                     data-testid={`scratchpad-tab-${name}`}
                                     aria-current={isActive ? 'page' : undefined}
+                                    aria-haspopup="menu"
                                 >
                                     {name}
                                 </button>
@@ -184,6 +191,13 @@ export function ScratchpadDivider({
                         data-testid="scratchpad-tab-fade"
                         aria-hidden="true"
                     />
+                    {ctxMenu && (
+                        <ScratchpadTabContextMenu
+                            ctxMenu={ctxMenu}
+                            workspaceRootPath={workspaceRootPath}
+                            onClose={closeContextMenu}
+                        />
+                    )}
                 </div>
             ) : (
                 /* Single-file button */
