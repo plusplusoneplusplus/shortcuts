@@ -139,6 +139,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModel
     }),
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/hooks/useDefaultModelForMode', () => ({
+    useDefaultModelForMode: () => ({ effectiveModel: undefined, effectiveModelName: undefined }),
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
 }));

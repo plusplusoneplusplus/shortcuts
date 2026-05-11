@@ -20,6 +20,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClien
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
+import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -64,6 +65,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
+    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels);
 
     const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
 
@@ -394,7 +396,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             }}
                             title={modelCommand.modelOverride
                                 ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
-                                : 'Pick a model'}
+                                : defaultModelLabel
+                                    ? `Default: ${defaultModelLabel} (click to override)`
+                                    : 'Pick a model'}
                             data-testid="model-picker-chip"
                         >
                             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
@@ -405,8 +409,13 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     strokeLinejoin="round"
                                 />
                             </svg>
-                            <span className="truncate font-mono text-[10.5px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                                {modelCommand.modelOverride || 'model'}
+                            <span className={cn(
+                                'truncate font-mono text-[10.5px] font-medium',
+                                modelCommand.modelOverride
+                                    ? 'text-[#1e1e1e] dark:text-[#cccccc]'
+                                    : 'text-[#848484] dark:text-[#999]',
+                            )}>
+                                {modelCommand.modelOverride || defaultModelLabel || 'model'}
                             </span>
                             {modelCommand.modelOverride && (
                                 <span
@@ -537,7 +546,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         onDismiss={modelCommand.dismissModelMenu}
                         visible={modelCommand.modelMenuVisible}
                         highlightIndex={modelCommand.modelHighlightIndex}
-                        currentModelId={modelCommand.modelOverride ?? undefined}
+                        currentModelId={modelCommand.modelOverride ?? defaultModelId}
                     />
                 </div>
                 </div>

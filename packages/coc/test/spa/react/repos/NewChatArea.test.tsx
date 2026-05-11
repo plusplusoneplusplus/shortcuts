@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -47,6 +47,10 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         clearDraft: vi.fn(),
         newChatDraftKey: vi.fn((wsId?: string) => `new-chat:${wsId ?? '__global__'}`),
     },
+    mockDefaultModelResult: {
+        effectiveModel: undefined as string | undefined,
+        effectiveModelName: undefined as string | undefined,
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
@@ -83,6 +87,10 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCom
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => mockModelCommand,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useDefaultModelForMode', () => ({
+    useDefaultModelForMode: () => mockDefaultModelResult,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
@@ -164,6 +172,8 @@ beforeEach(() => {
     mockAppState.onboardingProgress = { hasUsedChat: false };
     mockModelCommand.modelOverride = null;
     mockModelCommand.modelMenuVisible = false;
+    mockDefaultModelResult.effectiveModel = undefined;
+    mockDefaultModelResult.effectiveModelName = undefined;
     mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
     mockAutocomplete.completion = '';
     mockAutocomplete.accept = vi.fn(() => '');
@@ -492,6 +502,45 @@ describe('NewChatArea', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
             expect(input.placeholder).toContain('type / for commands');
+        });
+
+        it('shows default model label on chip when no override is set', () => {
+            mockModelCommand.modelOverride = null;
+            mockDefaultModelResult.effectiveModel = 'claude-opus-4.7';
+            mockDefaultModelResult.effectiveModelName = 'Claude Opus 4.7';
+            render(<NewChatArea workspaceId="ws-1" />);
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip.textContent).toContain('Claude Opus 4.7');
+            // Should not show the clear button for default models
+            expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
+        });
+
+        it('shows override model over default model', () => {
+            mockModelCommand.modelOverride = 'gpt-5.4';
+            mockDefaultModelResult.effectiveModel = 'claude-opus-4.7';
+            mockDefaultModelResult.effectiveModelName = 'Claude Opus 4.7';
+            render(<NewChatArea workspaceId="ws-1" />);
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip.textContent).toContain('gpt-5.4');
+            expect(chip.textContent).not.toContain('Claude Opus 4.7');
+        });
+
+        it('shows "model" as fallback when no override and no default', () => {
+            mockModelCommand.modelOverride = null;
+            mockDefaultModelResult.effectiveModel = undefined;
+            mockDefaultModelResult.effectiveModelName = undefined;
+            render(<NewChatArea workspaceId="ws-1" />);
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip.textContent).toContain('model');
+        });
+
+        it('chip tooltip indicates the default model when no override is set', () => {
+            mockModelCommand.modelOverride = null;
+            mockDefaultModelResult.effectiveModel = 'gpt-5.5';
+            mockDefaultModelResult.effectiveModelName = 'GPT-5.5';
+            render(<NewChatArea workspaceId="ws-1" />);
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip.getAttribute('title')).toBe('Default: GPT-5.5 (click to override)');
         });
     });
 
