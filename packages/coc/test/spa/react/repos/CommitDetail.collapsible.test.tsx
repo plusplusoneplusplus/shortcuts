@@ -7,7 +7,7 @@
  *   - Summary bar appears when collapsed; contains subject + short hash
  *   - Clicking summary bar re-expands the header
  *   - Auto-collapse on scroll (scrollTop > 24)
- *   - Auto-expand when scrolled back to top (scrollTop <= 24)
+ *   - No auto-expand when scrolled back to top (scrollTop <= 24)
  *   - Selecting a new commit resets the header to expanded
  *   - Per-file view is unaffected (no collapse logic)
  */
@@ -139,7 +139,7 @@ describe('CommitDetail — collapsible header', () => {
         expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
     });
 
-    it('auto-expands when scrolled back to top', async () => {
+    it('does not auto-expand when scrolled back to top', async () => {
         await renderDetail({ commit: makeCommit() });
         const diffSection = screen.getByTestId('diff-section');
 
@@ -151,6 +151,18 @@ describe('CommitDetail — collapsible header', () => {
         // Scroll back to top
         Object.defineProperty(diffSection, 'scrollTop', { value: 0, configurable: true });
         await act(async () => { fireEvent.scroll(diffSection); });
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
+    });
+
+    it('allows explicit re-expand after auto-collapse', async () => {
+        await renderDetail({ commit: makeCommit() });
+        const diffSection = screen.getByTestId('diff-section');
+
+        Object.defineProperty(diffSection, 'scrollTop', { value: 30, configurable: true });
+        await act(async () => { fireEvent.scroll(diffSection); });
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-summary')); });
         expect(screen.queryByTestId('commit-info-summary')).toBeNull();
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
     });

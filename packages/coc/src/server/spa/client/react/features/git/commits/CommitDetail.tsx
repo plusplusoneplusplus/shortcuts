@@ -64,7 +64,6 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     const [hashCopied, setHashCopied] = useState(false);
     const [viewMode, setViewMode] = useDiffViewMode();
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
-    const [manualOverride, setManualOverride] = useState(false);
 
     const diffUrl = hash
         ? getSpaCocClient().git.commitDiffPath(workspaceId, hash)
@@ -153,7 +152,6 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     // Reset collapse state on commit change
     useEffect(() => {
         setHeaderCollapsed(false);
-        setManualOverride(false);
     }, [hash]);
 
     // Auto-collapse on scroll
@@ -162,15 +160,12 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         if (!el) return;
         const handleScroll = () => {
             if (el.scrollTop > 24) {
-                if (!manualOverride) setHeaderCollapsed(true);
-            } else {
-                setManualOverride(false);
-                setHeaderCollapsed(false);
+                setHeaderCollapsed(true);
             }
         };
         el.addEventListener('scroll', handleScroll);
         return () => el.removeEventListener('scroll', handleScroll);
-    }, [manualOverride]);
+    }, []);
 
     // Scroll to file when requested via prop
     useEffect(() => {
@@ -182,7 +177,6 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     }, [scrollToFilePath]);
 
     const handleToggleHeader = useCallback(() => {
-        setManualOverride(true);
         setHeaderCollapsed(c => !c);
     }, []);
 
