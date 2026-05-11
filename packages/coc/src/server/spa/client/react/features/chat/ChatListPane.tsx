@@ -1636,13 +1636,13 @@ export function ChatListPane({
                         onClick={onNewChat ?? onOpenDialog}
                         title={`New chat (${newChatKbdLabel})`}
                         data-testid="toolbar-new-chat-btn"
-                        className="flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 bg-[#1e1e1e] hover:bg-[#0078d4] dark:bg-[#cccccc] dark:hover:bg-white text-white dark:text-[#1e1e1e] border border-[#1e1e1e] dark:border-[#cccccc] rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]"
+                        className="flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-white rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]"
                     >
                         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className="flex-shrink-0">
                             <path d="M7 2v10M2 7h10" />
                         </svg>
                         <span className="flex-1 text-left truncate">New chat</span>
-                        <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-white/30 dark:border-[#1e1e1e]/30 text-white/85 dark:text-[#1e1e1e]/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                        <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-[#1e1e1e]/30 dark:border-white/30 text-[#1e1e1e]/85 dark:text-white/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
                     </button>
 
                     <Button

@@ -493,6 +493,22 @@ describe('ChatListPane', () => {
             expect((btn.textContent ?? '').match(/⌘N|Ctrl\+N/)).not.toBeNull();
         });
 
+        it('New chat button blends with the theme (light surface in light mode, dark surface in dark mode, no border)', () => {
+            renderPane({ history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+            const cls = btn.className ?? '';
+            // Theme-matching surfaces, mirroring NewChatArea + Send button.
+            expect(cls).toContain('bg-[#f3f3f3]');
+            expect(cls).toContain('dark:bg-[#1e1e1e]');
+            expect(cls).toContain('text-[#1e1e1e]');
+            expect(cls).toContain('dark:text-white');
+            // Regression: the high-contrast outline border was removed when the
+            // button switched from "stand-out CTA" to "blend with surface".
+            expect(cls).not.toMatch(/(^|\s)border(\s|$)/);
+            expect(cls).not.toContain('border-[#1e1e1e]');
+            expect(cls).not.toContain('dark:border-[#cccccc]');
+        });
+
         it('⌘N (or Ctrl+N) triggers the New chat handler when the activity pane is visible', () => {
             const onNewChat = vi.fn();
             renderPane({ history: [makeHistoryTask()], onNewChat });
