@@ -157,14 +157,27 @@ describe('RalphSessionRow', () => {
         }
     });
 
-    it('does NOT render the legacy purple left-border children wrapper', () => {
+    it('nests expanded children under a left guide-line + indent (parity with plan-file groups)', () => {
         const { container } = render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
-        // The old wrapper used `border-l-2 border-purple-200`. Children container
-        // should now be a flat div with no decorative border classes.
         const children = container.querySelector('[data-testid="ralph-session-children"]');
         expect(children).not.toBeNull();
-        expect(children!.className).not.toMatch(/border-l-2/);
-        expect(children!.className).not.toMatch(/border-purple/);
+        // Same wrapper classes as HistoryGroupHeader's expanded children container,
+        // so the parent + children read as one cohesive group block.
+        expect(children!.className).toMatch(/ml-3/);
+        expect(children!.className).toMatch(/pl-2/);
+        expect(children!.className).toMatch(/border-l\b/);
+    });
+
+    it('strengthens the row background when expanded (parity with plan-file groups)', () => {
+        const { container } = render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
+        const row = container.querySelector('[data-testid="ralph-session-row"]')!;
+        expect(row.className).toMatch(/bg-\[#f7f7f8\]/);
+    });
+
+    it('does not apply the expanded background when collapsed', () => {
+        const { container } = render(<RalphSessionRow session={makeSession({ hasUnseen: false })} {...defaultProps} />);
+        const row = container.querySelector('[data-testid="ralph-session-row"]')!;
+        expect(row.className).not.toMatch(/bg-\[#f7f7f8\]/);
     });
 
     it('shows blue (not purple) unseen dot when hasUnseen=true', () => {

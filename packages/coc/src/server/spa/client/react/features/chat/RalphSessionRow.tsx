@@ -78,7 +78,11 @@ export function RalphSessionRow({
     const toggle = () => setExpanded(e => !e);
 
     return (
-        <div data-testid="ralph-session-row" data-session-id={session.sessionId}>
+        <div
+            data-testid="ralph-session-row"
+            data-session-id={session.sessionId}
+            className={cn(expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80')}
+        >
             <div
                 className={cn(
                     'chat-row group relative cursor-pointer leading-none transition-colors',
@@ -152,7 +156,10 @@ export function RalphSessionRow({
             </div>
 
             {expanded && (
-                <div data-testid="ralph-session-children">
+                <div
+                    className="flex flex-col ml-3 pl-2 border-l border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    data-testid="ralph-session-children"
+                >
                     {session.grillingProcess && (
                         <div key={session.grillingProcess.id ?? 'grilling'}>
                             {renderTaskCard(session.grillingProcess, { isGroupChild: true })}
