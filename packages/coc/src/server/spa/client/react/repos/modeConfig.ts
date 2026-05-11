@@ -26,6 +26,17 @@ export const MODE_ICONS: Record<ChatMode, string> = {
     ralph: '🔄',
 };
 
+/**
+ * Per-mode accent text colors for in-conversation labels (e.g. the mode-change divider).
+ * Mirrors the border accents from `MODE_BORDER_COLORS` but as text classes.
+ */
+export const MODE_TEXT_COLORS: Record<ChatMode, string> = {
+    autopilot: 'text-green-600 dark:text-green-400',
+    ask: 'text-yellow-600 dark:text-yellow-400',
+    plan: 'text-blue-600 dark:text-blue-400',
+    ralph: 'text-purple-600 dark:text-purple-400',
+};
+
 export const MODE_LABELS: Record<ChatMode, string> = {
     ask: '💡 Ask',
     plan: '📋 Plan',

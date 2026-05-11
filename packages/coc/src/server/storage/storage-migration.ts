@@ -160,6 +160,7 @@ export function serializeTurnToRow(
         token_usage: jsonStringify(turn.tokenUsage),
         paste_externalized: turn.pasteExternalized ? 1 : 0,
         model: turn.model ?? null,
+        mode: (turn as { mode?: string }).mode ?? null,
     };
 }
 
@@ -389,11 +390,11 @@ export class StorageMigrationEngine {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model
+                token_usage, paste_externalized, model, mode
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model
+                @token_usage, @paste_externalized, @model, @mode
             )
         `);
 

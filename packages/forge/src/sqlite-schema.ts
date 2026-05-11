@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * Read the current schema version from the database.
@@ -85,6 +85,7 @@ export function initializeDatabase(db: Database.Database): void {
                 pinned_at         TEXT,
                 archived          INTEGER DEFAULT 0,
                 model             TEXT,
+                mode              TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -304,6 +305,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 10) {
             migrateV9toV10(db);
         }
+        if (versionBefore < 12) {
+            migrateV11toV12(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -429,5 +433,15 @@ function migrateV9toV10(db: Database.Database): void {
     }
     if (!colNames.has('model')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
+    }
+}
+
+/**
+ * V11 → V12: add `mode TEXT` column to `conversation_turns` for mode-change tracking.
+ */
+function migrateV11toV12(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'mode')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN mode TEXT');
     }
 }

@@ -363,6 +363,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(nextMsg.model ? { model: nextMsg.model } : {}),
+                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
             }),
         );
 

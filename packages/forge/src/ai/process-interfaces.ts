@@ -160,6 +160,8 @@ export interface ConversationTurn {
     pasteExternalized?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
+    /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
+    mode?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: Date;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */
@@ -192,6 +194,8 @@ export interface SerializedConversationTurn {
     pasteExternalized?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
+    /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
+    mode?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: string;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */

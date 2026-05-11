@@ -105,6 +105,7 @@ interface TurnRow {
     token_usage: string | null;
     paste_externalized: number;
     model: string | null;
+    mode: string | null;
     deleted_at: string | null;
     pinned_at: string | null;
     archived: number;
@@ -421,6 +422,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         token_usage: jsonStringify(turn.tokenUsage),
         paste_externalized: boolToInt(turn.pasteExternalized),
         model: turn.model ?? null,
+        mode: turn.mode ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -471,6 +473,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         tokenUsage: jsonParse<TokenUsage>(row.token_usage),
         pasteExternalized: intToBool(row.paste_externalized),
         ...(row.model ? { model: row.model } : {}),
+        ...(row.mode ? { mode: row.mode } : {}),
         deletedAt: isoToDate(row.deleted_at),
         pinnedAt: isoToDate(row.pinned_at),
         archived: intToBool(row.archived),
@@ -598,11 +601,11 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model
+                token_usage, paste_externalized, model, mode
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model
+                @token_usage, @paste_externalized, @model, @mode
             )
         `);
 
@@ -728,11 +731,11 @@ export class SqliteProcessStore implements ProcessStore {
                 INSERT INTO conversation_turns
                   (process_id, turn_index, role, content, timestamp, streaming,
                    tool_calls, timeline, images, historical, suggestions,
-                   token_usage, paste_externalized, model)
+                   token_usage, paste_externalized, model, mode)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   tool_calls, timeline, images, 1, suggestions,
-                  token_usage, paste_externalized, model
+                  token_usage, paste_externalized, model, mode
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL
@@ -1149,6 +1152,7 @@ export class SqliteProcessStore implements ProcessStore {
                     token_usage: null,
                     paste_externalized: 0,
                     model: null,
+                    mode: null,
                 });
             }
         });

@@ -9,6 +9,8 @@ import { AskUserInline } from './AskUserInline';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import type { BackgroundTasksState, AskUserBatch } from './hooks/useChatSSE';
+import { MODE_ICONS, MODE_TEXT_COLORS } from '../../repos/modeConfig';
+import type { ChatMode } from '../../repos/modeConfig';
 
 export interface ConversationAreaProps {
     loading: boolean;
@@ -231,9 +233,40 @@ export function ConversationArea({
                                     }
                                 }
 
+                                // Detect mode change: same pattern as the model divider above.
+                                let modeDivider: React.ReactNode = null;
+                                if (turn.role === 'user' && turn.mode) {
+                                    let prevMode: string | undefined;
+                                    let hasPriorTurns = false;
+                                    for (let j = i - 1; j >= 0; j--) {
+                                        hasPriorTurns = true;
+                                        if (sortedTurns[j].mode) { prevMode = sortedTurns[j].mode; break; }
+                                    }
+                                    if (hasPriorTurns && prevMode !== turn.mode) {
+                                        const modeKey = turn.mode as ChatMode;
+                                        const icon = MODE_ICONS[modeKey] ?? '';
+                                        const accent = MODE_TEXT_COLORS[modeKey] ?? 'text-[#1f2328] dark:text-[#cccccc]';
+                                        modeDivider = (
+                                            <div
+                                                className="mode-divider flex items-center gap-3 mt-3.5 mb-2 ml-9"
+                                                data-testid="mode-change-divider"
+                                            >
+                                                <span className="mode-divider-label font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#6b7280] dark:text-[#9aa0a6] whitespace-nowrap">
+                                                    switched to{' '}
+                                                    <strong className={cn('font-semibold', accent)}>
+                                                        {icon ? `${icon} ` : ''}{turn.mode}
+                                                    </strong>
+                                                </span>
+                                                <div className="mode-divider-rule flex-1 h-px bg-[#e5e7eb] dark:bg-[#3c3c3c]" />
+                                            </div>
+                                        );
+                                    }
+                                }
+
                                 return (
                                     <div key={idx}>
                                         {modelDivider}
+                                        {modeDivider}
                                         <div
                                             className={cn(
                                                 'flex items-start gap-2',
