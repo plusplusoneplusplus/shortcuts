@@ -156,9 +156,11 @@ export function getListModeConfig(mode: ListMode | ActivityTabMode | undefined):
         showFilterChips: false,
         showSearchInput: 'toolbar',
         historyLayout: 'pinned-completed-archived',
-        // 001 keeps Activity's existing flat layout. Plan 002 will flip
-        // this to true once parity is confirmed.
-        enableRalphGrouping: false,
+        // Plan 002: collapse consecutive ralph iterations into a single
+        // session row in Activity, mirroring the Chats tab. Plan-file
+        // grouping still applies to non-ralph entries (ralph wins when
+        // both could apply).
+        enableRalphGrouping: true,
         enablePlanGrouping: true,
         enableServerSearchPanel: false,
         sections: [

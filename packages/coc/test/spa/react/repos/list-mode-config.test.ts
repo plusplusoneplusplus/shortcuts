@@ -46,14 +46,16 @@ describe('getListModeConfig', () => {
         expect(cfg.historyLayout).toBe('status-priority');
     });
 
-    it('activity mode: toolbar search, scope segmented, plan grouping', () => {
+    it('activity mode: toolbar search, scope segmented, plan + ralph grouping', () => {
         const cfg = getListModeConfig('activity');
         expect(cfg.scope).toBe('scoped');
         expect(cfg.showPauseBanner).toBe(true);
         expect(cfg.showScopeSegmented).toBe(true);
         expect(cfg.showFilterChips).toBe(false);
         expect(cfg.showSearchInput).toBe('toolbar');
-        expect(cfg.enableRalphGrouping).toBe(false); // 001 keeps parity; 002 flips
+        // Plan 002: ralph grouping mirrors Chats; plan-file grouping is
+        // applied to non-ralph residuals (ralph wins on overlap).
+        expect(cfg.enableRalphGrouping).toBe(true);
         expect(cfg.enablePlanGrouping).toBe(true);
         expect(cfg.enableServerSearchPanel).toBe(false);
         expect(cfg.historyLayout).toBe('pinned-completed-archived');

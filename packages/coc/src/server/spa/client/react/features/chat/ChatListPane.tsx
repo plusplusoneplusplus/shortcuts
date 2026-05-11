@@ -30,6 +30,7 @@ import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/History
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
 import { RalphSessionRow } from './RalphSessionRow';
 import { isRalphEnabled } from '../../utils/config';
+import { getListModeConfig } from './list-mode-config';
 import { isRalphTask } from '../../../../../tasks/task-types';
 
 /** Primary task types surfaced as individual filter options. */
@@ -617,24 +618,48 @@ export function ChatListPane({
         [filteredUnpinned, unseenProcessIds, historyGrouping],
     );
 
+    /** Resolved list-mode config for the active tab — drives ralph/plan grouping
+     *  in the Activity branch. The Chats branch still uses its own `chatGroups`
+     *  pipeline below, so this config is currently consumed only by
+     *  {@link dateBucketedHistory} and the Activity render branch. */
+    const listModeConfig = useMemo(() => getListModeConfig(activeTab), [activeTab]);
+
     /**
-     * Bucket the completed-history entries (plan-file groups + standalone tasks)
-     * into Today / This week / Older time windows so the activity tab matches the
-     * activity-compact reference UI. The bucketing is purely visual — the
-     * underlying entries (and their plan-file children) are unchanged.
+     * Bucket the completed-history entries (ralph sessions + plan-file groups
+     * + standalone tasks) into Today / This week / Older time windows so the
+     * activity tab matches the activity-compact reference UI. The bucketing is
+     * purely visual — the underlying entries (and their plan-file children) are
+     * unchanged.
+     *
+     * Precedence: when a ralph iteration also has a `planFilePath`, the ralph
+     * session wins. We split filteredUnpinned via {@link groupByRalphSession}
+     * first, then plan-group only the non-ralph residuals.
      */
     const dateBucketedHistory = useMemo(() => {
-        const entries: Array<HistoryGroup | (any & { kind?: undefined })> = groupedUnpinned
-            ? (groupedUnpinned as Array<HistoryGroup | (any & { kind?: undefined })>)
-            : (filteredUnpinned as Array<any & { kind?: undefined }>);
+        let entries: Array<HistoryGroup | RalphSession | (any & { kind?: undefined })>;
+        if (listModeConfig.enableRalphGrouping && isRalphEnabled()) {
+            const ralphEntries = groupByRalphSession(filteredUnpinned, unseenProcessIds);
+            const ralphSessions = ralphEntries.filter((e: any) => e.kind === 'ralph-session') as RalphSession[];
+            const nonRalph = ralphEntries.filter((e: any) => e.kind !== 'ralph-session');
+            const planned = (historyGrouping && listModeConfig.enablePlanGrouping)
+                ? groupHistoryByPlanFile(nonRalph, unseenProcessIds)
+                : nonRalph;
+            entries = [...ralphSessions, ...planned] as any;
+        } else if (groupedUnpinned) {
+            entries = groupedUnpinned as any;
+        } else {
+            entries = filteredUnpinned as any;
+        }
         const today: typeof entries = [];
         const week: typeof entries = [];
         const older: typeof entries = [];
         const nowMs = Date.now();
         for (const entry of entries) {
-            const ts = entry.kind === 'group'
-                ? entry.latestTimestamp
-                : (entry.lastActivityAt ?? entry.endTime ?? entry.completedAt ?? entry.startTime ?? entry.startedAt ?? entry.createdAt ?? 0);
+            const ts = (entry as any).kind === 'group'
+                ? (entry as HistoryGroup).latestTimestamp
+                : (entry as any).kind === 'ralph-session'
+                    ? (entry as RalphSession).latestTimestamp
+                    : ((entry as any).lastActivityAt ?? (entry as any).endTime ?? (entry as any).completedAt ?? (entry as any).startTime ?? (entry as any).startedAt ?? (entry as any).createdAt ?? 0);
             const time = typeof ts === 'number' ? ts : +new Date(ts);
             const ageH = time ? (nowMs - time) / 3600000 : Infinity;
             if (ageH < 24) today.push(entry);
@@ -642,7 +667,7 @@ export function ChatListPane({
             else older.push(entry);
         }
         return { today, week, older };
-    }, [groupedUnpinned, filteredUnpinned]);
+    }, [groupedUnpinned, filteredUnpinned, listModeConfig, historyGrouping, unseenProcessIds]);
 
     // Expand/collapse state for plan-file groups
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -2127,6 +2152,20 @@ export function ChatListPane({
                             <div className="flex flex-col">
                                 {(() => {
                                     const renderEntry = (entry: any) => {
+                                        if (entry.kind === 'ralph-session') {
+                                            const session = entry as RalphSession;
+                                            return (
+                                                <RalphSessionRow
+                                                    key={session.sessionId}
+                                                    session={session}
+                                                    selectedTaskId={selectedTaskId}
+                                                    now={now}
+                                                    unseenProcessIds={unseenProcessIds}
+                                                    onSelectTask={onSelectTask}
+                                                    renderTaskCard={(task) => renderChatListRow(task, filteredUnpinned, { taskStatus: 'completed', isGroupChild: true })}
+                                                />
+                                            );
+                                        }
                                         if (entry.kind === 'group') {
                                             // Expanded by default if group has unseen items; user toggle overrides
                                             const expanded = !collapsedGroups.has(entry.planFilePath);
