@@ -22,7 +22,10 @@ const WS_ID = 'ws-ai-adv';
 const TASK_PATH = 'task-a.md';
 const TASK_NAME = 'task-a';
 
-test.describe('Comment AI Advanced', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task comment sidebar/AI flow is intentionally inert. These tests are kept
+// for reference until the comment system is rebuilt on top of the notes backend.
+test.describe.skip('Comment AI Advanced', () => {
 
     test('Fix with AI button triggers handler and shows loading spinner', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-adv-'));

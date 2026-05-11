@@ -25,7 +25,11 @@ const WS_ID = 'ws-lifecycle';
 const TASK_PATH = 'task-a.md';
 const TASK_NAME = 'task-a';
 
-test.describe('Comment Lifecycle', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task comment lifecycle (resolve/reopen/edit/delete/AI/popover/batch) is
+// intentionally inert. Kept for reference until the comment system is rebuilt on
+// top of the notes backend.
+test.describe.skip('Comment Lifecycle', () => {
 
     test('resolve toggles comment to resolved state', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-lifecycle-'));

@@ -60,7 +60,11 @@ async function navigateToTask(
 
 test.describe('Comment Sidebar Layout', () => {
 
-    test('header and filters render inside the sidebar, not in the main content area', async ({ page, serverUrl }) => {
+    // TaskPreview now uses NoteEditor with noopCommentBackend, so the legacy
+    // comment sidebar is intentionally inert. The two tests below depend on
+    // the sidebar appearing for seeded comments — they remain for reference
+    // until the comment system is rebuilt on top of the notes backend.
+    test.skip('header and filters render inside the sidebar, not in the main content area', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-sidebar-'));
         try {
             const repoDir = createRepoFixture(tmpDir);
@@ -93,7 +97,7 @@ test.describe('Comment Sidebar Layout', () => {
         }
     });
 
-    test('sidebar filters actually filter the comment list', async ({ page, serverUrl }) => {
+    test.skip('sidebar filters actually filter the comment list', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-sidebar-'));
         try {
             const repoDir = createRepoFixture(tmpDir);

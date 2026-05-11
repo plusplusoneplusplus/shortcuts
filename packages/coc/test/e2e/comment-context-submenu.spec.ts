@@ -17,7 +17,10 @@ import {
 
 const WS_ID = 'ws-submenu';
 
-test.describe('ContextMenu Submenu', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task comment context menu is intentionally inert. Kept for reference until
+// the comment system is rebuilt on top of the notes backend.
+test.describe.skip('ContextMenu Submenu', () => {
 
     test('hovering submenu item expands children, clicking child fires action', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-submenu-'));

@@ -20,7 +20,10 @@ import {
 
 const WS_ID = 'ws-inline-comment';
 
-test.describe('Inline Comment Creation', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task inline comment creation flow is intentionally inert. Kept for reference
+// until the comment system is rebuilt on top of the notes backend.
+test.describe.skip('Inline Comment Creation', () => {
 
     test('select text → right-click → Add comment → type → Submit → comment appears in sidebar', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-inline-'));

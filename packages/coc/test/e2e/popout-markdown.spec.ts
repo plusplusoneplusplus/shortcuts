@@ -111,8 +111,8 @@ test.describe('PopOutMarkdownShell — content rendering', () => {
         }));
 
         await expect(page.locator('[data-testid="popout-markdown-shell"]')).toBeVisible({ timeout: 10_000 });
-        // Headings render as <span class="md-h1"> (custom renderer, not <h1>)
-        await expect(page.locator('.md-h1')).toContainText('My Document Heading', { timeout: 8_000 });
+        // NoteEditor (Tiptap) renders headings as native <h1> inside the ProseMirror root.
+        await expect(page.locator('.ProseMirror h1')).toContainText('My Document Heading', { timeout: 8_000 });
     });
 
     test('renders code blocks from fetched content', async ({ page, serverUrl }) => {
@@ -128,8 +128,8 @@ test.describe('PopOutMarkdownShell — content rendering', () => {
         }));
 
         await expect(page.locator('[data-testid="popout-markdown-shell"]')).toBeVisible({ timeout: 10_000 });
-        // Code blocks render as <div class="code-block-container">
-        await expect(page.locator('.code-block-container')).toBeVisible({ timeout: 8_000 });
+        // NoteEditor (Tiptap) renders fenced code as <pre><code> inside the ProseMirror root.
+        await expect(page.locator('.ProseMirror pre code')).toBeVisible({ timeout: 8_000 });
     });
 
     test('displays the filename from displayPath in the top bar', async ({ page, serverUrl }) => {
@@ -191,7 +191,8 @@ test.describe('PopOutMarkdownShell — fetchMode', () => {
         }));
 
         await expect(page.locator('[data-testid="popout-markdown-shell"]')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('.md-h1')).toContainText('From Tasks Content', { timeout: 8_000 });
+        // NoteEditor (Tiptap) renders headings as native <h1> inside the ProseMirror root.
+        await expect(page.locator('.ProseMirror h1')).toContainText('From Tasks Content', { timeout: 8_000 });
         expect(tasksContentCalled).toBe(true);
     });
 

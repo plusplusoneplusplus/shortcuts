@@ -23,7 +23,10 @@ const WS_ID = 'ws-sidebar-adv';
 const TASK_PATH = 'task-a.md';
 const TASK_NAME = 'task-a';
 
-test.describe('Comment Sidebar Advanced', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task comment sidebar is intentionally inert. Kept for reference until the
+// comment system is rebuilt on top of the notes backend.
+test.describe.skip('Comment Sidebar Advanced', () => {
 
     test('combined status + category filter narrows list to intersection', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-sidebar-adv-'));

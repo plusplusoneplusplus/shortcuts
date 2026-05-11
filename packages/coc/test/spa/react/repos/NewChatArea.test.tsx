@@ -61,6 +61,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         queue: { enqueue: mockEnqueueTask },
         preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
+        skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,

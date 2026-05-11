@@ -22,7 +22,10 @@ const WS_ID = 'ws-popover-adv';
 const TASK_PATH = 'task-a.md';
 const TASK_NAME = 'task-a';
 
-test.describe('CommentPopover Advanced', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task CommentPopover is intentionally inert. Kept for reference until the
+// comment system is rebuilt on top of the notes backend.
+test.describe.skip('CommentPopover Advanced', () => {
 
     test('popover inline edit saves text correctly', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-popover-'));

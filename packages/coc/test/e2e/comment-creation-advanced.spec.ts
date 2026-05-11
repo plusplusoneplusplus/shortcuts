@@ -19,7 +19,10 @@ import {
 
 const WS_ID = 'ws-category-sel';
 
-test.describe('Category Selection in InlineCommentPopup', () => {
+// TaskPreview was migrated to NoteEditor with noopCommentBackend, so the legacy
+// per-task inline comment popup is intentionally inert. Kept for reference until
+// the comment system is rebuilt on top of the notes backend.
+test.describe.skip('Category Selection in InlineCommentPopup', () => {
 
     test('selecting bug category creates comment filterable by bug', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-catsel-'));
