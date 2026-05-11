@@ -303,4 +303,127 @@ describe('groupByRalphSession', () => {
         );
         expect(ordered).toEqual([1, 2, 3, 4, 5]);
     });
+
+    // ---------------------------------------------------------------------
+    // Sort timestamp regression: completed Ralph sessions must use end-time,
+    // not lastActivityAt, so late server-side turn appends (follow-ups,
+    // retries, post-completion tool events) don't keep floating a finished
+    // session above newer chats. See plan: "My Ralph session, the group, is
+    // from nine hours ago, but he is still being put at the top".
+    // ---------------------------------------------------------------------
+
+    it('completed ralph session ignores lastActivityAt for sort timestamp', () => {
+        const NINE_H_AGO = 1000;
+        const ONE_H_AGO = 8 * 3600_000;
+
+        // Completed iteration: ended 9h ago but a late post-completion turn
+        // bumped lastActivityAt forward by 8h (now only 1h ago).
+        const completedIter = makeIterationHistoryItem('sess-old', 1, {
+            status: 'completed',
+            endTime: NINE_H_AGO,
+            completedAt: NINE_H_AGO,
+            lastActivityAt: ONE_H_AGO,
+        });
+
+        const result = groupByRalphSession([completedIter]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('complete');
+        // Must use end-time, not the bumped lastActivityAt.
+        expect(session.latestTimestamp).toBe(NINE_H_AGO);
+    });
+
+    it('completed ralph session sorts below a newer standalone chat even when its lastActivityAt is fresher', () => {
+        const NINE_H_AGO = 1000;
+        const FIVE_H_AGO = 4 * 3600_000;
+        const ONE_H_AGO = 8 * 3600_000;
+
+        // Finished ralph session with stale end-time but freshly bumped
+        // lastActivityAt (the bug scenario).
+        const oldRalph = makeIterationHistoryItem('sess-old', 1, {
+            id: 'old-ralph',
+            status: 'completed',
+            endTime: NINE_H_AGO,
+            completedAt: NINE_H_AGO,
+            lastActivityAt: ONE_H_AGO,
+        });
+
+        // A normal chat that genuinely completed 5h ago.
+        const newerChat = makeTask({
+            id: 'newer-chat',
+            status: 'completed',
+            endTime: FIVE_H_AGO,
+            completedAt: FIVE_H_AGO,
+            lastActivityAt: FIVE_H_AGO,
+            createdAt: FIVE_H_AGO,
+        });
+
+        const result = groupByRalphSession([oldRalph, newerChat]);
+        // newerChat (5h ago) must sort above the 9h-old completed session.
+        expect(result[0]).toBe(newerChat);
+        expect((result[1] as RalphSession).kind).toBe('ralph-session');
+    });
+
+    it('still-running ralph session keeps using lastActivityAt so live activity floats to the top', () => {
+        const TWO_H_AGO = 1000;
+        const NOW = 7200_000;
+
+        // Executing iteration (no end-time yet) with a fresh activity bump.
+        const runningIter = makeIterationTask('sess-live', 1, {
+            status: 'running',
+            startedAt: TWO_H_AGO,
+            createdAt: TWO_H_AGO,
+            lastActivityAt: NOW,
+        });
+
+        // A standalone chat that completed earlier than the live activity.
+        const olderChat = makeTask({
+            id: 'older-chat',
+            status: 'completed',
+            endTime: NOW - 3600_000,
+            completedAt: NOW - 3600_000,
+            lastActivityAt: NOW - 3600_000,
+            createdAt: NOW - 3600_000,
+        });
+
+        const result = groupByRalphSession([olderChat, runningIter]);
+        const session = result.find((e: any) => e.kind === 'ralph-session') as RalphSession;
+        expect(session.phase).toBe('executing');
+        // Live activity wins for non-complete sessions.
+        expect(session.latestTimestamp).toBe(NOW);
+        expect(result[0]).toBe(session);
+    });
+
+    it('completed ralph session takes the latest end-time across all iterations', () => {
+        const T1 = 1000;
+        const T2 = 5000;
+        const T3 = 9000;
+
+        const i1 = makeIterationHistoryItem('sess-end', 1, {
+            id: 'i1',
+            status: 'completed',
+            endTime: T1,
+            completedAt: T1,
+            lastActivityAt: T3 + 100_000, // late append on early iteration
+        });
+        const i2 = makeIterationHistoryItem('sess-end', 2, {
+            id: 'i2',
+            status: 'completed',
+            endTime: T2,
+            completedAt: T2,
+            lastActivityAt: T2,
+        });
+        const i3 = makeIterationHistoryItem('sess-end', 3, {
+            id: 'i3',
+            status: 'completed',
+            endTime: T3,
+            completedAt: T3,
+            lastActivityAt: T3,
+        });
+
+        const result = groupByRalphSession([i1, i2, i3]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('complete');
+        // Latest end-time across iterations, *not* the bumped lastActivityAt on i1.
+        expect(session.latestTimestamp).toBe(T3);
+    });
 });

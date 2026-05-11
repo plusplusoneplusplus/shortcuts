@@ -114,11 +114,30 @@ export function groupByRalphSession(
             .filter(t => getTaskMode(t) === 'ralph')
             .sort((a: any, b: any) => getRalphIteration(a) - getRalphIteration(b));
 
+        // Sort timestamp for the session row in the chat list.
+        //
+        // For *complete* sessions we deliberately use the latest end-time
+        // (`endTime` / `completedAt`) and ignore `lastActivityAt`, because
+        // server-side post-completion turn appends (follow-up handling,
+        // retries, late tool-result events) can keep bumping
+        // `lastActivityAt` long after the session is actually done. Using
+        // it would pin a finished 9h-old session above a fresh 1h-old chat,
+        // which is what users see and report as "ralph won't sit down".
+        //
+        // For sessions still running (grilling / executing) we keep
+        // `lastActivityAt` first — that's the desired behavior: live
+        // activity should float to the top.
         function getTs(t: any): number {
             const ts = t.lastActivityAt ?? t.endTime ?? t.completedAt ?? t.startedAt ?? t.startTime ?? t.createdAt ?? 0;
             return typeof ts === 'number' ? ts : +new Date(ts);
         }
-        const latestTimestamp = Math.max(...sessionItems.map(getTs));
+        function getEndTs(t: any): number {
+            const ts = t.endTime ?? t.completedAt ?? t.startedAt ?? t.startTime ?? t.createdAt ?? 0;
+            return typeof ts === 'number' ? ts : +new Date(ts);
+        }
+        const sessionPhase = computeSessionPhase(grillingProcess, iterations);
+        const tsPicker = sessionPhase === 'complete' ? getEndTs : getTs;
+        const latestTimestamp = Math.max(...sessionItems.map(tsPicker));
 
         const hasUnseen = unseenIds
             ? sessionItems.some(t => unseenIds.has(t.id))
@@ -131,7 +150,7 @@ export function groupByRalphSession(
             iterations,
             latestTimestamp,
             hasUnseen,
-            phase: computeSessionPhase(grillingProcess, iterations),
+            phase: sessionPhase,
         });
     }
 
@@ -139,7 +158,10 @@ export function groupByRalphSession(
         entries.push(item);
     }
 
-    // Sort by latest timestamp descending
+    // Sort by latest timestamp descending. Standalone (non-ralph) entries
+    // use the same activity-aware fallback chain as live ralph sessions —
+    // we only restrict ralph *complete* sessions to end-time so they stop
+    // floating after late server-side turn appends.
     entries.sort((a, b) => {
         const tsA = a.kind === 'ralph-session' ? a.latestTimestamp : (() => {
             const ts = a.lastActivityAt ?? a.endTime ?? a.completedAt ?? a.startedAt ?? a.startTime ?? a.createdAt ?? 0;
