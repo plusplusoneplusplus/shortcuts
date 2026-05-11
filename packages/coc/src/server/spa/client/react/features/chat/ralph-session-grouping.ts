@@ -66,6 +66,11 @@ function computeSessionPhase(
         }
         return 'executing';
     }
+    // All iterations finished without an explicit 'complete' phase marker
+    // (history items always carry phase='executing'). Treat the session as done.
+    if (iterations.length > 0 && iterations.every(t => t.status === 'completed')) {
+        return 'complete';
+    }
     if (iterations.length > 0) return 'executing';
     if (grillingProcess) {
         const gPhase = getRalphPhase(grillingProcess);

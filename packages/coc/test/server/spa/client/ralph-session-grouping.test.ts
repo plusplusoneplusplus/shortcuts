@@ -177,15 +177,28 @@ describe('groupByRalphSession', () => {
         expect(session.iterations).toHaveLength(0);
     });
 
-    it('session with grilling + 2 iterations has phase=executing', () => {
+    it('session with grilling + running iteration has phase=executing', () => {
         const grilling = makeGrillingTask('sess-1', { createdAt: 1000 });
-        const i1 = makeIterationTask('sess-1', 1, { createdAt: 2000 });
-        const i2 = makeIterationTask('sess-1', 2, { createdAt: 3000 });
+        const i1 = makeIterationTask('sess-1', 1, { createdAt: 2000, status: 'running' });
+        const i2 = makeIterationTask('sess-1', 2, { createdAt: 3000, status: 'completed' });
 
         const result = groupByRalphSession([grilling, i1, i2]);
         const session = result[0] as RalphSession;
         expect(session.phase).toBe('executing');
         expect(session.iterations).toHaveLength(2);
+    });
+
+    it('session where all iterations are completed (history shape, no explicit phase=complete) has phase=complete', () => {
+        // Regression: history items always carry ralph.phase='executing'; the session should
+        // be treated as complete when every iteration has status='completed'.
+        const i1 = makeIterationHistoryItem('sess-h2', 1, { createdAt: 2000, status: 'completed' });
+        const i2 = makeIterationHistoryItem('sess-h2', 2, { createdAt: 3000, status: 'completed' });
+        const i3 = makeIterationHistoryItem('sess-h2', 3, { createdAt: 4000, status: 'completed' });
+
+        const result = groupByRalphSession([i1, i2, i3]);
+        const session = result[0] as RalphSession;
+        expect(session.phase).toBe('complete');
+        expect(session.iterations).toHaveLength(3);
     });
 
     it('session with completed final iteration has phase=complete', () => {
