@@ -8,6 +8,7 @@ export { ModelsClient } from './models';
 export { NotesClient } from './notes';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';
+export { PromptHistoryClient } from './prompt-history';
 export { PullRequestsClient } from './pull-requests';
 export { QueueClient } from './queue';
 export { SchedulesClient } from './schedules';

@@ -367,6 +367,18 @@ export interface ProcessStore {
         },
     ): PromptAutocompleteContext;
 
+    /**
+     * Optional retrieval of the user's recent unique prompts in a workspace,
+     * ordered most-recent first. Includes both initial task prompts and
+     * follow-up user turns within tasks. Powers the up/down arrow history
+     * navigation in chat inputs. Excludes archived processes/turns and
+     * empty content; deduplicated by exact text (case-sensitive).
+     */
+    getRecentUserPrompts?(
+        workspaceId: string,
+        opts?: { limit?: number },
+    ): string[];
+
     /** Return aggregate storage statistics. */
     getStorageStats(): Promise<StorageStats>;
 

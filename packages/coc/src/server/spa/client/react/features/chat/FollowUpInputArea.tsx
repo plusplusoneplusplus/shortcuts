@@ -14,6 +14,7 @@ import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
@@ -184,6 +185,19 @@ export function FollowUpInputArea({
         ? DEFAULT_MODE_PILL_OPTIONS.filter(opt => allowedModes.includes(opt.value))
         : [...DEFAULT_MODE_PILL_OPTIONS];
 
+    // ── Bash-style up/down history navigation through past user prompts ──
+    const promptHistory = useChatPromptHistory({
+        workspaceId: task?.metadata?.workspaceId,
+        value: followUpInput,
+        cursorPos: followUpCursorPos,
+        enabled: !inputDisabled,
+        setValue: (next) => {
+            setFollowUpInput(next);
+            setFollowUpCursorPos(next.length);
+            richTextRef.current?.setValue(next, next.length);
+        },
+    });
+
     // Shared handler for the editor key events, used by both layouts.
     function handleEditorKeyDown(e: React.KeyboardEvent<HTMLElement>) {
         // Priority 1: model command menu
@@ -234,6 +248,10 @@ export function FollowUpInputArea({
         if (e.key === 'Escape' && autocomplete.completion) {
             e.preventDefault();
             autocomplete.dismiss();
+            return;
+        }
+        // Priority 4: bash-style up/down history navigation.
+        if (promptHistory.handleKeyDown(e)) {
             return;
         }
         if (e.key === 'Tab' && e.shiftKey) {

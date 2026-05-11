@@ -104,6 +104,18 @@ vi.mock('../../../../src/server/spa/client/react/hooks/usePromptAutocompleteEnab
     usePromptAutocompleteEnabled: () => true,
 }));
 
+// Hoisted mock state for the prompt-history hook.
+const { mockHistory } = vi.hoisted(() => ({
+    mockHistory: {
+        handleKeyDown: vi.fn(() => false),
+        reset: vi.fn(),
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useChatPromptHistory', () => ({
+    useChatPromptHistory: () => mockHistory,
+}));
+
 // Minimal RichTextInput mock
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
     const R = await import('react');
@@ -142,6 +154,8 @@ beforeEach(() => {
     mockAutocomplete.completion = '';
     mockAutocomplete.accept = vi.fn(() => '');
     mockAutocomplete.dismiss = vi.fn();
+    mockHistory.handleKeyDown = vi.fn(() => false);
+    mockHistory.reset = vi.fn();
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -538,6 +552,56 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Tab' });
 
             expect(mockAutocomplete.accept).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('prompt history navigation', () => {
+        it('forwards ArrowUp to the prompt-history hook', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.keyDown(input, { key: 'ArrowUp' });
+            expect(mockHistory.handleKeyDown).toHaveBeenCalled();
+            const arg = mockHistory.handleKeyDown.mock.calls[0][0];
+            expect(arg.key).toBe('ArrowUp');
+        });
+
+        it('forwards ArrowDown to the prompt-history hook', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(mockHistory.handleKeyDown).toHaveBeenCalled();
+            const arg = mockHistory.handleKeyDown.mock.calls[0][0];
+            expect(arg.key).toBe('ArrowDown');
+        });
+
+        it('does not invoke history when ghost-text Tab is consumed first', () => {
+            mockAutocomplete.completion = 'world';
+            mockAutocomplete.accept = vi.fn(() => 'Hello world');
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello ' } });
+            fireEvent.keyDown(input, { key: 'Tab' });
+
+            expect(mockAutocomplete.accept).toHaveBeenCalled();
+            // Tab is not an arrow key — history should never have seen it.
+            const arrowCalls = mockHistory.handleKeyDown.mock.calls.filter(
+                (c: any[]) => c[0]?.key === 'ArrowUp' || c[0]?.key === 'ArrowDown',
+            );
+            expect(arrowCalls).toHaveLength(0);
+        });
+
+        it('skips Enter handling when history consumes the event (defensive)', () => {
+            // History never consumes Enter, but verify that when handleKeyDown
+            // reports true, the Enter branch is not executed (no enqueue call).
+            mockHistory.handleKeyDown = vi.fn((e: any) => e.key === 'Enter');
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
         });
     });
 });

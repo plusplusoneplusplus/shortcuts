@@ -1858,6 +1858,72 @@ export class SqliteProcessStore implements ProcessStore {
         }));
     }
 
+    /**
+     * Recent unique user prompts in a workspace, ordered most-recent first.
+     * Powers up/down arrow history navigation in chat inputs.
+     *
+     * Sources combined:
+     *   - Initial process prompts from `processes.full_prompt`
+     *   - User-role follow-up turns from `conversation_turns.content`
+     *
+     * Filters:
+     *   - Excludes archived processes and archived/deleted turns.
+     *   - Excludes empty/whitespace-only content.
+     * Deduplicated by exact text (case-sensitive). The first (most recent)
+     * occurrence wins; later duplicates are dropped.
+     *
+     * Caps `limit` to `[1, 200]`; default 50.
+     */
+    getRecentUserPrompts(workspaceId: string, opts?: { limit?: number }): string[] {
+        if (!workspaceId) return [];
+        const requested = opts?.limit ?? 50;
+        const limit = Math.max(1, Math.min(200, Math.floor(requested)));
+
+        // Pull more than `limit` so we still have enough after dedup. Use a
+        // generous floor (200) so that even with heavy duplication the next
+        // distinct prompt is reachable for typical workspaces.
+        const fetchLimit = Math.min(Math.max(limit * 5, 200), 1000);
+
+        // Union initial prompts + user follow-up turns, ordered by timestamp DESC.
+        const rows = this.db.prepare(`
+            SELECT text, ts FROM (
+                SELECT
+                    full_prompt AS text,
+                    start_time  AS ts
+                FROM processes
+                WHERE workspace_id = @workspaceId
+                  AND archived = 0
+                  AND full_prompt IS NOT NULL
+                  AND length(trim(full_prompt)) > 0
+                UNION ALL
+                SELECT
+                    ct.content   AS text,
+                    ct.timestamp AS ts
+                FROM conversation_turns ct
+                JOIN processes p ON p.id = ct.process_id
+                WHERE p.workspace_id = @workspaceId
+                  AND p.archived = 0
+                  AND ct.role = 'user'
+                  AND ct.deleted_at IS NULL
+                  AND COALESCE(ct.archived, 0) = 0
+                  AND ct.content IS NOT NULL
+                  AND length(trim(ct.content)) > 0
+            )
+            ORDER BY ts DESC
+            LIMIT @fetchLimit
+        `).all({ workspaceId, fetchLimit }) as Array<{ text: string }>;
+
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const row of rows) {
+            if (seen.has(row.text)) continue;
+            seen.add(row.text);
+            result.push(row.text);
+            if (result.length >= limit) break;
+        }
+        return result;
+    }
+
     // ========================================================================
     // Conversation Turns (lightweight accessor)
     // ========================================================================

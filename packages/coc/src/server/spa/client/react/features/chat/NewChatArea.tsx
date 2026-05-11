@@ -28,6 +28,7 @@ import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } f
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { isRalphEnabled } from '../../utils/config';
 
 export interface NewChatAreaProps {
@@ -73,6 +74,19 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             && !modelCommand.modelMenuVisible,
         workspaceId,
         surface: 'queue',
+    });
+
+    // Bash-style up/down history navigation through past initial prompts.
+    const promptHistory = useChatPromptHistory({
+        workspaceId,
+        value: input,
+        cursorPos,
+        enabled: !sending,
+        setValue: (next) => {
+            setInput(next);
+            setCursorPos(next.length);
+            richTextRef.current?.setValue(next, next.length);
+        },
     });
 
     async function handleSend() {
@@ -125,8 +139,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 await updateOnboarding({ hasUsedChat: true }).catch(() => {});
             }
             setInput('');
+            setCursorPos(0);
             richTextRef.current?.setValue('');
             clearAttachments();
+            promptHistory.reset();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
@@ -279,6 +295,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             if (e.key === 'Escape' && autocomplete.completion) {
                                 e.preventDefault();
                                 autocomplete.dismiss();
+                                return;
+                            }
+                            // Priority 4: bash-style up/down history navigation.
+                            if (promptHistory.handleKeyDown(e)) {
                                 return;
                             }
                             if (e.key === 'Enter' && !e.shiftKey) {

@@ -28,6 +28,7 @@ import type { PostAction } from '../../../task-types';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnabled';
+import { useChatPromptHistory } from '../hooks/useChatPromptHistory';
 
 interface HookEntry {
     id: string;
@@ -126,6 +127,19 @@ export function EnqueueDialog() {
         enabled: promptAutocompleteEnabled && !submitting && !slashCommands.menuVisible,
         workspaceId: workspaceId || undefined,
         surface: 'queue',
+    });
+
+    // Bash-style up/down history navigation through past initial prompts.
+    const promptHistory = useChatPromptHistory({
+        workspaceId: workspaceId || undefined,
+        value: prompt,
+        cursorPos: promptCursorPos,
+        enabled: !submitting,
+        setValue: (next) => {
+            setPrompt(next);
+            setPromptCursorPos(next.length);
+            richTextRef.current?.setValue(next, next.length);
+        },
     });
 
     // Track previous dialog mode to detect mode switches
@@ -448,11 +462,15 @@ export function EnqueueDialog() {
             autocomplete.dismiss();
             return;
         }
+        // Bash-style up/down history navigation.
+        if (promptHistory.handleKeyDown(e)) {
+            return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {
             e.preventDefault();
             handleSubmit();
         }
-    }, [submitting, handleSubmit, slashCommands, handleSlashSelect, autocomplete]);
+    }, [submitting, handleSubmit, slashCommands, handleSlashSelect, autocomplete, promptHistory]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
