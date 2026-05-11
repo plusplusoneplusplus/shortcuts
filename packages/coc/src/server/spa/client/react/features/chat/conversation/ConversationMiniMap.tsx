@@ -5,6 +5,15 @@
  * strip to smooth-scroll to that turn, or drag the viewport indicator to scrub
  * through the conversation.  Collapses automatically on narrow viewports and
  * supports Alt+M toggling.
+ *
+ * Visual design matches the `coc-conversation-redesign-3` spec:
+ *  - 7 strip kinds (user / assistant / whisper / agent / error / pinned / historical)
+ *    plus a streaming animation overlay.
+ *  - Active strip (currently in viewport) gets a scaleX(1.12) emphasis.
+ *  - Hover transforms with scaleX(1.12) for a tactile feel.
+ *  - rAF-driven viewport indicator updates (replaces fixed-interval throttle).
+ *  - Container-relative click-to-scroll using getBoundingClientRect math so
+ *    scrolling stays within the conversation scroll container.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -15,16 +24,35 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 const MIN_STRIP_HEIGHT = 4;
 const MAX_STRIP_HEIGHT = 60;
 const MINIMAP_WIDTH = 56;
-const COLLAPSED_WIDTH = 12;
 const MIN_TURNS_TO_SHOW = 5;
 const NARROW_VIEWPORT_PX = 900;
-const SCROLL_THROTTLE_MS = 100;
 const HEAVY_TOOL_THRESHOLD = 3;
+const ACTIVE_PROBE_OFFSET_RATIO = 0.28;
+const SCROLL_OFFSET_PX = 14;
+const TOOLTIP_DEFAULT_WIDTH = 220;
+const TOOLTIP_DEFAULT_HEIGHT = 56;
+const TOOLTIP_MARGIN = 8;
+const VIEWPORT_INDICATOR_MIN = 16;
+const JUMP_LATEST_THRESHOLD = 40;
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Kind / Color ───────────────────────────────────────────────────────
+
+/** Strip kind — drives both color and landmark icon. Priority order: streaming >
+ *  error > pinned > historical > agent (assistant + read_agent) > whisper
+ *  (assistant + heavy tools) > assistant > user. */
+export type MiniMapStripKind =
+    | 'user'
+    | 'assistant'
+    | 'whisper'
+    | 'agent'
+    | 'error'
+    | 'pinned'
+    | 'historical'
+    | 'streaming';
 
 interface StripInfo {
     index: number;
+    kind: MiniMapStripKind;
     color: string;
     height: number;
     label: string;
@@ -34,16 +62,33 @@ interface StripInfo {
     landmark: string | null;
 }
 
-function getTurnColor(turn: ClientConversationTurn): string {
-    if (turn.streaming) return 'var(--minimap-streaming)';
-    if (turn.historical) return 'var(--minimap-historical)';
-    if (turn.role === 'user') return 'var(--minimap-user)';
-    // assistant
-    const hasError = turn.toolCalls?.some(tc => tc.status === 'failed' || tc.error);
-    if (hasError) return 'var(--minimap-error)';
-    const hasTools = turn.toolCalls && turn.toolCalls.length > 0;
-    if (hasTools) return 'var(--minimap-tool)';
-    return 'var(--minimap-assistant)';
+function hasReadAgentTool(turn: ClientConversationTurn): boolean {
+    return !!turn.toolCalls?.some(tc => tc.toolName === 'read_agent' || tc.toolName === 'task');
+}
+
+function hasHeavyTools(turn: ClientConversationTurn): boolean {
+    return !!turn.toolCalls && turn.toolCalls.length >= HEAVY_TOOL_THRESHOLD;
+}
+
+function hasFailedTool(turn: ClientConversationTurn): boolean {
+    return !!turn.toolCalls?.some(tc => tc.status === 'failed' || tc.error);
+}
+
+export function getTurnKind(turn: ClientConversationTurn): MiniMapStripKind {
+    if (turn.streaming) return 'streaming';
+    if (turn.isError || hasFailedTool(turn)) return 'error';
+    if (turn.pinnedAt) return 'pinned';
+    if (turn.historical) return 'historical';
+    if (turn.role === 'user') return 'user';
+    if (hasReadAgentTool(turn)) return 'agent';
+    if (hasHeavyTools(turn)) return 'whisper';
+    return 'assistant';
+}
+
+/** CSS variable string for a strip kind. Kept exported for back-compat with
+ *  earlier consumers and tests. */
+export function getTurnColor(turn: ClientConversationTurn): string {
+    return `var(--minimap-${getTurnKind(turn)})`;
 }
 
 function getTurnContentLength(turn: ClientConversationTurn): number {
@@ -67,15 +112,12 @@ function computeStripHeights(turns: ClientConversationTurn[]): number[] {
 }
 
 function getLandmark(turn: ClientConversationTurn, index: number, turns: ClientConversationTurn[]): string | null {
-    // First user message
-    if (turn.role === 'user' && index === turns.findIndex(t => t.role === 'user')) {
-        return '▶';
-    }
-    // Turns with errors
-    const hasError = turn.toolCalls?.some(tc => tc.status === 'failed' || tc.error);
-    if (hasError) return '⚠';
-    // Heavy tool activity
-    if (turn.toolCalls && turn.toolCalls.length >= HEAVY_TOOL_THRESHOLD) return '⚡';
+    if (turn.streaming) return '●';
+    if (turn.isError || hasFailedTool(turn)) return '⚠';
+    if (turn.pinnedAt) return '📌';
+    if (turn.role === 'assistant' && hasReadAgentTool(turn)) return '🤖';
+    if (turn.role === 'user' && index === turns.findIndex(t => t.role === 'user')) return '▶';
+    if (turn.role === 'assistant' && hasHeavyTools(turn)) return '🔇';
     return null;
 }
 
@@ -91,16 +133,20 @@ function formatTime(timestamp?: string): string {
 
 function buildStrips(turns: ClientConversationTurn[]): StripInfo[] {
     const heights = computeStripHeights(turns);
-    return turns.map((turn, i) => ({
-        index: i,
-        color: getTurnColor(turn),
-        height: heights[i],
-        label: `Turn ${i + 1}`,
-        tooltipRole: turn.role === 'user' ? 'User' : 'Assistant',
-        tooltipTime: formatTime(turn.timestamp),
-        tooltipPreview: (turn.content || '').slice(0, 60),
-        landmark: getLandmark(turn, i, turns),
-    }));
+    return turns.map((turn, i) => {
+        const kind = getTurnKind(turn);
+        return {
+            index: i,
+            kind,
+            color: `var(--minimap-${kind})`,
+            height: heights[i],
+            label: `Turn ${i + 1}`,
+            tooltipRole: turn.role === 'user' ? 'User' : 'Assistant',
+            tooltipTime: formatTime(turn.timestamp),
+            tooltipPreview: (turn.content || '').slice(0, 60),
+            landmark: getLandmark(turn, i, turns),
+        };
+    });
 }
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -127,16 +173,21 @@ export function ConversationMiniMap({
     const [narrowViewport, setNarrowViewport] = useState(false);
     const [viewportTop, setViewportTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
+    const [activeIndex, setActiveIndex] = useState<number | null>(null);
     const [tooltip, setTooltip] = useState<{ x: number; y: number; strip: StripInfo } | null>(null);
     const [userScrolledUp, setUserScrolledUp] = useState(false);
 
     const minimapRef = useRef<HTMLDivElement>(null);
     const stripAreaRef = useRef<HTMLDivElement>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
     const draggingRef = useRef(false);
-    const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const rafRef = useRef<number>(0);
 
     const strips = useMemo(() => buildStrips(turns), [turns]);
-    const totalStripHeight = useMemo(() => strips.reduce((sum, s) => sum + s.height + 2, 0), [strips]); // +2 for gap
+    const hasStreamingStrip = useMemo(
+        () => strips.some(s => s.kind === 'streaming'),
+        [strips],
+    );
 
     const isVisible = turns.length >= MIN_TURNS_TO_SHOW;
     const isCollapsed = collapsed || narrowViewport;
@@ -165,59 +216,96 @@ export function ConversationMiniMap({
         return () => document.removeEventListener('keydown', handler);
     }, []);
 
-    // ── Sync viewport indicator with scroll position ──────────────────
+    // ── Sync viewport indicator + active strip with scroll position ───
 
-    const updateViewportIndicator = useCallback(() => {
+    const updateMiniMap = useCallback(() => {
         const sc = scrollContainerRef.current;
-        const sa = stripAreaRef.current;
-        if (!sc || !sa) return;
+        const tc = turnsContainerRef.current;
+        if (!sc) return;
 
-        const scrollRatio = sc.scrollTop / Math.max(sc.scrollHeight - sc.clientHeight, 1);
-        const visibleRatio = sc.clientHeight / Math.max(sc.scrollHeight, 1);
-        const saHeight = sa.clientHeight;
+        const scrollHeight = Math.max(sc.scrollHeight, 1);
+        const maxScroll = Math.max(sc.scrollHeight - sc.clientHeight, 1);
+        const visibleRatio = Math.min(1, sc.clientHeight / scrollHeight);
 
-        setViewportTop(scrollRatio * saHeight * (1 - visibleRatio));
-        setViewportHeight(Math.max(visibleRatio * saHeight, 16));
+        // The strip area height is used for the viewport indicator; fall back
+        // to the scroll container's clientHeight when the strip area is not
+        // mounted yet (collapsed rail uses clientHeight directly).
+        const trackHeight = stripAreaRef.current?.clientHeight ?? sc.clientHeight;
+        const trackable = Math.max(trackHeight * (1 - visibleRatio), 0);
+        const indicatorTop = (sc.scrollTop / maxScroll) * trackable;
+        const indicatorHeight = Math.max(visibleRatio * trackHeight, VIEWPORT_INDICATOR_MIN);
 
-        // Track whether user has scrolled up during streaming
-        const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 40;
-        setUserScrolledUp(!atBottom && !!isStreaming);
-    }, [scrollContainerRef, isStreaming]);
+        setViewportTop(indicatorTop);
+        setViewportHeight(indicatorHeight);
+
+        // Active turn = the last turn whose top crosses the probe line. We use
+        // getBoundingClientRect math because the turns container is not always
+        // the immediate child of the scroll container (it's wrapped).
+        if (tc && tc.children.length > 0) {
+            const containerRect = sc.getBoundingClientRect();
+            const probe = sc.clientHeight * ACTIVE_PROBE_OFFSET_RATIO;
+            let nextActive: number | null = null;
+            const children = tc.children;
+            for (let i = 0; i < children.length; i++) {
+                const rect = (children[i] as HTMLElement).getBoundingClientRect();
+                const offset = rect.top - containerRect.top;
+                if (offset <= probe) {
+                    nextActive = i;
+                } else {
+                    break;
+                }
+            }
+            setActiveIndex(nextActive);
+        }
+
+        const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - JUMP_LATEST_THRESHOLD;
+        setUserScrolledUp(!atBottom);
+    }, [scrollContainerRef, turnsContainerRef]);
+
+    const scheduleUpdate = useCallback(() => {
+        if (rafRef.current) return;
+        rafRef.current = window.requestAnimationFrame(() => {
+            rafRef.current = 0;
+            updateMiniMap();
+        });
+    }, [updateMiniMap]);
 
     useEffect(() => {
         const sc = scrollContainerRef.current;
         if (!sc) return;
-
-        const onScroll = () => {
-            if (scrollThrottleRef.current) return;
-            scrollThrottleRef.current = setTimeout(() => {
-                scrollThrottleRef.current = null;
-                updateViewportIndicator();
-            }, SCROLL_THROTTLE_MS);
+        sc.addEventListener('scroll', scheduleUpdate, { passive: true });
+        window.addEventListener('resize', scheduleUpdate);
+        updateMiniMap();
+        return () => {
+            sc.removeEventListener('scroll', scheduleUpdate);
+            window.removeEventListener('resize', scheduleUpdate);
+            if (rafRef.current) {
+                window.cancelAnimationFrame(rafRef.current);
+                rafRef.current = 0;
+            }
         };
-
-        sc.addEventListener('scroll', onScroll, { passive: true });
-        updateViewportIndicator();
-        return () => sc.removeEventListener('scroll', onScroll);
-    }, [scrollContainerRef, updateViewportIndicator]);
+    }, [scrollContainerRef, scheduleUpdate, updateMiniMap]);
 
     // Re-calc on turns change
     useEffect(() => {
-        updateViewportIndicator();
-    }, [turns.length, updateViewportIndicator]);
+        updateMiniMap();
+    }, [turns.length, updateMiniMap]);
 
-    // ── Click-to-navigate ─────────────────────────────────────────────
+    // ── Click-to-navigate (container-relative, with breathing-room offset) ─
 
     const scrollToTurn = useCallback((index: number) => {
+        const sc = scrollContainerRef.current;
         const tc = turnsContainerRef.current;
-        if (!tc) return;
+        if (!sc || !tc) return;
         const el = tc.children[index] as HTMLElement | undefined;
         if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        // Brief highlight pulse
+        const containerRect = sc.getBoundingClientRect();
+        const targetRect = el.getBoundingClientRect();
+        const top = Math.max(0, sc.scrollTop + targetRect.top - containerRect.top - SCROLL_OFFSET_PX);
+        sc.scrollTo({ top, behavior: 'smooth' });
         el.classList.add('minimap-highlight-pulse');
-        setTimeout(() => el.classList.remove('minimap-highlight-pulse'), 1200);
-    }, [turnsContainerRef]);
+        setTimeout(() => el.classList.remove('minimap-highlight-pulse'), 1100);
+    }, [scrollContainerRef, turnsContainerRef]);
 
     // ── Drag viewport ─────────────────────────────────────────────────
 
@@ -261,9 +349,28 @@ export function ConversationMiniMap({
         setTooltip({ x: e.clientX, y: e.clientY, strip });
     }, []);
 
+    const moveTooltip = useCallback((e: React.MouseEvent) => {
+        setTooltip(prev => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+    }, []);
+
     const hideTooltip = useCallback(() => {
         setTooltip(null);
     }, []);
+
+    // Smart-clamp tooltip position using measured size when available
+    const tooltipPosition = useMemo(() => {
+        if (!tooltip || typeof window === 'undefined') return null;
+        const measured = tooltipRef.current;
+        const width = measured?.offsetWidth || TOOLTIP_DEFAULT_WIDTH;
+        const height = measured?.offsetHeight || TOOLTIP_DEFAULT_HEIGHT;
+        const winW = window.innerWidth || 0;
+        const winH = window.innerHeight || 0;
+        // Prefer placing left of the cursor so the tooltip doesn't sit on top
+        // of the minimap rail; clamp to viewport on both axes.
+        const left = Math.max(TOOLTIP_MARGIN, Math.min(tooltip.x - width - 14, winW - width - TOOLTIP_MARGIN));
+        const top = Math.max(TOOLTIP_MARGIN, Math.min(tooltip.y - 12, winH - height - TOOLTIP_MARGIN));
+        return { left, top };
+    }, [tooltip]);
 
     // ── Render ────────────────────────────────────────────────────────
 
@@ -285,11 +392,14 @@ export function ConversationMiniMap({
         );
     }
 
+    const showJumpLatest = hasStreamingStrip && userScrolledUp;
+
     return (
         <div
             className="minimap-panel"
             data-testid="minimap-panel"
             ref={minimapRef}
+            aria-label="Conversation minimap"
             style={{ width: MINIMAP_WIDTH }}
         >
             {/* Collapse button */}
@@ -311,51 +421,74 @@ export function ConversationMiniMap({
                     data-testid="minimap-viewport-indicator"
                     style={{ top: `${viewportTop}px`, height: `${viewportHeight}px` }}
                     onMouseDown={onDragStart}
+                    aria-hidden="true"
                 />
 
                 {/* Strips */}
-                {strips.map(strip => (
-                    <div
-                        key={strip.index}
-                        className={`minimap-strip${strip.color === 'var(--minimap-streaming)' ? ' minimap-strip-streaming' : ''}`}
-                        data-testid={`minimap-strip-${strip.index}`}
-                        data-turn-index={strip.index}
-                        style={{
-                            height: `${strip.height}px`,
-                            backgroundColor: strip.color,
-                        }}
-                        onClick={() => scrollToTurn(strip.index)}
-                        onMouseEnter={(e) => showTooltip(e, strip)}
-                        onMouseLeave={hideTooltip}
-                    >
-                        {strip.landmark && (
-                            <span className="minimap-landmark" data-testid={`minimap-landmark-${strip.index}`}>
-                                {strip.landmark}
-                            </span>
-                        )}
-                    </div>
-                ))}
+                {strips.map(strip => {
+                    const isActive = strip.index === activeIndex;
+                    const isStreamingStrip = strip.kind === 'streaming';
+                    const className = [
+                        'minimap-strip',
+                        `minimap-strip-${strip.kind}`,
+                        isStreamingStrip ? 'minimap-strip-streaming' : '',
+                        isActive ? 'active' : '',
+                    ].filter(Boolean).join(' ');
+                    const tooltipTitle = `${strip.tooltipRole} Turn ${strip.index + 1}${strip.tooltipTime ? ` · ${strip.tooltipTime}` : ''}`;
+                    return (
+                        <button
+                            key={strip.index}
+                            type="button"
+                            className={className}
+                            data-testid={`minimap-strip-${strip.index}`}
+                            data-turn-index={strip.index}
+                            data-kind={strip.kind}
+                            aria-label={tooltipTitle}
+                            aria-current={isActive ? 'location' : undefined}
+                            style={{
+                                height: `${strip.height}px`,
+                                // Non-streaming strips: keep inline backgroundColor so consumers
+                                // (and tests) can read it directly. Streaming uses the CSS gradient
+                                // via the `minimap-strip-streaming` class.
+                                ...(isStreamingStrip
+                                    ? {}
+                                    : { backgroundColor: `var(--minimap-${strip.kind})` }),
+                            }}
+                            onClick={() => scrollToTurn(strip.index)}
+                            onMouseEnter={(e) => showTooltip(e, strip)}
+                            onMouseMove={moveTooltip}
+                            onMouseLeave={hideTooltip}
+                        >
+                            {strip.landmark && (
+                                <span className="minimap-landmark" data-testid={`minimap-landmark-${strip.index}`}>
+                                    {strip.landmark}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Jump to latest badge */}
-            {userScrolledUp && isStreaming && (
+            {showJumpLatest && (
                 <button
                     className="minimap-jump-latest"
                     data-testid="minimap-jump-latest"
                     onClick={jumpToLatest}
                 >
-                    Jump to latest ↓
+                    Latest ↓
                 </button>
             )}
 
             {/* Tooltip */}
-            {tooltip && (
+            {tooltip && tooltipPosition && (
                 <div
+                    ref={tooltipRef}
                     className="minimap-tooltip max-w-[calc(100vw-16px)]"
                     data-testid="minimap-tooltip"
                     style={{
-                        top: tooltip.y - 10,
-                        left: Math.max(8, Math.min(tooltip.x - MINIMAP_WIDTH - 160, window.innerWidth - 220)),
+                        top: tooltipPosition.top,
+                        left: tooltipPosition.left,
                     }}
                 >
                     <div className="minimap-tooltip-header">
@@ -373,5 +506,5 @@ export function ConversationMiniMap({
 
 // ── Exports for testing ────────────────────────────────────────────────
 
-export { buildStrips, getTurnColor, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW };
+export { buildStrips, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW };
 export type { StripInfo };

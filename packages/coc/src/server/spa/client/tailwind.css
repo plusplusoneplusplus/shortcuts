@@ -2131,8 +2131,11 @@
 :root {
     --minimap-user: #3b82f6;
     --minimap-assistant: #22c55e;
-    --minimap-tool: #f59e0b;
+    --minimap-whisper: #f59e0b;
+    --minimap-agent: #6f42c1;
     --minimap-error: #ef4444;
+    --minimap-script: #1f2328;
+    --minimap-pinned: #d4a72c;
     --minimap-historical: #6b7280;
     --minimap-streaming: transparent; /* gradient applied via animation */
 }
@@ -2140,8 +2143,11 @@
 .dark {
     --minimap-user: #60a5fa;
     --minimap-assistant: #4ade80;
-    --minimap-tool: #fbbf24;
+    --minimap-whisper: #fbbf24;
+    --minimap-agent: #a78bfa;
     --minimap-error: #f87171;
+    --minimap-script: #cccccc;
+    --minimap-pinned: #facc15;
     --minimap-historical: #9ca3af;
 }
 
@@ -2154,16 +2160,16 @@
     max-height: 100%;
     display: flex;
     flex-direction: column;
-    border-left: 1px solid #e0e0e0;
-    background: rgba(255, 255, 255, 0.6);
+    border-inline-start: 1px solid #e0e0e0;
+    background: rgba(255, 255, 255, 0.72);
     transition: width 0.2s ease;
     overflow: hidden;
-    z-index: 10;
+    z-index: 3;
 }
 
 .dark .minimap-panel {
-    border-left-color: #3c3c3c;
-    background: rgba(30, 30, 30, 0.6);
+    border-inline-start-color: #3c3c3c;
+    background: rgba(30, 30, 30, 0.72);
 }
 
 /* Collapse button */
@@ -2172,21 +2178,28 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 20px;
+    height: 24px;
     border: none;
+    border-bottom: 1px solid #ececec;
     background: transparent;
     color: #848484;
     cursor: pointer;
     font-size: 14px;
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
 }
 
 .minimap-collapse-btn:hover {
     background: rgba(0, 0, 0, 0.06);
+    color: #1f2328;
+}
+
+.dark .minimap-collapse-btn {
+    border-bottom-color: #2d2d2d;
 }
 
 .dark .minimap-collapse-btn:hover {
     background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
 }
 
 /* Strip area */
@@ -2196,26 +2209,46 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 4px 8px;
+    padding: 8px 9px;
     overflow: hidden;
+    min-height: 0;
 }
 
 /* Individual strip */
 .minimap-strip {
     position: relative;
+    display: block;
+    width: 100%;
+    min-height: 4px;
+    border: 0;
+    padding: 0;
     border-radius: 2px;
     cursor: pointer;
-    min-height: 4px;
-    transition: opacity 0.15s;
+    background: var(--minimap-strip-color, var(--minimap-assistant));
+    opacity: 0.82;
+    transition: opacity 80ms ease, transform 80ms ease;
 }
 
-.minimap-strip:hover {
-    opacity: 0.8;
+.minimap-strip:hover,
+.minimap-strip.active {
+    opacity: 1;
+    transform: scaleX(1.12);
 }
+
+/* Per-kind colors (matches design data-kind classes; inline backgroundColor on the
+   element wins when set, but these are the canonical mapping). */
+.minimap-strip.minimap-strip-user        { --minimap-strip-color: var(--minimap-user); }
+.minimap-strip.minimap-strip-assistant   { --minimap-strip-color: var(--minimap-assistant); }
+.minimap-strip.minimap-strip-whisper     { --minimap-strip-color: var(--minimap-whisper); }
+.minimap-strip.minimap-strip-agent       { --minimap-strip-color: var(--minimap-agent); }
+.minimap-strip.minimap-strip-error       { --minimap-strip-color: var(--minimap-error); }
+.minimap-strip.minimap-strip-script      { --minimap-strip-color: var(--minimap-script); }
+.minimap-strip.minimap-strip-pinned      { --minimap-strip-color: var(--minimap-pinned); }
+.minimap-strip.minimap-strip-historical  { --minimap-strip-color: var(--minimap-historical); }
 
 /* Streaming strip animation */
 .minimap-strip-streaming {
-    background: linear-gradient(135deg, #3b82f6, #22c55e, #3b82f6) !important;
+    background: linear-gradient(135deg, #0969da, #22c55e, #0969da) !important;
     background-size: 200% 200% !important;
     animation: minimap-pulse 2s ease-in-out infinite;
 }
@@ -2228,30 +2261,33 @@
 /* Viewport indicator overlay */
 .minimap-viewport-indicator {
     position: absolute;
-    left: 0;
-    right: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 3px;
+    inset-inline: 3px;
+    border: 1px solid rgba(9, 105, 218, 0.42);
+    background: rgba(221, 244, 255, 0.28);
+    border-radius: 4px;
     cursor: ns-resize;
     z-index: 2;
     pointer-events: auto;
-    transition: top 0.1s ease;
+    transition: top 80ms linear, height 80ms linear;
 }
 
 .dark .minimap-viewport-indicator {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(55, 148, 255, 0.18);
+    border-color: rgba(55, 148, 255, 0.5);
 }
 
 /* Landmark markers */
 .minimap-landmark {
     position: absolute;
-    left: -6px;
+    inset-inline-start: -8px;
     top: 50%;
     transform: translateY(-50%);
+    width: 12px;
+    text-align: center;
     font-size: 8px;
     line-height: 1;
+    color: #848484;
+    pointer-events: none;
     user-select: none;
 }
 
@@ -2263,24 +2299,31 @@
     width: 12px;
     height: fit-content;
     max-height: 100%;
-    border-left: 1px solid #e0e0e0;
-    background: rgba(255, 255, 255, 0.4);
+    border-inline-start: 1px solid #e0e0e0;
+    background: rgba(255, 255, 255, 0.52);
     cursor: pointer;
-    transition: width 0.2s ease;
+    transition: width 0.2s ease, background 0.15s;
+}
+
+.minimap-collapsed:hover {
+    background: rgba(255, 255, 255, 0.85);
 }
 
 .dark .minimap-collapsed {
-    border-left-color: #3c3c3c;
-    background: rgba(30, 30, 30, 0.4);
+    border-inline-start-color: #3c3c3c;
+    background: rgba(30, 30, 30, 0.52);
+}
+
+.dark .minimap-collapsed:hover {
+    background: rgba(30, 30, 30, 0.85);
 }
 
 .minimap-collapsed-indicator {
     position: absolute;
-    left: 2px;
-    right: 2px;
-    background: rgba(0, 120, 212, 0.4);
+    inset-inline: 2px;
+    background: rgba(9, 105, 218, 0.38);
     border-radius: 2px;
-    transition: top 0.1s ease;
+    transition: top 80ms linear, height 80ms linear;
 }
 
 .dark .minimap-collapsed-indicator {
@@ -2291,20 +2334,22 @@
 .minimap-jump-latest {
     display: block;
     width: 100%;
-    padding: 3px 4px;
+    padding: 5px 3px;
     border: none;
-    border-top: 1px solid #e0e0e0;
-    background: #f3f3f3;
-    color: #0078d4;
-    font-size: 9px;
+    border-top: 1px solid #ececec;
+    background: #fafafa;
+    color: #0969da;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9.5px;
+    line-height: 1.15;
     cursor: pointer;
     text-align: center;
-    white-space: nowrap;
+    white-space: normal;
     transition: background 0.15s;
 }
 
 .minimap-jump-latest:hover {
-    background: #e8f3ff;
+    background: #ddf4ff;
 }
 
 .dark .minimap-jump-latest {
@@ -2324,22 +2369,22 @@
     background: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-    padding: 6px 10px;
-    max-width: 200px;
+    box-shadow: 0 8px 24px rgba(31, 35, 40, 0.14);
+    padding: 7px 9px;
+    width: min(220px, calc(100vw - 18px));
     pointer-events: none;
 }
 
 .dark .minimap-tooltip {
     background: #2d2d2d;
     border-color: #3c3c3c;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .minimap-tooltip-header {
     font-size: 11px;
     font-weight: 600;
-    color: #1e1e1e;
+    color: #1f2328;
     margin-bottom: 2px;
 }
 
@@ -2348,8 +2393,9 @@
 }
 
 .minimap-tooltip-preview {
-    font-size: 10px;
-    color: #848484;
+    font-size: 10.5px;
+    color: #6b7280;
+    line-height: 1.35;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2357,13 +2403,20 @@
 
 /* Highlight pulse on target turn after minimap navigation */
 @keyframes minimap-highlight-flash {
-    0% { box-shadow: 0 0 0 0 rgba(0, 120, 212, 0.4); }
-    50% { box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.2); }
-    100% { box-shadow: 0 0 0 0 rgba(0, 120, 212, 0); }
+    0%   { box-shadow: 0 0 0 0   rgba(9, 105, 218, 0.38); }
+    45%  { box-shadow: 0 0 0 4px rgba(9, 105, 218, 0.18); }
+    100% { box-shadow: 0 0 0 0   rgba(9, 105, 218, 0); }
 }
 
 .minimap-highlight-pulse {
-    animation: minimap-highlight-flash 1.2s ease-out;
+    animation: minimap-highlight-flash 1.1s ease-out;
+}
+
+@media (max-width: 900px) {
+    .minimap-panel,
+    .minimap-collapsed {
+        display: none !important;
+    }
 }
 
 /* ── Diff Mini Map ──────────────────────────────────────────────────── */

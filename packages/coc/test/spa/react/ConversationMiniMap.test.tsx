@@ -3,6 +3,12 @@
  *
  * Covers rendering, strip colors, click navigation, viewport indicator,
  * collapse/expand, keyboard shortcut, streaming, landmarks, and edge cases.
+ *
+ * Updated for the `coc-conversation-redesign-3` look-and-feel:
+ *   - 7 strip kinds (user / assistant / whisper / agent / error / pinned / historical)
+ *     plus a streaming overlay (CSS class).
+ *   - Active strip tracked from scroll position.
+ *   - Click navigation uses scroll-container math (no scrollIntoView).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -11,6 +17,7 @@ import {
     ConversationMiniMap,
     buildStrips,
     getTurnColor,
+    getTurnKind,
     computeStripHeights,
     getLandmark,
     MIN_TURNS_TO_SHOW,
@@ -49,6 +56,11 @@ function makeTurns(count: number): ClientConversationTurn[] {
     return turns;
 }
 
+/**
+ * Mock scroll container with predictable rect/scroll geometry. Children of the
+ * turns container get realistic getBoundingClientRect values so the active-
+ * strip probe + click-to-scroll math can run end-to-end.
+ */
 function createScrollContainer(): HTMLDivElement {
     const el = document.createElement('div');
     Object.defineProperties(el, {
@@ -56,6 +68,9 @@ function createScrollContainer(): HTMLDivElement {
         clientHeight: { value: 500, configurable: true },
         scrollTop: { value: 0, writable: true, configurable: true },
     });
+    el.getBoundingClientRect = vi.fn(() => ({
+        top: 0, left: 0, right: 500, bottom: 500, width: 500, height: 500, x: 0, y: 0, toJSON() { return {}; },
+    } as DOMRect));
     el.scrollTo = vi.fn((opts?: ScrollToOptions) => {
         if (opts?.top !== undefined) (el as any).scrollTop = opts.top;
     });
@@ -66,7 +81,12 @@ function createTurnsContainer(count: number): HTMLDivElement {
     const el = document.createElement('div');
     for (let i = 0; i < count; i++) {
         const child = document.createElement('div');
-        child.scrollIntoView = vi.fn();
+        // Each child is 80px tall, stacked from the top. The mock returns rects
+        // relative to the (fake) scroll container origin (top=0).
+        const top = i * 80;
+        child.getBoundingClientRect = vi.fn(() => ({
+            top, left: 0, right: 500, bottom: top + 80, width: 500, height: 80, x: 0, y: top, toJSON() { return {}; },
+        } as DOMRect));
         el.appendChild(child);
     }
     return el;
@@ -112,6 +132,12 @@ beforeEach(() => {
         }),
         removeEventListener: vi.fn(),
     }));
+    // jsdom doesn't implement rAF the way the browser does — proxy to
+    // setTimeout so updates flush synchronously inside `act`.
+    window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        return window.setTimeout(() => cb(performance.now()), 0);
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((id: number) => window.clearTimeout(id)) as typeof window.cancelAnimationFrame;
 });
 
 afterEach(() => {
@@ -120,37 +146,90 @@ afterEach(() => {
 
 // ── Pure function tests ────────────────────────────────────────────────
 
-describe('getTurnColor', () => {
-    it('returns user color for user turns', () => {
+describe('getTurnKind / getTurnColor', () => {
+    it('returns "user" for user turns', () => {
+        expect(getTurnKind(makeTurn())).toBe('user');
         expect(getTurnColor(makeTurn())).toBe('var(--minimap-user)');
     });
 
-    it('returns assistant color for plain assistant turns', () => {
+    it('returns "assistant" for plain assistant turns', () => {
+        expect(getTurnKind(makeAssistantTurn())).toBe('assistant');
         expect(getTurnColor(makeAssistantTurn())).toBe('var(--minimap-assistant)');
     });
 
-    it('returns tool color for assistant turns with tool calls', () => {
+    it('returns "agent" for assistant turns that dispatch a sub-agent', () => {
         const turn = makeAssistantTurn('resp', {
-            toolCalls: [{ id: '1', toolName: 'read', args: {}, status: 'completed' }],
+            toolCalls: [{ id: '1', toolName: 'read_agent', args: { agent_id: 'x' }, status: 'completed' }],
         });
-        expect(getTurnColor(turn)).toBe('var(--minimap-tool)');
+        expect(getTurnKind(turn)).toBe('agent');
+        expect(getTurnColor(turn)).toBe('var(--minimap-agent)');
     });
 
-    it('returns error color for turns with failed tool calls', () => {
+    it('returns "agent" for `task` tool calls too (alias)', () => {
+        const turn = makeAssistantTurn('resp', {
+            toolCalls: [{ id: '1', toolName: 'task', args: {}, status: 'completed' }],
+        });
+        expect(getTurnKind(turn)).toBe('agent');
+    });
+
+    it('returns "whisper" for assistant turns with heavy plain-tool activity', () => {
+        const turn = makeAssistantTurn('resp', {
+            toolCalls: [
+                { id: '1', toolName: 'read', args: {}, status: 'completed' },
+                { id: '2', toolName: 'grep', args: {}, status: 'completed' },
+                { id: '3', toolName: 'edit', args: {}, status: 'completed' },
+            ],
+        });
+        expect(getTurnKind(turn)).toBe('whisper');
+        expect(getTurnColor(turn)).toBe('var(--minimap-whisper)');
+    });
+
+    it('returns "assistant" when there are only a couple of tool calls', () => {
+        const turn = makeAssistantTurn('resp', {
+            toolCalls: [
+                { id: '1', toolName: 'read', args: {}, status: 'completed' },
+                { id: '2', toolName: 'grep', args: {}, status: 'completed' },
+            ],
+        });
+        expect(getTurnKind(turn)).toBe('assistant');
+    });
+
+    it('returns "error" for turns with failed tool calls', () => {
         const turn = makeAssistantTurn('resp', {
             toolCalls: [{ id: '1', toolName: 'read', args: {}, status: 'failed', error: 'oops' }],
         });
+        expect(getTurnKind(turn)).toBe('error');
         expect(getTurnColor(turn)).toBe('var(--minimap-error)');
     });
 
-    it('returns streaming color for streaming turns', () => {
-        const turn = makeAssistantTurn('', { streaming: true });
+    it('returns "error" when isError is set even without tool calls', () => {
+        const turn = makeAssistantTurn('boom', { isError: true });
+        expect(getTurnKind(turn)).toBe('error');
+    });
+
+    it('returns "streaming" for streaming turns (highest priority)', () => {
+        const turn = makeAssistantTurn('', { streaming: true, isError: true });
+        expect(getTurnKind(turn)).toBe('streaming');
         expect(getTurnColor(turn)).toBe('var(--minimap-streaming)');
     });
 
-    it('returns historical color for historical turns', () => {
-        const turn = makeTurn({ historical: true });
-        expect(getTurnColor(turn)).toBe('var(--minimap-historical)');
+    it('returns "pinned" for pinned turns (regardless of role)', () => {
+        const pinnedUser = makeTurn({ pinnedAt: '2026-05-10T10:00:00Z' });
+        const pinnedAssistant = makeAssistantTurn('hi', { pinnedAt: '2026-05-10T10:00:00Z' });
+        expect(getTurnKind(pinnedUser)).toBe('pinned');
+        expect(getTurnKind(pinnedAssistant)).toBe('pinned');
+    });
+
+    it('returns "historical" for historical turns', () => {
+        expect(getTurnKind(makeTurn({ historical: true }))).toBe('historical');
+        expect(getTurnColor(makeTurn({ historical: true }))).toBe('var(--minimap-historical)');
+    });
+
+    it('priority: streaming > error > pinned > historical > user/assistant', () => {
+        expect(getTurnKind(makeTurn({ streaming: true, isError: true, pinnedAt: '1', historical: true }))).toBe('streaming');
+        expect(getTurnKind(makeTurn({ isError: true, pinnedAt: '1', historical: true }))).toBe('error');
+        expect(getTurnKind(makeTurn({ pinnedAt: '1', historical: true }))).toBe('pinned');
+        expect(getTurnKind(makeTurn({ historical: true }))).toBe('historical');
     });
 });
 
@@ -200,7 +279,27 @@ describe('getLandmark', () => {
         expect(getLandmark(turn, 1, turns)).toBe('⚠');
     });
 
-    it('marks turns with heavy tool activity with ⚡', () => {
+    it('marks streaming turns with ●', () => {
+        const turn = makeAssistantTurn('', { streaming: true });
+        const turns = [makeTurn(), turn];
+        expect(getLandmark(turn, 1, turns)).toBe('●');
+    });
+
+    it('marks pinned turns with 📌', () => {
+        const turn = makeAssistantTurn('hi', { pinnedAt: '2026-05-10T10:00:00Z' });
+        const turns = [makeTurn(), turn];
+        expect(getLandmark(turn, 1, turns)).toBe('📌');
+    });
+
+    it('marks sub-agent turns with 🤖', () => {
+        const turn = makeAssistantTurn('dispatched', {
+            toolCalls: [{ id: '1', toolName: 'read_agent', args: { agent_id: 'a' }, status: 'completed' }],
+        });
+        const turns = [makeTurn(), turn];
+        expect(getLandmark(turn, 1, turns)).toBe('🤖');
+    });
+
+    it('marks whisper (heavy tools) turns with 🔇', () => {
         const turn = makeAssistantTurn('tools', {
             toolCalls: [
                 { id: '1', toolName: 'a', args: {}, status: 'completed' },
@@ -209,7 +308,7 @@ describe('getLandmark', () => {
             ],
         });
         const turns = [makeTurn(), turn];
-        expect(getLandmark(turn, 1, turns)).toBe('⚡');
+        expect(getLandmark(turn, 1, turns)).toBe('🔇');
     });
 
     it('returns null for plain turns', () => {
@@ -237,6 +336,18 @@ describe('buildStrips', () => {
         const strips = buildStrips([turn]);
         expect(strips[0].tooltipPreview.length).toBe(60);
     });
+
+    it('exposes kind on each strip', () => {
+        const turns = [
+            makeTurn(),
+            makeAssistantTurn(),
+            makeAssistantTurn('hi', { pinnedAt: '1' }),
+        ];
+        const strips = buildStrips(turns);
+        expect(strips[0].kind).toBe('user');
+        expect(strips[1].kind).toBe('assistant');
+        expect(strips[2].kind).toBe('pinned');
+    });
 });
 
 // ── Component rendering tests ──────────────────────────────────────────
@@ -262,40 +373,76 @@ describe('ConversationMiniMap', () => {
     });
 
     describe('strip colors', () => {
-        it('applies correct background colors via CSS variables', () => {
+        it('applies the correct kind class and inline background per strip', () => {
             const turns = [
                 makeTurn(),
                 makeAssistantTurn(),
-                makeAssistantTurn('with tools', {
-                    toolCalls: [{ id: '1', toolName: 'x', args: {}, status: 'completed' }],
+                makeAssistantTurn('with sub-agent', {
+                    toolCalls: [{ id: '1', toolName: 'read_agent', args: { agent_id: 'a' }, status: 'completed' }],
                 }),
                 makeAssistantTurn('error', {
                     toolCalls: [{ id: '1', toolName: 'x', args: {}, status: 'failed', error: 'e' }],
                 }),
                 makeTurn({ historical: true }),
+                makeAssistantTurn('pinned', { pinnedAt: '2026-05-10T10:00:00Z' }),
             ];
             renderMiniMap({ turns });
 
-            expect(screen.getByTestId('minimap-strip-0').style.backgroundColor).toBe('var(--minimap-user)');
-            expect(screen.getByTestId('minimap-strip-1').style.backgroundColor).toBe('var(--minimap-assistant)');
-            expect(screen.getByTestId('minimap-strip-2').style.backgroundColor).toBe('var(--minimap-tool)');
-            expect(screen.getByTestId('minimap-strip-3').style.backgroundColor).toBe('var(--minimap-error)');
-            expect(screen.getByTestId('minimap-strip-4').style.backgroundColor).toBe('var(--minimap-historical)');
+            const strip0 = screen.getByTestId('minimap-strip-0');
+            const strip1 = screen.getByTestId('minimap-strip-1');
+            const strip2 = screen.getByTestId('minimap-strip-2');
+            const strip3 = screen.getByTestId('minimap-strip-3');
+            const strip4 = screen.getByTestId('minimap-strip-4');
+            const strip5 = screen.getByTestId('minimap-strip-5');
+
+            expect(strip0.dataset.kind).toBe('user');
+            expect(strip0.style.backgroundColor).toBe('var(--minimap-user)');
+            expect(strip0.className).toContain('minimap-strip-user');
+
+            expect(strip1.dataset.kind).toBe('assistant');
+            expect(strip1.style.backgroundColor).toBe('var(--minimap-assistant)');
+
+            expect(strip2.dataset.kind).toBe('agent');
+            expect(strip2.style.backgroundColor).toBe('var(--minimap-agent)');
+            expect(strip2.className).toContain('minimap-strip-agent');
+
+            expect(strip3.dataset.kind).toBe('error');
+            expect(strip3.style.backgroundColor).toBe('var(--minimap-error)');
+
+            expect(strip4.dataset.kind).toBe('historical');
+            expect(strip4.style.backgroundColor).toBe('var(--minimap-historical)');
+
+            expect(strip5.dataset.kind).toBe('pinned');
+            expect(strip5.style.backgroundColor).toBe('var(--minimap-pinned)');
+            expect(strip5.className).toContain('minimap-strip-pinned');
+        });
+
+        it('streaming strip uses the streaming class with no inline background', () => {
+            const turns = [
+                ...makeTurns(4),
+                makeAssistantTurn('', { streaming: true }),
+            ];
+            renderMiniMap({ turns, isStreaming: true });
+            const last = screen.getByTestId(`minimap-strip-${turns.length - 1}`);
+            expect(last.className).toContain('minimap-strip-streaming');
+            // No inline backgroundColor — the class supplies the animated gradient
+            expect(last.style.backgroundColor).toBe('');
         });
     });
 
     describe('click navigation', () => {
-        it('calls scrollIntoView on the correct turn when strip is clicked', () => {
+        it('scrolls the conversation container to the target turn (top - 14)', () => {
             const turns = makeTurns(10);
+            const scrollContainer = createScrollContainer();
             const turnsContainer = createTurnsContainer(10);
-            renderMiniMap({ turns, turnsContainer });
+            renderMiniMap({ turns, scrollContainer, turnsContainer });
 
             fireEvent.click(screen.getByTestId('minimap-strip-3'));
 
-            const child = turnsContainer.children[3] as HTMLElement;
-            expect(child.scrollIntoView).toHaveBeenCalledWith({
+            // Child 3 sits at top=240; container at top=0; scrollTop=0; offset=14
+            expect(scrollContainer.scrollTo).toHaveBeenCalledWith({
+                top: 240 - 14,
                 behavior: 'smooth',
-                block: 'start',
             });
         });
 
@@ -361,10 +508,9 @@ describe('ConversationMiniMap', () => {
             expect(screen.getByTestId('minimap-viewport-indicator')).toBeTruthy();
         });
 
-        it('viewport indicator has ns-resize cursor style', () => {
+        it('viewport indicator carries the canonical class', () => {
             renderMiniMap();
             const indicator = screen.getByTestId('minimap-viewport-indicator');
-            // Class-based cursor via CSS, check the element exists
             expect(indicator.className).toContain('minimap-viewport-indicator');
         });
     });
@@ -389,7 +535,7 @@ describe('ConversationMiniMap', () => {
             expect(screen.getByTestId('minimap-landmark-1').textContent).toBe('⚠');
         });
 
-        it('renders ⚡ landmark for heavy tool turns', () => {
+        it('renders 🔇 landmark for whisper (heavy-tool) turns', () => {
             const turns = [
                 makeTurn(),
                 makeAssistantTurn('tools', {
@@ -402,7 +548,29 @@ describe('ConversationMiniMap', () => {
                 ...makeTurns(4),
             ];
             renderMiniMap({ turns });
-            expect(screen.getByTestId('minimap-landmark-1').textContent).toBe('⚡');
+            expect(screen.getByTestId('minimap-landmark-1').textContent).toBe('🔇');
+        });
+
+        it('renders 🤖 landmark for sub-agent turns', () => {
+            const turns = [
+                makeTurn(),
+                makeAssistantTurn('dispatch', {
+                    toolCalls: [{ id: '1', toolName: 'read_agent', args: { agent_id: 'x' }, status: 'completed' }],
+                }),
+                ...makeTurns(4),
+            ];
+            renderMiniMap({ turns });
+            expect(screen.getByTestId('minimap-landmark-1').textContent).toBe('🤖');
+        });
+
+        it('renders 📌 landmark for pinned turns', () => {
+            const turns = [
+                makeTurn(),
+                makeAssistantTurn('pinned', { pinnedAt: '2026-05-10T10:00:00Z' }),
+                ...makeTurns(4),
+            ];
+            renderMiniMap({ turns });
+            expect(screen.getByTestId('minimap-landmark-1').textContent).toBe('📌');
         });
     });
 
@@ -418,13 +586,16 @@ describe('ConversationMiniMap', () => {
             expect(lastStrip.className).toContain('minimap-strip-streaming');
         });
 
-        it('shows jump-to-latest badge when user scrolled up during streaming', async () => {
+        it('shows Latest ↓ jump badge when a streaming strip exists and user scrolled up', async () => {
             const scrollContainer = createScrollContainer();
             // Simulate user scrolled up: scrollTop far from bottom
             Object.defineProperty(scrollContainer, 'scrollTop', { value: 100, writable: true, configurable: true });
 
-            const turns = makeTurns(10);
-            const turnsContainer = createTurnsContainer(10);
+            const turns = [
+                ...makeTurns(9),
+                makeAssistantTurn('', { streaming: true }),
+            ];
+            const turnsContainer = createTurnsContainer(turns.length);
 
             const scrollRef = { current: scrollContainer };
             const turnsRef = { current: turnsContainer };
@@ -438,16 +609,67 @@ describe('ConversationMiniMap', () => {
                 />
             );
 
-            // Trigger scroll event to update state
+            // Trigger scroll event to update state through rAF
             await act(async () => {
                 const scrollEvent = new Event('scroll');
                 scrollContainer.dispatchEvent(scrollEvent);
-                // Wait for throttle
-                await new Promise(r => setTimeout(r, 150));
+                // Wait for the rAF-via-setTimeout shim to flush
+                await new Promise(r => setTimeout(r, 10));
             });
 
-            // The badge should appear because scrollTop(100) + clientHeight(500) < scrollHeight(2000) - 40
-            expect(screen.getByTestId('minimap-jump-latest')).toBeTruthy();
+            const badge = screen.getByTestId('minimap-jump-latest');
+            expect(badge).toBeTruthy();
+            expect(badge.textContent).toBe('Latest ↓');
+        });
+
+        it('hides Latest ↓ badge when no streaming strip exists', async () => {
+            const scrollContainer = createScrollContainer();
+            Object.defineProperty(scrollContainer, 'scrollTop', { value: 100, writable: true, configurable: true });
+
+            renderMiniMap({ turns: makeTurns(10), scrollContainer, isStreaming: true });
+
+            await act(async () => {
+                const scrollEvent = new Event('scroll');
+                scrollContainer.dispatchEvent(scrollEvent);
+                await new Promise(r => setTimeout(r, 10));
+            });
+
+            expect(screen.queryByTestId('minimap-jump-latest')).toBeNull();
+        });
+    });
+
+    describe('active strip', () => {
+        it('marks the strip nearest the probe line as active and sets aria-current', async () => {
+            const scrollContainer = createScrollContainer();
+            // scrollTop=0, clientHeight=500 → probe = 500 * 0.28 = 140.
+            // Children sit at top=0,80,160,... → indices with offset <= 140 are 0, 1.
+            // Active index should be the LAST one above the probe: 1.
+            const turns = makeTurns(10);
+            const turnsContainer = createTurnsContainer(turns.length);
+            const scrollRef = { current: scrollContainer };
+            const turnsRef = { current: turnsContainer };
+
+            render(
+                <ConversationMiniMap
+                    turns={turns}
+                    scrollContainerRef={scrollRef}
+                    turnsContainerRef={turnsRef}
+                />
+            );
+
+            await act(async () => {
+                const scrollEvent = new Event('scroll');
+                scrollContainer.dispatchEvent(scrollEvent);
+                await new Promise(r => setTimeout(r, 10));
+            });
+
+            const strip1 = screen.getByTestId('minimap-strip-1');
+            expect(strip1.className).toContain('active');
+            expect(strip1.getAttribute('aria-current')).toBe('location');
+
+            const strip2 = screen.getByTestId('minimap-strip-2');
+            expect(strip2.className).not.toContain('active');
+            expect(strip2.getAttribute('aria-current')).toBeNull();
         });
     });
 
@@ -474,27 +696,39 @@ describe('ConversationMiniMap', () => {
         });
 
         it('tooltip left position is clamped to stay within viewport', () => {
-            // Set a narrow innerWidth so the tooltip would overflow without clamping
             Object.defineProperty(window, 'innerWidth', { value: 400, writable: true, configurable: true });
             renderMiniMap();
             const strip = screen.getByTestId('minimap-strip-0');
 
-            // Use a very large clientX to force the clamp: left = 1200 - 56 - 160 = 984 > 400 - 220 = 180
             fireEvent.mouseEnter(strip, { clientX: 1200, clientY: 100 });
             const tooltip = screen.getByTestId('minimap-tooltip');
             const left = parseFloat(tooltip.style.left as string);
-            expect(left).toBeLessThanOrEqual(window.innerWidth - 220);
+            // Default width = 220, margin = 8 → upper bound = 400 - 220 - 8 = 172
+            expect(left).toBeLessThanOrEqual(172);
         });
 
-        it('tooltip left position has a minimum of 8px', () => {
+        it('tooltip left position has a minimum margin', () => {
             renderMiniMap();
             const strip = screen.getByTestId('minimap-strip-0');
 
-            // clientX near 0 — without min, left = 0 - 56 - 160 = -216, clamped to 8
+            // clientX near 0 — left would be -ve without clamp; min is TOOLTIP_MARGIN (8)
             fireEvent.mouseEnter(strip, { clientX: 0, clientY: 100 });
             const tooltip = screen.getByTestId('minimap-tooltip');
             const left = parseFloat(tooltip.style.left as string);
             expect(left).toBeGreaterThanOrEqual(8);
+        });
+
+        it('tooltip top is clamped to stay within viewport height', () => {
+            Object.defineProperty(window, 'innerHeight', { value: 400, writable: true, configurable: true });
+            renderMiniMap();
+            const strip = screen.getByTestId('minimap-strip-0');
+
+            fireEvent.mouseEnter(strip, { clientX: 100, clientY: 10000 });
+            const tooltip = screen.getByTestId('minimap-tooltip');
+            const top = parseFloat(tooltip.style.top as string);
+            // Default height = 56, margin = 8 → upper bound = 400 - 56 - 8 = 336
+            expect(top).toBeLessThanOrEqual(336);
+            expect(top).toBeGreaterThanOrEqual(8);
         });
 
         it('tooltip has max-w class to prevent overflow on narrow screens', () => {
@@ -529,7 +763,6 @@ describe('ConversationMiniMap', () => {
             );
             renderMiniMap({ turns });
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
-            // All strips should have max height since content is equal
             const strip = screen.getByTestId('minimap-strip-0');
             expect(parseInt(strip.style.height)).toBeLessThanOrEqual(60);
         });
