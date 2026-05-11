@@ -30,8 +30,7 @@ import { EnqueueDialog } from './queue/EnqueueDialog';
 import { RunScriptDialog } from './queue/RunScriptDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 import { buildNotificationEntry } from './utils/build-notification-entry';
-import { WelcomeModal } from './welcome/WelcomeModal';
-import { ConceptTour } from './welcome/ConceptTour';
+import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 
@@ -444,8 +443,7 @@ function AppInner() {
                     initialScrollTop={reviewDialog.scrollTop}
                 />
                 <MinimizedDialogsTray />
-                {SHOW_WELCOME_TUTORIAL && <WelcomeModal />}
-                {SHOW_WELCOME_TUTORIAL && <ConceptTour />}
+                {SHOW_WELCOME_TUTORIAL && <WelcomeTour />}
             </ReposProvider>
         </ToastProvider>
     );

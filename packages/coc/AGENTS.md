@@ -351,7 +351,7 @@ src/
 │               │   └── comments/        # Inline comment system (CommentCard, CommentSidebar, SelectionToolbar)
 │               ├── types/               # TypeScript type definitions
 │               ├── utils/               # Utility modules (config, format, path-resolution)
-│               ├── welcome/             # Onboarding system (WelcomeModal, FirstStepsCard, FeatureTip, tips registry)
+│               ├── welcome/             # Onboarding system (WelcomeTour 5-step modal + scoped welcomeTourStyles + welcomeTourSteps + CocIcon, FirstStepsCard, FeatureTip, tips registry)
 │               ├── featureFlags.ts      # Compile-time feature flags (SHOW_WELCOME_TUTORIAL)
 │               └── wiki/                # Wiki UI (WikiView, WikiAsk, WikiGraph, WikiComponentTree, etc.)
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling

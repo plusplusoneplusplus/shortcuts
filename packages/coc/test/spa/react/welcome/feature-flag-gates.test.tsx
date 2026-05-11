@@ -8,9 +8,8 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
 }));
 
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
-import { WelcomeModal } from '../../../../src/server/spa/client/react/welcome/WelcomeModal';
+import { WelcomeTour } from '../../../../src/server/spa/client/react/welcome/WelcomeTour';
 import { FeatureTip } from '../../../../src/server/spa/client/react/welcome/FeatureTip';
-import { ConceptTour } from '../../../../src/server/spa/client/react/welcome/ConceptTour';
 
 function PrefsLoader({ prefs, children }: { prefs: Record<string, unknown>; children: ReactNode }) {
     const { dispatch } = useApp();
@@ -22,11 +21,11 @@ function PrefsLoader({ prefs, children }: { prefs: Record<string, unknown>; chil
 
 afterEach(() => {
     vi.unstubAllGlobals();
-    document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
+    document.querySelectorAll('#welcome-tour').forEach(el => el.remove());
 });
 
 describe('Feature flag gates (SHOW_WELCOME_TUTORIAL = false)', () => {
-    it('WelcomeModal does not render when flag is false', async () => {
+    it('WelcomeTour does not render when flag is false', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({}),
@@ -34,15 +33,15 @@ describe('Feature flag gates (SHOW_WELCOME_TUTORIAL = false)', () => {
         render(
             <AppProvider>
                 <PrefsLoader prefs={{ hasSeenWelcome: false }}>
-                    <WelcomeModal />
+                    <WelcomeTour />
                 </PrefsLoader>
             </AppProvider>,
         );
-        // Even with hasSeenWelcome=false, modal should not appear
+        // Even with hasSeenWelcome=false, tour should not appear
         await waitFor(() => {
-            expect(screen.queryByText('Welcome to CoC')).toBeNull();
+            expect(document.getElementById('welcome-tour')).toBeNull();
         });
-        expect(document.getElementById('welcome-modal')).toBeNull();
+        expect(screen.queryByTestId('welcome-tour-scrim')).toBeNull();
     });
 
     it('FeatureTip returns null when flag is false', async () => {
@@ -62,22 +61,5 @@ describe('Feature flag gates (SHOW_WELCOME_TUTORIAL = false)', () => {
         });
         // FeatureTip should render nothing
         expect(container.innerHTML).toBe('');
-    });
-
-    it('ConceptTour does not render when flag is false', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-        }));
-        render(
-            <AppProvider>
-                <PrefsLoader prefs={{ hasSeenWelcome: true }}>
-                    <ConceptTour />
-                </PrefsLoader>
-            </AppProvider>,
-        );
-        await waitFor(() => {
-            expect(document.getElementById('concept-tour')).toBeNull();
-        });
     });
 });
