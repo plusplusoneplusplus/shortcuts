@@ -198,6 +198,34 @@ export function parseTasksDeepLink(hash: string): string | null {
 }
 
 /**
+ * Parse a Ralph workflow deep-link:
+ *   `#repos/{wsId}/(activity|chats|tasks)/ralph/{sessionId}`
+ *
+ * Returns `{ workspaceId, sessionId }` when the hash matches, `null`
+ * otherwise. The chat-surface segment is allowed to be either alias
+ * (matches `parseActivityDeepLink`).
+ */
+export function parseRalphSessionDeepLink(
+    hash: string,
+): { workspaceId: string; sessionId: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (
+        parts[0] === 'repos' &&
+        parts[1] &&
+        (parts[2] === 'chats' || parts[2] === 'activity' || parts[2] === 'tasks') &&
+        parts[3] === 'ralph' &&
+        parts[4]
+    ) {
+        return {
+            workspaceId: decodeURIComponent(parts[1]),
+            sessionId: decodeURIComponent(parts[4]),
+        };
+    }
+    return null;
+}
+
+/**
  * Parse a note deep-link: `#repos/{wsId}/notes/{path/segments}`.
  * Each path segment is decoded individually so embedded `/` delimiters
  * within segment names (encoded as `%2F`) are preserved correctly.
@@ -492,14 +520,17 @@ export function Router() {
                     // Chats / activity deep-link handling — select task when ID present.
                     // Both URL segments are aliases for the chat surface (the canonical
                     // key differs by layout mode). Treat them identically here.
-                    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
+                    // The `ralph/<sid>` sub-segment is a separate Ralph workflow link
+                    // owned by RepoChatTab — leave the queue task selection alone.
+                    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] && parts[3] !== 'ralph') {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'chats' || parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
-                    // Tasks deep-link handling — select task when ID present
-                    if (parts[2] === 'tasks' && parts[3]) {
+                    // Tasks deep-link handling — select task when ID present.
+                    // Skip the `ralph/<sid>` sub-segment (handled by RepoChatTab).
+                    if (parts[2] === 'tasks' && parts[3] && parts[3] !== 'ralph') {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'tasks') {

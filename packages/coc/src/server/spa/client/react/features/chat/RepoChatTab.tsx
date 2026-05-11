@@ -16,6 +16,7 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
+import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
 import { useUnseenChat } from './hooks/useUnseenChat';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPreferencesContext';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -24,6 +25,7 @@ import { adaptSearchResults } from '../../utils/search-adapter';
 import type { ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
+import { parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
     workspaceId: string;
@@ -441,8 +443,36 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             selectedTaskRef.current = null;
         }
         setSelectedRalphSessionId(sessionId);
+        // Write a refresh-survivable hash. `mode === 'tasks' ? 'tasks' : ...`
+        // mirrors the convention in `selectTask` so layout mode round-trips.
+        const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
+        const next = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/ralph/' + encodeURIComponent(sessionId);
+        if (location.hash !== next) location.hash = next;
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, selectedTaskId, isMobile]);
+    }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
+
+    // Restore Ralph session selection from the URL hash on mount and on
+    // hashchange (browser back / forward / refresh).
+    useEffect(() => {
+        const apply = () => {
+            const parsed = parseRalphSessionDeepLink(location.hash);
+            if (parsed && parsed.workspaceId === workspaceId) {
+                setSelectedRalphSessionId((prev) => (prev === parsed.sessionId ? prev : parsed.sessionId));
+            } else {
+                setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
+            }
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [workspaceId]);
+
+    const handleSelectRalphIteration = useCallback((processId: string) => {
+        // Switching to an iteration's chat detail clears the workflow pane.
+        setSelectedRalphSessionId(null);
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        if (isMobile) setMobileShowDetail(true);
+    }, [queueDispatch, workspaceId, isMobile]);
 
     if (loading) {
         return (
@@ -513,13 +543,25 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
-                            <ChatDetailPane
-                                selectedTaskId={selectedTaskId}
-                                selectedTask={selectedTask}
-                                onBack={() => setMobileShowDetail(false)}
-                                workspaceId={workspaceId}
-                                readOnly={mode === 'tasks'}
-                            />
+                            {selectedRalphSessionId ? (
+                                <RalphWorkflowPaneContainer
+                                    workspaceId={workspaceId}
+                                    sessionId={selectedRalphSessionId}
+                                    onClose={() => {
+                                        setSelectedRalphSessionId(null);
+                                        setMobileShowDetail(false);
+                                    }}
+                                    onSelectIteration={handleSelectRalphIteration}
+                                />
+                            ) : (
+                                <ChatDetailPane
+                                    selectedTaskId={selectedTaskId}
+                                    selectedTask={selectedTask}
+                                    onBack={() => setMobileShowDetail(false)}
+                                    workspaceId={workspaceId}
+                                    readOnly={mode === 'tasks'}
+                                />
+                            )}
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
@@ -556,14 +598,23 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 tabIndex={0}
             />
 
-            {/* Right panel — detail or placeholder */}
+            {/* Right panel — workflow pane (Ralph session selected) or chat detail */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel" data-pane="detail">
-                <ChatDetailPane
-                    selectedTaskId={selectedTaskId}
-                    selectedTask={selectedTask}
-                    workspaceId={workspaceId}
-                    readOnly={mode === 'tasks'}
-                />
+                {selectedRalphSessionId ? (
+                    <RalphWorkflowPaneContainer
+                        workspaceId={workspaceId}
+                        sessionId={selectedRalphSessionId}
+                        onClose={() => setSelectedRalphSessionId(null)}
+                        onSelectIteration={handleSelectRalphIteration}
+                    />
+                ) : (
+                    <ChatDetailPane
+                        selectedTaskId={selectedTaskId}
+                        selectedTask={selectedTask}
+                        workspaceId={workspaceId}
+                        readOnly={mode === 'tasks'}
+                    />
+                )}
             </div>
         </div>
         </ChatPreferencesProvider>

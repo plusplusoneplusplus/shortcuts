@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { AppContextState } from '../../../src/server/spa/client/react/contexts/AppContext';
 
@@ -823,6 +823,44 @@ describe('parseActivityDeepLink', () => {
 
     it('preserves queue_ processId prefix (no stripping)', () => {
         expect(parseActivityDeepLink('#repos/ws1/activity/queue_abc123')).toBe('queue_abc123');
+    });
+});
+
+// ─── parseRalphSessionDeepLink ────────────────────────────────────
+
+describe('parseRalphSessionDeepLink', () => {
+    it('parses an activity-segment ralph link', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/ralph/sess-42'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
+    });
+
+    it('parses a chats-segment ralph link', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/chats/ralph/sess-42'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
+    });
+
+    it('parses a tasks-segment ralph link', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/tasks/ralph/sess-42'))
+            .toEqual({ workspaceId: 'ws-1', sessionId: 'sess-42' });
+    });
+
+    it('decodes URL-encoded session ids and workspace ids', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws%201/chats/ralph/sess%2F42'))
+            .toEqual({ workspaceId: 'ws 1', sessionId: 'sess/42' });
+    });
+
+    it('returns null when the ralph segment is missing', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/sess-42')).toBeNull();
+    });
+
+    it('returns null when the session id is missing', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/activity/ralph')).toBeNull();
+    });
+
+    it('returns null for unrelated hashes', () => {
+        expect(parseRalphSessionDeepLink('#repos/ws-1/git/abc')).toBeNull();
+        expect(parseRalphSessionDeepLink('#wiki/foo')).toBeNull();
+        expect(parseRalphSessionDeepLink('')).toBeNull();
     });
 });
 

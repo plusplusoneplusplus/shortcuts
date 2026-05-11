@@ -1,0 +1,155 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * Tests for `RalphWorkflowPaneContainer` — the integration shim that
+ * wires `useRalphSessionView` to the presentational `RalphWorkflowPane`.
+ *
+ * Verifies:
+ *   - shows the loading state until the fetch resolves
+ *   - renders the workflow pane with header + iteration nodes once data
+ *     is available
+ *   - clicking an iteration node calls `onSelectIteration` with the
+ *     matching `processId` from the journal record
+ *   - falls back to `ralph:<sessionId>:<iter>` when the record is missing
+ *   - the close button calls `onClose`
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+const ralphSessionMock = vi.fn();
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        workspaces: {
+            ralphSession: ralphSessionMock,
+        },
+    }),
+}));
+
+import { RalphWorkflowPaneContainer } from '../../../../src/server/spa/client/react/features/chat/RalphWorkflowPaneContainer';
+
+beforeEach(() => {
+    ralphSessionMock.mockReset();
+});
+
+function makeRecord(overrides: any = {}) {
+    return {
+        sessionId: 'sess-1',
+        workspaceId: 'ws-1',
+        originalGoal: 'Build feature X',
+        maxIterations: 10,
+        currentIteration: 2,
+        phase: 'complete',
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        completedAt: new Date(Date.now() - 1_000).toISOString(),
+        terminalReason: 'RALPH_COMPLETE',
+        iterations: [
+            {
+                iteration: 1,
+                taskId: 't-1',
+                processId: 'proc-1',
+                startedAt: new Date(Date.now() - 50_000).toISOString(),
+                endedAt: new Date(Date.now() - 40_000).toISOString(),
+                status: 'completed',
+                exitSignal: 'RALPH_NEXT',
+            },
+            {
+                iteration: 2,
+                taskId: 't-2',
+                processId: 'proc-2',
+                startedAt: new Date(Date.now() - 30_000).toISOString(),
+                endedAt: new Date(Date.now() - 5_000).toISOString(),
+                status: 'completed',
+                exitSignal: 'RALPH_COMPLETE',
+            },
+        ],
+        ...overrides,
+    };
+}
+
+describe('RalphWorkflowPaneContainer', () => {
+    it('shows the loading state, then the workflow pane with the iteration nodes', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord(),
+            sections: [
+                { iteration: 1, signal: 'RALPH_NEXT', timestamp: new Date().toISOString(), body: 'one' },
+                { iteration: 2, signal: 'RALPH_COMPLETE', timestamp: new Date().toISOString(), body: 'two' },
+            ],
+        });
+
+        render(<RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" />);
+        expect(screen.getByTestId('ralph-workflow-pane-loading')).toBeTruthy();
+
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy();
+        });
+        expect(screen.getByTestId('ralph-workflow-iteration-count').textContent).toContain('Iteration 2');
+        expect(screen.getByTestId('ralph-workflow-terminal-reason').textContent).toMatch(/Completed/);
+    });
+
+    it('shows the empty / not-found state when the fetch fails', async () => {
+        const err: any = new Error('not found');
+        err.status = 404;
+        ralphSessionMock.mockRejectedValueOnce(err);
+
+        render(<RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" />);
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-workflow-pane-empty')).toBeTruthy();
+        });
+    });
+
+    it('clicking an iteration node calls onSelectIteration with the recorded processId', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord(),
+            sections: [
+                { iteration: 1, signal: 'RALPH_NEXT', timestamp: new Date().toISOString(), body: 'one' },
+            ],
+        });
+        const onSelectIteration = vi.fn();
+        render(
+            <RalphWorkflowPaneContainer
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                onSelectIteration={onSelectIteration}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        const node = screen.getByTestId('ralph-workflow-node-1');
+        fireEvent.click(node);
+        expect(onSelectIteration).toHaveBeenCalledWith('proc-1');
+    });
+
+    it('falls back to ralph:<sessionId>:<iter> when the iteration record has no processId', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({ iterations: [] }),
+            sections: [
+                { iteration: 5, signal: 'RALPH_NEXT', timestamp: new Date().toISOString(), body: '' },
+            ],
+        });
+        const onSelectIteration = vi.fn();
+        render(
+            <RalphWorkflowPaneContainer
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                onSelectIteration={onSelectIteration}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ralph-workflow-node-5'));
+        expect(onSelectIteration).toHaveBeenCalledWith('ralph:sess-1:5');
+    });
+
+    it('clicking close calls onClose', async () => {
+        ralphSessionMock.mockResolvedValueOnce({ record: makeRecord(), sections: [] });
+        const onClose = vi.fn();
+        render(
+            <RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" onClose={onClose} />,
+        );
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('ralph-workflow-close'));
+        expect(onClose).toHaveBeenCalled();
+    });
+});
