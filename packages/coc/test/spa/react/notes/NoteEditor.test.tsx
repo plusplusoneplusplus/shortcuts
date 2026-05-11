@@ -1100,6 +1100,33 @@ describe('NoteEditor', () => {
             // No onNotFound callback: the 404 is silently swallowed (no error box, no crash)
             await waitFor(() => expect(screen.queryByTestId('note-editor-error')).toBeNull());
         });
+
+        it('does not re-fetch content when onNotFound identity changes between renders (regression: scratchpad blink loop)', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            // First render with one onNotFound function
+            const { rerender } = await act(async () => {
+                return render(
+                    <NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onNotFound={() => {}} />,
+                );
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+
+            // Re-render multiple times with a NEW onNotFound function each time —
+            // simulates the parent re-rendering on every tick (e.g. WebSocket events).
+            // Before the fix, this re-fired the load effect each render, causing a
+            // visible blink/refresh loop in the scratchpad note editor.
+            for (let i = 0; i < 5; i++) {
+                await act(async () => {
+                    rerender(
+                        <NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onNotFound={() => {}} />,
+                    );
+                });
+            }
+
+            // No additional fetches — the load effect must not depend on onNotFound's identity.
+            expect(mockLoadContent).toHaveBeenCalledTimes(1);
+        });
     });
 
     // ══════════════════════════════════════════════════════════════════════

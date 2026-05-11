@@ -228,6 +228,7 @@ export function NoteEditor({
     const ioRef = useRef(io);
     const commentBackendRef = useRef(commentBackend);
     const frontMatterResultRef = useRef<NoteFrontMatterParseResult>(frontMatterResult);
+    const onNotFoundRef = useRef(onNotFound);
 
     // Keep refs in sync
     notePathRef.current = notePath;
@@ -235,6 +236,7 @@ export function NoteEditor({
     ioRef.current = io;
     commentBackendRef.current = commentBackend;
     frontMatterResultRef.current = frontMatterResult;
+    onNotFoundRef.current = onNotFound;
 
     // View mode setter that also notifies parent
     const setViewMode = useCallback((mode: NoteViewMode) => {
@@ -738,7 +740,7 @@ export function NoteEditor({
             .catch((err) => {
                 if (cancelled) return;
                 if (err?.message?.includes('404')) {
-                    onNotFound?.();
+                    onNotFoundRef.current?.();
                     return;
                 }
                 setLoadError(err?.message ?? 'Failed to load note');
@@ -751,7 +753,7 @@ export function NoteEditor({
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [notePath, workspaceId, onNotFound, refreshCounter]);
+    }, [notePath, workspaceId, refreshCounter]);
 
     // ── Flush on unmount ────────────────────────────────────────────────────
 
