@@ -12,6 +12,7 @@ import type {
   MyWorkSummaryResponse,
   MyWorkSyncRequest,
   MyWorkSyncResponse,
+  RalphSessionResponse,
   RegisterWorkspaceRequest,
   TerminalPinResponse,
   TerminalSessionsResponse,
@@ -172,6 +173,18 @@ export class WorkspacesClient {
     return this.transport.request<ProcessHistoryResponse>(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
       query: serializeHistoryQuery(query),
     });
+  }
+
+  /** Read a Ralph session journal: `session.json` record + parsed `progress.md` sections. */
+  ralphSession(
+    workspaceId: string,
+    sessionId: string,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<RalphSessionResponse> {
+    return this.transport.request<RalphSessionResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}`,
+      { signal: options?.signal },
+    );
   }
 
   syncMyWork(request: MyWorkSyncRequest = {}): Promise<MyWorkSyncResponse> {
