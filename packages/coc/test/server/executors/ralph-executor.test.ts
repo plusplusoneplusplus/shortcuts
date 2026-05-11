@@ -96,9 +96,21 @@ describe('buildRalphSystemMessage', () => {
     it('always includes base Ralph instructions', () => {
         const msg = buildRalphSystemMessage({});
         expect(msg).toContain('Ralph mode');
-        expect(msg).toContain('RALPH_PROGRESS:');
         expect(msg).toContain('RALPH_COMPLETE');
         expect(msg).toContain('RALPH_NEXT');
+    });
+
+    it('instructs the AI to append a strict-grammar section header to the journal', () => {
+        const msg = buildRalphSystemMessage({});
+        expect(msg).toContain('## Iteration <N>');
+        expect(msg).toContain('Files:');
+        expect(msg).toContain('Decisions:');
+        expect(msg).toContain('Remaining:');
+    });
+
+    it('keeps RALPH_PROGRESS: as a documented fallback', () => {
+        const msg = buildRalphSystemMessage({});
+        expect(msg).toContain('RALPH_PROGRESS:');
     });
 
     it('includes goal spec when originalGoal is provided', () => {

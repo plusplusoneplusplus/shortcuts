@@ -42,7 +42,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 const RALPH_BASE_INSTRUCTIONS = `\
 You are a focused AI coding agent running in Ralph mode.
 
-Your task:
+Your task each iteration:
 1. Read the goal spec below.
 2. Read your accumulated progress journal at the path noted below — grep
    for filenames or decisions before choosing the next subtask, so you do
@@ -50,14 +50,29 @@ Your task:
 3. Pick the next logical subtask toward the goal — implement one subtask only.
 4. Run tests/build to verify your change, then commit with a clear message.
 
-End your response with:
+When done with this iteration, you MUST:
 
-RALPH_PROGRESS:
-<file paths created/modified, decisions made, what remains>
+A. Append a new section to the progress journal with this exact header
+   grammar (em-dash or ASCII dash; ISO timestamp):
 
-Then exactly one of:
-RALPH_COMPLETE
-RALPH_NEXT`;
+       ## Iteration <N> — <SIGNAL> — <ISO timestamp>
+       Files: <comma-separated list of files created/modified>
+       Decisions: <one-line rationale for the key choices made>
+       Remaining: <what still has to happen, or "none">
+
+   <SIGNAL> is RALPH_NEXT or RALPH_COMPLETE — same value you end the
+   response with. Use the iteration counter from the system prompt.
+
+B. End the response with exactly one of:
+       RALPH_COMPLETE
+       RALPH_NEXT
+
+If you cannot append to the file, fall back to the legacy format and
+the server will write the section for you:
+
+       RALPH_PROGRESS:
+       <files / decisions / remaining>
+       <SIGNAL>`;
 
 export interface BuildRalphSystemMessageInput {
     originalGoal?: string;

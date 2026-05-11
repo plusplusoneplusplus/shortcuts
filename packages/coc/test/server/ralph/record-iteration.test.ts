@@ -168,4 +168,43 @@ describe('recordRalphIteration', () => {
         const md = await new RalphSessionStore({ dataDir }).readProgress(WS, SID);
         expect(md).toContain('(no RALPH_PROGRESS body provided)');
     });
+
+    it('skips the safety-net append when journal mtime advanced past iterationStartMs (AI wrote a section)', async () => {
+        const fs = await import('fs');
+        const pathMod = await import('path');
+        // Pre-create the journal with an AI-written section. mtime > startMs.
+        const startMs = Date.now() - 60_000;
+        const journalPath = new (await import('../../../src/server/ralph/ralph-session-store')).RalphSessionStore({ dataDir }).getProgressPath(WS, SID);
+        fs.mkdirSync(pathMod.dirname(journalPath), { recursive: true });
+        fs.writeFileSync(journalPath, '# header\n\n## Iteration 1 — RALPH_NEXT — t\nai-wrote\n', 'utf-8');
+
+        const result = await recordRalphIteration({
+            dataDir, workspaceId: WS, sessionId: SID,
+            iteration: 1, maxIterations: 5, signal: 'RALPH_NEXT',
+            progressBody: 'safety-net body', taskId: 't', processId: 'p',
+            shouldContinue: true, iterationStartMs: startMs,
+        });
+        expect(result.aiWroteSection).toBe(true);
+
+        const md = fs.readFileSync(journalPath, 'utf-8');
+        // safety-net body must NOT have been appended
+        expect(md).not.toContain('safety-net body');
+        // AI section is preserved
+        expect(md).toContain('ai-wrote');
+        // session.json is still updated
+        expect(result.record!.currentIteration).toBe(1);
+    });
+
+    it('writes the safety-net section when iterationStartMs is given but journal mtime did NOT advance', async () => {
+        const future = Date.now() + 60_000;
+        const result = await recordRalphIteration({
+            dataDir, workspaceId: WS, sessionId: SID,
+            iteration: 1, maxIterations: 5, signal: 'RALPH_NEXT',
+            progressBody: 'safety-net body', taskId: 't', processId: 'p',
+            shouldContinue: true, iterationStartMs: future,
+        });
+        expect(result.aiWroteSection).toBe(false);
+        const md = await new (await import('../../../src/server/ralph/ralph-session-store')).RalphSessionStore({ dataDir }).readProgress(WS, SID);
+        expect(md).toContain('safety-net body');
+    });
 });

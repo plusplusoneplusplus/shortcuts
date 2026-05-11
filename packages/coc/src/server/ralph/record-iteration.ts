@@ -34,10 +34,19 @@ export interface RecordIterationInput {
     originalGoal?: string;
     /** Override clock for tests. Defaults to `new Date().toISOString()`. */
     nowIso?: string;
+    /**
+     * Epoch-ms timestamp of when this iteration began executing. When
+     * provided, the safety-net section append is skipped if the journal's
+     * mtime advanced past it (i.e. the AI wrote its own section). When
+     * omitted, the safety-net section is always written.
+     */
+    iterationStartMs?: number;
 }
 
 export interface RecordIterationResult {
     skipped: boolean;
+    /** True when the safety-net append was skipped because the AI already wrote a section. */
+    aiWroteSection?: boolean;
     record?: RalphSessionRecord;
 }
 
@@ -53,12 +62,21 @@ export async function recordRalphIteration(
     const store = storeOverride ?? new RalphSessionStore({ dataDir: dataDir! });
     const now = input.nowIso ?? new Date().toISOString();
 
-    await store.appendProgressSection(workspaceId, sessionId, {
-        iteration: input.iteration,
-        signal: input.signal,
-        timestamp: now,
-        body: input.progressBody || '(no RALPH_PROGRESS body provided)',
-    });
+    // Safety-net: only append if the AI did not already write a section
+    // for this iteration (detected via progress.md mtime).
+    let aiWroteSection = false;
+    if (typeof input.iterationStartMs === 'number') {
+        aiWroteSection = await store.progressMtimeAfter(workspaceId, sessionId, input.iterationStartMs);
+    }
+
+    if (!aiWroteSection) {
+        await store.appendProgressSection(workspaceId, sessionId, {
+            iteration: input.iteration,
+            signal: input.signal,
+            timestamp: now,
+            body: input.progressBody || '(no RALPH_PROGRESS body provided)',
+        });
+    }
 
     const phase: 'executing' | 'complete' = input.shouldContinue ? 'executing' : 'complete';
     let terminalReason: RalphTerminalReason | undefined;
@@ -100,5 +118,5 @@ export async function recordRalphIteration(
         return next;
     });
 
-    return { skipped: false, record };
+    return { skipped: false, aiWroteSection, record };
 }

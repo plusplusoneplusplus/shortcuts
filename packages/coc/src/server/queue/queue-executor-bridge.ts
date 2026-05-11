@@ -168,6 +168,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             processId,
             shouldContinue,
             originalGoal: ralphCtx?.originalGoal,
+            iterationStartMs: completedTask.startedAt,
         }).catch(err => {
             logger.debug(LogCategory.AI, `[Ralph] journal persist failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         });
