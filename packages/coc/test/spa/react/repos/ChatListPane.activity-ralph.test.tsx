@@ -196,7 +196,7 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
     it('expanding the session row reveals all 5 iteration children', () => {
         const { container } = renderActivity(fixtureFiveIterPlusThreeStandalone());
 
-        const header = screen.getByTestId('ralph-session-header');
+        const header = screen.getByTestId('ralph-session-body');
         // Default collapsed (no unseen). Expand it.
         if (header.getAttribute('aria-expanded') !== 'true') {
             fireEvent.click(header);

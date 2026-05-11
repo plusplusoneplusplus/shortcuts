@@ -66,7 +66,7 @@ describe('RalphSessionRow', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         const row = screen.getByTestId('ralph-session-row');
         expect(row.getAttribute('data-session-id')).toBe('sess-1');
-        expect(screen.getByTestId('ralph-session-header')).toBeTruthy();
+        expect(screen.getByTestId('ralph-session-body')).toBeTruthy();
     });
 
     it('shows the RALPH mode pill', () => {
@@ -86,7 +86,7 @@ describe('RalphSessionRow', () => {
 
     it('encodes phase via data-session-phase on header', () => {
         render(<RalphSessionRow session={makeSession({ phase: 'complete' })} {...defaultProps} />);
-        expect(screen.getByTestId('ralph-session-header').getAttribute('data-session-phase')).toBe('complete');
+        expect(screen.getByTestId('ralph-session-body').getAttribute('data-session-phase')).toBe('complete');
     });
 
     it('does NOT render the legacy "Done" / "Executing" / "Clarifying" phase pill text outside the title suffix', () => {
@@ -115,15 +115,57 @@ describe('RalphSessionRow', () => {
         expect(screen.getByTestId('ralph-session-children')).toBeTruthy();
     });
 
-    it('clicking the header toggles expanded state', () => {
+    it('clicking the body toggles expanded state when no onSelectSession handler is given', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
 
-        fireEvent.click(screen.getByTestId('ralph-session-header'));
+        fireEvent.click(screen.getByTestId('ralph-session-body'));
         expect(screen.getByTestId('ralph-session-children')).toBeTruthy();
 
-        fireEvent.click(screen.getByTestId('ralph-session-header'));
+        fireEvent.click(screen.getByTestId('ralph-session-body'));
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+    });
+
+    it('clicking the body fires onSelectSession (and does NOT toggle) when handler is given', () => {
+        const onSelectSession = vi.fn();
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                onSelectSession={onSelectSession}
+            />,
+        );
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('ralph-session-body'));
+        expect(onSelectSession).toHaveBeenCalledWith('sess-1');
+        // body click no longer toggles when onSelectSession is wired
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+    });
+
+    it('chevron click still toggles even when onSelectSession is given (and does not fire onSelectSession)', () => {
+        const onSelectSession = vi.fn();
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                onSelectSession={onSelectSession}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-children')).toBeTruthy();
+        expect(onSelectSession).not.toHaveBeenCalled();
+    });
+
+    it('row carries data-selected="true" when selectedSessionId matches', () => {
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                selectedSessionId="sess-1"
+            />,
+        );
+        expect(screen.getByTestId('ralph-session-row').getAttribute('data-selected')).toBe('true');
     });
 
     it('clicking the chevron also toggles expanded state', () => {
@@ -219,7 +261,7 @@ describe('RalphSessionRow', () => {
 
     it('uses the plan-group grid layout (grid-cols-[10px_36px_minmax(0,1fr)_auto])', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
-        const header = screen.getByTestId('ralph-session-header');
+        const header = screen.getByTestId('ralph-session-body');
         expect(header.className).toContain('grid-cols-[10px_36px_minmax(0,1fr)_auto]');
         expect(header.className).toContain('h-[26px]');
     });

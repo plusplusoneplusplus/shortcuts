@@ -233,6 +233,10 @@ export interface ChatListPaneProps {
     activeTab?: ActivityTabMode;
     /** Deselect the current task so the inline NewChatArea is shown. */
     onNewChat?: () => void;
+    /** When set, the matching ralph-session row is highlighted as selected. */
+    selectedRalphSessionId?: string | null;
+    /** Called when the user clicks a Ralph session row body (right-pane switch). */
+    onSelectRalphSession?: (sessionId: string) => void;
 }
 
 function formatMetadataText(task: any): string {
@@ -341,6 +345,8 @@ export function ChatListPane({
     onLoadMoreSearchResults,
     activeTab,
     onNewChat,
+    selectedRalphSessionId,
+    onSelectRalphSession,
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -1571,9 +1577,11 @@ export function ChatListPane({
                                                             key={entry.sessionId}
                                                             session={entry as RalphSession}
                                                             selectedTaskId={selectedTaskId}
+                                                            selectedSessionId={selectedRalphSessionId}
                                                             now={now}
                                                             unseenProcessIds={unseenProcessIds}
                                                             onSelectTask={onSelectTask}
+                                                            onSelectSession={onSelectRalphSession}
                                                             renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
                                                         />
                                                     ) : (
@@ -2149,9 +2157,11 @@ export function ChatListPane({
                                                     key={session.sessionId}
                                                     session={session}
                                                     selectedTaskId={selectedTaskId}
+                                                    selectedSessionId={selectedRalphSessionId}
                                                     now={now}
                                                     unseenProcessIds={unseenProcessIds}
                                                     onSelectTask={onSelectTask}
+                                                    onSelectSession={onSelectRalphSession}
                                                     renderTaskCard={(task) => renderChatListRow(task, filteredUnpinned, { taskStatus: 'completed', isGroupChild: true })}
                                                 />
                                             );

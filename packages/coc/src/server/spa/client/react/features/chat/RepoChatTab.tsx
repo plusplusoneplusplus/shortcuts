@@ -423,6 +423,27 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         }
     }, [isRefreshing, fetchQueue]);
 
+    const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
+
+    // When a chat task is selected, drop any active Ralph session selection so
+    // the right pane consistently reflects the user's most recent click.
+    useEffect(() => {
+        if (selectedTaskId && selectedRalphSessionId) {
+            setSelectedRalphSessionId(null);
+        }
+    }, [selectedTaskId, selectedRalphSessionId]);
+
+    const handleSelectRalphSession = useCallback((sessionId: string) => {
+        // Selecting a Ralph session clears the chat-task selection.
+        if (selectedTaskId) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            setSelectedTask(null);
+            selectedTaskRef.current = null;
+        }
+        setSelectedRalphSessionId(sessionId);
+        if (isMobile) setMobileShowDetail(true);
+    }, [queueDispatch, workspaceId, selectedTaskId, isMobile]);
+
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -470,6 +491,8 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             onSearchQueryChange={handleSearchQueryChange}
             onLoadMoreSearchResults={searchLoadMore}
             activeTab={mode}
+            selectedRalphSessionId={selectedRalphSessionId}
+            onSelectRalphSession={handleSelectRalphSession}
             onNewChat={() => {
                 if (isMobile) {
                     mobileNewChatRef.current = true;

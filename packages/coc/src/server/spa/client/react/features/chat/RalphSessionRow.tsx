@@ -18,9 +18,17 @@ import type { RalphSession } from './ralph-session-grouping';
 interface RalphSessionRowProps {
     session: RalphSession;
     selectedTaskId: string | null;
+    /** When this session is the right-pane selection. Highlights the row. */
+    selectedSessionId?: string | null;
     now: number;
     unseenProcessIds?: Set<string>;
     onSelectTask: (id: string, task?: any) => void;
+    /**
+     * Called when the user clicks the row body (not the chevron). The right
+     * pane uses this to switch to the workflow visualization for this
+     * session. Optional so older callers compile unchanged.
+     */
+    onSelectSession?: (sessionId: string) => void;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
      *  object so we can request the muted, group-child variant. */
     renderTaskCard: (
@@ -46,12 +54,15 @@ const PHASE_DOT_LABEL: Record<RalphSession['phase'], string> = {
 export function RalphSessionRow({
     session,
     selectedTaskId: _selectedTaskId,
+    selectedSessionId,
     now: _now,
     unseenProcessIds: _unseenProcessIds,
     onSelectTask: _onSelectTask,
+    onSelectSession,
     renderTaskCard,
 }: RalphSessionRowProps) {
     const [expanded, setExpanded] = useState(session.hasUnseen);
+    const isSelected = selectedSessionId === session.sessionId;
 
     const iterCount = session.iterations.length;
     const subCount = (session.grillingProcess ? 1 : 0) + iterCount;
@@ -81,7 +92,11 @@ export function RalphSessionRow({
         <div
             data-testid="ralph-session-row"
             data-session-id={session.sessionId}
-            className={cn(expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80')}
+            data-selected={isSelected ? 'true' : 'false'}
+            className={cn(
+                expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
+                isSelected && 'ring-1 ring-[#0078d4]/40',
+            )}
         >
             <div
                 className={cn(
@@ -92,8 +107,11 @@ export function RalphSessionRow({
                     'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                 )}
-                onClick={toggle}
-                data-testid="ralph-session-header"
+                onClick={() => {
+                    if (onSelectSession) onSelectSession(session.sessionId);
+                    else toggle();
+                }}
+                data-testid="ralph-session-body"
                 data-session-phase={session.phase}
                 data-expanded={expanded ? 'true' : 'false'}
                 aria-expanded={expanded}
