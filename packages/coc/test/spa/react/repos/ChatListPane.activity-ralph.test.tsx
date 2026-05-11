@@ -194,16 +194,23 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
     });
 
     it('expanding the session row reveals all 5 iteration children', () => {
-        renderActivity(fixtureFiveIterPlusThreeStandalone());
+        const { container } = renderActivity(fixtureFiveIterPlusThreeStandalone());
 
         const header = screen.getByTestId('ralph-session-header');
         // Default collapsed (no unseen). Expand it.
         if (header.getAttribute('aria-expanded') !== 'true') {
             fireEvent.click(header);
         }
+        const childrenWrap = screen.getByTestId('ralph-session-children');
         for (let i = 1; i <= 5; i++) {
-            expect(screen.getByTestId(`ralph-iteration-${i}`)).toBeTruthy();
+            const id = `ralph-${SESSION_ID}-${i}`;
+            const row = childrenWrap.querySelector(`[data-task-id="${id}"]`);
+            expect(row, `expected child row for ${id}`).not.toBeNull();
+            // Children should be rendered in the muted group-child variant.
+            expect(row!.getAttribute('data-group-child')).toBe('true');
         }
+        // Sanity: the children container itself isn't the standalone list.
+        expect(within(childrenWrap).queryByText('Standalone chat 1')).toBeNull();
     });
 
     it('Today section count badge reflects entries (1 ralph session + 3 standalones = 4)', () => {

@@ -1563,7 +1563,7 @@ export function ChatListPane({
                                                             now={now}
                                                             unseenProcessIds={unseenProcessIds}
                                                             onSelectTask={onSelectTask}
-                                                            renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible)}
+                                                            renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
                                                         />
                                                     ) : (
                                                         renderChatListRow(entry, chatGroups.flatVisible)

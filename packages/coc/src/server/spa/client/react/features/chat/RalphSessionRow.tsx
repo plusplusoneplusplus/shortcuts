@@ -1,14 +1,18 @@
 /**
- * RalphSessionRow — collapsible group row for a Ralph session in the history list.
+ * RalphSessionRow — collapsible group row for a Ralph session.
  *
- * Shows a purple header with phase badge, iteration count, unseen dot,
- * and an expand/collapse chevron. When expanded, renders child items
- * (grilling process + iterations) indented with a left border.
+ * Visually mirrors `HistoryGroupHeader` (plan-file groups): a compact one-line
+ * row in the same `[10px_36px_minmax(0,1fr)_auto]` grid with a status dot,
+ * `RALPH` mode pill, chevron toggle, title, child-count badge, and relative
+ * time. Phase is signaled entirely via the status-dot color (no separate
+ * phase badge). Children are rendered inline (no decorative wrapper) by
+ * delegating to the caller's `renderTaskCard` with `{ isGroupChild: true }`.
  */
 
 import type React from 'react';
 import { useState } from 'react';
 import { cn } from '../../ui/cn';
+import { formatRelativeTime } from '../../utils/format';
 import type { RalphSession } from './ralph-session-grouping';
 
 interface RalphSessionRowProps {
@@ -17,14 +21,26 @@ interface RalphSessionRowProps {
     now: number;
     unseenProcessIds?: Set<string>;
     onSelectTask: (id: string, task?: any) => void;
-    /** Render a single task row (reuses existing task card rendering from parent) */
-    renderTaskCard: (task: any, opts?: { indented?: boolean; iterationLabel?: string }) => React.ReactNode;
+    /** Render a single child task row. Mirrors `renderChatListRow`'s options
+     *  object so we can request the muted, group-child variant. */
+    renderTaskCard: (
+        task: any,
+        opts?: { isGroupChild?: boolean; taskStatus?: 'running' | 'queued' | 'completed' },
+    ) => React.ReactNode;
 }
 
-const PHASE_BADGE: Record<RalphSession['phase'], { label: string; cls: string }> = {
-    grilling:  { label: 'Clarifying', cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' },
-    executing: { label: 'Executing',  cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-    complete:  { label: 'Done',       cls: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
+/** Phase → status-dot classes. Mirrors HistoryGroupHeader's STATUS_DOT_CLASSES
+ *  palette so ralph rows visually align with plan-file group rows. */
+const PHASE_DOT_CLASSES: Record<RalphSession['phase'], string> = {
+    grilling: 'bg-amber-500',
+    executing: 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
+    complete: 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
+};
+
+const PHASE_DOT_LABEL: Record<RalphSession['phase'], string> = {
+    grilling: 'clarifying',
+    executing: 'executing',
+    complete: 'done',
 };
 
 export function RalphSessionRow({
@@ -36,76 +52,115 @@ export function RalphSessionRow({
     renderTaskCard,
 }: RalphSessionRowProps) {
     const [expanded, setExpanded] = useState(session.hasUnseen);
-    const badge = PHASE_BADGE[session.phase];
 
     const iterCount = session.iterations.length;
-    const subCount  = (session.grillingProcess ? 1 : 0) + iterCount;
+    const subCount = (session.grillingProcess ? 1 : 0) + iterCount;
 
-    const subLabel = iterCount > 0
-        ? `${iterCount} iteration${iterCount === 1 ? '' : 's'}`
-        : 'Clarifying goal…';
+    // Short muted suffix that fits inside the truncating title cell.
+    const subLabel = session.phase === 'grilling' ? 'Clarifying' : `${iterCount} iter`;
+
+    const timestamp = session.latestTimestamp
+        ? formatRelativeTime(new Date(session.latestTimestamp).toISOString())
+        : '';
+
+    const dotClasses = PHASE_DOT_CLASSES[session.phase];
+
+    // RALPH mode pill — purple variant, same shape as HistoryGroupHeader's
+    // `modeBadgeClasses`, mirroring the ralph color from ChatListPane.
+    const modeBadgeClasses = cn(
+        'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
+        'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
+        'text-purple-600 dark:text-purple-400',
+        'border-purple-500/70 dark:border-purple-500/60',
+        'bg-purple-50/60 dark:bg-purple-500/10',
+    );
+
+    const toggle = () => setExpanded(e => !e);
 
     return (
-        <div className="mb-1" data-testid="ralph-session-row" data-session-id={session.sessionId}>
-            {/* Header row */}
-            <button
-                type="button"
-                onClick={() => setExpanded(e => !e)}
+        <div data-testid="ralph-session-row" data-session-id={session.sessionId}>
+            <div
                 className={cn(
-                    'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
-                    'bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-900/30',
-                    'border border-purple-200 dark:border-purple-800/50',
+                    'chat-row group relative cursor-pointer leading-none transition-colors',
+                    'grid items-center gap-2 px-3 py-1',
+                    'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
+                    'text-[12.5px] h-[26px]',
+                    'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
+                    'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                 )}
-                aria-expanded={expanded}
+                onClick={toggle}
                 data-testid="ralph-session-header"
+                data-session-phase={session.phase}
+                data-expanded={expanded ? 'true' : 'false'}
+                aria-expanded={expanded}
             >
-                {/* Unseen dot */}
-                {session.hasUnseen && (
-                    <span className="h-2 w-2 rounded-full bg-purple-500 flex-shrink-0" aria-label="Unseen activity" />
-                )}
-                {/* Icon + label */}
-                <span className="text-purple-600 dark:text-purple-400 text-xs">🔄</span>
-                <span className="flex-1 min-w-0 text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                    Ralph Session
-                    <span className="ml-1.5 font-normal text-[#848484]">{subLabel}</span>
+                <span
+                    className={cn('w-2 h-2 rounded-full justify-self-center transition-shadow', dotClasses)}
+                    aria-label={`phase: ${PHASE_DOT_LABEL[session.phase]}`}
+                />
+                <span className={modeBadgeClasses} title="Ralph · iterative goal-driven session">
+                    RALPH
                 </span>
-                {/* Phase badge */}
-                <span className={cn('flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full', badge.cls)}>
-                    {badge.label}
-                </span>
-                {/* Count badge */}
-                {subCount > 0 && (
-                    <span className="flex-shrink-0 text-[10px] text-[#848484] tabular-nums">
-                        {subCount}
+                <span className="min-w-0 flex items-center gap-1 overflow-hidden">
+                    <button
+                        type="button"
+                        className={cn(
+                            'shrink-0 inline-flex items-center justify-center w-4 h-4 -ml-1 rounded',
+                            'text-[#848484] dark:text-[#a0a0a0] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]',
+                            'transition-transform',
+                            expanded && 'rotate-90',
+                        )}
+                        onClick={e => { e.stopPropagation(); toggle(); }}
+                        data-testid="ralph-session-chevron"
+                        aria-label={expanded ? 'Collapse session' : 'Expand session'}
+                        aria-expanded={expanded}
+                    >
+                        <span className="text-[12px] leading-none" aria-hidden="true">›</span>
+                    </button>
+                    {session.hasUnseen && (
+                        <span
+                            className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]"
+                            data-testid="ralph-session-unseen-dot"
+                            aria-label="Unseen activity"
+                        />
+                    )}
+                    <span
+                        className={cn(
+                            'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]',
+                            session.hasUnseen && 'font-semibold',
+                        )}
+                    >
+                        Ralph Session
+                        <span className="ml-1.5 font-normal text-[#848484] dark:text-[#9d9d9d]">
+                            {subLabel}
+                        </span>
                     </span>
-                )}
-                {/* Chevron */}
-                <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                    className={cn('flex-shrink-0 text-[#848484] transition-transform', expanded ? 'rotate-90' : '')}
-                >
-                    <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-            </button>
+                    {subCount > 0 && (
+                        <span
+                            className="shrink-0 text-[10px] font-mono tabular-nums text-[#848484] dark:text-[#9d9d9d]"
+                            data-testid="ralph-session-child-count"
+                        >
+                            {subCount}
+                        </span>
+                    )}
+                </span>
+                <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
+                    <span className="text-[10.5px] font-mono tabular-nums whitespace-nowrap">
+                        {timestamp}
+                    </span>
+                </span>
+            </div>
 
-            {/* Expanded children */}
             {expanded && (
-                <div className="ml-3 mt-0.5 pl-2 border-l-2 border-purple-200 dark:border-purple-700 space-y-0.5">
-                    {/* Grilling process */}
+                <div data-testid="ralph-session-children">
                     {session.grillingProcess && (
-                        <div data-testid="ralph-session-grilling">
-                            {renderTaskCard(session.grillingProcess, { indented: true, iterationLabel: '🎯 Goal Setting' })}
+                        <div key={session.grillingProcess.id ?? 'grilling'}>
+                            {renderTaskCard(session.grillingProcess, { isGroupChild: true })}
                         </div>
                     )}
-                    {/* Execution iterations */}
                     {session.iterations.map((iter, idx) => (
-                        <div key={iter.id ?? idx} data-testid={`ralph-iteration-${idx + 1}`}>
-                            {renderTaskCard(iter, { indented: true, iterationLabel: `Iteration ${iter.payload?.context?.ralph?.currentIteration ?? idx + 1}` })}
+                        <div key={iter.id ?? idx}>
+                            {renderTaskCard(iter, { isGroupChild: true })}
                         </div>
                     ))}
                 </div>
