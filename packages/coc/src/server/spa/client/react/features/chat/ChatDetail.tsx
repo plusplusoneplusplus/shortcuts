@@ -135,7 +135,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
-    const [pendingAskUserQuestion, setPendingAskUserQuestion] = useState<import('./hooks/useChatSSE').AskUserQuestion | null>(null);
+    const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -399,7 +399,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        onAskUserQuestion: setPendingAskUserQuestion,
+        onAskUserBatch: setPendingAskUserBatch,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
@@ -454,7 +454,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
         setPendingQueue([]);
-        setPendingAskUserQuestion(null);
+        setPendingAskUserBatch(null);
         setSending(false);
         setIsStreaming(false);
 
@@ -920,8 +920,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         turns={turns}
                         pendingQueue={pendingQueue}
                         backgroundTasks={backgroundTasks}
-                        pendingQuestion={pendingAskUserQuestion}
-                        onAskUserAnswered={() => setPendingAskUserQuestion(null)}
+                        pendingAskUserBatch={pendingAskUserBatch}
+                        onAskUserAnswered={() => setPendingAskUserBatch(null)}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}
                         turnsContainerRef={turnsContainerRef}

@@ -715,7 +715,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     // Ask-user response endpoint
     // ------------------------------------------------------------------
 
-    // POST /api/processes/:id/ask-user-response — Answer or skip a pending ask-user question
+    // POST /api/processes/:id/ask-user-response — Answer or skip a pending ask-user question batch
     routes.push({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/ask-user-response$/,
@@ -725,29 +725,34 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            if (!body.questionId || typeof body.questionId !== 'string') {
-                return handleAPIError(res, missingFields(['questionId']));
+            if (!body.batchId || typeof body.batchId !== 'string') {
+                return handleAPIError(res, missingFields(['batchId']));
             }
-
-            const questionId = body.questionId as string;
-            const skipped = body.skipped === true;
+            if (!Array.isArray(body.answers) || body.answers.length === 0) {
+                return handleAPIError(res, missingFields(['answers']));
+            }
+            const answers = body.answers as Array<{ questionId?: unknown; answer?: unknown; skipped?: unknown }>;
+            for (const answer of answers) {
+                if (!answer.questionId || typeof answer.questionId !== 'string') {
+                    return handleAPIError(res, missingFields(['answers[].questionId']));
+                }
+                if (answer.skipped !== true && answer.answer === undefined) {
+                    return handleAPIError(res, missingFields(['answers[].answer']));
+                }
+            }
 
             if (!bridge) {
                 return handleAPIError(res, notFound('Bridge not available'));
             }
 
-            let resolved: boolean;
-            if (skipped) {
-                resolved = await bridge.skipAskUserQuestion?.(id, questionId) ?? false;
-            } else {
-                if (body.answer === undefined) {
-                    return handleAPIError(res, missingFields(['answer']));
-                }
-                resolved = await bridge.answerAskUserQuestion?.(id, questionId, body.answer as string | string[] | boolean) ?? false;
-            }
+            const resolved = await bridge.answerAskUserQuestions?.(id, body.batchId as string, answers.map(answer => ({
+                questionId: answer.questionId as string,
+                answer: answer.answer as string | string[] | boolean | undefined,
+                skipped: answer.skipped === true,
+            }))) ?? false;
 
             if (!resolved) {
-                return handleAPIError(res, notFound('Question not found or already answered'));
+                return handleAPIError(res, notFound('Question batch not found or already answered'));
             }
 
             sendJSON(res, 200, { ok: true });

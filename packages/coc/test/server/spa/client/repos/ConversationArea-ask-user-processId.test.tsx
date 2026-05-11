@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ConversationArea } from '../../../../../src/server/spa/client/react/features/chat/ConversationArea';
-import type { AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { ClientConversationTurn } from '../../../../../src/server/spa/client/react/types/dashboard';
 
 beforeAll(() => {
@@ -44,11 +44,16 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/QueuedBubble',
 vi.mock('../../../../../src/server/spa/client/react/features/chat/BackgroundTasksIndicator', () => ({ BackgroundTasksIndicator: () => null }));
 
 const question: AskUserQuestion = {
+    batchId: 'batch-abc',
     questionId: 'q-abc',
     question: 'Pick one',
     type: 'select',
     options: [{ value: 'a', label: 'A' }],
+    turnIndex: 1,
+    index: 0,
+    batchSize: 1,
 };
+const pendingAskUserBatch: AskUserBatch = { batchId: 'batch-abc', questions: [question] };
 
 // AskUserInline only renders inside the non-empty-turns branch of ConversationArea,
 // so we need at least one turn.
@@ -70,7 +75,7 @@ const baseProps = {
     onCancel: vi.fn(),
     onMoveToTop: vi.fn(),
     variant: 'inline' as const,
-    pendingQuestion: question,
+    pendingAskUserBatch,
     onAskUserAnswered: vi.fn(),
 };
 
@@ -116,14 +121,14 @@ describe('ConversationArea AskUserInline processId routing', () => {
         expect(el.getAttribute('data-process-id')).toBe('queue_fallback-id-123');
     });
 
-    it('does not render AskUserInline when pendingQuestion is absent', () => {
+    it('does not render AskUserInline when pendingAskUserBatch is absent', () => {
         capturedProcessIds.length = 0;
         render(
             <ConversationArea
                 {...baseProps}
                 taskId="queue_1"
                 processId="queue_1"
-                pendingQuestion={null}
+                pendingAskUserBatch={null}
             />,
         );
         expect(screen.queryByTestId('ask-user-inline')).toBeNull();

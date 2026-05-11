@@ -204,23 +204,59 @@ describe('useChatSSE', () => {
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
-    it('rehydrates a pending ask-user question from SSE replay', () => {
-        const onAskUserQuestion = vi.fn();
+    it('rehydrates a pending ask-user batch from SSE replay', () => {
+        const onAskUserBatch = vi.fn();
         const question = {
+            batchId: 'batch-1',
             questionId: 'ask-1',
             question: 'Choose an option',
             type: 'select',
             options: [{ value: 'a', label: 'Option A' }],
             defaultValue: 'a',
             turnIndex: 1,
+            index: 0,
+            batchSize: 1,
         };
 
-        renderHook(() => useChatSSE(makeOptions({ onAskUserQuestion })));
+        renderHook(() => useChatSSE(makeOptions({ onAskUserBatch })));
         act(() => {
             MockEventSource.latest().emit('ask-user', question);
         });
 
-        expect(onAskUserQuestion).toHaveBeenCalledWith(question);
+        expect(onAskUserBatch).toHaveBeenCalledWith({ batchId: 'batch-1', questions: [question] });
+    });
+
+    it('accumulates ask-user questions until the full batch arrives', () => {
+        const onAskUserBatch = vi.fn();
+        const q2 = {
+            batchId: 'batch-2',
+            questionId: 'ask-2',
+            question: 'Second',
+            type: 'text',
+            turnIndex: 1,
+            index: 1,
+            batchSize: 2,
+        };
+        const q1 = {
+            batchId: 'batch-2',
+            questionId: 'ask-1',
+            question: 'First',
+            type: 'confirm',
+            turnIndex: 1,
+            index: 0,
+            batchSize: 2,
+        };
+
+        renderHook(() => useChatSSE(makeOptions({ onAskUserBatch })));
+        act(() => {
+            MockEventSource.latest().emit('ask-user', q2);
+        });
+        expect(onAskUserBatch).not.toHaveBeenCalled();
+
+        act(() => {
+            MockEventSource.latest().emit('ask-user', q1);
+        });
+        expect(onAskUserBatch).toHaveBeenCalledWith({ batchId: 'batch-2', questions: [q1, q2] });
     });
 
     it('calls setTask to mark completed on "done" event', () => {

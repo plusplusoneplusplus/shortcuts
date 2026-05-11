@@ -396,6 +396,7 @@ export function buildAskUserAddon(
     suffix: string;
     answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
     skipQuestion: (questionId: string) => boolean;
+    answerQuestions: (responses: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>) => boolean;
     cancelAll: () => void;
     hasPending: () => boolean;
 } {
@@ -405,19 +406,20 @@ export function buildAskUserAddon(
             suffix: '',
             answerQuestion: () => false,
             skipQuestion: () => false,
+            answerQuestions: () => false,
             cancelAll: () => {},
             hasPending: () => false,
         };
     }
 
-    const { tool, answerQuestion, skipQuestion, cancelAll, hasPending } = createAskUserTool(deps);
+    const { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
     const suffix =
-        '\n\nYou have access to the `ask_user` tool. Use it when you need clarification, ' +
-        'confirmation, or a choice from the user. The user will see an interactive widget. ' +
+        '\n\nYou have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
+        'confirmation, or choice questions in one call instead of calling the tool repeatedly. The user will see one interactive widget. ' +
         'Every question has a Skip option, so the user is never stuck. ' +
         'Do NOT use ask_user for simple yes/no that can be inferred from context.';
 
-    return { tools: [tool], suffix, answerQuestion, skipQuestion, cancelAll, hasPending };
+    return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
 }
 
 // ============================================================================

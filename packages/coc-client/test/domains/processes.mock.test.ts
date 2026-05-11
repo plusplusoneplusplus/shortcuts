@@ -406,25 +406,25 @@ describe('ProcessesClient mock server contract', () => {
       status: 404,
       body: {
         error: {
-          message: 'Question not found or already answered',
+          message: 'Question batch not found or already answered',
           code: 'NOT_FOUND',
         },
       },
     });
     const client = createClient(mock);
 
-    await expect(client.processes.askUserResponse('proc/1', { questionId: 'q-1', answer: 'yes' })).resolves.toEqual({ ok: true });
-    await expect(client.processes.askUserResponse('proc/1', { questionId: 'q-2', skipped: true })).resolves.toEqual({ ok: true });
-    await expect(client.processes.askUserResponse('proc/2', { questionId: 'q-3', answer: 'no' })).rejects.toMatchObject({
+    await expect(client.processes.askUserResponse('proc/1', { batchId: 'b-1', answers: [{ questionId: 'q-1', answer: 'yes' }] })).resolves.toEqual({ ok: true });
+    await expect(client.processes.askUserResponse('proc/1', { batchId: 'b-2', answers: [{ questionId: 'q-2', skipped: true }] })).resolves.toEqual({ ok: true });
+    await expect(client.processes.askUserResponse('proc/2', { batchId: 'b-3', answers: [{ questionId: 'q-3', answer: 'no' }] })).rejects.toMatchObject({
       name: 'CocApiError',
       status: 404,
-      message: 'Question not found or already answered',
+      message: 'Question batch not found or already answered',
       code: 'NOT_FOUND',
     } satisfies Partial<CocApiError>);
 
-    expectJsonRequest(mock.requests[0], 'POST', '/api/processes/proc%2F1/ask-user-response', { questionId: 'q-1', answer: 'yes' });
-    expectJsonRequest(mock.requests[1], 'POST', '/api/processes/proc%2F1/ask-user-response', { questionId: 'q-2', skipped: true });
-    expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F2/ask-user-response', { questionId: 'q-3', answer: 'no' });
+    expectJsonRequest(mock.requests[0], 'POST', '/api/processes/proc%2F1/ask-user-response', { batchId: 'b-1', answers: [{ questionId: 'q-1', answer: 'yes' }] });
+    expectJsonRequest(mock.requests[1], 'POST', '/api/processes/proc%2F1/ask-user-response', { batchId: 'b-2', answers: [{ questionId: 'q-2', skipped: true }] });
+    expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F2/ask-user-response', { batchId: 'b-3', answers: [{ questionId: 'q-3', answer: 'no' }] });
   });
 
   it('pins and unpins a process', async () => {

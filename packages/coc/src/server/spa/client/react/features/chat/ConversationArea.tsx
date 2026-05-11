@@ -8,7 +8,7 @@ import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
-import type { BackgroundTasksState, AskUserQuestion } from './hooks/useChatSSE';
+import type { BackgroundTasksState, AskUserBatch } from './hooks/useChatSSE';
 
 export interface ConversationAreaProps {
     loading: boolean;
@@ -16,9 +16,9 @@ export interface ConversationAreaProps {
     turns: ClientConversationTurn[];
     pendingQueue: QueuedMessage[];
     backgroundTasks?: BackgroundTasksState | null;
-    /** Pending ask-user question from the AI, if any. */
-    pendingQuestion?: AskUserQuestion | null;
-    /** Called when the user answers or skips the pending question. */
+    /** Pending ask-user question batch from the AI, if any. */
+    pendingAskUserBatch?: AskUserBatch | null;
+    /** Called when the user answers or skips the pending question batch. */
     onAskUserAnswered?: () => void;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
@@ -83,7 +83,7 @@ export function ConversationArea({
     turns,
     pendingQueue,
     backgroundTasks,
-    pendingQuestion,
+    pendingAskUserBatch,
     onAskUserAnswered,
     isScrolledUp,
     scrollRef,
@@ -273,9 +273,9 @@ export function ConversationArea({
                                 );
                             });
                         })()}
-                        {pendingQuestion && (task?.status === 'running' || task?.status === 'queued') && (
+                        {pendingAskUserBatch && (task?.status === 'running' || task?.status === 'queued') && (
                             <AskUserInline
-                                question={pendingQuestion}
+                                batch={pendingAskUserBatch}
                                 processId={processId ?? taskId}
                                 onAnswered={onAskUserAnswered ?? (() => {})}
                             />

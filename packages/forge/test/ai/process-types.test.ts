@@ -109,7 +109,8 @@ describe('serializeProcess / deserializeProcess — pendingMessages', () => {
 
 describe('serializeProcess / deserializeProcess — pendingAskUser', () => {
     it('should round-trip a pending ask-user question', () => {
-        const pendingAskUser = {
+        const pendingAskUser = [{
+            batchId: 'batch-1',
             questionId: 'ask-1',
             question: 'Choose a retry strategy',
             type: 'select' as const,
@@ -119,7 +120,9 @@ describe('serializeProcess / deserializeProcess — pendingAskUser', () => {
             ],
             defaultValue: 'safe',
             turnIndex: 1,
-        };
+            index: 0,
+            batchSize: 1,
+        }];
         const process = makeMinimalProcess({ pendingAskUser });
 
         const serialized = serializeProcess(process);

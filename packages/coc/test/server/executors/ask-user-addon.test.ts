@@ -5,7 +5,7 @@ import type { AskUserToolDeps } from '../../../src/server/llm-tools/ask-user-too
 describe('buildAskUserAddon', () => {
     function makeDeps(): AskUserToolDeps {
         return {
-            emitQuestion: vi.fn(),
+            emitQuestions: vi.fn(),
             computeTurnIndex: vi.fn().mockReturnValue(0),
         };
     }
@@ -37,6 +37,11 @@ describe('buildAskUserAddon', () => {
     it('skipQuestion returns false when disabled', () => {
         const result = buildAskUserAddon(false, makeDeps());
         expect(result.skipQuestion('q1')).toBe(false);
+    });
+
+    it('answerQuestions returns false when disabled', () => {
+        const result = buildAskUserAddon(false, makeDeps());
+        expect(result.answerQuestions([{ questionId: 'q1', answer: 'yes' }])).toBe(false);
     });
 
     it('cancelAll is a no-op when disabled', () => {

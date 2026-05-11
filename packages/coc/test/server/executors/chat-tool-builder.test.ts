@@ -43,7 +43,7 @@ describe('buildChatToolBundle', () => {
             askUser: {
                 enabled: true,
                 deps: {
-                    emitQuestion: vi.fn(),
+                    emitQuestions: vi.fn(),
                     computeTurnIndex: () => 1,
                 },
             },

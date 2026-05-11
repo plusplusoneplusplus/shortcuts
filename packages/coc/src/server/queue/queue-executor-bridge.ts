@@ -37,6 +37,8 @@ export interface QueueExecutorBridge {
     answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
+    /** Resolve a pending ask-user question batch. Returns true only if every answer resolves. */
+    answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
 }
 
 function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
@@ -309,6 +311,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
         const resolved = handles.skipQuestion(questionId);
+        if (resolved) {
+            await this.store.updateProcess(processId, { pendingAskUser: undefined });
+        }
+        return resolved;
+    }
+
+    async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
+        const handles = this.executors.getAskUserHandles(processId);
+        if (!handles) return false;
+        const proc = await this.store.getProcess(processId);
+        const pendingBatchId = proc?.pendingAskUser?.[0]?.batchId;
+        if (pendingBatchId !== batchId) return false;
+        const resolved = handles.answerQuestions(answers);
         if (resolved) {
             await this.store.updateProcess(processId, { pendingAskUser: undefined });
         }

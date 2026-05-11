@@ -35,6 +35,7 @@ export interface ProcessSessionState {
     pendingAskUser?: {
         answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
         skipQuestion: (questionId: string) => boolean;
+        answerQuestions: (responses: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>) => boolean;
         cancelAll: () => void;
         hasPending: () => boolean;
     };

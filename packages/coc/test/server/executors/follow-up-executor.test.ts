@@ -574,7 +574,7 @@ describe('FollowUpExecutor', () => {
             askUser: expect.objectContaining({
                 enabled: true,
                 deps: expect.objectContaining({
-                    emitQuestion: expect.any(Function),
+                    emitQuestions: expect.any(Function),
                     computeTurnIndex: expect.any(Function),
                 }),
             }),
@@ -621,15 +621,18 @@ describe('FollowUpExecutor', () => {
         expect(askUser.deps.computeTurnIndex()).toBe(3);
 
         const questionPayload = {
+            batchId: 'batch-1',
             questionId: 'question-1',
             question: 'Approve?',
             type: 'confirm',
             turnIndex: askUser.deps.computeTurnIndex(),
+            index: 0,
+            batchSize: 1,
         };
-        await askUser.deps.emitQuestion(questionPayload);
+        await askUser.deps.emitQuestions([questionPayload]);
 
         expect(store.updateProcess).toHaveBeenCalledWith('proc-ask-user-event', {
-            pendingAskUser: questionPayload,
+            pendingAskUser: [questionPayload],
         });
         expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-ask-user-event', {
             type: 'ask-user',

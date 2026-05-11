@@ -21,12 +21,15 @@ describe('CLITaskExecutor ask-user pending state', () => {
             startTime: new Date(),
             promptPreview: 'test',
             fullPrompt: 'test',
-            pendingAskUser: {
+            pendingAskUser: [{
+                batchId: 'b1',
                 questionId: 'q1',
                 question: 'Continue?',
                 type: 'confirm',
                 turnIndex: 1,
-            },
+                index: 0,
+                batchSize: 1,
+            }],
         });
 
         const executor = makeExecutor(store);
@@ -34,6 +37,7 @@ describe('CLITaskExecutor ask-user pending state', () => {
             getAskUserHandles: vi.fn(() => ({
                 answerQuestion: vi.fn(() => true),
                 skipQuestion: vi.fn(() => false),
+                answerQuestions: vi.fn(() => false),
                 cancelAll: vi.fn(),
                 hasPending: vi.fn(() => true),
             })),
@@ -53,12 +57,15 @@ describe('CLITaskExecutor ask-user pending state', () => {
             startTime: new Date(),
             promptPreview: 'test',
             fullPrompt: 'test',
-            pendingAskUser: {
+            pendingAskUser: [{
+                batchId: 'b2',
                 questionId: 'q2',
                 question: 'Provide details',
                 type: 'text',
                 turnIndex: 1,
-            },
+                index: 0,
+                batchSize: 1,
+            }],
         });
 
         const executor = makeExecutor(store);
@@ -66,6 +73,7 @@ describe('CLITaskExecutor ask-user pending state', () => {
             getAskUserHandles: vi.fn(() => ({
                 answerQuestion: vi.fn(() => false),
                 skipQuestion: vi.fn(() => true),
+                answerQuestions: vi.fn(() => false),
                 cancelAll: vi.fn(),
                 hasPending: vi.fn(() => true),
             })),
@@ -79,10 +87,13 @@ describe('CLITaskExecutor ask-user pending state', () => {
         const store = createMockProcessStore();
         const processId = 'queue_missing';
         const pendingAskUser = {
+            batchId: 'b3',
             questionId: 'q3',
             question: 'Stale?',
             type: 'text' as const,
             turnIndex: 1,
+            index: 0,
+            batchSize: 1,
         };
         await store.addProcess({
             id: processId,
@@ -91,7 +102,7 @@ describe('CLITaskExecutor ask-user pending state', () => {
             startTime: new Date(),
             promptPreview: 'test',
             fullPrompt: 'test',
-            pendingAskUser,
+            pendingAskUser: [pendingAskUser],
         });
 
         const executor = makeExecutor(store);
@@ -99,12 +110,65 @@ describe('CLITaskExecutor ask-user pending state', () => {
             getAskUserHandles: vi.fn(() => ({
                 answerQuestion: vi.fn(() => false),
                 skipQuestion: vi.fn(() => false),
+                answerQuestions: vi.fn(() => false),
                 cancelAll: vi.fn(),
                 hasPending: vi.fn(() => true),
             })),
         };
 
         await expect(executor.answerAskUserQuestion(processId, 'q3', 'answer')).resolves.toBe(false);
-        expect(store.processes.get(processId)?.pendingAskUser).toEqual(pendingAskUser);
+        expect(store.processes.get(processId)?.pendingAskUser).toEqual([pendingAskUser]);
+    });
+
+    it('clears persisted pendingAskUser after a successful batch answer', async () => {
+        const store = createMockProcessStore();
+        const processId = 'queue_batch';
+        await store.addProcess({
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            pendingAskUser: [{
+                batchId: 'batch-1',
+                questionId: 'q1',
+                question: 'Continue?',
+                type: 'confirm',
+                turnIndex: 1,
+                index: 0,
+                batchSize: 2,
+            }, {
+                batchId: 'batch-1',
+                questionId: 'q2',
+                question: 'Why?',
+                type: 'text',
+                turnIndex: 1,
+                index: 1,
+                batchSize: 2,
+            }],
+        });
+
+        const answerQuestions = vi.fn(() => true);
+        const executor = makeExecutor(store);
+        (executor as any).executors = {
+            getAskUserHandles: vi.fn(() => ({
+                answerQuestion: vi.fn(() => false),
+                skipQuestion: vi.fn(() => false),
+                answerQuestions,
+                cancelAll: vi.fn(),
+                hasPending: vi.fn(() => true),
+            })),
+        };
+
+        await expect(executor.answerAskUserQuestions(processId, 'batch-1', [
+            { questionId: 'q1', answer: true },
+            { questionId: 'q2', skipped: true },
+        ])).resolves.toBe(true);
+        expect(answerQuestions).toHaveBeenCalledWith([
+            { questionId: 'q1', answer: true },
+            { questionId: 'q2', skipped: true },
+        ]);
+        expect(store.processes.get(processId)?.pendingAskUser).toBeUndefined();
     });
 });

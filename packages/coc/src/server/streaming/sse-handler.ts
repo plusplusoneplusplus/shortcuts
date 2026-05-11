@@ -145,7 +145,9 @@ export async function handleProcessStream(
     replayConversationTurns(res, process);
 
     if ((process.status === 'running' || process.status === 'queued') && process.pendingAskUser) {
-        sendEvent(res, 'ask-user', process.pendingAskUser);
+        for (const question of process.pendingAskUser) {
+            sendEvent(res, 'ask-user', question);
+        }
     }
 
     // 5. If already completed/failed/cancelled, send final status + close

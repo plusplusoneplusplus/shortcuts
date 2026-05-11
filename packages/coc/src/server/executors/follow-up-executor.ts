@@ -249,12 +249,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 askUser: {
                     enabled: (currentMode === 'ask' || currentMode === 'plan') && this.askUser.enabled,
                     deps: {
-                        emitQuestion: async (questionPayload) => {
-                            await this.store.updateProcess(processId, { pendingAskUser: questionPayload });
-                            this.store.emitProcessEvent(processId, {
-                                type: 'ask-user',
-                                askUser: questionPayload,
-                            });
+                        emitQuestions: async (questionPayloads) => {
+                            await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
+                            for (const questionPayload of questionPayloads) {
+                                this.store.emitProcessEvent(processId, {
+                                    type: 'ask-user',
+                                    askUser: questionPayload,
+                                });
+                            }
                         },
                         computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     },
@@ -265,6 +267,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             session.pendingAskUser = {
                 answerQuestion: toolBundle.askUser!.answerQuestion,
                 skipQuestion: toolBundle.askUser!.skipQuestion,
+                answerQuestions: toolBundle.askUser!.answerQuestions,
                 cancelAll: toolBundle.askUser!.cancelAll,
                 hasPending: toolBundle.askUser!.hasPending,
             };

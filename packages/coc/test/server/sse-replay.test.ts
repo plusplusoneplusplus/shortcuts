@@ -370,14 +370,17 @@ describe('SSE replay', () => {
 
     it('replays pending ask-user after the conversation snapshot for running processes', async () => {
         store.onProcessOutput = vi.fn(() => () => {});
-        const pendingAskUser = {
+        const pendingAskUser = [{
+            batchId: 'batch-1',
             questionId: 'ask-1',
             question: 'Which option?',
             type: 'select' as const,
             options: [{ value: 'a', label: 'Option A' }],
             defaultValue: 'a',
             turnIndex: 1,
-        };
+            index: 0,
+            batchSize: 1,
+        }];
         const process = createProcessFixture({
             id: 'p-ask-running',
             status: 'running',
@@ -392,7 +395,7 @@ describe('SSE replay', () => {
 
         const frames = parseSSEFrames(res._chunks);
         expect(frames.map(f => f.event).slice(0, 2)).toEqual(['conversation-snapshot', 'ask-user']);
-        expect(frames.find(f => f.event === 'ask-user')!.data).toEqual(pendingAskUser);
+        expect(frames.find(f => f.event === 'ask-user')!.data).toEqual(pendingAskUser[0]);
     });
 
     it('does not replay stale pending ask-user for terminal processes', async () => {
@@ -400,12 +403,15 @@ describe('SSE replay', () => {
             id: 'p-ask-done',
             status: 'completed',
             conversationTurns: [makeTurn('assistant', 'Done', 0)],
-            pendingAskUser: {
+            pendingAskUser: [{
+                batchId: 'stale-batch',
                 questionId: 'stale',
                 question: 'Old question',
                 type: 'text',
                 turnIndex: 1,
-            },
+                index: 0,
+                batchSize: 1,
+            }],
         });
         store.processes.set(process.id, process);
 

@@ -336,12 +336,15 @@ export interface PendingMessage {
 }
 
 export interface PendingAskUserQuestion {
+    batchId: string;
     questionId: string;
     question: string;
     type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
     turnIndex: number;
+    index: number;
+    batchSize: number;
 }
 
 /**
@@ -437,8 +440,8 @@ export interface AIProcess {
     /** Messages queued on the server while an AI response is in progress */
     pendingMessages?: PendingMessage[];
 
-    /** Interactive ask-user question awaiting a user answer during execution */
-    pendingAskUser?: PendingAskUserQuestion;
+    /** Interactive ask-user question batch awaiting user answers during execution */
+    pendingAskUser?: PendingAskUserQuestion[];
 
     /** True when the stale task detector has flagged this process as stale (running past timeout) */
     stale?: boolean;
@@ -522,8 +525,8 @@ export interface SerializedAIProcess {
     /** Messages queued on the server while an AI response is in progress */
     pendingMessages?: PendingMessage[];
 
-    /** Interactive ask-user question awaiting a user answer during execution */
-    pendingAskUser?: PendingAskUserQuestion;
+    /** Interactive ask-user question batch awaiting user answers during execution */
+    pendingAskUser?: PendingAskUserQuestion[];
 
     /** Timestamp of the last conversation event (turn completion). ISO string. */
     lastEventAt?: string;

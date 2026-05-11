@@ -1,257 +1,282 @@
 /**
  * AskUserInline
  *
- * Renders an interactive question from the AI inline in the conversation.
- * Supports: select (radio), multi-select (checkboxes), yes-no, confirm, text.
+ * Renders one batched interactive ask_user form from the AI.
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
-import type { AskUserQuestion } from './hooks/useChatSSE';
+import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 
 export interface AskUserInlineProps {
-    question: AskUserQuestion;
+    batch: AskUserBatch;
     processId: string;
     onAnswered: () => void;
 }
 
+type AnswerValue = string | string[] | boolean | null;
+
+interface QuestionState {
+    value: AnswerValue;
+    customText: string;
+    skipped: boolean;
+}
+
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
 
-export function AskUserInline({ question, processId, onAnswered }: AskUserInlineProps) {
-    const [selected, setSelected] = useState<string | string[] | boolean | null>(() => {
-        if (question.type === 'yes-no' || question.type === 'confirm') return null;
-        if (question.type === 'multi-select') return (question.defaultValue as string[] | undefined) ?? [];
-        if (question.type === 'text') return (question.defaultValue as string | undefined) ?? '';
-        return (question.defaultValue as string | undefined) ?? null;
-    });
-    const [customText, setCustomText] = useState('');
+function initialValue(question: AskUserQuestion): AnswerValue {
+    if (question.type === 'yes-no' || question.type === 'confirm') return null;
+    if (question.type === 'multi-select') return (question.defaultValue as string[] | undefined) ?? [];
+    if (question.type === 'text') return (question.defaultValue as string | undefined) ?? '';
+    return (question.defaultValue as string | undefined) ?? null;
+}
+
+function isAnswerComplete(question: AskUserQuestion, state: QuestionState): boolean {
+    if (state.skipped) return true;
+    if (question.type === 'text') return typeof state.value === 'string' && state.value.trim().length > 0;
+    if (question.type === 'select') {
+        if (state.value === CUSTOM_OPTION_VALUE) return state.customText.trim().length > 0;
+        return typeof state.value === 'string' && state.value.length > 0;
+    }
+    if (question.type === 'multi-select') return Array.isArray(state.value);
+    return typeof state.value === 'boolean';
+}
+
+function answerFor(question: AskUserQuestion, state: QuestionState): string | string[] | boolean {
+    if (question.type === 'select' && state.value === CUSTOM_OPTION_VALUE) {
+        return state.customText.trim();
+    }
+    if (question.type === 'text' && typeof state.value === 'string') {
+        return state.value.trim();
+    }
+    return state.value as string | string[] | boolean;
+}
+
+export function AskUserInline({ batch, processId, onAnswered }: AskUserInlineProps) {
+    const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => Object.fromEntries(
+        batch.questions.map(question => [question.questionId, {
+            value: initialValue(question),
+            customText: '',
+            skipped: false,
+        }]),
+    ));
     const [submitting, setSubmitting] = useState(false);
 
-    const isCustomSelected = question.type === 'select' && selected === CUSTOM_OPTION_VALUE;
-    const customTextTrimmed = customText.trim();
+    const updateQuestion = useCallback((questionId: string, patch: Partial<QuestionState>) => {
+        setAnswers(prev => ({ ...prev, [questionId]: { ...prev[questionId], ...patch } }));
+    }, []);
 
-    const submit = useCallback(async (answer: string | string[] | boolean, skipped = false) => {
+    const canSubmitAll = batch.questions.every(question => isAnswerComplete(question, answers[question.questionId]));
+
+    const submitAll = useCallback(async (skipAll = false) => {
         setSubmitting(true);
         try {
-            await getSpaCocClient().processes.askUserResponse(processId,
-                skipped ? { questionId: question.questionId, skipped: true } : { questionId: question.questionId, answer },
-            );
+            await getSpaCocClient().processes.askUserResponse(processId, {
+                batchId: batch.batchId,
+                answers: batch.questions.map(question => {
+                    const state = answers[question.questionId];
+                    if (skipAll || state.skipped) {
+                        return { questionId: question.questionId, skipped: true };
+                    }
+                    return { questionId: question.questionId, answer: answerFor(question, state) };
+                }),
+            });
             onAnswered();
         } catch {
-            // Silently handle failure — the AI session timeout will clean up
+            // The running AI session owns timeout/cleanup if the response cannot be delivered.
         } finally {
             setSubmitting(false);
         }
-    }, [processId, question.questionId, onAnswered]);
-
-    const handleSkip = useCallback(() => submit('', true), [submit]);
+    }, [answers, batch.batchId, batch.questions, onAnswered, processId]);
 
     return (
         <div className="mx-2 my-3 rounded-lg border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] p-4 shadow-sm" data-testid="ask-user-inline">
-            <div className="flex items-start gap-2 mb-3">
+            <div className="flex items-start gap-2 mb-4">
                 <span className="text-lg">🤖</span>
-                <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium">{question.question}</p>
+                <div>
+                    <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-semibold">The AI needs your input</p>
+                    <p className="text-xs text-[#848484] mt-0.5">
+                        {batch.questions.length === 1 ? 'Answer or skip this question.' : `Answer or skip these ${batch.questions.length} questions.`}
+                    </p>
+                </div>
             </div>
 
-            {/* Select (radio buttons) */}
-            {question.type === 'select' && question.options && (
-                <div className="space-y-2 ml-7 mb-3">
-                    {question.options.map(opt => (
-                        <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
-                            <input
-                                type="radio"
-                                name={`ask-user-${question.questionId}`}
-                                value={opt.value}
-                                checked={selected === opt.value}
-                                onChange={() => setSelected(opt.value)}
-                                disabled={submitting}
-                                className="mt-0.5 accent-[#0078d4]"
-                            />
-                            <div>
-                                <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
-                                {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
-                            </div>
-                        </label>
-                    ))}
-                    <label className="flex items-start gap-2 cursor-pointer group">
-                        <input
-                            type="radio"
-                            name={`ask-user-${question.questionId}`}
-                            value={CUSTOM_OPTION_VALUE}
-                            checked={isCustomSelected}
-                            onChange={() => setSelected(CUSTOM_OPTION_VALUE)}
-                            disabled={submitting}
-                            className="mt-0.5 accent-[#0078d4]"
-                            data-testid="ask-user-custom-radio"
-                        />
-                        <div className="flex-1">
-                            <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">Something else...</span>
-                            {isCustomSelected && (
-                                <input
-                                    type="text"
-                                    value={customText}
-                                    onChange={e => setCustomText(e.target.value)}
+            <div className="space-y-4">
+                {batch.questions.map((question, questionIndex) => {
+                    const state = answers[question.questionId];
+                    const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
+                    const inputDisabled = submitting || state.skipped;
+                    return (
+                        <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium">
+                                    <span className="text-[#848484] mr-1">{questionIndex + 1}.</span>{question.question}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => updateQuestion(question.questionId, { skipped: !state.skipped })}
                                     disabled={submitting}
-                                    placeholder="Type your answer..."
-                                    autoFocus
-                                    className="mt-1 w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter' && customTextTrimmed) {
-                                            void submit(customTextTrimmed);
-                                        }
-                                    }}
-                                    data-testid="ask-user-custom-input"
-                                />
+                                    className="shrink-0 px-2 py-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                                    data-testid="ask-user-skip-question-btn"
+                                >
+                                    {state.skipped ? 'Unskip' : 'Skip'}
+                                </button>
+                            </div>
+
+                            {state.skipped ? (
+                                <p className="text-xs text-[#848484]">This question will be skipped.</p>
+                            ) : (
+                                <>
+                                    {question.type === 'select' && question.options && (
+                                        <div className="space-y-2 mb-3">
+                                            {question.options.map(opt => (
+                                                <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
+                                                    <input
+                                                        type="radio"
+                                                        name={`ask-user-${question.questionId}`}
+                                                        value={opt.value}
+                                                        checked={state.value === opt.value}
+                                                        onChange={() => updateQuestion(question.questionId, { value: opt.value })}
+                                                        disabled={inputDisabled}
+                                                        className="mt-0.5 accent-[#0078d4]"
+                                                    />
+                                                    <div>
+                                                        <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
+                                                        {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
+                                                    </div>
+                                                </label>
+                                            ))}
+                                            <label className="flex items-start gap-2 cursor-pointer group">
+                                                <input
+                                                    type="radio"
+                                                    name={`ask-user-${question.questionId}`}
+                                                    value={CUSTOM_OPTION_VALUE}
+                                                    checked={isCustomSelected}
+                                                    onChange={() => updateQuestion(question.questionId, { value: CUSTOM_OPTION_VALUE })}
+                                                    disabled={inputDisabled}
+                                                    className="mt-0.5 accent-[#0078d4]"
+                                                    data-testid="ask-user-custom-radio"
+                                                />
+                                                <div className="flex-1">
+                                                    <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">Something else...</span>
+                                                    {isCustomSelected && (
+                                                        <input
+                                                            type="text"
+                                                            value={state.customText}
+                                                            onChange={e => updateQuestion(question.questionId, { customText: e.target.value })}
+                                                            disabled={inputDisabled}
+                                                            placeholder="Type your answer..."
+                                                            autoFocus
+                                                            className="mt-1 w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter' && canSubmitAll) void submitAll();
+                                                            }}
+                                                            data-testid="ask-user-custom-input"
+                                                        />
+                                                    )}
+                                                </div>
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    {question.type === 'multi-select' && question.options && (
+                                        <div className="space-y-2 mb-3">
+                                            {question.options.map(opt => (
+                                                <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
+                                                    <input
+                                                        type="checkbox"
+                                                        value={opt.value}
+                                                        checked={Array.isArray(state.value) && state.value.includes(opt.value)}
+                                                        onChange={e => {
+                                                            const arr = Array.isArray(state.value) ? [...state.value] : [];
+                                                            if (e.target.checked) arr.push(opt.value);
+                                                            else {
+                                                                const idx = arr.indexOf(opt.value);
+                                                                if (idx >= 0) arr.splice(idx, 1);
+                                                            }
+                                                            updateQuestion(question.questionId, { value: arr });
+                                                        }}
+                                                        disabled={inputDisabled}
+                                                        className="mt-0.5 accent-[#0078d4]"
+                                                    />
+                                                    <div>
+                                                        <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
+                                                        {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {question.type === 'text' && (
+                                        <input
+                                            type="text"
+                                            value={typeof state.value === 'string' ? state.value : ''}
+                                            onChange={e => updateQuestion(question.questionId, { value: e.target.value })}
+                                            disabled={inputDisabled}
+                                            placeholder="Type your answer..."
+                                            className="w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && canSubmitAll) void submitAll();
+                                            }}
+                                            data-testid="ask-user-text-input"
+                                        />
+                                    )}
+
+                                    {(question.type === 'yes-no' || question.type === 'confirm') && (
+                                        <div className="flex items-center gap-3">
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name={`ask-user-${question.questionId}`}
+                                                    checked={state.value === true}
+                                                    onChange={() => updateQuestion(question.questionId, { value: true })}
+                                                    disabled={inputDisabled}
+                                                    className="accent-[#0078d4]"
+                                                    data-testid={question.type === 'yes-no' ? 'ask-user-yes-radio' : 'ask-user-confirm-radio'}
+                                                />
+                                                {question.type === 'yes-no' ? 'Yes' : 'Confirm'}
+                                            </label>
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name={`ask-user-${question.questionId}`}
+                                                    checked={state.value === false}
+                                                    onChange={() => updateQuestion(question.questionId, { value: false })}
+                                                    disabled={inputDisabled}
+                                                    className="accent-[#0078d4]"
+                                                    data-testid={question.type === 'yes-no' ? 'ask-user-no-radio' : 'ask-user-cancel-radio'}
+                                                />
+                                                {question.type === 'yes-no' ? 'No' : 'Cancel'}
+                                            </label>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
-                    </label>
-                </div>
-            )}
+                    );
+                })}
+            </div>
 
-            {/* Multi-select (checkboxes) */}
-            {question.type === 'multi-select' && question.options && (
-                <div className="space-y-2 ml-7 mb-3">
-                    {question.options.map(opt => (
-                        <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
-                            <input
-                                type="checkbox"
-                                value={opt.value}
-                                checked={Array.isArray(selected) && selected.includes(opt.value)}
-                                onChange={e => {
-                                    const arr = Array.isArray(selected) ? [...selected] : [];
-                                    if (e.target.checked) arr.push(opt.value);
-                                    else {
-                                        const idx = arr.indexOf(opt.value);
-                                        if (idx >= 0) arr.splice(idx, 1);
-                                    }
-                                    setSelected(arr);
-                                }}
-                                disabled={submitting}
-                                className="mt-0.5 accent-[#0078d4]"
-                            />
-                            <div>
-                                <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
-                                {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
-                            </div>
-                        </label>
-                    ))}
-                </div>
-            )}
-
-            {/* Text input */}
-            {question.type === 'text' && (
-                <div className="ml-7 mb-3">
-                    <input
-                        type="text"
-                        value={typeof selected === 'string' ? selected : ''}
-                        onChange={e => setSelected(e.target.value)}
-                        disabled={submitting}
-                        placeholder="Type your answer..."
-                        className="w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                        onKeyDown={e => {
-                            if (e.key === 'Enter' && typeof selected === 'string' && selected.trim()) {
-                                void submit(selected);
-                            }
-                        }}
-                        data-testid="ask-user-text-input"
-                    />
-                </div>
-            )}
-
-            {/* Yes/No buttons */}
-            {question.type === 'yes-no' && (
-                <div className="flex items-center gap-2 ml-7 mb-2">
-                    <button
-                        onClick={() => submit(true)}
-                        disabled={submitting}
-                        className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
-                        data-testid="ask-user-yes-btn"
-                    >
-                        Yes
-                    </button>
-                    <button
-                        onClick={() => submit(false)}
-                        disabled={submitting}
-                        className="px-4 py-1.5 text-sm font-medium rounded bg-[#d4d4d4] dark:bg-[#3e3e3e] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#c0c0c0] dark:hover:bg-[#505050] disabled:opacity-50 transition-colors"
-                        data-testid="ask-user-no-btn"
-                    >
-                        No
-                    </button>
-                </div>
-            )}
-
-            {/* Confirm/Cancel buttons */}
-            {question.type === 'confirm' && (
-                <div className="flex items-center gap-2 ml-7 mb-2">
-                    <button
-                        onClick={() => submit(true)}
-                        disabled={submitting}
-                        className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
-                        data-testid="ask-user-confirm-btn"
-                    >
-                        Confirm
-                    </button>
-                    <button
-                        onClick={() => submit(false)}
-                        disabled={submitting}
-                        className="px-4 py-1.5 text-sm font-medium rounded bg-[#d4d4d4] dark:bg-[#3e3e3e] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#c0c0c0] dark:hover:bg-[#505050] disabled:opacity-50 transition-colors"
-                        data-testid="ask-user-cancel-btn"
-                    >
-                        Cancel
-                    </button>
-                </div>
-            )}
-
-            {/* Submit + Skip for select/multi-select/text */}
-            {(question.type === 'select' || question.type === 'multi-select' || question.type === 'text') && (
-                <div className="flex items-center gap-2 ml-7">
-                    <button
-                        onClick={() => {
-                            if (isCustomSelected) {
-                                if (customTextTrimmed) void submit(customTextTrimmed);
-                            } else if (selected !== null) {
-                                void submit(selected as string | string[]);
-                            }
-                        }}
-                        disabled={
-                            submitting ||
-                            selected === null ||
-                            (question.type === 'text' && typeof selected === 'string' && !selected.trim()) ||
-                            (isCustomSelected && !customTextTrimmed)
-                        }
-                        className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
-                        data-testid="ask-user-submit-btn"
-                    >
-                        Submit
-                    </button>
-                    <button
-                        onClick={handleSkip}
-                        disabled={submitting}
-                        className="px-3 py-1.5 text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
-                        data-testid="ask-user-skip-btn"
-                    >
-                        Skip
-                    </button>
-                </div>
-            )}
-
-            {/* Skip for yes-no and confirm */}
-            {(question.type === 'yes-no' || question.type === 'confirm') && (
-                <div className="ml-7">
-                    <button
-                        onClick={handleSkip}
-                        disabled={submitting}
-                        className="px-3 py-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
-                        data-testid="ask-user-skip-btn"
-                    >
-                        Skip
-                    </button>
-                </div>
-            )}
-
-            {submitting && (
-                <p className="text-xs text-[#848484] mt-2 ml-7">Submitting...</p>
-            )}
+            <div className="flex items-center gap-2 mt-4">
+                <button
+                    onClick={() => void submitAll(false)}
+                    disabled={submitting || !canSubmitAll}
+                    className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
+                    data-testid="ask-user-submit-all-btn"
+                >
+                    Submit all
+                </button>
+                <button
+                    onClick={() => void submitAll(true)}
+                    disabled={submitting}
+                    className="px-3 py-1.5 text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                    data-testid="ask-user-skip-all-btn"
+                >
+                    Skip all
+                </button>
+                {submitting && <p className="text-xs text-[#848484]">Submitting...</p>}
+            </div>
         </div>
     );
 }

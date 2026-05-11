@@ -187,14 +187,16 @@ describe('ask_user tool injection in chat-mode executors', () => {
             expect(askTool).toBeDefined();
 
             const responsePromise = askTool!.handler({
-                question: 'Pick a path',
-                type: 'select',
-                options: [{ value: 'a', label: 'Option A' }],
-                defaultValue: 'a',
+                questions: [{
+                    question: 'Pick a path',
+                    type: 'select',
+                    options: [{ value: 'a', label: 'Option A' }],
+                    defaultValue: 'a',
+                }],
             } as any);
 
             await vi.waitFor(() => {
-                expect(store.processes.get(processId)?.pendingAskUser).toMatchObject({
+                expect(store.processes.get(processId)?.pendingAskUser?.[0]).toMatchObject({
                     question: 'Pick a path',
                     type: 'select',
                     options: [{ value: 'a', label: 'Option A' }],
@@ -206,13 +208,13 @@ describe('ask_user tool injection in chat-mode executors', () => {
                 expect(executor.getAskUserHandles(processId)?.hasPending()).toBe(true);
             });
 
-            const questionId = store.processes.get(processId)!.pendingAskUser!.questionId;
+            const questionId = store.processes.get(processId)!.pendingAskUser![0].questionId;
             expect(executor.getAskUserHandles(processId)?.answerQuestion(questionId, 'a')).toBe(true);
-            await expect(responsePromise).resolves.toMatchObject({
+            await expect(responsePromise).resolves.toMatchObject([{
                 questionId,
                 answer: 'a',
                 skipped: false,
-            });
+            }]);
 
             return { success: true, response: 'ok', sessionId: 'sess-1', toolCalls: [] };
         });

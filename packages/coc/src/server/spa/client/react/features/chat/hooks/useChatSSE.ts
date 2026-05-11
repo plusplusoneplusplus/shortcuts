@@ -16,12 +16,20 @@ export interface BackgroundTasksState {
 
 /** Data for a pending ask-user question from the AI. */
 export interface AskUserQuestion {
+    batchId: string;
     questionId: string;
     question: string;
     type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
     turnIndex: number;
+    index: number;
+    batchSize: number;
+}
+
+export interface AskUserBatch {
+    batchId: string;
+    questions: AskUserQuestion[];
 }
 
 export interface UseChatSSEOptions {
@@ -48,8 +56,8 @@ export interface UseChatSSEOptions {
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
-    /** Called when the server emits an `ask-user` SSE event. */
-    onAskUserQuestion?: (question: AskUserQuestion) => void;
+    /** Called when the server emits all `ask-user` SSE events for a batch. */
+    onAskUserBatch?: (batch: AskUserBatch) => void;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -68,9 +76,10 @@ export function useChatSSE({
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
-    onAskUserQuestion,
+    onAskUserBatch,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
+    const askUserBatchesRef = useRef<Map<string, Map<number, AskUserQuestion>>>(new Map());
 
     const stopStreaming = useCallback(() => {
         eventSourceRef.current?.close();
@@ -298,8 +307,18 @@ export function useChatSSE({
         es.addEventListener('ask-user', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
-                if (data.questionId && data.question) {
-                    onAskUserQuestion?.(data as AskUserQuestion);
+                if (data.batchId && data.questionId && data.question && typeof data.index === 'number' && typeof data.batchSize === 'number') {
+                    const question = data as AskUserQuestion;
+                    const batch = askUserBatchesRef.current.get(question.batchId) ?? new Map<number, AskUserQuestion>();
+                    batch.set(question.index, question);
+                    askUserBatchesRef.current.set(question.batchId, batch);
+                    if (batch.size >= question.batchSize) {
+                        askUserBatchesRef.current.delete(question.batchId);
+                        onAskUserBatch?.({
+                            batchId: question.batchId,
+                            questions: Array.from(batch.values()).sort((a, b) => a.index - b.index),
+                        });
+                    }
                 }
             } catch { /* ignore */ }
         });

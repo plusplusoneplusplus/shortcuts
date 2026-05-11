@@ -61,6 +61,8 @@ export interface QueueExecutorBridge {
     answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean>;
     /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
+    /** Resolve a pending ask-user question batch. Returns true if every answer was accepted. */
+    answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
 }
 
 // ============================================================================

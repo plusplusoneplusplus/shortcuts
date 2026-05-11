@@ -1,4 +1,4 @@
-export { createAskUserTool, type AskUserArgs, type AskUserOption, type AskUserQuestionType, type AskUserResponse, type AskUserSSEPayload, type AskUserToolDeps } from './ask-user-tool';
+export { createAskUserTool, type AskUserAnswerInput, type AskUserArgs, type AskUserOption, type AskUserQuestion, type AskUserQuestionType, type AskUserResponse, type AskUserSSEPayload, type AskUserToolDeps } from './ask-user-tool';
 export { createResolveCommentTool } from './resolve-comment-tool';
 export { createSearchConversationsTool, stripMarkTags, type SearchConversationsArgs } from './search-conversations-tool';
 export {

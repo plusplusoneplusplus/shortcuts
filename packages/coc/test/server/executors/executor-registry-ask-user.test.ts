@@ -71,6 +71,7 @@ function createRegistry() {
 const fakeHandles = {
     answerQuestion: vi.fn(() => true),
     skipQuestion: vi.fn(() => true),
+    answerQuestions: vi.fn(() => true),
     cancelAll: vi.fn(),
     hasPending: vi.fn(() => true),
 };

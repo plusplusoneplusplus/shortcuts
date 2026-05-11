@@ -182,9 +182,12 @@ export interface ProcessOutputQuery {
 }
 
 export interface AskUserResponseRequest {
-  questionId: string;
-  answer?: string | string[] | boolean;
-  skipped?: boolean;
+  batchId: string;
+  answers: Array<{
+    questionId: string;
+    answer?: string | string[] | boolean;
+    skipped?: boolean;
+  }>;
 }
 
 export interface AskUserResponseResponse {

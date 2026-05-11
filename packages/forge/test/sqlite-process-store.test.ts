@@ -832,25 +832,31 @@ describe('SqliteProcessStore — Metadata envelope', () => {
 
     it('folds, unfolds, and clears pendingAskUser', async () => {
         await store.addProcess(makeProcess('meta-ask-user', {
-            pendingAskUser: {
+            pendingAskUser: [{
+                batchId: 'batch-1',
                 questionId: 'q1',
                 question: 'Pick one',
                 type: 'select',
                 options: [{ value: 'a', label: 'Option A' }],
                 defaultValue: 'a',
                 turnIndex: 1,
-            },
+                index: 0,
+                batchSize: 1,
+            }],
         }));
 
         const stored = await store.getProcess('meta-ask-user');
-        expect(stored!.pendingAskUser).toEqual({
+        expect(stored!.pendingAskUser).toEqual([{
+            batchId: 'batch-1',
             questionId: 'q1',
             question: 'Pick one',
             type: 'select',
             options: [{ value: 'a', label: 'Option A' }],
             defaultValue: 'a',
             turnIndex: 1,
-        });
+            index: 0,
+            batchSize: 1,
+        }]);
 
         await store.updateProcess('meta-ask-user', { pendingAskUser: undefined });
 

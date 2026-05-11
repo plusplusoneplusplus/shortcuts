@@ -1,12 +1,11 @@
 /**
- * Tests for AskUserInline — verifies ask-user responses go through
- * cocClient.processes.askUserResponse instead of raw fetch().
+ * Tests for batched AskUserInline responses.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AskUserInline } from '../../../../../src/server/spa/client/react/features/chat/AskUserInline';
-import type { AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 
 const mocks = vi.hoisted(() => ({
     processes: {
@@ -29,6 +28,7 @@ beforeEach(() => {
 
 function makeQuestion(overrides: Partial<AskUserQuestion> = {}): AskUserQuestion {
     return {
+        batchId: 'batch-1',
         questionId: 'q-1',
         question: 'Pick a color',
         type: 'select',
@@ -36,146 +36,173 @@ function makeQuestion(overrides: Partial<AskUserQuestion> = {}): AskUserQuestion
             { value: 'red', label: 'Red' },
             { value: 'blue', label: 'Blue' },
         ],
+        turnIndex: 1,
+        index: 0,
+        batchSize: 1,
         ...overrides,
     };
 }
 
+function makeBatch(questions: AskUserQuestion[] = [makeQuestion()]): AskUserBatch {
+    return { batchId: 'batch-1', questions };
+}
+
 describe('AskUserInline', () => {
-    it('renders the question text', () => {
+    it('renders all questions in one card', () => {
         render(
             <AskUserInline
-                question={makeQuestion()}
+                batch={makeBatch([
+                    makeQuestion(),
+                    makeQuestion({ questionId: 'q-2', question: 'Why?', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+                ])}
                 processId="proc-1"
                 onAnswered={vi.fn()}
             />,
         );
         expect(screen.getByText('Pick a color')).toBeInTheDocument();
+        expect(screen.getByText('Why?')).toBeInTheDocument();
+        expect(screen.getAllByTestId('ask-user-question')).toHaveLength(2);
     });
 
-    it('calls cocClient.processes.askUserResponse on submit with answer', async () => {
+    it('submits a batch with answers in question order', async () => {
         const onAnswered = vi.fn();
         render(
             <AskUserInline
-                question={makeQuestion()}
+                batch={makeBatch([
+                    makeQuestion({ batchSize: 2 }),
+                    makeQuestion({ questionId: 'q-2', question: 'Continue?', type: 'yes-no', options: undefined, index: 1, batchSize: 2 }),
+                ])}
                 processId="proc-1"
                 onAnswered={onAnswered}
             />,
         );
 
-        // Select "blue"
-        const blueRadio = screen.getByDisplayValue('blue');
-        fireEvent.click(blueRadio);
-
-        // Click submit
-        fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
+        fireEvent.click(screen.getByDisplayValue('blue'));
+        fireEvent.click(screen.getByTestId('ask-user-yes-radio'));
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
 
         await waitFor(() => {
             expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
                 'proc-1',
-                { questionId: 'q-1', answer: 'blue' },
+                {
+                    batchId: 'batch-1',
+                    answers: [
+                        { questionId: 'q-1', answer: 'blue' },
+                        { questionId: 'q-2', answer: true },
+                    ],
+                },
             );
         });
         expect(onAnswered).toHaveBeenCalled();
     });
 
-    it('calls cocClient.processes.askUserResponse with skipped=true on skip', async () => {
-        const onAnswered = vi.fn();
+    it('submits skip-all for every question', async () => {
         render(
             <AskUserInline
-                question={makeQuestion()}
+                batch={makeBatch([
+                    makeQuestion({ batchSize: 2 }),
+                    makeQuestion({ questionId: 'q-2', question: 'Continue?', type: 'confirm', options: undefined, index: 1, batchSize: 2 }),
+                ])}
                 processId="proc-1"
-                onAnswered={onAnswered}
+                onAnswered={vi.fn()}
             />,
         );
 
-        fireEvent.click(screen.getByTestId('ask-user-skip-btn'));
+        fireEvent.click(screen.getByTestId('ask-user-skip-all-btn'));
 
         await waitFor(() => {
             expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
                 'proc-1',
-                { questionId: 'q-1', skipped: true },
+                {
+                    batchId: 'batch-1',
+                    answers: [
+                        { questionId: 'q-1', skipped: true },
+                        { questionId: 'q-2', skipped: true },
+                    ],
+                },
             );
         });
-        expect(onAnswered).toHaveBeenCalled();
     });
 
-    it('calls askUserResponse for yes-no with boolean answer', async () => {
-        const onAnswered = vi.fn();
+    it('supports skipping an individual question', async () => {
         render(
             <AskUserInline
-                question={makeQuestion({ type: 'yes-no', options: undefined })}
-                processId="proc-2"
-                onAnswered={onAnswered}
+                batch={makeBatch([
+                    makeQuestion({ batchSize: 2 }),
+                    makeQuestion({ questionId: 'q-2', question: 'Why?', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+                ])}
+                processId="proc-1"
+                onAnswered={vi.fn()}
             />,
         );
 
-        fireEvent.click(screen.getByTestId('ask-user-yes-btn'));
+        fireEvent.click(screen.getByDisplayValue('red'));
+        fireEvent.click(screen.getAllByTestId('ask-user-skip-question-btn')[1]);
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
 
         await waitFor(() => {
             expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                'proc-2',
-                { questionId: 'q-1', answer: true },
+                'proc-1',
+                {
+                    batchId: 'batch-1',
+                    answers: [
+                        { questionId: 'q-1', answer: 'red' },
+                        { questionId: 'q-2', skipped: true },
+                    ],
+                },
             );
         });
     });
 
-    it('calls askUserResponse for confirm with boolean false on cancel', async () => {
-        const onAnswered = vi.fn();
+    it('keeps submit-all disabled until required answers are complete', () => {
         render(
             <AskUserInline
-                question={makeQuestion({ type: 'confirm', options: undefined })}
-                processId="proc-3"
-                onAnswered={onAnswered}
+                batch={makeBatch([makeQuestion({ type: 'text', options: undefined })])}
+                processId="proc-1"
+                onAnswered={vi.fn()}
             />,
         );
+        const submitBtn = screen.getByTestId('ask-user-submit-all-btn') as HTMLButtonElement;
+        expect(submitBtn.disabled).toBe(true);
 
-        fireEvent.click(screen.getByTestId('ask-user-cancel-btn'));
-
-        await waitFor(() => {
-            expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                'proc-3',
-                { questionId: 'q-1', answer: false },
-            );
-        });
+        fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: '  answer  ' } });
+        expect(submitBtn.disabled).toBe(false);
     });
 
-    it('handles text input submission', async () => {
-        const onAnswered = vi.fn();
+    it('submits custom select text as a trimmed answer', async () => {
         render(
             <AskUserInline
-                question={makeQuestion({ type: 'text', options: undefined })}
-                processId="proc-4"
-                onAnswered={onAnswered}
+                batch={makeBatch()}
+                processId="proc-1"
+                onAnswered={vi.fn()}
             />,
         );
-
-        const input = screen.getByTestId('ask-user-text-input') as HTMLInputElement;
-        fireEvent.change(input, { target: { value: 'my answer' } });
-        fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
+        fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+        fireEvent.change(screen.getByTestId('ask-user-custom-input'), { target: { value: '  green  ' } });
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
 
         await waitFor(() => {
             expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                'proc-4',
-                { questionId: 'q-1', answer: 'my answer' },
+                'proc-1',
+                { batchId: 'batch-1', answers: [{ questionId: 'q-1', answer: 'green' }] },
             );
         });
     });
 
-    it('silently handles API failure without crashing', async () => {
+    it('silently handles API failure without calling onAnswered', async () => {
         mocks.processes.askUserResponse.mockRejectedValue(new Error('network'));
-
         const onAnswered = vi.fn();
         render(
             <AskUserInline
-                question={makeQuestion({ type: 'yes-no', options: undefined })}
-                processId="proc-5"
+                batch={makeBatch([makeQuestion({ type: 'yes-no', options: undefined })])}
+                processId="proc-1"
                 onAnswered={onAnswered}
             />,
         );
 
-        fireEvent.click(screen.getByTestId('ask-user-no-btn'));
+        fireEvent.click(screen.getByTestId('ask-user-no-radio'));
+        fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
 
-        // Should not throw; onAnswered should NOT be called on failure
         await waitFor(() => {
             expect(mocks.processes.askUserResponse).toHaveBeenCalled();
         });
@@ -191,133 +218,5 @@ describe('AskUserInline', () => {
         );
         expect(source).not.toMatch(/\bfetch\s*\(/);
         expect(source).toContain('getSpaCocClient');
-    });
-
-    describe('select custom answer ("Something else...")', () => {
-        it('renders a "Something else..." radio option for select questions', () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            expect(screen.getByText('Something else...')).toBeInTheDocument();
-            expect(screen.getByTestId('ask-user-custom-radio')).toBeInTheDocument();
-            // Custom input is not visible until the radio is selected
-            expect(screen.queryByTestId('ask-user-custom-input')).not.toBeInTheDocument();
-        });
-
-        it('reveals a text input when "Something else..." is selected', () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
-            expect(screen.getByTestId('ask-user-custom-input')).toBeInTheDocument();
-        });
-
-        it('keeps Submit disabled until custom text contains non-whitespace content', () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
-            const submitBtn = screen.getByTestId('ask-user-submit-btn') as HTMLButtonElement;
-            expect(submitBtn.disabled).toBe(true);
-
-            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
-            fireEvent.change(input, { target: { value: '   ' } });
-            expect(submitBtn.disabled).toBe(true);
-
-            fireEvent.change(input, { target: { value: 'green' } });
-            expect(submitBtn.disabled).toBe(false);
-        });
-
-        it('submits the trimmed custom text as the answer string', async () => {
-            const onAnswered = vi.fn();
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={onAnswered}
-                />,
-            );
-            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
-            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
-            fireEvent.change(input, { target: { value: '  green  ' } });
-            fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
-
-            await waitFor(() => {
-                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                    'proc-1',
-                    { questionId: 'q-1', answer: 'green' },
-                );
-            });
-            expect(onAnswered).toHaveBeenCalled();
-        });
-
-        it('submits custom text on Enter key', async () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
-            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
-            fireEvent.change(input, { target: { value: 'purple' } });
-            fireEvent.keyDown(input, { key: 'Enter' });
-
-            await waitFor(() => {
-                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                    'proc-1',
-                    { questionId: 'q-1', answer: 'purple' },
-                );
-            });
-        });
-
-        it('preserves predefined option submission behavior', async () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion()}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            // Type into the custom input first, then switch back to a predefined option
-            fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
-            const input = screen.getByTestId('ask-user-custom-input') as HTMLInputElement;
-            fireEvent.change(input, { target: { value: 'ignored' } });
-
-            fireEvent.click(screen.getByDisplayValue('red'));
-            fireEvent.click(screen.getByTestId('ask-user-submit-btn'));
-
-            await waitFor(() => {
-                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith(
-                    'proc-1',
-                    { questionId: 'q-1', answer: 'red' },
-                );
-            });
-        });
-
-        it('does not render the custom option for multi-select', () => {
-            render(
-                <AskUserInline
-                    question={makeQuestion({ type: 'multi-select' })}
-                    processId="proc-1"
-                    onAnswered={vi.fn()}
-                />,
-            );
-            expect(screen.queryByText('Something else...')).not.toBeInTheDocument();
-            expect(screen.queryByTestId('ask-user-custom-radio')).not.toBeInTheDocument();
-        });
     });
 });

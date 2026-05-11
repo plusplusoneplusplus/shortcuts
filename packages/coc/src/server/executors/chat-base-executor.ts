@@ -271,12 +271,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             askUser: {
                 enabled: (mode === 'plan' || mode === 'ask') && this.askUser.enabled,
                 deps: {
-                    emitQuestion: async (questionPayload) => {
-                        await this.store.updateProcess(processId, { pendingAskUser: questionPayload });
-                        this.store.emitProcessEvent(processId, {
-                            type: 'ask-user',
-                            askUser: questionPayload,
-                        });
+                    emitQuestions: async (questionPayloads) => {
+                        await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
+                        for (const questionPayload of questionPayloads) {
+                            this.store.emitProcessEvent(processId, {
+                                type: 'ask-user',
+                                askUser: questionPayload,
+                            });
+                        }
                     },
                     computeTurnIndex: () => 1,
                 },
@@ -286,6 +288,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         session.pendingAskUser = {
             answerQuestion: toolBundle.askUser!.answerQuestion,
             skipQuestion: toolBundle.askUser!.skipQuestion,
+            answerQuestions: toolBundle.askUser!.answerQuestions,
             cancelAll: toolBundle.askUser!.cancelAll,
             hasPending: toolBundle.askUser!.hasPending,
         };

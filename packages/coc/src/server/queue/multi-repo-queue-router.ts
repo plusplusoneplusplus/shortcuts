@@ -277,6 +277,14 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return false;
     }
 
+    /** Resolve a pending ask-user question batch across all per-repo bridges. */
+    async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
+        for (const { bridge } of this.bridges.values()) {
+            if (await bridge.answerAskUserQuestions?.(processId, batchId, answers)) return true;
+        }
+        return false;
+    }
+
     /**
      * Check whether any per-repo bridge has an active session for this process.
      * If no per-repo bridges exist yet, falls back to checking the store + AI service directly.
