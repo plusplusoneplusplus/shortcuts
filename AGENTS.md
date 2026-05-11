@@ -100,7 +100,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 **Commands:** `coc run <path>`, `coc validate <path>`, `coc list [dir]`, `coc serve`, `coc skills`, `coc wipe-data`.
 
-**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Default process store backend is SQLite.
+**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Default process store backend is SQLite. Namespaced config merge/source tracking is registered in `packages/coc/src/config/namespace-registry.ts`; add namespace fields there instead of expanding branch lists in `config.ts`.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 

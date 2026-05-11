@@ -1,0 +1,343 @@
+import type { CLIConfig, ConfigFieldSource, ResolvedCLIConfig } from '../config';
+
+type ConfigObject = Record<string, unknown>;
+
+export interface ConfigNamespaceSourceDescriptor {
+    readonly prefix: string;
+    readonly sourceKeys: readonly string[];
+    readonly path: readonly string[];
+}
+
+export interface ConfigNamespaceDescriptor {
+    readonly name: string;
+    readonly sourceDescriptors: readonly ConfigNamespaceSourceDescriptor[];
+    readonly merge: (base: ResolvedCLIConfig, override: CLIConfig | undefined) => Partial<ResolvedConfigNamespaceValues>;
+}
+
+export type ResolvedConfigNamespaceValues = Pick<
+    ResolvedCLIConfig,
+    | 'chat'
+    | 'serve'
+    | 'queue'
+    | 'models'
+    | 'logging'
+    | 'terminal'
+    | 'notes'
+    | 'myWork'
+    | 'myLife'
+    | 'scratchpad'
+    | 'workflows'
+    | 'pullRequests'
+    | 'servers'
+    | 'ralph'
+    | 'features'
+    | 'memoryPromotion'
+    | 'store'
+    | 'monitoring'
+    | 'skills'
+>;
+
+const CHAT_FOLLOW_UP_SOURCE_KEYS = [
+    'chat.followUpSuggestions.enabled',
+    'chat.followUpSuggestions.count',
+] as const;
+
+const CHAT_ASK_USER_SOURCE_KEYS = [
+    'chat.askUser.enabled',
+] as const;
+
+const SERVE_SOURCE_KEYS = [
+    'serve.port',
+    'serve.host',
+    'serve.dataDir',
+    'serve.theme',
+    'serve.serverName',
+] as const;
+
+const TERMINAL_SOURCE_KEYS = ['terminal.enabled'] as const;
+const NOTES_SOURCE_KEYS = ['notes.enabled'] as const;
+const MY_WORK_SOURCE_KEYS = ['myWork.enabled'] as const;
+const MY_LIFE_SOURCE_KEYS = ['myLife.enabled'] as const;
+const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as const;
+const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
+const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled'] as const;
+const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
+const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
+const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion'] as const;
+
+const MEMORY_PROMOTION_SOURCE_KEYS = [
+    'memoryPromotion.batchSize',
+    'memoryPromotion.timeoutMs',
+    'memoryPromotion.model',
+] as const;
+
+const MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS = [
+    'memoryPromotion.aiNormalization.enabled',
+    'memoryPromotion.aiNormalization.timeoutMs',
+    'memoryPromotion.aiNormalization.model',
+] as const;
+
+export const CONFIG_NAMESPACE_SOURCE_KEYS = [
+    ...CHAT_FOLLOW_UP_SOURCE_KEYS,
+    ...CHAT_ASK_USER_SOURCE_KEYS,
+    ...SERVE_SOURCE_KEYS,
+    ...TERMINAL_SOURCE_KEYS,
+    ...NOTES_SOURCE_KEYS,
+    ...MY_WORK_SOURCE_KEYS,
+    ...MY_LIFE_SOURCE_KEYS,
+    ...SCRATCHPAD_SOURCE_KEYS,
+    ...WORKFLOWS_SOURCE_KEYS,
+    ...PULL_REQUESTS_SOURCE_KEYS,
+    ...SERVERS_SOURCE_KEYS,
+    ...RALPH_SOURCE_KEYS,
+    ...FEATURES_SOURCE_KEYS,
+    ...MEMORY_PROMOTION_SOURCE_KEYS,
+    ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
+] as const;
+
+const source = (
+    prefix: string,
+    path: readonly string[],
+    sourceKeys: readonly string[]
+): ConfigNamespaceSourceDescriptor => ({
+    prefix,
+    path,
+    sourceKeys,
+});
+
+/**
+ * Registry of namespaced CoC config sections.
+ *
+ * To add a namespaced config section, add one descriptor here with:
+ * - source descriptors for fields surfaced by getResolvedConfigWithSource()
+ * - merge logic for applying partial file config on top of resolved defaults
+ *
+ * Top-level scalar fields remain in config.ts.
+ */
+export function createConfigNamespaceRegistry(defaultBundledSkills: readonly string[]): readonly ConfigNamespaceDescriptor[] {
+    return [
+        {
+            name: 'chat',
+            sourceDescriptors: [
+                source('chat.followUpSuggestions.', ['chat', 'followUpSuggestions'], CHAT_FOLLOW_UP_SOURCE_KEYS),
+                source('chat.askUser.', ['chat', 'askUser'], CHAT_ASK_USER_SOURCE_KEYS),
+            ],
+            merge: (base, override) => ({
+                chat: {
+                    followUpSuggestions: {
+                        enabled: override?.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,
+                        count: override?.chat?.followUpSuggestions?.count ?? base.chat.followUpSuggestions.count,
+                    },
+                    askUser: {
+                        enabled: override?.chat?.askUser?.enabled ?? base.chat.askUser.enabled,
+                    },
+                },
+            }),
+        },
+        {
+            name: 'serve',
+            sourceDescriptors: [source('serve.', ['serve'], SERVE_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                serve: {
+                    port: override?.serve?.port ?? base.serve?.port ?? 4000,
+                    host: override?.serve?.host ?? base.serve?.host ?? '0.0.0.0',
+                    dataDir: override?.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
+                    theme: override?.serve?.theme ?? base.serve?.theme ?? 'auto',
+                    serverName: override?.serve?.serverName ?? base.serve?.serverName,
+                },
+            }),
+        },
+        {
+            name: 'queue',
+            sourceDescriptors: [],
+            merge: (base, override) => ({
+                queue: (override?.queue || base.queue) ? {
+                    historyLimit: override?.queue?.historyLimit ?? base.queue?.historyLimit,
+                    restartPolicy: override?.queue?.restartPolicy ?? base.queue?.restartPolicy,
+                    restartPickupDelayMs: override?.queue?.restartPickupDelayMs ?? base.queue?.restartPickupDelayMs,
+                } : undefined,
+            }),
+        },
+        {
+            name: 'models',
+            sourceDescriptors: [],
+            merge: (base, override) => ({
+                models: (override?.models || base.models) ? {
+                    enabled: override?.models?.enabled ?? base.models?.enabled,
+                } : undefined,
+            }),
+        },
+        {
+            name: 'logging',
+            sourceDescriptors: [],
+            merge: (base, override) => ({ logging: override?.logging ?? base.logging }),
+        },
+        {
+            name: 'terminal',
+            sourceDescriptors: [source('terminal.', ['terminal'], TERMINAL_SOURCE_KEYS)],
+            merge: (base, override) => ({ terminal: { enabled: override?.terminal?.enabled ?? base.terminal?.enabled ?? true } }),
+        },
+        {
+            name: 'notes',
+            sourceDescriptors: [source('notes.', ['notes'], NOTES_SOURCE_KEYS)],
+            merge: (base, override) => ({ notes: { enabled: override?.notes?.enabled ?? base.notes?.enabled ?? true } }),
+        },
+        {
+            name: 'myWork',
+            sourceDescriptors: [source('myWork.', ['myWork'], MY_WORK_SOURCE_KEYS)],
+            merge: (base, override) => ({ myWork: { enabled: override?.myWork?.enabled ?? base.myWork?.enabled ?? false } }),
+        },
+        {
+            name: 'myLife',
+            sourceDescriptors: [source('myLife.', ['myLife'], MY_LIFE_SOURCE_KEYS)],
+            merge: (base, override) => ({ myLife: { enabled: override?.myLife?.enabled ?? base.myLife?.enabled ?? false } }),
+        },
+        {
+            name: 'scratchpad',
+            sourceDescriptors: [source('scratchpad.', ['scratchpad'], SCRATCHPAD_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                scratchpad: {
+                    enabled: override?.scratchpad?.enabled ?? base.scratchpad?.enabled ?? false,
+                    layout: override?.scratchpad?.layout ?? base.scratchpad?.layout ?? 'vertical',
+                },
+            }),
+        },
+        {
+            name: 'workflows',
+            sourceDescriptors: [source('workflows.', ['workflows'], WORKFLOWS_SOURCE_KEYS)],
+            merge: (base, override) => ({ workflows: { enabled: override?.workflows?.enabled ?? base.workflows?.enabled ?? false } }),
+        },
+        {
+            name: 'pullRequests',
+            sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
+            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false } }),
+        },
+        {
+            name: 'servers',
+            sourceDescriptors: [source('servers.', ['servers'], SERVERS_SOURCE_KEYS)],
+            merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? false } }),
+        },
+        {
+            name: 'ralph',
+            sourceDescriptors: [source('ralph.', ['ralph'], RALPH_SOURCE_KEYS)],
+            merge: (base, override) => ({ ralph: { enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false } }),
+        },
+        {
+            name: 'features',
+            sourceDescriptors: [source('features.', ['features'], FEATURES_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                features: {
+                    autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
+                },
+            }),
+        },
+        {
+            name: 'memoryPromotion',
+            sourceDescriptors: [
+                source('memoryPromotion.aiNormalization.', ['memoryPromotion', 'aiNormalization'], MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS),
+                source('memoryPromotion.', ['memoryPromotion'], MEMORY_PROMOTION_SOURCE_KEYS),
+            ],
+            merge: (base, override) => {
+                const baseMemoryPromotion = base.memoryPromotion ?? {
+                    batchSize: 50,
+                    timeoutMs: 90_000,
+                    model: undefined,
+                    aiNormalization: {
+                        enabled: false,
+                        timeoutMs: 60_000,
+                        model: undefined,
+                    },
+                };
+
+                return {
+                    memoryPromotion: {
+                        batchSize: override?.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
+                        timeoutMs: override?.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
+                        model: override?.memoryPromotion?.model ?? baseMemoryPromotion.model,
+                        aiNormalization: {
+                            enabled: override?.memoryPromotion?.aiNormalization?.enabled ?? baseMemoryPromotion.aiNormalization.enabled,
+                            timeoutMs: override?.memoryPromotion?.aiNormalization?.timeoutMs ?? baseMemoryPromotion.aiNormalization.timeoutMs,
+                            model: override?.memoryPromotion?.aiNormalization?.model ?? baseMemoryPromotion.aiNormalization.model,
+                        },
+                    },
+                };
+            },
+        },
+        {
+            name: 'store',
+            sourceDescriptors: [],
+            merge: (base, override) => ({ store: { backend: override?.store?.backend ?? base.store?.backend ?? 'sqlite' } }),
+        },
+        {
+            name: 'monitoring',
+            sourceDescriptors: [],
+            merge: (base, override) => ({
+                monitoring: {
+                    heapCheck: {
+                        enabled: override?.monitoring?.heapCheck?.enabled ?? base.monitoring?.heapCheck?.enabled ?? true,
+                        intervalMs: override?.monitoring?.heapCheck?.intervalMs ?? base.monitoring?.heapCheck?.intervalMs ?? 30000,
+                        warnThreshold: override?.monitoring?.heapCheck?.warnThreshold ?? base.monitoring?.heapCheck?.warnThreshold ?? 70,
+                        criticalThreshold: override?.monitoring?.heapCheck?.criticalThreshold ?? base.monitoring?.heapCheck?.criticalThreshold ?? 85,
+                    },
+                },
+            }),
+        },
+        {
+            name: 'skills',
+            sourceDescriptors: [],
+            merge: (base, override) => ({
+                skills: {
+                    autoUpdate: override?.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
+                    defaultSkills: override?.skills?.defaultSkills ?? base.skills?.defaultSkills ?? [...defaultBundledSkills],
+                },
+            }),
+        },
+    ];
+}
+
+export const CONFIG_NAMESPACE_SOURCE_DESCRIPTORS = createConfigNamespaceRegistry([])
+    .flatMap(descriptor => descriptor.sourceDescriptors)
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+
+export function mergeConfigNamespaces(
+    base: ResolvedCLIConfig,
+    override: CLIConfig | undefined,
+    defaultBundledSkills: readonly string[]
+): ResolvedConfigNamespaceValues {
+    const merged = createConfigNamespaceRegistry(defaultBundledSkills).reduce<Partial<ResolvedConfigNamespaceValues>>(
+        (merged, descriptor) => ({ ...merged, ...descriptor.merge(base, override) }),
+        {}
+    );
+    return merged as ResolvedConfigNamespaceValues;
+}
+
+export function getNamespaceFieldSource(key: string, fileConfig: CLIConfig | undefined): ConfigFieldSource | undefined {
+    if (!fileConfig) {
+        return 'default';
+    }
+
+    for (const descriptor of CONFIG_NAMESPACE_SOURCE_DESCRIPTORS) {
+        if (key.startsWith(descriptor.prefix)) {
+            const subKey = key.slice(descriptor.prefix.length);
+            const container = getNestedObject(fileConfig, descriptor.path);
+            return container?.[subKey] !== undefined ? 'file' : 'default';
+        }
+    }
+
+    return undefined;
+}
+
+function getNestedObject(config: CLIConfig, path: readonly string[]): ConfigObject | undefined {
+    let current: unknown = config;
+    for (const segment of path) {
+        if (!isObject(current)) {
+            return undefined;
+        }
+        current = current[segment];
+    }
+    return isObject(current) ? current : undefined;
+}
+
+function isObject(value: unknown): value is ConfigObject {
+    return typeof value === 'object' && value !== null;
+}

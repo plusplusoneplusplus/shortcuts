@@ -791,6 +791,251 @@ timeout: 300
             }
         });
 
+        it('snapshots comprehensive resolved config and sources', () => {
+            const configPath = path.join(tmpDir, 'comprehensive.yaml');
+            fs.writeFileSync(configPath, [
+                'model: gpt-4.1',
+                'parallel: 12',
+                'output: markdown',
+                'approvePermissions: true',
+                'mcpConfig: ${HOME}/mcp.json',
+                'timeout: 450',
+                'persist: false',
+                'showReportIntent: true',
+                'toolCompactness: 2',
+                'taskCardDensity: compact',
+                'groupSingleLineMessages: false',
+                'chat:',
+                '  followUpSuggestions:',
+                '    enabled: false',
+                '    count: 4',
+                '  askUser:',
+                '    enabled: true',
+                'serve:',
+                '  port: 8081',
+                '  host: 127.0.0.1',
+                '  dataDir: ${HOME}/.coc-test',
+                '  theme: dark',
+                '  serverName: local-dev',
+                'queue:',
+                '  historyLimit: 25',
+                '  restartPolicy: requeue',
+                '  restartPickupDelayMs: 250',
+                'models:',
+                '  enabled:',
+                '    - gpt-4.1',
+                '    - claude-sonnet',
+                'logging:',
+                '  level: debug',
+                '  dir: ${HOME}/logs',
+                '  pretty: false',
+                '  stores:',
+                '    coc-service:',
+                '      level: info',
+                '      file: true',
+                'terminal:',
+                '  enabled: false',
+                'notes:',
+                '  enabled: false',
+                'myWork:',
+                '  enabled: true',
+                'myLife:',
+                '  enabled: true',
+                'scratchpad:',
+                '  enabled: true',
+                '  layout: horizontal',
+                'workflows:',
+                '  enabled: true',
+                'pullRequests:',
+                '  enabled: true',
+                'servers:',
+                '  enabled: true',
+                'ralph:',
+                '  enabled: true',
+                'features:',
+                '  autoMemoryPromotion: true',
+                'memoryPromotion:',
+                '  batchSize: 10',
+                '  timeoutMs: 70000',
+                '  model: gpt-memory',
+                '  aiNormalization:',
+                '    enabled: true',
+                '    timeoutMs: 45000',
+                '    model: gpt-normalizer',
+                'store:',
+                '  backend: file',
+                'monitoring:',
+                '  heapCheck:',
+                '    enabled: false',
+                '    intervalMs: 45000',
+                '    warnThreshold: 65',
+                '    criticalThreshold: 90',
+                'skills:',
+                '  autoUpdate: false',
+                '  defaultSkills:',
+                '    - rethink',
+                '    - terse-replies',
+            ].join('\n'));
+
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect({
+                resolved: result.resolved,
+                sources: result.sources,
+            }).toMatchInlineSnapshot(`
+              {
+                "resolved": {
+                  "approvePermissions": true,
+                  "chat": {
+                    "askUser": {
+                      "enabled": true,
+                    },
+                    "followUpSuggestions": {
+                      "count": 4,
+                      "enabled": false,
+                    },
+                  },
+                  "features": {
+                    "autoMemoryPromotion": true,
+                  },
+                  "groupSingleLineMessages": false,
+                  "logging": {
+                    "dir": "\${HOME}/logs",
+                    "level": "debug",
+                    "pretty": false,
+                    "stores": {
+                      "coc-service": {
+                        "file": true,
+                        "level": "info",
+                      },
+                    },
+                  },
+                  "mcpConfig": "\${HOME}/mcp.json",
+                  "memoryPromotion": {
+                    "aiNormalization": {
+                      "enabled": true,
+                      "model": "gpt-normalizer",
+                      "timeoutMs": 45000,
+                    },
+                    "batchSize": 10,
+                    "model": "gpt-memory",
+                    "timeoutMs": 70000,
+                  },
+                  "model": "gpt-4.1",
+                  "models": {
+                    "enabled": [
+                      "gpt-4.1",
+                      "claude-sonnet",
+                    ],
+                  },
+                  "monitoring": {
+                    "heapCheck": {
+                      "criticalThreshold": 90,
+                      "enabled": false,
+                      "intervalMs": 45000,
+                      "warnThreshold": 65,
+                    },
+                  },
+                  "myLife": {
+                    "enabled": true,
+                  },
+                  "myWork": {
+                    "enabled": true,
+                  },
+                  "notes": {
+                    "enabled": false,
+                  },
+                  "output": "markdown",
+                  "parallel": 12,
+                  "persist": false,
+                  "pullRequests": {
+                    "enabled": true,
+                  },
+                  "queue": {
+                    "historyLimit": 25,
+                    "restartPickupDelayMs": 250,
+                    "restartPolicy": "requeue",
+                  },
+                  "ralph": {
+                    "enabled": true,
+                  },
+                  "scratchpad": {
+                    "enabled": true,
+                    "layout": "horizontal",
+                  },
+                  "serve": {
+                    "dataDir": "\${HOME}/.coc-test",
+                    "host": "127.0.0.1",
+                    "port": 8081,
+                    "serverName": "local-dev",
+                    "theme": "dark",
+                  },
+                  "servers": {
+                    "enabled": true,
+                  },
+                  "showReportIntent": true,
+                  "skills": {
+                    "autoUpdate": false,
+                    "defaultSkills": [
+                      "rethink",
+                      "terse-replies",
+                    ],
+                  },
+                  "store": {
+                    "backend": "file",
+                  },
+                  "taskCardDensity": "compact",
+                  "terminal": {
+                    "enabled": false,
+                  },
+                  "timeout": 450,
+                  "toolCompactness": 2,
+                  "workflows": {
+                    "enabled": true,
+                  },
+                },
+                "sources": {
+                  "approvePermissions": "file",
+                  "chat.askUser.enabled": "file",
+                  "chat.followUpSuggestions.count": "file",
+                  "chat.followUpSuggestions.enabled": "file",
+                  "features.autoMemoryPromotion": "file",
+                  "groupSingleLineMessages": "file",
+                  "mcpConfig": "file",
+                  "memoryPromotion.aiNormalization.enabled": "file",
+                  "memoryPromotion.aiNormalization.model": "file",
+                  "memoryPromotion.aiNormalization.timeoutMs": "file",
+                  "memoryPromotion.batchSize": "file",
+                  "memoryPromotion.model": "file",
+                  "memoryPromotion.timeoutMs": "file",
+                  "model": "file",
+                  "myLife.enabled": "file",
+                  "myWork.enabled": "file",
+                  "notes.enabled": "file",
+                  "output": "file",
+                  "parallel": "file",
+                  "persist": "file",
+                  "pullRequests.enabled": "file",
+                  "ralph.enabled": "file",
+                  "scratchpad.enabled": "file",
+                  "scratchpad.layout": "file",
+                  "serve.dataDir": "file",
+                  "serve.host": "file",
+                  "serve.port": "file",
+                  "serve.serverName": "file",
+                  "serve.theme": "file",
+                  "servers.enabled": "file",
+                  "showReportIntent": "file",
+                  "taskCardDensity": "file",
+                  "terminal.enabled": "file",
+                  "timeout": "file",
+                  "toolCompactness": "file",
+                  "workflows.enabled": "file",
+                },
+              }
+            `);
+        });
+
         it('should include toolCompactness in resolved with file source', () => {
             const configPath = path.join(tmpDir, 'toolcompactness.yaml');
             fs.writeFileSync(configPath, 'toolCompactness: 1\n');

@@ -13,6 +13,11 @@ import * as os from 'os';
 import yaml from 'js-yaml';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { validateConfigWithSchema } from './config/schema';
+import {
+    CONFIG_NAMESPACE_SOURCE_KEYS,
+    getNamespaceFieldSource,
+    mergeConfigNamespaces,
+} from './config/namespace-registry';
 
 // ============================================================================
 // Types
@@ -413,32 +418,17 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
  */
 export type ConfigFieldSource = 'default' | 'file';
 
-/**
- * All tracked config field keys (flat, with dot notation for nested serve fields)
- */
-export const CONFIG_SOURCE_KEYS = [
+const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
-    'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
-    'chat.askUser.enabled',
-    'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
-    'terminal.enabled',
-    'notes.enabled',
-    'myWork.enabled',
-    'myLife.enabled',
-    'scratchpad.enabled',
-    'scratchpad.layout',
-    'workflows.enabled',
-    'pullRequests.enabled',
-    'servers.enabled',
-    'ralph.enabled',
-    'features.autoMemoryPromotion',
-    'memoryPromotion.batchSize',
-    'memoryPromotion.timeoutMs',
-    'memoryPromotion.model',
-    'memoryPromotion.aiNormalization.enabled',
-    'memoryPromotion.aiNormalization.timeoutMs',
-    'memoryPromotion.aiNormalization.model',
+] as const;
+
+/**
+ * All tracked config field keys (flat, with dot notation for nested fields)
+ */
+export const CONFIG_SOURCE_KEYS = [
+    ...TOP_LEVEL_CONFIG_SOURCE_KEYS,
+    ...CONFIG_NAMESPACE_SOURCE_KEYS,
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -539,8 +529,6 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         return { ...base };
     }
 
-    const baseMemoryPromotion = base.memoryPromotion ?? DEFAULT_CONFIG.memoryPromotion;
-
     return {
         model: override.model ?? base.model,
         parallel: override.parallel ?? base.parallel,
@@ -553,87 +541,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
-        chat: {
-            followUpSuggestions: {
-                enabled: override.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,
-                count: override.chat?.followUpSuggestions?.count ?? base.chat.followUpSuggestions.count,
-            },
-            askUser: {
-                enabled: override.chat?.askUser?.enabled ?? base.chat.askUser.enabled,
-            },
-        },
-        serve: {
-            port: override.serve?.port ?? base.serve?.port ?? 4000,
-            host: override.serve?.host ?? base.serve?.host ?? '0.0.0.0',
-            dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
-            theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
-            serverName: override.serve?.serverName ?? base.serve?.serverName,
-        },
-        queue: (override.queue || base.queue) ? {
-            historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
-            restartPolicy: override.queue?.restartPolicy ?? base.queue?.restartPolicy,
-            restartPickupDelayMs: override.queue?.restartPickupDelayMs ?? base.queue?.restartPickupDelayMs,
-        } : undefined,
-        models: (override.models || base.models) ? {
-            enabled: override.models?.enabled ?? base.models?.enabled,
-        } : undefined,
-        logging: override.logging ?? base.logging,
-        terminal: {
-            enabled: override.terminal?.enabled ?? base.terminal.enabled,
-        },
-        notes: {
-            enabled: override.notes?.enabled ?? base.notes.enabled,
-        },
-        myWork: {
-            enabled: override.myWork?.enabled ?? base.myWork.enabled,
-        },
-        myLife: {
-            enabled: override.myLife?.enabled ?? base.myLife.enabled,
-        },
-        scratchpad: {
-            enabled: override.scratchpad?.enabled ?? base.scratchpad.enabled,
-            layout: override.scratchpad?.layout ?? base.scratchpad.layout,
-        },
-        workflows: {
-            enabled: override.workflows?.enabled ?? base.workflows.enabled,
-        },
-        pullRequests: {
-            enabled: override.pullRequests?.enabled ?? base.pullRequests.enabled,
-        },
-        servers: {
-            enabled: override.servers?.enabled ?? base.servers.enabled,
-        },
-        ralph: {
-            enabled: override.ralph?.enabled ?? base.ralph?.enabled ?? DEFAULT_CONFIG.ralph.enabled,
-        },
-        features: {
-            autoMemoryPromotion: override.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? DEFAULT_CONFIG.features.autoMemoryPromotion,
-        },
-        memoryPromotion: {
-            batchSize: override.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
-            timeoutMs: override.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
-            model: override.memoryPromotion?.model ?? baseMemoryPromotion.model,
-            aiNormalization: {
-                enabled: override.memoryPromotion?.aiNormalization?.enabled ?? baseMemoryPromotion.aiNormalization.enabled,
-                timeoutMs: override.memoryPromotion?.aiNormalization?.timeoutMs ?? baseMemoryPromotion.aiNormalization.timeoutMs,
-                model: override.memoryPromotion?.aiNormalization?.model ?? baseMemoryPromotion.aiNormalization.model,
-            },
-        },
-        store: {
-            backend: override.store?.backend ?? base.store.backend,
-        },
-        monitoring: {
-            heapCheck: {
-                enabled: override.monitoring?.heapCheck?.enabled ?? base.monitoring?.heapCheck?.enabled ?? true,
-                intervalMs: override.monitoring?.heapCheck?.intervalMs ?? base.monitoring?.heapCheck?.intervalMs ?? 30000,
-                warnThreshold: override.monitoring?.heapCheck?.warnThreshold ?? base.monitoring?.heapCheck?.warnThreshold ?? 70,
-                criticalThreshold: override.monitoring?.heapCheck?.criticalThreshold ?? base.monitoring?.heapCheck?.criticalThreshold ?? 85,
-            },
-        },
-        skills: {
-            autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
-            defaultSkills: override.skills?.defaultSkills ?? base.skills?.defaultSkills ?? [...DEFAULT_BUNDLED_SKILLS],
-        },
+        ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
     };
 }
 
@@ -665,79 +573,9 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
         return 'default';
     }
 
-    if (key.startsWith('chat.followUpSuggestions.')) {
-        const subKey = key.slice('chat.followUpSuggestions.'.length) as keyof NonNullable<NonNullable<CLIConfig['chat']>['followUpSuggestions']>;
-        return fileConfig.chat?.followUpSuggestions?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('chat.askUser.')) {
-        const subKey = key.slice('chat.askUser.'.length) as keyof NonNullable<NonNullable<CLIConfig['chat']>['askUser']>;
-        return fileConfig.chat?.askUser?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('serve.')) {
-        const subKey = key.slice('serve.'.length) as keyof NonNullable<CLIConfig['serve']>;
-        return fileConfig.serve?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('terminal.')) {
-        const subKey = key.slice('terminal.'.length) as keyof NonNullable<CLIConfig['terminal']>;
-        return fileConfig.terminal?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('notes.')) {
-        const subKey = key.slice('notes.'.length) as keyof NonNullable<CLIConfig['notes']>;
-        return fileConfig.notes?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('myWork.')) {
-        const subKey = key.slice('myWork.'.length) as keyof NonNullable<CLIConfig['myWork']>;
-        return fileConfig.myWork?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('myLife.')) {
-        const subKey = key.slice('myLife.'.length) as keyof NonNullable<CLIConfig['myLife']>;
-        return fileConfig.myLife?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('scratchpad.')) {
-        const subKey = key.slice('scratchpad.'.length) as keyof NonNullable<CLIConfig['scratchpad']>;
-        return fileConfig.scratchpad?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('workflows.')) {
-        const subKey = key.slice('workflows.'.length) as keyof NonNullable<CLIConfig['workflows']>;
-        return fileConfig.workflows?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('pullRequests.')) {
-        const subKey = key.slice('pullRequests.'.length) as keyof NonNullable<CLIConfig['pullRequests']>;
-        return fileConfig.pullRequests?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('servers.')) {
-        const subKey = key.slice('servers.'.length) as keyof NonNullable<CLIConfig['servers']>;
-        return fileConfig.servers?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('ralph.')) {
-        const subKey = key.slice('ralph.'.length) as keyof NonNullable<CLIConfig['ralph']>;
-        return fileConfig.ralph?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('features.')) {
-        const subKey = key.slice('features.'.length) as keyof NonNullable<CLIConfig['features']>;
-        return fileConfig.features?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('memoryPromotion.aiNormalization.')) {
-        const subKey = key.slice('memoryPromotion.aiNormalization.'.length) as keyof NonNullable<NonNullable<CLIConfig['memoryPromotion']>['aiNormalization']>;
-        return fileConfig.memoryPromotion?.aiNormalization?.[subKey] !== undefined ? 'file' : 'default';
-    }
-
-    if (key.startsWith('memoryPromotion.')) {
-        const subKey = key.slice('memoryPromotion.'.length) as keyof NonNullable<CLIConfig['memoryPromotion']>;
-        return fileConfig.memoryPromotion?.[subKey] !== undefined ? 'file' : 'default';
+    const namespaceSource = getNamespaceFieldSource(key, fileConfig);
+    if (namespaceSource) {
+        return namespaceSource;
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';
