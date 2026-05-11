@@ -2,23 +2,27 @@
  * Ralph-specific queue routes.
  *
  * POST /api/processes/:id/ralph-start — validate a completed grilling-phase
- * process and enqueue the first Ralph execution task.
+ * process, initialize the per-session journal, and enqueue the first Ralph
+ * execution task.
  */
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, isQueueProcessId, toTaskId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { getRalphContext } from '../tasks/task-types';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore;
+    /** Repo-scoped data root (`~/.coc` or override). Used for the per-session journal. */
+    dataDir?: string;
 }
 
 export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext): void {
-    const { bridge, store } = ctx;
+    const { bridge, store, dataDir } = ctx;
 
     // ------------------------------------------------------------------
     // POST /api/processes/:id/ralph-start
@@ -80,6 +84,25 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 ?? procPayload?.folderPath
                 ?? proc.workingDirectory;
             const folderPath: string | undefined = procPayload?.folderPath;
+            const maxIterations = ralphCtx.maxIterations ?? 10;
+
+            // Initialise the per-session journal (idempotent). Best-effort:
+            // on failure we still enqueue — the bridge will create the file
+            // lazily on the first iteration.
+            if (dataDir && wsId && ralphCtx.sessionId) {
+                try {
+                    const journal = new RalphSessionStore({ dataDir });
+                    await journal.initSession(wsId, ralphCtx.sessionId, {
+                        originalGoal: goalSpec,
+                        maxIterations,
+                    });
+                } catch (err) {
+                    getLogger().debug(
+                        LogCategory.AI,
+                        `[Ralph] initSession failed for ${ralphCtx.sessionId}: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                }
+            }
 
             // Enqueue the first Ralph execution task
             const taskId = await bridge.enqueue({
@@ -100,7 +123,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                             sessionId: ralphCtx.sessionId,
                             originalGoal: goalSpec,
                             currentIteration: 1,
-                            maxIterations: ralphCtx.maxIterations ?? 10,
+                            maxIterations,
                         },
                     },
                 },

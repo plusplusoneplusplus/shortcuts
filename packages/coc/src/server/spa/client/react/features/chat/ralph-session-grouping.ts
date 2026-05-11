@@ -57,7 +57,7 @@ function computeSessionPhase(
     iterations: any[],
 ): 'grilling' | 'executing' | 'complete' {
     // If any iteration signals complete
-    if (iterations.some(t => getRalphPhase(t) === 'complete' || t.payload?.context?.ralph?.accumulatedProgress)) {
+    if (iterations.some(t => getRalphPhase(t) === 'complete')) {
         // Check if it's actually done
         const lastIter = iterations[iterations.length - 1];
         if (lastIter?.status === 'completed') {

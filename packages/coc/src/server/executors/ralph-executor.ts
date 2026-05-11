@@ -5,16 +5,22 @@
  *
  * Ralph mode is a structured AI orchestration loop:
  * - agentMode: 'autopilot' (full read/write permissions)
- * - systemMessage: Ralph framework instructions + goal spec + accumulated progress
+ * - systemMessage: Ralph framework instructions + goal spec + a *file path*
+ *   to the per-session progress journal (no inlined history)
  * - Each task is one iteration; the loop is driven by RALPH_NEXT / RALPH_COMPLETE signals
  *
- * Phase 1 (MVP): Single iteration per task, no auto-loop. User supplies goal in prompt
- * or via `context.ralph.originalGoal`. Auto-loop and grill-me are Phase 2/3.
+ * Per-iteration history lives in `progress.md` under
+ *   `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`
+ * and is referenced by absolute path in the system prompt — see
+ * AGENTS.md: "Prefer use file path in the prompt instead of expanding the
+ * prompt with file's content."
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as os from 'os';
+import * as path from 'path';
 import type {
     AgentMode,
     ProcessStore,
@@ -27,6 +33,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatToolBundle } from './chat-tool-builder';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
 
 // ============================================================================
 // System prompt template
@@ -36,9 +43,12 @@ const RALPH_BASE_INSTRUCTIONS = `\
 You are a focused AI coding agent running in Ralph mode.
 
 Your task:
-1. Review the goal spec and any accumulated progress below.
-2. Pick the next logical subtask toward the goal — implement one subtask only.
-3. Run tests/build to verify your change, then commit with a clear message.
+1. Read the goal spec below.
+2. Read your accumulated progress journal at the path noted below — grep
+   for filenames or decisions before choosing the next subtask, so you do
+   not redo prior work.
+3. Pick the next logical subtask toward the goal — implement one subtask only.
+4. Run tests/build to verify your change, then commit with a clear message.
 
 End your response with:
 
@@ -49,20 +59,25 @@ Then exactly one of:
 RALPH_COMPLETE
 RALPH_NEXT`;
 
-function buildRalphSystemMessage(ralph: {
+export interface BuildRalphSystemMessageInput {
     originalGoal?: string;
-    accumulatedProgress?: string;
+    /** Absolute path to the per-session `progress.md` (when known). */
+    progressPath?: string;
     currentIteration?: number;
     maxIterations?: number;
-}): string {
+}
+
+function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput): string {
     const parts: string[] = [RALPH_BASE_INSTRUCTIONS];
 
     if (ralph.originalGoal) {
         parts.push(`## Goal Spec\n${ralph.originalGoal}`);
     }
 
-    if (ralph.accumulatedProgress) {
-        parts.push(`## Progress from Previous Iterations\n${ralph.accumulatedProgress}`);
+    if (ralph.progressPath) {
+        parts.push(
+            `## Progress Journal\nYour accumulated progress journal is at:\n  ${ralph.progressPath}\nRead and grep this file before deciding the next subtask. It is append-only Markdown with one \`## Iteration N — SIGNAL — TIMESTAMP\` section per completed iteration.`,
+        );
     }
 
     const current = ralph.currentIteration ?? 1;
@@ -96,9 +111,11 @@ export class RalphExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
 
+        const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
+
         const ralphSystemPrompt = buildRalphSystemMessage({
             originalGoal: ralphCtx?.originalGoal,
-            accumulatedProgress: ralphCtx?.accumulatedProgress,
+            progressPath,
             currentIteration: ralphCtx?.currentIteration,
             maxIterations: ralphCtx?.maxIterations,
         });
@@ -130,6 +147,13 @@ export class RalphExecutor extends ChatBaseExecutor {
             effectivePrompt: prompt + suffix,
             dispose: boundedMemory.dispose,
         };
+    }
+
+    private resolveProgressPath(workspaceId?: string, sessionId?: string): string | undefined {
+        if (!workspaceId || !sessionId) return undefined;
+        const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+        const store = new RalphSessionStore({ dataDir: effectiveDataDir });
+        return store.getProgressPath(workspaceId, sessionId);
     }
 }
 

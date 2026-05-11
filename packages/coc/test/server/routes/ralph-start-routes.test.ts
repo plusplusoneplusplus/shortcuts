@@ -64,6 +64,7 @@ describe('POST /api/processes/:id/ralph-start', () => {
     let baseUrl: string;
     let store: MockProcessStore;
     let mockEnqueue: ReturnType<typeof vi.fn>;
+    let dataDir: string;
 
     beforeAll(async () => {
         store = createMockProcessStore();
@@ -73,8 +74,13 @@ describe('POST /api/processes/:id/ralph-start', () => {
             enqueue: mockEnqueue,
         } as any;
 
+        const fs = await import('fs');
+        const os = await import('os');
+        const pathMod = await import('path');
+        dataDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-start-routes-test-'));
+
         const routes: Route[] = [];
-        registerRalphRoutes(routes, { bridge: mockBridge, store });
+        registerRalphRoutes(routes, { bridge: mockBridge, store, dataDir });
 
         const router = createRouter({ routes, spaHtml: '' });
         server = http.createServer(router);
@@ -89,6 +95,8 @@ describe('POST /api/processes/:id/ralph-start', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        const fs = await import('fs');
+        try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* ignore */ }
     });
 
     beforeEach(() => {
@@ -140,6 +148,43 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(enqueueArg.payload.context.ralph.sessionId).toBe('ralph-session-abc');
         expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
         expect(enqueueArg.payload.context.ralph.maxIterations).toBe(10);
+    });
+
+    it('initialises the per-session journal directory and session.json', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-init',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'init me',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-init',
+                workingDirectory: '/repos/myrepo',
+                context: { ralph: { phase: 'grilling', sessionId: 'sess-init', maxIterations: 4 } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-init/ralph-start', {
+            goalSpec: 'Write feature X',
+            workspaceId: 'ws-init',
+        });
+        expect(res.status).toBe(200);
+
+        const fs = await import('fs');
+        const pathMod = await import('path');
+        const sessionDir = pathMod.join(dataDir, 'repos', 'ws-init', 'ralph-sessions', 'sess-init');
+        expect(fs.existsSync(sessionDir)).toBe(true);
+        expect(fs.existsSync(pathMod.join(sessionDir, 'progress.md'))).toBe(true);
+        const recordRaw = fs.readFileSync(pathMod.join(sessionDir, 'session.json'), 'utf-8');
+        const record = JSON.parse(recordRaw);
+        expect(record.sessionId).toBe('sess-init');
+        expect(record.workspaceId).toBe('ws-init');
+        expect(record.originalGoal).toBe('Write feature X');
+        expect(record.maxIterations).toBe(4);
+        expect(record.phase).toBe('executing');
     });
 
     // -----------------------------------------------------------------------

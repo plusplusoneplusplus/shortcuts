@@ -11,7 +11,8 @@ import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
 import type { MemoryPromoteConfig } from '../memory/memory-promote';
-import { parseRalphSignal, appendProgress } from '../executors/ralph-signal-parser';
+import { parseRalphSignal } from '../executors/ralph-signal-parser';
+import { recordRalphIteration } from '../ralph/record-iteration';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -134,8 +135,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     /**
      * Called by ProcessLifecycleRunner after a ralph-mode task completes.
-     * Parses RALPH_NEXT/RALPH_COMPLETE signal and either enqueues the next
-     * iteration or emits a ralph-session-complete WS event.
+     * Parses RALPH_NEXT/RALPH_COMPLETE signal, writes the iteration's
+     * progress section to the per-session journal (`progress.md` +
+     * `session.json`), and either enqueues the next iteration or emits a
+     * ralph-session-complete WS event.
      */
     private enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): void {
         if (!this.queueManager) return;
@@ -150,6 +153,24 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const sessionId = ralphCtx?.sessionId;
 
         const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations;
+
+        // Persist the iteration's progress section + update session.json.
+        // Best-effort: any I/O failure is logged and does not block enqueue.
+        recordRalphIteration({
+            dataDir: this.dataDir,
+            workspaceId,
+            sessionId,
+            iteration: currentIteration,
+            maxIterations,
+            signal,
+            progressBody: progress,
+            taskId: completedTask.id,
+            processId,
+            shouldContinue,
+            originalGoal: ralphCtx?.originalGoal,
+        }).catch(err => {
+            logger.debug(LogCategory.AI, `[Ralph] journal persist failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+        });
 
         if (!shouldContinue) {
             // Session complete — emit WS event
@@ -174,7 +195,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
         // Enqueue next iteration
         const nextIteration = currentIteration + 1;
-        const updatedProgress = appendProgress(ralphCtx?.accumulatedProgress, progress);
 
         logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${nextIteration}/${maxIterations} for session ${sessionId ?? processId}`);
 
@@ -195,7 +215,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                         ralph: {
                             ...ralphCtx,
                             originalGoal: ralphCtx?.originalGoal ?? '',
-                            accumulatedProgress: updatedProgress || undefined,
                             currentIteration: nextIteration,
                             maxIterations,
                             sessionId: sessionId ?? processId,
@@ -210,6 +229,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             logger.warn(LogCategory.AI, `[Ralph] Failed to enqueue next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
+
+    /**
+     * Best-effort: append the parsed `RALPH_PROGRESS:` body to the
+     * session journal and update `session.json`. Implementation lives in
+     * `recordRalphIteration` so it can be unit-tested in isolation.
+     */
+    // (delegated to recordRalphIteration above)
 
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');

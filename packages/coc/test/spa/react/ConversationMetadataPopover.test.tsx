@@ -509,28 +509,12 @@ describe('buildRows – Ralph orchestration rows', () => {
         expect(rows.find(r => r.label === 'Ralph · Iteration')).toBeUndefined();
     });
 
-    it('omits Ralph · Progress when accumulatedProgress is empty', () => {
+    it('does not emit a Ralph · Progress row (progress lives in the file-backed journal)', () => {
         const rows = buildRows({
             id: 'p-5',
-            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: '' } } },
+            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g' } } },
         });
         expect(rows.find(r => r.label === 'Ralph · Progress')).toBeUndefined();
-    });
-
-    it('emits Ralph · Progress when accumulatedProgress is a non-empty string', () => {
-        const rows = buildRows({
-            id: 'p-6',
-            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: 'step 1\nstep 2' } } },
-        });
-        expect(rows.find(r => r.label === 'Ralph · Progress')!.value).toBe('step 1\nstep 2');
-    });
-
-    it('joins array accumulatedProgress with newlines', () => {
-        const rows = buildRows({
-            id: 'p-7',
-            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: ['a', 'b', 'c'] as any } } },
-        });
-        expect(rows.find(r => r.label === 'Ralph · Progress')!.value).toBe('a\nb\nc');
     });
 
     it('truncates long originalGoal to ~200 chars with an ellipsis', () => {
@@ -542,16 +526,5 @@ describe('buildRows – Ralph orchestration rows', () => {
         const goal = rows.find(r => r.label === 'Ralph · Goal')!.value;
         expect(goal.length).toBe(200);
         expect(goal.endsWith('…')).toBe(true);
-    });
-
-    it('truncates long accumulatedProgress to ~200 chars with an ellipsis', () => {
-        const long = 'y'.repeat(500);
-        const rows = buildRows({
-            id: 'p-9',
-            payload: { context: { ralph: { phase: 'executing', sessionId: 's', originalGoal: 'g', accumulatedProgress: long } } },
-        });
-        const prog = rows.find(r => r.label === 'Ralph · Progress')!.value;
-        expect(prog.length).toBe(200);
-        expect(prog.endsWith('…')).toBe(true);
     });
 });

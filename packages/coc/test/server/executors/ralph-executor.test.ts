@@ -66,9 +66,9 @@ function makeOptions(
 
 function makeRalphTask(ralphCtx?: {
     originalGoal?: string;
-    accumulatedProgress?: string;
     currentIteration?: number;
     maxIterations?: number;
+    sessionId?: string;
 }, id = 'ralph-task-1'): QueuedTask {
     return {
         id,
@@ -80,6 +80,7 @@ function makeRalphTask(ralphCtx?: {
             kind: 'chat',
             mode: 'ralph',
             prompt: 'Implement the next subtask',
+            workspaceId: 'ws-id',
             context: ralphCtx ? { ralph: ralphCtx as any } : undefined,
         },
         config: {},
@@ -111,14 +112,21 @@ describe('buildRalphSystemMessage', () => {
         expect(msg).not.toContain('## Goal Spec');
     });
 
-    it('includes accumulated progress when provided', () => {
-        const msg = buildRalphSystemMessage({ accumulatedProgress: 'Auth done, routes pending' });
-        expect(msg).toContain('## Progress from Previous Iterations');
-        expect(msg).toContain('Auth done, routes pending');
+    it('references the progress journal by absolute path when provided', () => {
+        const msg = buildRalphSystemMessage({ progressPath: '/tmp/ralph-sessions/sess-1/progress.md' });
+        expect(msg).toContain('## Progress Journal');
+        expect(msg).toContain('/tmp/ralph-sessions/sess-1/progress.md');
+        expect(msg).toContain('## Iteration N');
     });
 
-    it('omits progress section when accumulatedProgress is absent', () => {
+    it('omits the progress journal section when no path is provided', () => {
         const msg = buildRalphSystemMessage({});
+        expect(msg).not.toContain('## Progress Journal');
+    });
+
+    it('does not inline accumulated progress text into the prompt', () => {
+        const msg = buildRalphSystemMessage({ progressPath: '/p/progress.md' });
+        // The plan removes inlined history; the prompt only references the file path.
         expect(msg).not.toContain('## Progress from Previous Iterations');
     });
 
@@ -135,14 +143,14 @@ describe('buildRalphSystemMessage', () => {
     it('includes all sections when fully populated', () => {
         const msg = buildRalphSystemMessage({
             originalGoal: 'Build a REST API',
-            accumulatedProgress: 'Auth done',
+            progressPath: '/p/progress.md',
             currentIteration: 2,
             maxIterations: 8,
         });
         expect(msg).toContain('## Goal Spec');
         expect(msg).toContain('Build a REST API');
-        expect(msg).toContain('## Progress from Previous Iterations');
-        expect(msg).toContain('Auth done');
+        expect(msg).toContain('## Progress Journal');
+        expect(msg).toContain('/p/progress.md');
         expect(msg).toContain('Iteration 2 of 8.');
     });
 });
@@ -188,18 +196,21 @@ describe('RalphExecutor', () => {
         expect(call.systemMessage.content).toContain('Build a REST API');
     });
 
-    it('includes accumulated progress in system message', async () => {
+    it('includes accumulated-progress journal path in system message', async () => {
         const executor = new RalphExecutor(store, makeOptions(store));
         const task = makeRalphTask({
             originalGoal: 'Add auth',
-            accumulatedProgress: 'Routes are done',
+            sessionId: 'sess-xyz',
             currentIteration: 2,
         });
 
         await executor.execute(task, 'Continue');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage.content).toContain('Routes are done');
+        // Journal path is referenced (not inlined)
+        expect(call.systemMessage.content).toContain('## Progress Journal');
+        expect(call.systemMessage.content).toContain('sess-xyz');
+        expect(call.systemMessage.content).toContain('progress.md');
         expect(call.systemMessage.content).toContain('Iteration 2 of 10.');
     });
 

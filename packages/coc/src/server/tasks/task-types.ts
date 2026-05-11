@@ -204,8 +204,6 @@ export interface ChatContext {
 export interface RalphContext {
     /** Confirmed goal spec (plain text or structured Markdown). */
     originalGoal: string;
-    /** AI-provided learnings accumulated across prior iterations. */
-    accumulatedProgress?: string;
     /** Maximum iterations before the loop stops (default: 10). */
     maxIterations?: number;
     /** 1-based iteration counter, incremented on each re-enqueue. */

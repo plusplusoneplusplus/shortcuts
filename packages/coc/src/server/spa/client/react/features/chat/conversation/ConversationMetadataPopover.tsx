@@ -110,16 +110,6 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
         if (ralph.originalGoal) {
             push('Ralph · Goal', truncate(ralph.originalGoal, RALPH_FIELD_TRUNCATE), { breakAll: true });
         }
-        const progressRaw = ralph.accumulatedProgress;
-        let progressStr: string | null = null;
-        if (typeof progressRaw === 'string') {
-            progressStr = progressRaw;
-        } else if (Array.isArray(progressRaw)) {
-            progressStr = (progressRaw as unknown[]).filter(v => typeof v === 'string').join('\n');
-        }
-        if (progressStr && progressStr.trim()) {
-            push('Ralph · Progress', truncate(progressStr, RALPH_FIELD_TRUNCATE), { breakAll: true });
-        }
     }
 
     return rows;

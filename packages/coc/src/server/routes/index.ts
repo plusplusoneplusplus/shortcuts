@@ -224,7 +224,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerMyLifeRoutes(routes, store, dataDir);
 
     // Ralph routes
-    registerRalphRoutes(routes, { bridge, store });
+    registerRalphRoutes(routes, { bridge, store, dataDir });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
