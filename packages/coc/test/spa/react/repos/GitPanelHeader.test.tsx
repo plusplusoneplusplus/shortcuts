@@ -47,6 +47,60 @@ describe('basic rendering', () => {
     });
 });
 
+// ── Redesigned layout (card-style split button + bordered branch pill) ────────
+
+describe('redesigned layout', () => {
+    it('branch pill uses bordered card styling', () => {
+        renderHeader();
+        const pill = screen.getByTestId('git-branch-pill');
+        const cls = pill.className;
+        expect(cls).toContain('rounded-full');
+        expect(cls).toContain('border');
+        expect(cls).toContain('font-mono');
+    });
+
+    it('sync-split renders a single bordered container around primary + chevron', () => {
+        renderHeader({ onPull: vi.fn(), onFetch: vi.fn(), onPush: vi.fn() });
+        const split = screen.getByTestId('git-sync-split-btn');
+        const inner = split.querySelector('div');
+        expect(inner).toBeTruthy();
+        const innerCls = inner!.className;
+        expect(innerCls).toContain('border');
+        expect(innerCls).toContain('rounded-md');
+        expect(innerCls).toContain('overflow-hidden');
+        // Both action buttons sit inside the bordered shell, not stacked separately
+        expect(inner!.querySelector('[data-testid="git-sync-primary-btn"]')).toBeTruthy();
+        expect(inner!.querySelector('[data-testid="git-sync-dropdown-toggle"]')).toBeTruthy();
+    });
+
+    it('chevron toggle has an internal vertical separator (border-l)', () => {
+        renderHeader({ onPull: vi.fn() });
+        const chevron = screen.getByTestId('git-sync-dropdown-toggle');
+        expect(chevron.className).toContain('border-l');
+    });
+
+    it('dropdown menu renders outside the overflow-hidden shell so it is not clipped', () => {
+        renderHeader({ onPull: vi.fn(), onFetch: vi.fn(), onPush: vi.fn() });
+        fireEvent.click(screen.getByTestId('git-sync-dropdown-toggle'));
+        const dropdown = screen.getByTestId('git-sync-dropdown');
+        const split = screen.getByTestId('git-sync-split-btn');
+        // The dropdown is a child of the positioning wrapper, NOT of the overflow-hidden shell.
+        const shell = split.querySelector('.overflow-hidden');
+        expect(shell).toBeTruthy();
+        expect(shell!.contains(dropdown)).toBe(false);
+        expect(split.contains(dropdown)).toBe(true);
+    });
+
+    it('refresh button keeps its 24x24 icon-button styling', () => {
+        renderHeader();
+        const btn = screen.getByTestId('git-refresh-btn');
+        const cls = btn.className;
+        expect(cls).toContain('w-6');
+        expect(cls).toContain('h-6');
+        expect(cls).toContain('rounded-md');
+    });
+});
+
 // ── Ahead/behind badge ─────────────────────────────────────────────────────────
 
 describe('ahead/behind badge', () => {

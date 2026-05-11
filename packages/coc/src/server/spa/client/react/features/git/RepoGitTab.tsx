@@ -159,6 +159,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
@@ -1254,13 +1255,22 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         return items;
     }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
 
-    // Keyboard shortcut: R to refresh when focused in left panel
+    // Keyboard shortcuts:
+    //   - R: refresh
+    //   - /: focus the commit search input
+    // Both ignored when typing in inputs/textareas.
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
+        const isTextField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+        if (isTextField) return;
         if (e.key === 'r' || e.key === 'R') {
-            if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-                e.preventDefault();
-                refreshAll();
-            }
+            e.preventDefault();
+            refreshAll();
+            return;
+        }
+        if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            searchInputRef.current?.focus();
+            searchInputRef.current?.select();
         }
     }, [refreshAll]);
 
@@ -1445,30 +1455,54 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     rebasing={rebasing}
                     lastRefreshedAt={lastRefreshedAt}
                 />
-                {/* Search input */}
-                <div className="px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-search-bar">
-                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded border bg-white dark:bg-[#3c3c3c] focus-within:border-[#0078d4] ${searchQuery ? 'border-[#0078d4]' : 'border-[#e0e0e0] dark:border-[#474749]'}`}>
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-[#848484]" aria-hidden="true">
+                {/* Search input (filter-bar style: subtle background card containing a bordered search box) */}
+                <div
+                    className="px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]"
+                    data-testid="git-search-bar"
+                >
+                    <div className={`flex items-center gap-1.5 px-2 py-[3px] rounded-md border bg-white dark:bg-[#2d2d2d] focus-within:border-[#0078d4] focus-within:ring-2 focus-within:ring-[#0078d4]/20 ${searchQuery ? 'border-[#0078d4]' : 'border-[#d0d0d0] dark:border-[#3c3c3c]'}`}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-[#999] dark:text-[#888]" aria-hidden="true">
                             <path d="M6.5 1a5.5 5.5 0 1 0 3.547 9.714l3.37 3.369a.75.75 0 1 0 1.06-1.06l-3.369-3.37A5.5 5.5 0 0 0 6.5 1zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0z" fill="currentColor"/>
                         </svg>
                         <input
+                            ref={searchInputRef}
                             type="text"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Search commits…"
-                            className="flex-1 bg-transparent outline-none text-sm text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0"
+                            onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    if (searchQuery) {
+                                        setSearchQuery('');
+                                    } else {
+                                        searchInputRef.current?.blur();
+                                    }
+                                }
+                            }}
+                            placeholder="Search subject, hash, author, path…"
+                            className="flex-1 bg-transparent outline-none text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0 py-px"
                             data-testid="git-search-input"
-                            aria-label="Search commits by message"
+                            aria-label="Search commits by subject, hash, author, or path"
                         />
-                        {searchQuery && (
+                        {searchQuery ? (
                             <button
                                 onClick={() => setSearchQuery('')}
-                                className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none"
+                                className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
                                 data-testid="git-search-clear"
                                 aria-label="Clear search"
+                                type="button"
                             >
                                 ×
                             </button>
+                        ) : (
+                            <span
+                                className="shrink-0 inline-flex items-center justify-center min-w-[16px] h-[18px] px-1 font-mono text-[11px] leading-none text-[#999] dark:text-[#888] border border-[#d0d0d0] dark:border-[#3c3c3c] rounded bg-[#f5f5f5] dark:bg-[#252526]"
+                                aria-hidden="true"
+                                data-testid="git-search-kbd"
+                                title="Press / to focus search"
+                            >
+                                /
+                            </span>
                         )}
                     </div>
                 </div>

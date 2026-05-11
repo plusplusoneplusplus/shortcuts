@@ -64,12 +64,12 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
         <>
             <style>{spinKeyframes}</style>
             <div
-            className="git-panel-header flex items-center gap-2 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20"
+            className="git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]"
             data-testid="git-panel-header"
         >
             {/* Branch pill */}
             <button
-                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px] ${onBranchClick ? 'cursor-pointer hover:bg-[#d0d0d0] dark:hover:bg-[#505050] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
+                className={`inline-flex items-center gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px] ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
                 onClick={onBranchClick}
@@ -79,13 +79,13 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                 <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
                     <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6A1.5 1.5 0 004.5 10v.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.993 2.993 0 016 6.5h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
                 </svg>
-                {branch}
+                <span className="truncate">{branch}</span>
             </button>
 
             {/* Ahead/behind badge */}
             {hasAheadBehind && (
                 <span
-                    className="inline-flex items-center gap-1 text-xs text-[#616161] dark:text-[#999]"
+                    className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold leading-[18px] text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap"
                     data-testid="git-ahead-behind-badge"
                 >
                     {ahead > 0 && <span className="text-[#16825d]" data-testid="git-ahead-count">↑{ahead}</span>}
@@ -94,43 +94,49 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             )}
 
             {/* Spacer */}
-            <div className="flex-1" />
+            <div className="flex-1 min-w-[4px]" />
 
             {/* Split action button (Fetch / Pull / Push) */}
             {hasAnyAction && (
-                <div className="relative flex items-center" ref={dropdownRef} data-testid="git-sync-split-btn">
-                    {/* Primary action: Pull */}
-                    <button
-                        className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded-l text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50 border-r border-[#d0d0d0] dark:border-[#555]"
-                        onClick={() => handleAction(onPull)}
-                        disabled={!!isActioning}
-                        title="Pull --rebase from remote"
-                        data-testid="git-sync-primary-btn"
-                    >
-                        {isActioning ? (
-                            <svg className="w-3 h-3 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
-                                <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
-                                <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
-                            </svg>
-                        ) : (
-                            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                                <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
-                            </svg>
-                        )}
-                        Pull
-                    </button>
+                <div
+                    className="relative inline-flex"
+                    ref={dropdownRef}
+                    data-testid="git-sync-split-btn"
+                >
+                    <div className="flex items-stretch h-6 rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d]">
+                        {/* Primary action: Pull */}
+                        <button
+                            className="git-action-btn flex items-center gap-1 px-1.5 text-[11px] leading-[22px] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                            onClick={() => handleAction(onPull)}
+                            disabled={!!isActioning}
+                            title="Pull --rebase from remote"
+                            data-testid="git-sync-primary-btn"
+                        >
+                            {isActioning ? (
+                                <svg className="w-3 h-3 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                    <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
+                                </svg>
+                            )}
+                            Pull
+                        </button>
 
-                    {/* Chevron toggle */}
-                    <button
-                        className="git-action-btn flex items-center px-1 py-0.5 rounded-r text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
-                        onClick={() => setDropdownOpen(prev => !prev)}
-                        disabled={!!isActioning}
-                        title="More git actions"
-                        data-testid="git-sync-dropdown-toggle"
-                        type="button"
-                    >
-                        ▾
-                    </button>
+                        {/* Chevron toggle */}
+                        <button
+                            className="git-action-btn flex items-center px-1 text-[11px] leading-[22px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                            onClick={() => setDropdownOpen(prev => !prev)}
+                            disabled={!!isActioning}
+                            title="More git actions"
+                            data-testid="git-sync-dropdown-toggle"
+                            type="button"
+                        >
+                            ▾
+                        </button>
+                    </div>
 
                     {/* Dropdown menu */}
                     {dropdownOpen && (
@@ -211,7 +217,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Last refreshed timestamp */}
             {lastRefreshedAt != null && (
                 <span
-                    className="text-xs text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline"
+                    className="text-[11px] text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline tabular-nums"
                     title={new Date(lastRefreshedAt).toLocaleString()}
                     data-testid="git-last-refreshed"
                 >
@@ -221,7 +227,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
 
             {/* Refresh button */}
             <button
-                className="git-refresh-btn flex items-center justify-center w-6 h-6 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
+                className="git-refresh-btn flex items-center justify-center w-6 h-6 rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
                 onClick={onRefresh}
                 disabled={refreshing}
                 title="Refresh git data"

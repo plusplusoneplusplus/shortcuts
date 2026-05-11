@@ -1706,6 +1706,55 @@ describe('RepoGitTab', () => {
         });
     });
 
+    describe('redesigned search bar', () => {
+        it('renders search bar wrapper with subtle background', () => {
+            expect(source).toMatch(/data-testid="git-search-bar"[\s\S]*?bg-\[#f5f5f5\]/);
+        });
+
+        it('uses the redesigned placeholder copy', () => {
+            expect(source).toContain('Search subject, hash, author, path…');
+        });
+
+        it('search input has a ref attached', () => {
+            expect(source).toContain('ref={searchInputRef}');
+        });
+
+        it('declares the search input ref', () => {
+            expect(source).toContain('const searchInputRef = useRef<HTMLInputElement>(null)');
+        });
+
+        it('shows the keyboard shortcut hint when the search is empty', () => {
+            expect(source).toContain('data-testid="git-search-kbd"');
+        });
+
+        it('hides the keyboard hint while a query is typed (clear button replaces it)', () => {
+            // The kbd hint is rendered in the else branch of the searchQuery ternary,
+            // so it should not appear when the clear button is shown.
+            expect(source).toMatch(/searchQuery \? \([\s\S]*?git-search-clear[\s\S]*?\) : \([\s\S]*?git-search-kbd/);
+        });
+
+        it('"/" keyboard shortcut focuses the search input via handlePanelKeyDown', () => {
+            expect(source).toContain("e.key === '/'");
+            expect(source).toContain('searchInputRef.current?.focus()');
+        });
+
+        it('ignores "/" shortcut when modifier keys are pressed', () => {
+            expect(source).toMatch(/e\.key === '\/'[\s\S]*?!e\.metaKey[\s\S]*?!e\.ctrlKey[\s\S]*?!e\.altKey/);
+        });
+
+        it('Escape in the search input clears the query (or blurs when empty)', () => {
+            expect(source).toMatch(/onKeyDown=\{e =>[\s\S]*?e\.key === 'Escape'[\s\S]*?setSearchQuery\(''\)[\s\S]*?searchInputRef\.current\?\.blur\(\)/);
+        });
+
+        it('search box uses rounded-md border with focus ring styling', () => {
+            const m = source.match(/data-testid="git-search-bar"[\s\S]{0,400}/);
+            expect(m).toBeTruthy();
+            expect(m![0]).toContain('rounded-md');
+            expect(m![0]).toContain('focus-within:border-[#0078d4]');
+            expect(m![0]).toContain('focus-within:ring-2');
+        });
+    });
+
     describe('task payload workspaceId regression', () => {
         it('handleConfirmSkillRun includes workspaceId in queue task payload', () => {
             const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
