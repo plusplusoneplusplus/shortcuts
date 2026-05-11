@@ -25,6 +25,11 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Deep Wiki | [deep-wiki.md](references/deep-wiki.md) | Six-phase pipeline, caching, themes, CLI commands, core concepts |
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Dashboard SPA | [dashboard-spa.md](references/dashboard-spa.md) | React component tree, hooks, contexts, feature modules |
+| Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
+| Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
+| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | WikiManager, TF-IDF context retrieval, AI Q&A sessions, file watching |
+| Remote Servers | [remote-servers.md](references/remote-servers.md) | DevTunnel integration, connection lifecycle, server registry |
+| Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
 
 ## Key Invariants
 
