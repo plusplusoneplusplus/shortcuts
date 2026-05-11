@@ -360,7 +360,14 @@ describe('Store-backed history across restart', () => {
             const ids = body.history.map((t: any) => t.id ?? t.processId);
             expect(ids).toContain('proc-1');
             expect(ids).toContain('proc-2');
-            expect(ids).not.toContain('proc-running');
+            // proc-running was orphaned by the previous (simulated) crash; the
+            // startup sweep finalizes it as 'failed' so it now appears in
+            // history with an explanatory error, rather than silently
+            // remaining stuck in 'running'.
+            expect(ids).toContain('proc-running');
+            const orphanEntry = body.history.find((t: any) => (t.id ?? t.processId) === 'proc-running');
+            expect(orphanEntry.status).toBe('failed');
+            expect(typeof orphanEntry.error).toBe('string');
 
             const failedEntry = body.history.find((t: any) => (t.id ?? t.processId) === 'proc-2');
             expect(failedEntry.status).toBe('failed');

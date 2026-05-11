@@ -850,3 +850,189 @@ describe('ProcessLifecycleRunner — ralph onRalphNext callback', () => {
         expect(result.success).toBe(true);
     });
 });
+
+// ============================================================================
+// Partial conversation turn persistence on error / timeout
+// ============================================================================
+
+/**
+ * Subclass that exposes the protected `getOrCreateSession` so tests can seed
+ * the session buffers used by the error-recovery path. Mirrors what the
+ * real streaming pipeline does on every chunk.
+ */
+class TestableRunner extends ProcessLifecycleRunner {
+    public seedSession(
+        processId: string,
+        outputBuffer: string,
+        timeline: import('@plusplusoneplusplus/forge').TimelineItem[] = [],
+    ): void {
+        const session = (this as any).getOrCreateSession(processId);
+        session.outputBuffer = outputBuffer;
+        session.timelineBuffer = timeline;
+    }
+}
+
+describe('ProcessLifecycleRunner — partial conversation turn on error', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: TestableRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new TestableRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('persists accumulated outputBuffer as an assistant turn when executeByType throws', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                runner.seedSession(processId, 'Partial assistant response before timeout');
+                throw new Error('Session timed out after 3600 seconds');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('failed');
+        expect(proc?.error).toBe('Session timed out after 3600 seconds');
+
+        const turns = proc?.conversationTurns ?? [];
+        const assistantTurn = turns.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn?.content).toBe('Partial assistant response before timeout');
+        expect(assistantTurn?.streaming).toBeFalsy();
+    });
+
+    it('persists accumulated timeline as part of the assistant turn', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        const timeline = [
+            { type: 'tool-complete' as const, timestamp: new Date(), toolCall: { id: 't1', name: 'view', status: 'completed' as const, startTime: new Date(), endTime: new Date(), args: { path: 'x' } } },
+        ];
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                runner.seedSession(processId, '', timeline);
+                throw new Error('timeout');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        const assistantTurn = proc?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn?.timeline).toHaveLength(1);
+        expect(assistantTurn?.timeline?.[0].type).toBe('tool-complete');
+    });
+
+    it('falls back to status-only update when nothing was accumulated', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockRejectedValue(new Error('immediate failure')),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.status).toBe('failed');
+        expect(proc?.error).toBe('immediate failure');
+        const turns = proc?.conversationTurns ?? [];
+        expect(turns.find(t => t.role === 'assistant')).toBeUndefined();
+    });
+
+    it('marks status as cancelled (no error message) when cancellation triggered the error', async () => {
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        const opts = makeOpts({
+            cancelledTasks,
+            executeByTypeFn: vi.fn(async () => {
+                runner.seedSession(processId, 'Some partial response');
+                cancelledTasks.add(task.id);
+                throw new Error('Aborted');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+        expect(proc?.error).toBeUndefined();
+        const assistantTurn = proc?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn?.content).toBe('Some partial response');
+    });
+
+    it('replaces orphaned streaming turn (does not duplicate) via filterStreaming', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                await store.upsertStreamingTurn(processId, 'old streaming content', true, []);
+                runner.seedSession(processId, 'final partial content');
+                throw new Error('timeout');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        const assistantTurns = (proc?.conversationTurns ?? []).filter(t => t.role === 'assistant');
+        expect(assistantTurns).toHaveLength(1);
+        expect(assistantTurns[0].content).toBe('final partial content');
+        expect(assistantTurns[0].streaming).toBeFalsy();
+    });
+
+    it('emits process-complete event even on error path', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                runner.seedSession(processId, 'partial');
+                throw new Error('timeout');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        expect(store.completions.has(processId)).toBe(true);
+        expect(store.completions.get(processId)?.status).toBe('failed');
+    });
+
+    it('does not write a duplicate assistant turn on the happy path', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+        await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'final answer' }),
+        }));
+
+        const proc = await store.getProcess(processId);
+        const assistantTurns = (proc?.conversationTurns ?? []).filter(t => t.role === 'assistant');
+        expect(assistantTurns).toHaveLength(1);
+        expect(assistantTurns[0].content).toBe('final answer');
+    });
+
+    it('still finalizes process status when appendConversationTurn itself throws', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+
+        const originalAppend = store.appendConversationTurn as any;
+        (store.appendConversationTurn as any) = vi.fn()
+            .mockRejectedValueOnce(new Error('store unavailable'))
+            .mockImplementation(originalAppend);
+
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                runner.seedSession(processId, 'partial content');
+                throw new Error('timeout');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('failed');
+        expect(proc?.error).toBe('timeout');
+    });
+});

@@ -322,6 +322,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
         task.processId = processId;
 
+        // Tracks whether the assistant conversation turn has been persisted
+        // (either via the success path or the error/timeout recovery path).
+        // The finally block uses this to decide whether a safety-net flush
+        // is needed to finalize any orphaned streaming turn.
+        let turnSaved = false;
+
         try {
             const result = await opts.executeByTypeFn(task, prompt);
             const duration = Date.now() - startTime;
@@ -367,6 +373,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         },
                     },
                 );
+
+                turnSaved = true;
 
                 const combinedTurns = appendResult?.allTurns ?? process.conversationTurns ?? initialTurns;
 
@@ -460,11 +468,63 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (!TERMINAL_STATUSES.has(currentProcess?.status ?? '')) {
                     const wasCancelled = opts.cancelledTasks.has(task.id) || currentProcess?.status === 'cancelling';
                     const finalStatus = wasCancelled ? 'cancelled' : 'failed';
-                    await this.store.updateProcess(processId, {
-                        status: finalStatus,
-                        endTime: new Date(),
-                        ...(wasCancelled ? {} : { error: errorMsg }),
-                    });
+
+                    // Capture the accumulated streaming buffers BEFORE the
+                    // finally block tears the session down. This is what
+                    // turns a hard timeout (e.g. SDK idle timeout after an
+                    // hour of streaming) from a silent data-loss event into
+                    // a recoverable conversation turn.
+                    const session = this.sessions.get(processId);
+                    const partialContent = session?.outputBuffer ?? '';
+                    const partialTimeline = session?.timelineBuffer
+                        ? mergeConsecutiveContentItems([...session.timelineBuffer])
+                        : [];
+                    const partialSuggestions = session?.pendingSuggestions;
+
+                    const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
+
+                    if (hasPartial) {
+                        try {
+                            await this.store.appendConversationTurn(
+                                processId,
+                                (turnIndex) => ({
+                                    role: 'assistant' as const,
+                                    content: partialContent || `Error: ${errorMsg}`,
+                                    timestamp: new Date(),
+                                    turnIndex,
+                                    timeline: partialTimeline,
+                                    ...(partialSuggestions ? { suggestions: partialSuggestions } : {}),
+                                }),
+                                {
+                                    filterStreaming: true,
+                                    additionalUpdates: {
+                                        status: finalStatus,
+                                        endTime: new Date(),
+                                        ...(wasCancelled ? {} : { error: errorMsg }),
+                                    },
+                                },
+                            );
+                            turnSaved = true;
+                        } catch (appendErr) {
+                            logger.warn(
+                                LogCategory.AI,
+                                `[QueueExecutor] Failed to persist partial conversation turn for ${processId}: ${appendErr instanceof Error ? appendErr.message : String(appendErr)}`,
+                            );
+                            // Fall back to status-only update so the process
+                            // doesn't remain stuck in 'running'.
+                            await this.store.updateProcess(processId, {
+                                status: finalStatus,
+                                endTime: new Date(),
+                                ...(wasCancelled ? {} : { error: errorMsg }),
+                            });
+                        }
+                    } else {
+                        await this.store.updateProcess(processId, {
+                            status: finalStatus,
+                            endTime: new Date(),
+                            ...(wasCancelled ? {} : { error: errorMsg }),
+                        });
+                    }
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
             } catch (err) {
@@ -477,6 +537,19 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 durationMs: Date.now() - startTime,
             };
         } finally {
+            // Safety-net: if neither the success path nor the error-recovery
+            // path persisted the assistant turn, finalize any orphaned
+            // streaming turn so the UI doesn't show a perpetual "streaming"
+            // indicator. flushConversationTurn writes streaming=false which
+            // updates the existing streaming row in place (no duplicate).
+            if (!turnSaved) {
+                try {
+                    await this.flushConversationTurn(processId, false);
+                } catch {
+                    // Non-fatal
+                }
+            }
+
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

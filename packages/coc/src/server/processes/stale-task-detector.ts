@@ -15,6 +15,7 @@
 
 import { TaskQueueManager, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { finalizeOrphanedProcess } from './finalize-orphaned-turn';
 
 // ============================================================================
 // Types
@@ -138,17 +139,11 @@ export class StaleTaskDetector {
 
                 this.queueManager.forceFailTask(task.id, error);
 
-                // Also update linked process in the store
+                // Also update linked process in the store. Finalize any
+                // orphaned streaming turn so the UI doesn't show perpetual
+                // streaming, and so accumulated assistant content survives.
                 if (this.store && processId) {
-                    try {
-                        await this.store.updateProcess(processId, {
-                            status: 'failed',
-                            endTime: new Date(),
-                            error,
-                        });
-                    } catch {
-                        // Non-fatal
-                    }
+                    await finalizeOrphanedProcess(this.store, processId, error);
                 }
 
                 process.stderr.write(`[StaleTaskDetector] Force-failed task ${task.id} (${task.displayName || task.type}) — running for ${formatDuration(elapsed)}\n`);

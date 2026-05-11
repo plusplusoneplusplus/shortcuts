@@ -25,6 +25,7 @@
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import type { Route } from '../types';
 import * as url from 'url';
 import {
@@ -300,15 +301,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             process.stderr.write(`[Queue] force-fail-running count=${count}\n`);
             if (store && processIds.length > 0) {
                 for (const pid of processIds) {
-                    try {
-                        await store.updateProcess(pid, {
-                            status: 'failed',
-                            endTime: new Date(),
-                            error,
-                        });
-                    } catch {
-                        // Non-fatal: process may not exist in store
-                    }
+                    await finalizeOrphanedProcess(store, pid, error);
                 }
             }
 
@@ -459,15 +452,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
 
             process.stderr.write(`[Queue] force-fail task=${id}\n`);
             if (store && processId) {
-                try {
-                    await store.updateProcess(processId, {
-                        status: 'failed',
-                        endTime: new Date(),
-                        error,
-                    });
-                } catch {
-                    // Non-fatal
-                }
+                await finalizeOrphanedProcess(store, processId, error);
             }
 
             sendJSON(res, 200, { forceFailed: true, stats: getAggregateStats(bridge, state) });

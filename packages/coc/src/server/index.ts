@@ -25,6 +25,7 @@ import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/f
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
+import { sweepOrphanedRunningProcesses } from './processes/finalize-orphaned-turn';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
 import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
@@ -156,6 +157,25 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
         resolvedConfig.memoryPromotion,
     );
+
+    // Finalize any orphaned 'running' / 'cancelling' processes left behind by
+    // an unclean shutdown. The queue restart policy assigns NEW process IDs
+    // to any re-enqueued work, so every pre-existing in-flight process row
+    // is definitionally orphaned and must be marked failed/cancelled before
+    // we accept any client requests.
+    try {
+        const orphanCount = await sweepOrphanedRunningProcesses(store, {
+            error: 'Process orphaned by server restart',
+        });
+        if (orphanCount > 0) {
+            process.stderr.write(
+                `[ExecutionServer] Finalized ${orphanCount} orphaned in-flight process(es) on startup\n`,
+            );
+        }
+    } catch {
+        // Non-fatal — startup must not be blocked by sweep failures.
+    }
+
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
 
     // Cleanup infra is created after the store is ready
