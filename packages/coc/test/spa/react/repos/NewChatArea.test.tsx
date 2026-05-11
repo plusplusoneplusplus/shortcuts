@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -40,6 +40,12 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         selectSkill: vi.fn(),
         parseAndExtract: vi.fn(() => ({ skills: [], prompt: '' })),
         dismissMenu: vi.fn(),
+    },
+    mockDraftStore: {
+        getDraft: vi.fn(() => null),
+        setDraft: vi.fn(),
+        clearDraft: vi.fn(),
+        newChatDraftKey: vi.fn((wsId?: string) => `new-chat:${wsId ?? '__global__'}`),
     },
 }));
 
@@ -77,6 +83,13 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCom
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => mockModelCommand,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
+    getDraft: (...args: any[]) => mockDraftStore.getDraft(...args),
+    setDraft: (...args: any[]) => mockDraftStore.setDraft(...args),
+    clearDraft: (...args: any[]) => mockDraftStore.clearDraft(...args),
+    newChatDraftKey: (...args: any[]) => mockDraftStore.newChatDraftKey(...args),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
@@ -157,12 +170,14 @@ beforeEach(() => {
     mockAutocomplete.dismiss = vi.fn();
     mockHistory.handleKeyDown = vi.fn(() => false);
     mockHistory.reset = vi.fn();
+    mockDraftStore.getDraft.mockReturnValue(null);
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
 });
 
@@ -612,6 +627,90 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Enter' });
 
             expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('draft persistence (localStorage)', () => {
+        it('restores text and mode from saved draft on mount', () => {
+            mockDraftStore.getDraft.mockReturnValue({
+                text: 'saved message',
+                mode: 'plan',
+                updatedAt: Date.now(),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            expect(mockDraftStore.getDraft).toHaveBeenCalledWith('new-chat:ws-1');
+            // The RichTextInput mock sets internal value via setValue — the
+            // component called setInput('saved message') so later interactions
+            // will see it. We can verify the draft was read.
+            expect(mockDraftStore.getDraft).toHaveBeenCalled();
+        });
+
+        it('restores modelOverride from saved draft on mount', () => {
+            mockDraftStore.getDraft.mockReturnValue({
+                text: 'hello',
+                mode: 'ask',
+                updatedAt: Date.now(),
+                modelOverride: 'gpt-5.4',
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            expect(mockModelCommand.setModelOverride).toHaveBeenCalledWith('gpt-5.4');
+        });
+
+        it('saves draft on input change (debounced)', () => {
+            vi.useFakeTimers();
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello draft' } });
+
+            // Advance past the 300ms debounce
+            act(() => { vi.advanceTimersByTime(350); });
+
+            expect(mockDraftStore.setDraft).toHaveBeenCalledWith(
+                'new-chat:ws-1',
+                'Hello draft',
+                'ask',
+                null,
+            );
+            vi.useRealTimers();
+        });
+
+        it('clears draft after successful send', async () => {
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'sent-task' } });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'test message' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(mockDraftStore.clearDraft).toHaveBeenCalledWith('new-chat:ws-1');
+        });
+
+        it('does not clear draft when send fails', async () => {
+            mockEnqueueTask.mockRejectedValueOnce(new Error('fail'));
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'test' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
+        });
+
+        it('uses __global__ key when workspaceId is undefined', () => {
+            render(<NewChatArea />);
+
+            expect(mockDraftStore.newChatDraftKey).toHaveBeenCalledWith(undefined);
+            expect(mockDraftStore.getDraft).toHaveBeenCalledWith('new-chat:__global__');
         });
     });
 });

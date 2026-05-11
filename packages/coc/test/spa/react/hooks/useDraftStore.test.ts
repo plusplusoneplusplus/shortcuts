@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getDraft, setDraft, clearDraft, pruneExpired } from '../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore';
+import { getDraft, setDraft, clearDraft, pruneExpired, newChatDraftKey } from '../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore';
 
 // ---------------------------------------------------------------------------
 // localStorage mock helpers
@@ -170,5 +170,65 @@ describe('useDraftStore', () => {
     it('getDraft returns null when stored value is invalid JSON', () => {
         mockStorage.setItem('coc-chat-drafts', 'not-valid-json');
         expect(getDraft('task-1')).toBeNull();
+    });
+
+    // -----------------------------------------------------------------------
+    // modelOverride support
+    // -----------------------------------------------------------------------
+
+    it('setDraft persists modelOverride when provided', () => {
+        setDraft('task-1', 'hello', 'ask', 'gpt-5.4');
+        const draft = getDraft('task-1');
+        expect(draft!.modelOverride).toBe('gpt-5.4');
+    });
+
+    it('setDraft omits modelOverride when null', () => {
+        setDraft('task-1', 'hello', 'ask', null);
+        const draft = getDraft('task-1');
+        expect(draft!.modelOverride).toBeUndefined();
+    });
+
+    it('setDraft omits modelOverride when not provided', () => {
+        setDraft('task-1', 'hello', 'ask');
+        const draft = getDraft('task-1');
+        expect(draft!.modelOverride).toBeUndefined();
+    });
+
+    it('getDraft returns stored modelOverride from existing entry', () => {
+        mockStorage.setItem('coc-chat-drafts', JSON.stringify({
+            'task-1': { text: 'hi', mode: 'plan', updatedAt: Date.now(), modelOverride: 'claude-opus-4.5' },
+        }));
+        expect(getDraft('task-1')!.modelOverride).toBe('claude-opus-4.5');
+    });
+
+    it('getDraft returns undefined modelOverride for legacy entries without it', () => {
+        mockStorage.setItem('coc-chat-drafts', JSON.stringify({
+            'task-1': { text: 'hi', mode: 'ask', updatedAt: Date.now() },
+        }));
+        expect(getDraft('task-1')!.modelOverride).toBeUndefined();
+    });
+
+    // -----------------------------------------------------------------------
+    // newChatDraftKey
+    // -----------------------------------------------------------------------
+
+    it('newChatDraftKey includes workspaceId', () => {
+        expect(newChatDraftKey('ws-abc')).toBe('new-chat:ws-abc');
+    });
+
+    it('newChatDraftKey falls back to __global__ when undefined', () => {
+        expect(newChatDraftKey()).toBe('new-chat:__global__');
+        expect(newChatDraftKey(undefined)).toBe('new-chat:__global__');
+    });
+
+    it('new-chat draft key works with setDraft/getDraft/clearDraft', () => {
+        const key = newChatDraftKey('ws-1');
+        setDraft(key, 'my new chat', 'plan', 'gpt-5.4');
+        const draft = getDraft(key);
+        expect(draft!.text).toBe('my new chat');
+        expect(draft!.mode).toBe('plan');
+        expect(draft!.modelOverride).toBe('gpt-5.4');
+        clearDraft(key);
+        expect(getDraft(key)).toBeNull();
     });
 });

@@ -31,6 +31,7 @@ import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { isRalphEnabled } from '../../utils/config';
+import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -63,6 +64,39 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     );
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
+
+    const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
+
+    // Restore draft from localStorage on mount / workspace switch
+    const draftKey = useMemo(() => newChatDraftKey(workspaceId), [workspaceId]);
+    useEffect(() => {
+        const draft = getDraft(draftKey);
+        if (draft) {
+            setInput(draft.text);
+            setCursorPos(draft.text.length);
+            richTextRef.current?.setValue(draft.text, draft.text.length);
+            if (VALID_MODES.includes(draft.mode as ChatMode)) {
+                setSelectedMode(draft.mode as ChatMode);
+            }
+            if (draft.modelOverride) {
+                modelCommand.setModelOverride(draft.modelOverride);
+            }
+        } else {
+            setInput('');
+            setCursorPos(0);
+            setSelectedMode('ask');
+        }
+    }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Persist draft to localStorage on input/mode/model changes (debounced)
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride);
+        }, 300);
+        return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    }, [draftKey, input, selectedMode, modelCommand.modelOverride]);
 
     // Fetch skills when workspaceId changes
     useEffect(() => {
@@ -165,6 +199,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             richTextRef.current?.setValue('');
             clearAttachments();
             promptHistory.reset();
+            clearDraft(draftKey);
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));

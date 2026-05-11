@@ -1,16 +1,21 @@
 /**
  * useDraftStore — localStorage-backed draft persistence for chat input.
  *
- * Key: `coc-chat-drafts` → `{ [taskId]: { text, mode, updatedAt } }`
+ * Key: `coc-chat-drafts` → `{ [taskId]: { text, mode, updatedAt, modelOverride? } }`
  * Provides `getDraft`, `setDraft`, `clearDraft`, and `pruneExpired`.
  * All operations are wrapped in try/catch to gracefully handle quota
  * errors or disabled storage.
+ *
+ * Also used by NewChatArea with a synthetic key `new-chat:<workspaceId>`
+ * so unsent new-chat drafts survive page refreshes.
  */
 
 export interface Draft {
     text: string;
     mode: string;
     updatedAt: number;
+    /** Optional model override persisted alongside the draft. */
+    modelOverride?: string | null;
 }
 
 type DraftMap = Record<string, Draft>;
@@ -46,13 +51,13 @@ export function getDraft(taskId: string): Draft | null {
  * Persist a draft for the given taskId.
  * If text is empty, delegates to clearDraft instead.
  */
-export function setDraft(taskId: string, text: string, mode: string): void {
+export function setDraft(taskId: string, text: string, mode: string, modelOverride?: string | null): void {
     if (!text) {
         clearDraft(taskId);
         return;
     }
     const map = readMap();
-    map[taskId] = { text, mode, updatedAt: Date.now() };
+    map[taskId] = { text, mode, updatedAt: Date.now(), ...(modelOverride ? { modelOverride } : {}) };
     writeMap(map);
 }
 
@@ -76,4 +81,9 @@ export function pruneExpired(): void {
         }
     }
     if (changed) writeMap(map);
+}
+
+/** Build the localStorage draft key used by NewChatArea for a given workspace. */
+export function newChatDraftKey(workspaceId?: string): string {
+    return `new-chat:${workspaceId ?? '__global__'}`;
 }
