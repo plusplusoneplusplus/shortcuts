@@ -124,7 +124,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline (Seeds → Di
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger, Errors, Runtime policies, Task queue, AI SDK (CopilotSDKService, session-per-request), Workflow engine (DAG), Map-Reduce, Process store (SQLite default), Git CLI, Memory system, Skills, Utilities.
+**Key modules:** Logger, Errors, Runtime policies, Task queue, AI SDK (CopilotSDKService, session-per-request), Workflow engine (DAG), Map-Reduce, Process store (SQLite default), Git CLI, Diff providers (`src/diff/` — unified `IDiffProvider` for commit, range, working-tree, PR, and PR-iteration diffs), Memory system, Skills, Utilities.
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` → `executeWorkflow(config, options)` → `flattenWorkflowResult(result)`.
 
