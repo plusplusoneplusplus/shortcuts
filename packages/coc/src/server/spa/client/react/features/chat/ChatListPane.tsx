@@ -1252,8 +1252,9 @@ export function ChatListPane({
                     )}
                     onClick={(e) => {
                         if (historyLongPress.didLongPress()) return;
-                        if (isQueued) {
-                            // Queue rows don't participate in shift-range selection — go straight to detail.
+                        if (isQueued || isMobile) {
+                            // Queue rows and mobile taps don't participate in shift-range
+                            // selection — go straight to detail on a single tap.
                             onSelectTask(task.id, task);
                             return;
                         }

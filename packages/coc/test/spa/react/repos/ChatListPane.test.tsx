@@ -2269,3 +2269,49 @@ describe('getTaskTypeIcon — Ralph', () => {
         expect(getTaskTypeIcon(t)).toBe('🔄');
     });
 });
+
+// ── Mobile single-tap regression ──────────────────────────────────────
+describe('Mobile single-tap navigation', () => {
+    it('single click on a history task calls onSelectTask immediately on mobile (no multi-select)', () => {
+        const { props } = renderPane({
+            isMobile: true,
+            history: [makeHistoryTask({ id: 'h-mob-1', displayName: 'Mobile Task' })],
+        });
+        const card = document.querySelector('[data-task-id="h-mob-1"]');
+        expect(card).toBeTruthy();
+        fireEvent.click(card!);
+        expect(props.onSelectTask).toHaveBeenCalledTimes(1);
+        expect(props.onSelectTask).toHaveBeenCalledWith('h-mob-1', expect.anything());
+    });
+
+    it('single click on mobile does not enter multi-select state', () => {
+        renderPane({
+            isMobile: true,
+            history: [
+                makeHistoryTask({ id: 'h-mob-1', displayName: 'Task A' }),
+                makeHistoryTask({ id: 'h-mob-2', displayName: 'Task B' }),
+            ],
+        });
+        const cardA = document.querySelector('[data-task-id="h-mob-1"]');
+        fireEvent.click(cardA!);
+        // No selection pill should appear (multi-select is bypassed on mobile)
+        expect(screen.queryByTestId('selection-count-pill')).toBeNull();
+    });
+
+    it('shift+click on mobile still directly navigates (no range selection)', () => {
+        const { props } = renderPane({
+            isMobile: true,
+            history: [
+                makeHistoryTask({ id: 'h-mob-1', displayName: 'Task A' }),
+                makeHistoryTask({ id: 'h-mob-2', displayName: 'Task B' }),
+            ],
+        });
+        const cardA = document.querySelector('[data-task-id="h-mob-1"]');
+        const cardB = document.querySelector('[data-task-id="h-mob-2"]');
+        fireEvent.click(cardA!);
+        fireEvent.click(cardB!, { shiftKey: true });
+        // On mobile, both clicks should call onSelectTask (no range selection)
+        expect(props.onSelectTask).toHaveBeenCalledTimes(2);
+        expect(screen.queryByTestId('selection-count-pill')).toBeNull();
+    });
+});
