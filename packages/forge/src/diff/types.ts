@@ -205,4 +205,11 @@ export interface GetFileDiffOptions {
      * `DiffContent.truncated` is set to `true`.
      */
     maxLines?: number;
+
+    /**
+     * Number of surrounding context lines to include around each hunk.
+     * Maps to git's `-U<n>` flag. Default is git's default (3 lines).
+     * Only effective for git-based providers; ignored by remote PR providers.
+     */
+    contextLines?: number;
 }

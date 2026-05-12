@@ -23,6 +23,14 @@ import { makeDiffContent, computeSummary, splitDiffByFile, truncateDiffContent }
 
 const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
+/**
+ * Build the `-U<n>` flag array for `contextLines`, if specified.
+ */
+function contextLinesFlag(contextLines: number | undefined): string[] {
+    if (contextLines == null) return [];
+    return [`-U${Math.max(0, Math.floor(contextLines))}`];
+}
+
 function statusCharToGitChangeStatus(char: string): GitChangeStatus {
     switch (char) {
         case 'M': return 'modified';
@@ -163,8 +171,9 @@ export function createCommitDiffProvider(
 
         async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
             const parent = await getParentRef();
+            const contextFlag = contextLinesFlag(options?.contextLines);
             const raw = await execGitAsync(
-                ['diff', ...diffArgs(parent), '--', filePath],
+                ['diff', ...contextFlag, ...diffArgs(parent), '--', filePath],
                 repositoryRoot,
             );
             const content = makeDiffContent(raw);
@@ -226,8 +235,9 @@ export function createRangeDiffProvider(
         },
 
         async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
+            const contextFlag = contextLinesFlag(options?.contextLines);
             const raw = await execGitAsync(
-                ['diff', rangeSpec, '--', filePath],
+                ['diff', ...contextFlag, rangeSpec, '--', filePath],
                 repositoryRoot,
             );
             const content = makeDiffContent(raw);
@@ -302,10 +312,11 @@ export function createWorkingTreeDiffProvider(
         },
 
         async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
+            const contextFlag = contextLinesFlag(options?.contextLines);
             if (scope === 'all') {
                 const [staged, unstaged] = await Promise.all([
-                    execGitAsync(['diff', '--cached', '--', filePath], repositoryRoot).catch(() => ''),
-                    execGitAsync(['diff', '--', filePath], repositoryRoot).catch(() => ''),
+                    execGitAsync(['diff', ...contextFlag, '--cached', '--', filePath], repositoryRoot).catch(() => ''),
+                    execGitAsync(['diff', ...contextFlag, '--', filePath], repositoryRoot).catch(() => ''),
                 ]);
                 const parts: string[] = [];
                 if (staged.trim()) parts.push(staged);
@@ -314,7 +325,7 @@ export function createWorkingTreeDiffProvider(
                 return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
             }
             const raw = await execGitAsync(
-                ['diff', ...diffArgsForScope(scope), '--', filePath],
+                ['diff', ...contextFlag, ...diffArgsForScope(scope), '--', filePath],
                 repositoryRoot,
             );
             const content = makeDiffContent(raw);

@@ -172,6 +172,39 @@ describe('createCommitDiffProvider', () => {
         expect(content.truncated).toBe(false);
     });
 
+    it('getFileDiff passes contextLines as -U flag', async () => {
+        await provider.getFileDiff('src/foo.ts', { contextLines: 10 });
+        const diffCall = mockExecGit.mock.calls.find(
+            c => c[0].includes('diff') && c[0].includes('src/foo.ts') && c[0].includes('-U10'),
+        );
+        expect(diffCall).toBeDefined();
+    });
+
+    it('getFileDiff omits -U flag when contextLines is undefined', async () => {
+        await provider.getFileDiff('src/foo.ts');
+        const diffCall = mockExecGit.mock.calls.find(
+            c => c[0].includes('diff') && c[0].includes('src/foo.ts'),
+        );
+        expect(diffCall).toBeDefined();
+        expect(diffCall![0].some((a: string) => a.startsWith('-U'))).toBe(false);
+    });
+
+    it('getFileDiff floors fractional contextLines', async () => {
+        await provider.getFileDiff('src/foo.ts', { contextLines: 5.7 });
+        const diffCall = mockExecGit.mock.calls.find(
+            c => c[0].includes('diff') && c[0].includes('src/foo.ts') && c[0].includes('-U5'),
+        );
+        expect(diffCall).toBeDefined();
+    });
+
+    it('getFileDiff clamps negative contextLines to 0', async () => {
+        await provider.getFileDiff('src/foo.ts', { contextLines: -3 });
+        const diffCall = mockExecGit.mock.calls.find(
+            c => c[0].includes('diff') && c[0].includes('src/foo.ts') && c[0].includes('-U0'),
+        );
+        expect(diffCall).toBeDefined();
+    });
+
     it('getFullDiff returns combined diff', async () => {
         const content = await provider.getFullDiff();
         expect(content.raw).toContain('src/foo.ts');
@@ -264,6 +297,15 @@ describe('createRangeDiffProvider', () => {
         await provider.getFileDiff('src/foo.ts');
         const diffCall = mockExecGit.mock.calls.find(
             c => c[0].includes('diff') && c[0].includes('src/foo.ts'),
+        );
+        expect(diffCall).toBeDefined();
+        expect(diffCall![0].some((a: string) => a === 'origin/main...HEAD')).toBe(true);
+    });
+
+    it('getFileDiff passes contextLines as -U flag', async () => {
+        await provider.getFileDiff('src/foo.ts', { contextLines: 0 });
+        const diffCall = mockExecGit.mock.calls.find(
+            c => c[0].includes('diff') && c[0].includes('src/foo.ts') && c[0].includes('-U0'),
         );
         expect(diffCall).toBeDefined();
         expect(diffCall![0].some((a: string) => a === 'origin/main...HEAD')).toBe(true);
@@ -385,6 +427,25 @@ describe('createWorkingTreeDiffProvider', () => {
             const content = await provider.getFileDiff('src/f.ts');
             expect(content.raw).toContain('staged content');
             expect(content.raw).toContain('unstaged content');
+        });
+
+        it('getFileDiff passes contextLines to both staged and unstaged git calls', async () => {
+            mockExecGit.mockImplementation(async (args: string[]) => {
+                const joined = args.join(' ');
+                if (joined.includes('--name-status')) return 'M\tsrc/f.ts';
+                if (joined.includes('--numstat')) return '1\t1\tsrc/f.ts';
+                return 'some diff content';
+            });
+
+            const provider = createWorkingTreeDiffProvider(REPO, 'all');
+            await provider.getFileDiff('src/f.ts', { contextLines: 8 });
+            const diffCalls = mockExecGit.mock.calls.filter(
+                c => c[0].includes('diff') && c[0].includes('src/f.ts') && !c[0].includes('--name-status') && !c[0].includes('--numstat'),
+            );
+            expect(diffCalls.length).toBe(2); // staged + unstaged
+            for (const call of diffCalls) {
+                expect(call[0].some((a: string) => a === '-U8')).toBe(true);
+            }
         });
 
         it('getFullDiff merges staged and unstaged', async () => {
