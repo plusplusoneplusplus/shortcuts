@@ -25,3 +25,10 @@ export {
     createRangeDiffProvider,
     createWorkingTreeDiffProvider,
 } from './git-diff-provider';
+
+export {
+    createPullRequestDiffProvider,
+    createPullRequestDiffProviderFromParams,
+    createPullRequestIterationDiffProvider,
+    createPullRequestIterationDiffProviderFromParams,
+} from './pr-diff-provider';
