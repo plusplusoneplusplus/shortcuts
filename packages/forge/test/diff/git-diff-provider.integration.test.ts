@@ -339,3 +339,101 @@ describe('cross-provider consistency (integration)', () => {
         expect(singleDiff.raw.trim()).toBe(prefetchedDiff!.raw.trim());
     });
 });
+
+// ── GetFileDiffOptions integration ───────────────────────────
+
+describe('contextLines option (integration)', () => {
+    let provider: IDiffProvider;
+
+    beforeAll(async () => {
+        if (!repoRoot) return;
+        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
+        provider = createCommitDiffProvider(repoRoot, commitHash);
+    });
+
+    it('should produce less context with contextLines=0 than default', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        if (files.length === 0) return;
+
+        const filePath = files[0].path;
+        const defaultDiff = await provider.getFileDiff(filePath);
+        const zeroDiff = await provider.getFileDiff(filePath, { contextLines: 0 });
+
+        // Zero context should produce fewer or equal lines
+        expect(zeroDiff.totalLines).toBeLessThanOrEqual(defaultDiff.totalLines);
+    });
+
+    it('should produce more context with contextLines=10 than contextLines=0', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        // Find a file that modifies existing content (not a pure add/delete)
+        const modifiedFile = files.find(f => f.status === 'modified') ?? files[0];
+
+        const zeroDiff = await provider.getFileDiff(modifiedFile.path, { contextLines: 0 });
+        const largeDiff = await provider.getFileDiff(modifiedFile.path, { contextLines: 10 });
+
+        // More context means more or equal lines
+        expect(largeDiff.totalLines).toBeGreaterThanOrEqual(zeroDiff.totalLines);
+    });
+
+    it('should still return valid diff format with contextLines', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        if (files.length === 0) return;
+
+        const diff = await provider.getFileDiff(files[0].path, { contextLines: 5 });
+        expect(diff.raw).toContain('diff --git');
+        expect(diff.truncated).toBe(false);
+    });
+});
+
+describe('maxLines option (integration)', () => {
+    let provider: IDiffProvider;
+
+    beforeAll(async () => {
+        if (!repoRoot) return;
+        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
+        provider = createCommitDiffProvider(repoRoot, commitHash);
+    });
+
+    it('should truncate diff when maxLines is small', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        if (files.length === 0) return;
+
+        const filePath = files[0].path;
+        const fullDiff = await provider.getFileDiff(filePath);
+
+        if (fullDiff.totalLines <= 3) return; // File too small to test truncation
+
+        const truncated = await provider.getFileDiff(filePath, { maxLines: 3 });
+        expect(truncated.truncated).toBe(true);
+        expect(truncated.totalLines).toBe(fullDiff.totalLines);
+        // The raw content should have at most 3 lines
+        const lineCount = truncated.raw.split('\n').filter(l => l !== '').length;
+        expect(lineCount).toBeLessThanOrEqual(3);
+    });
+
+    it('should not truncate when maxLines exceeds total lines', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        if (files.length === 0) return;
+
+        const diff = await provider.getFileDiff(files[0].path, { maxLines: 100000 });
+        expect(diff.truncated).toBe(false);
+    });
+
+    it('should combine maxLines with contextLines', async () => {
+        if (!repoRoot) return;
+        const files = await provider.listFiles();
+        if (files.length === 0) return;
+
+        const filePath = files[0].path;
+        const diff = await provider.getFileDiff(filePath, { contextLines: 0, maxLines: 5 });
+
+        // Should respect both options without error
+        expect(typeof diff.raw).toBe('string');
+        expect(diff.totalLines).toBeGreaterThan(0);
+    });
+});
