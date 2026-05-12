@@ -164,6 +164,86 @@ describe('StreamingSession — cancellation', () => {
         expect(session.destroy).toHaveBeenCalled();
     });
 
+    it('idle timeout is suppressed while a tool call is in flight (regression: ask_user widget)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            timeoutMs: 60000,
+            idleTimeoutMs: 500,
+        }));
+
+        // Tool starts (e.g. ask_user opens a user-input widget)
+        emit({
+            type: 'tool.execution_start',
+            data: { toolCallId: 'tc1', toolName: 'ask_user', arguments: {} },
+        });
+
+        // Far longer than idleTimeoutMs elapses with no activity at all —
+        // the agent is blocked on a human reply, not idle.
+        vi.advanceTimersByTime(5000);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        expect(session.destroy).not.toHaveBeenCalled();
+
+        // Tool completes; session then settles normally.
+        emit({
+            type: 'tool.execution_complete',
+            data: { toolCallId: 'tc1', success: true, result: { content: 'ok' } },
+        });
+        emit({ type: 'assistant.message', data: { content: 'done' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.response).toBe('done');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('wall-clock timeout still fires while a tool call is in flight', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            timeoutMs: 1000,
+            idleTimeoutMs: 200,
+        }));
+
+        emit({
+            type: 'tool.execution_start',
+            data: { toolCallId: 'tc1', toolName: 'ask_user', arguments: {} },
+        });
+
+        vi.advanceTimersByTime(1001);
+
+        await expect(promise).rejects.toThrow('timed out after 1000ms');
+        expect((ss as any).state).toBe(StreamingState.Cancelled);
+        expect(session.destroy).toHaveBeenCalled();
+    });
+
+    it('idle timeout fires after the tool completes if then no activity arrives', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            timeoutMs: 60000,
+            idleTimeoutMs: 500,
+        }));
+
+        emit({
+            type: 'tool.execution_start',
+            data: { toolCallId: 'tc1', toolName: 'ask_user', arguments: {} },
+        });
+
+        vi.advanceTimersByTime(2000); // would be idle, but suppressed
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        emit({
+            type: 'tool.execution_complete',
+            data: { toolCallId: 'tc1', success: true, result: { content: 'ok' } },
+        });
+
+        // Now no tools are active — idle window should resume from this point.
+        vi.advanceTimersByTime(501);
+        await expect(promise).rejects.toThrow('idle-timed out after 500ms');
+        expect((ss as any).state).toBe(StreamingState.Cancelled);
+    });
+
     it('idle timer resets on message_delta activity', async () => {
         const { session, emit } = makeMockSession();
         const ss = new StreamingSession();
