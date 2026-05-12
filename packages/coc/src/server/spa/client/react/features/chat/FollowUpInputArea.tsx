@@ -8,7 +8,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
-import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS } from './ModePillSelector';
+import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
@@ -34,8 +34,8 @@ export interface FollowUpInputAreaProps {
     suggestions: string[];
     followUpInput: string;
     setFollowUpInput: (v: string) => void;
-    selectedMode: 'ask' | 'plan' | 'autopilot';
-    setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
+    selectedMode: ChatMode;
+    setSelectedMode: (mode: ChatMode) => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
     onStop?: () => void;
@@ -181,9 +181,15 @@ export function FollowUpInputArea({
         surface: 'follow-up',
     });
 
-    const pillOptions: ModePillOption[] = allowedModes
-        ? DEFAULT_MODE_PILL_OPTIONS.filter(opt => allowedModes.includes(opt.value))
-        : [...DEFAULT_MODE_PILL_OPTIONS];
+    const pillOptions: ModePillOption[] = (() => {
+        const base: ModePillOption[] = [...DEFAULT_MODE_PILL_OPTIONS];
+        // Append Ralph pill on eligible chats. Caller signals eligibility by
+        // including 'ralph' in `allowedModes`. On chats that already have a
+        // ralph context, the parent omits it and the pill stays hidden.
+        const ralphAllowed = allowedModes ? allowedModes.includes('ralph') : false;
+        if (ralphAllowed) base.push(RALPH_MODE_PILL_OPTION);
+        return allowedModes ? base.filter(opt => allowedModes.includes(opt.value)) : base;
+    })();
 
     // ── Bash-style up/down history navigation through past user prompts ──
     const promptHistory = useChatPromptHistory({
@@ -521,6 +527,14 @@ export function FollowUpInputArea({
                      subtle hover, and a darker focus-within ring. ── */
                 <div className="space-y-1" data-testid="chat-input-stack">
                     {hiddenFileInput}
+                    {selectedMode === 'ralph' && (
+                        <div
+                            className="text-[11px] text-purple-600 dark:text-purple-400 px-1"
+                            data-testid="follow-up-ralph-hint"
+                        >
+                            Promotes this chat to a Ralph session. Optional: type a one-line hint to focus the goal.
+                        </div>
+                    )}
                     <div
                         ref={inputWrapperRef}
                         data-testid="chat-input-bar"
@@ -673,6 +687,7 @@ export function FollowUpInputArea({
                                     disabled={inputDisabled || sending}
                                     ctrlHeld={modHeld}
                                     onSend={(dm) => { void onSend(undefined, dm); }}
+                                    label={selectedMode === 'ralph' ? 'Promote to Ralph' : 'Send'}
                                 />
                             )}
                         </div>

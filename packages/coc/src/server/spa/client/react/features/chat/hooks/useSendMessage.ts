@@ -5,6 +5,7 @@ import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../../../types/dashboard';
+import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
@@ -32,8 +33,8 @@ export interface UseSendMessageOptions {
     };
     followUpInputRef: React.MutableRefObject<string>;
     setFollowUpInput: (v: string) => void;
-    selectedMode: 'ask' | 'plan' | 'autopilot';
-    selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
+    selectedMode: ChatMode;
+    selectedModeRef: React.MutableRefObject<ChatMode>;
     images: string[];
     clearImages: () => void;
     /** Convert current attachments to wire format for API calls */
@@ -49,6 +50,17 @@ export interface UseSendMessageOptions {
     clearAttachedContext?: () => void;
     /** Optional model override to include in the POST body. */
     modelOverride?: string | null;
+    /**
+     * Workspace ID used for the Ralph promotion endpoint when `selectedMode === 'ralph'`.
+     * Without it the server falls back to the workspaceId stored on the process.
+     */
+    workspaceId?: string;
+    /**
+     * Reset the mode pill back to 'ask' after a successful Ralph promotion.
+     * Caller-owned because the visible pill is hidden by `allowedModes`
+     * recomputation once the chat gains a ralph context.
+     */
+    onPromotedToRalph?: () => void;
 }
 
 export function useSendMessage({
@@ -80,6 +92,8 @@ export function useSendMessage({
     getAttachedContext,
     clearAttachedContext,
     modelOverride,
+    workspaceId,
+    onPromotedToRalph,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -144,8 +158,53 @@ export function useSendMessage({
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
-        if (!rawContent || !processId || inputDisabled) return;
+        if (!processId || inputDisabled) return;
         if (sending && !isActiveGeneration) return;
+
+        // ── Ralph promotion branch ──
+        // When the follow-up mode pill is set to Ralph, "Send" promotes the
+        // current ask-mode chat into a Ralph session via the dedicated endpoint
+        // instead of enqueueing a normal follow-up. The user's typed text (if
+        // any) is forwarded as `extraGuidance` to focus the synthesis prompt.
+        // Empty input is fine — the synthesis prompt stands on its own.
+        if (selectedMode === 'ralph') {
+            if (archivedChatIds.has(taskId)) unarchiveChat(taskId);
+            setSuggestions([]);
+            setFollowUpInput('');
+            clearDraft(taskId);
+            slashCommands.dismissMenu();
+            setError(null);
+            setSending(true);
+            try {
+                await getSpaCocClient().processes.promoteToRalph(processId, {
+                    workspaceId,
+                    extraGuidance: userText || undefined,
+                });
+                lastFailedMessageRef.current = '';
+                clearImages();
+                clearPaste();
+                clearAttachedContext?.();
+                onPromotedToRalph?.();
+                // The synthesis turn streams into the same conversation via
+                // SSE; refresh once so the new turn shows up promptly even if
+                // the SSE subscription is still being (re)established.
+                void refreshConversation(processId);
+            } catch (err: any) {
+                if (err instanceof CocApiError && err.status === 410) {
+                    setSessionExpired(true);
+                    setError('Session expired.');
+                } else {
+                    setError(getSpaCocClientErrorMessage(err, 'Failed to promote chat to Ralph.'));
+                }
+                lastFailedMessageRef.current = userText;
+                if (userText) setFollowUpInput(userText);
+            } finally {
+                setSending(false);
+            }
+            return;
+        }
+
+        if (!rawContent) return;
 
         if (archivedChatIds.has(taskId)) {
             unarchiveChat(taskId);

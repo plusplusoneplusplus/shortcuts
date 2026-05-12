@@ -18,6 +18,7 @@ import type {
   ProcessSearchQuery,
   ProcessSearchResponse,
   ProcessSummariesResponse,
+  PromoteToRalphResult,
   TurnArchiveResponse,
   TurnDeleteResponse,
   TurnPinResponse,
@@ -192,6 +193,27 @@ export class ProcessesClient {
       query,
       body: {},
     });
+  }
+
+  /**
+   * Promote a completed ask-mode chat into a Ralph session in place.
+   * Attaches a grilling-phase ralph context to the existing process and
+   * enqueues a synthesis follow-up turn against the same processId.
+   */
+  promoteToRalph(
+    processId: string,
+    options?: { workspaceId?: string; extraGuidance?: string },
+  ): Promise<PromoteToRalphResult> {
+    const query = options?.workspaceId ? { workspace: options.workspaceId } : undefined;
+    const body: { workspaceId?: string; extraGuidance?: string } = {};
+    if (options?.workspaceId) body.workspaceId = options.workspaceId;
+    if (options?.extraGuidance && options.extraGuidance.trim().length > 0) {
+      body.extraGuidance = options.extraGuidance;
+    }
+    return this.transport.request<PromoteToRalphResult>(
+      `/processes/${encodePathSegment(processId)}/promote-to-ralph`,
+      { method: 'POST', query, body },
+    );
   }
 
   output(processId: string, query?: ProcessOutputQuery): Promise<ProcessOutputResponse | string> {

@@ -165,6 +165,16 @@ export interface ProcessForkResponse {
   process: AIProcess;
 }
 
+export interface PromoteToRalphResult {
+  promoted: true;
+  /** Queue-prefixed ID of the promoted process (now grilling-phase). */
+  processId: string;
+  /** Newly minted Ralph session ID grouping the promoted process. */
+  sessionId: string;
+  /** Queue-prefixed ID of the enqueued synthesis follow-up turn. */
+  synthesisTaskId: string;
+}
+
 export interface ProcessResumeCliResponse extends JsonObject {
   launched?: boolean;
   command?: string;

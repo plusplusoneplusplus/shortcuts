@@ -129,7 +129,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
-    const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('ask');
+    const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -145,7 +145,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
     const richTextRef = useRef<RichTextInputHandle>(null);
-    const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('ask');
+    const selectedModeRef = useRef<ChatMode>('ask');
 
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
@@ -204,6 +204,39 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         || metadataProcess?.metadata?.workingDirectory
         || undefined;
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+
+    // Compute the follow-up mode pill set, optionally appending Ralph when
+    // the chat is eligible for in-place promotion. Eligibility:
+    //   - completed (no in-flight turn or queued follow-ups)
+    //   - payload mode === 'ask' (plan/autopilot/ralph already-Ralph excluded)
+    //   - no existing Ralph context (already-Ralph chats hide the pill)
+    //   - not read-only
+    // The Ralph pill is also omitted when the consumer pinned `allowedModes`.
+    const effectiveAllowedModes = useMemo<ChatMode[] | undefined>(() => {
+        if (allowedModes) return allowedModes;
+        const ralphCtx = getRalphContext(task);
+        const payloadMode = resolveLoadedTaskMode(task);
+        const noPending = (pendingQueue?.length ?? 0) === 0;
+        const ralphEligible = !readOnly
+            && !ralphCtx
+            && payloadMode === 'ask'
+            && effectiveStatus === 'completed'
+            && noPending;
+        if (!ralphEligible) return undefined;
+        return ['ask', 'plan', 'autopilot', 'ralph'];
+    }, [allowedModes, task, effectiveStatus, readOnly, pendingQueue]);
+
+    // Coerce a stored draft mode of 'ralph' back to 'ask' when the Ralph pill
+    // is no longer in the allowed set (already-promoted, running, etc.). Without
+    // this the pill row would render with no element matching `selectedMode`,
+    // leaving the UI in a "selected pill that no longer exists" state.
+    useEffect(() => {
+        if (selectedMode !== 'ralph') return;
+        const allowed = effectiveAllowedModes;
+        if (!allowed || !allowed.includes('ralph')) {
+            setSelectedMode('ask');
+        }
+    }, [selectedMode, effectiveAllowedModes]);
 
     // Detect .plan.md created mid-conversation and elevate to planPath slot
     const detectedPlanFile = useMemo(
@@ -373,6 +406,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: modelCommand.modelOverride,
+        workspaceId,
+        // After a successful Ralph promotion the follow-up area's `allowedModes`
+        // recomputes (the chat now has a ralph context) and the Ralph pill
+        // disappears; reset the selector to a value that still exists so we
+        // don't show a "selected pill that no longer exists" UI glitch.
+        onPromotedToRalph: () => setSelectedMode('ask'),
     });
 
     const sendFollowUpWithPrefix = useCallback(async (overrideContent?: string, deliveryMode?: any) => {
@@ -463,7 +502,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const draft = getDraft(currentTaskId);
         if (draft) {
             setFollowUpInput(draft.text);
-            if (draft.mode === 'ask' || draft.mode === 'plan' || draft.mode === 'autopilot') {
+            if (isChatMode(draft.mode)) {
                 setSelectedMode(draft.mode);
             }
         } else {
@@ -1032,7 +1071,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             modelCommand={modelCommand}
                             sessionModel={sessionModel}
                             hideModeSelector={hideModeSelector}
-                            allowedModes={allowedModes}
+                            allowedModes={effectiveAllowedModes}
                             compactModeSelector={compactModeSelector}
                             workingDirectory={workingDirectory}
                             sessionTokenLimit={sessionTokenLimit}
@@ -1139,7 +1178,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     modelCommand={modelCommand}
                     sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
-                    allowedModes={allowedModes}
+                    allowedModes={effectiveAllowedModes}
                     compactModeSelector={compactModeSelector}
                     workingDirectory={workingDirectory}
                     sessionTokenLimit={sessionTokenLimit}

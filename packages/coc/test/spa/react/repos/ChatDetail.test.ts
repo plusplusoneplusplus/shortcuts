@@ -117,7 +117,9 @@ describe('ChatDetail', () => {
 
     describe('mode selector', () => {
         it('declares selectedMode state with ask default', () => {
-            expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('ask')");
+            // selectedMode is now typed as ChatMode (which includes 'ralph')
+            // so the follow-up Ralph pill can promote ask-mode chats.
+            expect(source).toContain("useState<ChatMode>('ask')");
         });
 
         it('renders mode selector using the segmented ModePillSelector by default', () => {
@@ -363,10 +365,8 @@ describe('ChatDetail', () => {
         });
 
         it('branches active follow-up sends on durable active generation state', () => {
-            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 3000,
-            );
+            const sendStart = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp');
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(sendStart, sendStart + 8000);
             expect(sendBlock).toContain('if (sending && !isActiveGeneration) return');
             expect(sendBlock).toContain('if (isActiveGeneration)');
         });
@@ -1378,8 +1378,11 @@ describe('ChatDetail', () => {
         });
 
         it('useSendMessage finally block refreshes conversation as fallback', () => {
-            const finallyIdx = USE_SEND_MESSAGE_SOURCE.indexOf('} finally {');
-            const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(finallyIdx, finallyIdx + 400);
+            // The non-Ralph send path's finally block calls refreshConversation
+            // as a fallback. The Ralph promotion branch has its own finally
+            // that only resets sending, so we look at the last `} finally {`.
+            const finallyIdx = USE_SEND_MESSAGE_SOURCE.lastIndexOf('} finally {');
+            const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(finallyIdx, finallyIdx + 600);
             expect(finallyBlock).toContain('refreshConversation(processId)');
         });
     });
@@ -1405,9 +1408,11 @@ describe('ChatDetail', () => {
 
     describe('useSendMessage finally block refreshConversation fallback', () => {
         it('sendFollowUp finally block calls refreshConversation as fallback', () => {
-            // The finally block in sendFollowUp should call refreshConversation
-            // as a safety fallback for the 90s timeout path
-            const finallyIdx = USE_SEND_MESSAGE_SOURCE.indexOf('} finally {');
+            // The finally block in the main send path should call
+            // refreshConversation as a safety fallback for the 90s timeout
+            // path. The Ralph promotion branch has its own finally block
+            // earlier in the function, so we search the last occurrence.
+            const finallyIdx = USE_SEND_MESSAGE_SOURCE.lastIndexOf('} finally {');
             const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 finallyIdx,
                 finallyIdx + 1200,
@@ -1428,12 +1433,16 @@ describe('ChatDetail', () => {
             expect(USE_SEND_MESSAGE_SOURCE).not.toContain('REPO_TASK_REQUEUED');
         });
 
-        it('does not accept workspaceId (dispatch removed)', () => {
+        it('accepts an optional workspaceId for the Ralph promotion endpoint', () => {
+            // workspaceId is forwarded to processes.promoteToRalph when the
+            // user picks the Ralph mode pill on a follow-up. It is unused by
+            // the regular /message send path.
             const optionsBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('export interface UseSendMessageOptions'),
                 USE_SEND_MESSAGE_SOURCE.indexOf('export function useSendMessage'),
             );
-            expect(optionsBlock).not.toContain('workspaceId');
+            expect(optionsBlock).toContain('workspaceId?: string');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('promoteToRalph(processId');
         });
     });
 });

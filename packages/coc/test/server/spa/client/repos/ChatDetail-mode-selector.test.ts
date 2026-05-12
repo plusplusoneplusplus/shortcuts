@@ -45,8 +45,11 @@ describe('ChatDetail allowedModes prop', () => {
         expect(source).toMatch(/allowedModes\??: ChatMode\[\]/);
     });
 
-    it('ChatDetail passes allowedModes to FollowUpInputArea', () => {
+    it('ChatDetail passes effective allowedModes to FollowUpInputArea', () => {
         const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
-        expect(source).toMatch(/allowedModes=\{allowedModes\}/);
+        // The prop is now passed through `effectiveAllowedModes`, which
+        // appends 'ralph' to the inbound `allowedModes` on eligible chats
+        // (completed ask-mode without a ralph context).
+        expect(source).toMatch(/allowedModes=\{effectiveAllowedModes\}/);
     });
 });

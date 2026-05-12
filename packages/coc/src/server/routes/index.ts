@@ -74,6 +74,7 @@ import { DevTunnelConnector } from '../servers/devtunnel-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
+import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -229,6 +230,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphRoutes(routes, { bridge, store, dataDir });
     registerRalphSessionRoutes(routes, { dataDir });
     registerRalphContinueRoutes(routes, { bridge, store, dataDir });
+    registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
