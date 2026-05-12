@@ -16,8 +16,11 @@
  *   - `i` → focus the chat input (returns to typing).
  *
  * List-pane-only shortcuts (when `focusedPane === 'list'`):
- *   - `j` / `k` → step cursor down/up through navigable task cards (no wrap).
- *   - `Enter` / `o` → open the cursor's chat (onSelectTask).
+ *   - `j` / `k` → step to the next/previous navigable task card (no wrap)
+ *     and **open it immediately** via `onSelectTask` (Slack/Gmail style).
+ *     Cursor mirrors the new selection.
+ *   - `Enter` / `o` → re-open the cursor's chat, or `selectedTaskId` if no
+ *     cursor is set. Useful after `Esc` blurred the input.
  *
  * Cards are discovered from `listContainerRef.querySelectorAll('[data-task-id]')`
  * at keypress time, naturally honoring whatever filter/sort the list applies.
@@ -223,15 +226,16 @@ export function useChatPaneNavigation(args: UseChatPaneNavigationArgs): UseChatP
                 }
                 const nextId = ids[nextIdx];
                 setCursorTaskId(nextId);
+                callbacksRef.current.onSelectTask(nextId);
                 scrollCursorIntoView(nextId);
                 e.preventDefault();
                 return;
             }
 
             if ((key === 'Enter' || key === 'o') && !e.shiftKey) {
-                const cur = s.cursorTaskId;
-                if (!cur) return;
-                callbacksRef.current.onSelectTask(cur);
+                const target = s.cursorTaskId ?? s.selectedTaskId;
+                if (!target) return;
+                callbacksRef.current.onSelectTask(target);
                 e.preventDefault();
                 return;
             }

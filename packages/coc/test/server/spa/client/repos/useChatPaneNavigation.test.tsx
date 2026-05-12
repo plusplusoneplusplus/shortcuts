@@ -119,24 +119,34 @@ describe('useChatPaneNavigation', () => {
         expect(pane(container)).toBe('detail');
     });
 
-    it('j and k step the cursor with no wrap', () => {
+    it('j and k step the cursor with no wrap and open the chat immediately', () => {
         const { container } = render(<Harness taskIds={['a', 'b', 'c']} selectedTaskId={null} />);
         act(() => { fireEvent.keyDown(window, { key: 'h' }); });
         expect(cursor(container)).toBe('a');
+        const onSelect = (window as any).__onSelectTask as ReturnType<typeof vi.fn>;
+        onSelect.mockClear();
         act(() => { fireEvent.keyDown(window, { key: 'j' }); });
         expect(cursor(container)).toBe('b');
+        expect(onSelect).toHaveBeenLastCalledWith('b');
         act(() => { fireEvent.keyDown(window, { key: 'j' }); });
         expect(cursor(container)).toBe('c');
-        // No wrap at the end.
+        expect(onSelect).toHaveBeenLastCalledWith('c');
+        // No wrap at the end: no further select call.
+        const callsBefore = onSelect.mock.calls.length;
         act(() => { fireEvent.keyDown(window, { key: 'j' }); });
         expect(cursor(container)).toBe('c');
+        expect(onSelect.mock.calls.length).toBe(callsBefore);
         act(() => { fireEvent.keyDown(window, { key: 'k' }); });
         expect(cursor(container)).toBe('b');
+        expect(onSelect).toHaveBeenLastCalledWith('b');
         act(() => { fireEvent.keyDown(window, { key: 'k' }); });
         expect(cursor(container)).toBe('a');
+        expect(onSelect).toHaveBeenLastCalledWith('a');
         // No wrap at the start.
+        const callsAtStart = onSelect.mock.calls.length;
         act(() => { fireEvent.keyDown(window, { key: 'k' }); });
         expect(cursor(container)).toBe('a');
+        expect(onSelect.mock.calls.length).toBe(callsAtStart);
     });
 
     it('Enter calls onSelectTask with the cursor id', () => {
@@ -237,6 +247,101 @@ describe('useChatPaneNavigation', () => {
         const list = (document.querySelector('[data-testid="list"]') as HTMLElement);
         list.focus();
         act(() => { fireEvent.keyDown(window, { key: 'Enter' }); });
+        expect((window as any).__onSelectTask).not.toHaveBeenCalled();
+    });
+
+    it('Enter falls back to selectedTaskId when no cursor is set (re-open after Esc)', () => {
+        render(<Harness taskIds={['a', 'b']} selectedTaskId="b" />);
+        const list = (document.querySelector('[data-testid="list"]') as HTMLElement);
+        list.focus();
+        act(() => { fireEvent.keyDown(window, { key: 'Enter' }); });
+        expect((window as any).__onSelectTask).toHaveBeenCalledWith('b');
+    });
+
+    it('o falls back to selectedTaskId when no cursor is set', () => {
+        render(<Harness taskIds={['a', 'b']} selectedTaskId="a" />);
+        const list = (document.querySelector('[data-testid="list"]') as HTMLElement);
+        list.focus();
+        act(() => { fireEvent.keyDown(window, { key: 'o' }); });
+        expect((window as any).__onSelectTask).toHaveBeenCalledWith('a');
+    });
+});
+
+describe('useChatPaneNavigation — list traversal edge cases', () => {
+    function HarnessWithMixedDom({ selectedTaskId = null as string | null }) {
+        const listContainerRef = useRef<HTMLDivElement>(null);
+        const detailContainerRef = useRef<HTMLDivElement>(null);
+        const onSelectTask = useRef(vi.fn()).current;
+        (window as any).__onSelectTask = onSelectTask;
+
+        const { cursorTaskId } = useChatPaneNavigation({
+            listContainerRef,
+            detailContainerRef,
+            selectedTaskId,
+            onSelectTask,
+            enabled: true,
+        });
+        (window as any).__cursorTaskId = cursorTaskId;
+
+        return (
+            <div>
+                <div ref={listContainerRef} tabIndex={-1} data-testid="list">
+                    <div className="section-header">Pinned</div>
+                    <div data-task-id="a">a (pinned)</div>
+                    <div className="section-header">Today</div>
+                    <div data-task-id="a">a (today, dup)</div>
+                    <div data-task-id="b">b</div>
+                    <div className="section-header">Older</div>
+                    <div data-task-id="c">c</div>
+                </div>
+                <div ref={detailContainerRef} tabIndex={-1} data-testid="detail" />
+                <div data-testid="state-cursor">{cursorTaskId ?? 'none'}</div>
+            </div>
+        );
+    }
+
+    it('skips section headers and de-duplicates by data-task-id (visual top-down)', () => {
+        const { container } = render(<HarnessWithMixedDom />);
+        const list = container.querySelector('[data-testid="list"]') as HTMLElement;
+        list.focus();
+        act(() => { fireEvent.keyDown(window, { key: 'h' }); });
+        expect(cursor(container)).toBe('a');
+        act(() => { fireEvent.keyDown(window, { key: 'j' }); });
+        // Should advance to 'b', not the second 'a' duplicate.
+        expect(cursor(container)).toBe('b');
+        act(() => { fireEvent.keyDown(window, { key: 'j' }); });
+        expect(cursor(container)).toBe('c');
+        // No wrap.
+        act(() => { fireEvent.keyDown(window, { key: 'j' }); });
+        expect(cursor(container)).toBe('c');
+    });
+
+    it('j is a no-op when the list has no [data-task-id] children', () => {
+        function EmptyHarness() {
+            const listContainerRef = useRef<HTMLDivElement>(null);
+            const detailContainerRef = useRef<HTMLDivElement>(null);
+            const onSelectTask = useRef(vi.fn()).current;
+            (window as any).__onSelectTask = onSelectTask;
+            useChatPaneNavigation({
+                listContainerRef,
+                detailContainerRef,
+                selectedTaskId: null,
+                onSelectTask,
+                enabled: true,
+            });
+            return (
+                <div>
+                    <div ref={listContainerRef} tabIndex={-1} data-testid="list">
+                        <div className="section-header">Empty</div>
+                    </div>
+                    <div ref={detailContainerRef} tabIndex={-1} data-testid="detail" />
+                </div>
+            );
+        }
+        const { container } = render(<EmptyHarness />);
+        const list = container.querySelector('[data-testid="list"]') as HTMLElement;
+        list.focus();
+        act(() => { fireEvent.keyDown(window, { key: 'j' }); });
         expect((window as any).__onSelectTask).not.toHaveBeenCalled();
     });
 });
