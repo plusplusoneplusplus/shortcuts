@@ -427,14 +427,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
  *   Work items must never run concurrently within the same workspace.
  * - `chat` tasks with `ask` or `plan` mode (e.g. coc-chat sessions) → **shared** — up to
  *   `sharedConcurrency` (default 5) run concurrently. Multiple background-agent chat sessions
- *   are fully supported and process in parallel.
- * - `chat` tasks with `autopilot` mode → **exclusive** — treated as long-running autonomous
+ *   are fully supported and process in parallel. Ralph grilling phase uses `mode='ask'`
+ *   and stays in the shared lane.
+ * - `chat` tasks with `autopilot` or `ralph` mode → **exclusive** — long-running autonomous
  *   agents that must not interleave with other exclusive tasks in the same repo queue.
+ *   Ralph execution iterations carry `mode='ralph'`; serializing them prevents two ralph
+ *   sessions (or a ralph session and an autopilot task) from concurrently mutating files
+ *   in the same workspace.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
     // Chat has mode-dependent exclusivity
     if (isChatPayload(task.payload)) {
-        return (task.payload as any).mode === 'autopilot';
+        const mode = (task.payload as any).mode;
+        return mode === 'autopilot' || mode === 'ralph';
     }
     // All other types: look up from struct, default exclusive
     const def = getTaskDef(task.type);

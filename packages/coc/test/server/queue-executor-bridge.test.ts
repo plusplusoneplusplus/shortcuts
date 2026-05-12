@@ -6419,6 +6419,7 @@ describe('defaultIsExclusive', () => {
         { type: 'run-workflow', payload: { kind: 'run-workflow', workflowPath: 'test.yaml', workingDirectory: '/' }, expected: true },
         { type: 'run-script', payload: { kind: 'run-script', script: 'echo test' }, expected: true },
         { type: 'chat', payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' }, expected: true },
+        { type: 'chat', payload: { kind: 'chat', mode: 'ralph', prompt: 'test' }, expected: true },
         { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' }, expected: false },
         { type: 'chat', payload: { kind: 'chat', mode: 'plan', prompt: 'test' }, expected: false },
     ])('should classify $type (mode=$payload.mode) as exclusive=$expected', ({ type, payload, expected }) => {
@@ -6431,7 +6432,15 @@ describe('defaultIsExclusive', () => {
         expect(defaultIsExclusive(task)).toBe(true);
     });
 
-    it('should classify chat as non-exclusive when mode is ask', () => {
+    it('should classify chat as exclusive when mode is ralph (execution iterations must serialize)', () => {
+        // Regression: two concurrent ralph sessions in the same repo would otherwise mutate
+        // files at the same time. Ralph execution iterations carry mode='ralph' and must run
+        // in the exclusive lane alongside autopilot tasks.
+        const task = { type: 'chat', payload: { kind: 'chat', mode: 'ralph', prompt: 'iter' } } as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(true);
+    });
+
+    it('should classify chat as non-exclusive when mode is ask (ralph grilling stays parallel)', () => {
         const task = { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' } } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(false);
     });
