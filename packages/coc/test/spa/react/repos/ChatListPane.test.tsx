@@ -863,6 +863,19 @@ describe('ChatListPane', () => {
             expect(card!.className).toContain('ring-2');
         });
 
+        it('uses roomier mobile padding while preserving dense desktop row sizing', () => {
+            renderPane({ history: [makeHistoryTask()] });
+            const card = document.querySelector('[data-task-id="h-1"]') as HTMLElement | null;
+
+            expect(card).toBeTruthy();
+            expect(card!.className).toContain('px-4');
+            expect(card!.className).toContain('py-2');
+            expect(card!.className).toContain('min-h-[40px]');
+            expect(card!.className).toContain('md:px-3');
+            expect(card!.className).toContain('md:py-1');
+            expect(card!.className).toContain('md:h-[26px]');
+        });
+
         it('hides when no completed tasks', () => {
             const { container } = renderPane({ running: [makeRunningTask()] });
             expect(container.textContent).not.toContain('Completed Tasks');
