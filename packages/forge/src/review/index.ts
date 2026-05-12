@@ -24,3 +24,9 @@ export {
     HumanReviewOptions,
     DefaultReviewSession,
 } from './human-reviewer';
+export {
+    AIReviewer,
+    AIReviewerConfig,
+    parseReviewFindings,
+    extractJsonFromResponse,
+} from './ai-reviewer';
