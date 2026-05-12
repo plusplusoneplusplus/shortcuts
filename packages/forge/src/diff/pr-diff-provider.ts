@@ -9,7 +9,6 @@
  */
 
 import type { IPullRequestsService } from '../providers/interfaces';
-import type { GitChangeStatus } from '../git/types';
 import type {
     DiffContent,
     DiffFileEntry,
@@ -19,124 +18,9 @@ import type {
     PullRequestDiffSource,
     PullRequestIterationDiffSource,
 } from './types';
+import { makeDiffContent, computeSummary, parseFullDiff } from './diff-utils';
 
-// ── Shared helpers ───────────────────────────────────────────
-
-function makeDiffContent(raw: string): DiffContent {
-    const totalLines = raw ? raw.split('\n').length : 0;
-    return { raw, truncated: false, totalLines };
-}
-
-function computeSummary(files: DiffFileEntry[]): DiffSummary {
-    let additions = 0;
-    let deletions = 0;
-    for (const f of files) {
-        additions += f.additions ?? 0;
-        deletions += f.deletions ?? 0;
-    }
-    return { filesChanged: files.length, additions, deletions };
-}
-
-/**
- * Infer `GitChangeStatus` from the diff header for a file chunk.
- *
- * Uses heuristics:
- * - `--- /dev/null`  → added
- * - `+++ /dev/null`  → deleted
- * - `rename from …`  → renamed
- * - `copy from …`    → copied
- * - otherwise        → modified
- */
-function inferStatusFromDiffChunk(chunk: string): GitChangeStatus {
-    if (/^--- \/dev\/null$/m.test(chunk)) return 'added';
-    if (/^\+\+\+ \/dev\/null$/m.test(chunk)) return 'deleted';
-    if (/^rename from /m.test(chunk)) return 'renamed';
-    if (/^copy from /m.test(chunk)) return 'copied';
-    return 'modified';
-}
-
-/**
- * Count additions/deletions from unified diff hunk lines.
- */
-function countAdditionsDeletions(chunk: string): { additions: number; deletions: number } {
-    let additions = 0;
-    let deletions = 0;
-    for (const line of chunk.split('\n')) {
-        if (line.startsWith('+') && !line.startsWith('+++')) additions++;
-        else if (line.startsWith('-') && !line.startsWith('---')) deletions++;
-    }
-    return { additions, deletions };
-}
-
-/** Parse the `b/` path from a diff --git header. */
-function extractBPath(chunk: string): string | undefined {
-    const match = chunk.match(/^diff --git a\/.+ b\/(.+)$/m);
-    return match?.[1];
-}
-
-/** Parse the `a/` path from a diff --git header (for renames). */
-function extractAPath(chunk: string): string | undefined {
-    const match = chunk.match(/^diff --git a\/(.+?) b\//m);
-    return match?.[1];
-}
-
-/**
- * Split a full unified diff into per-file chunks and build file entries + content map.
- */
-function parseFullDiff(fullDiff: string): {
-    files: DiffFileEntry[];
-    contentByPath: Map<string, DiffContent>;
-} {
-    const files: DiffFileEntry[] = [];
-    const contentByPath = new Map<string, DiffContent>();
-
-    if (!fullDiff.trim()) {
-        return { files, contentByPath };
-    }
-
-    const chunks = fullDiff.split(/(?=^diff --git )/m);
-
-    for (const chunk of chunks) {
-        if (!chunk.trim()) continue;
-
-        const bPath = extractBPath(chunk);
-        if (!bPath) continue;
-
-        const status = inferStatusFromDiffChunk(chunk);
-        const { additions, deletions } = countAdditionsDeletions(chunk);
-
-        const entry: DiffFileEntry = {
-            path: bPath,
-            status,
-            additions,
-            deletions,
-        };
-
-        // For renames/copies, extract original path
-        if (status === 'renamed' || status === 'copied') {
-            const aPath = extractAPath(chunk);
-            if (aPath && aPath !== bPath) {
-                entry.originalPath = aPath;
-            }
-        }
-
-        // Detect binary: no hunk lines at all
-        if (additions === 0 && deletions === 0 && !/^@@/m.test(chunk)) {
-            entry.isBinary = true;
-        }
-
-        files.push(entry);
-        contentByPath.set(bPath, makeDiffContent(chunk));
-    }
-
-    files.sort((a, b) => a.path.localeCompare(b.path));
-    return { files, contentByPath };
-}
-
-/**
- * Build an `IDiffProvider` from a function that returns the full unified diff.
- * Both PR and PR-iteration providers share this core logic.
- */
+// ── Core remote provider builder ─────────────────────────────
 function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestIterationDiffSource>(
     source: S,
     fetchFullDiff: () => Promise<string>,
@@ -271,8 +155,3 @@ export function createPullRequestIterationDiffProviderFromParams(
     };
     return createPullRequestIterationDiffProvider(source, fetchDiff);
 }
-
-// ── Exported parse utility (for testing) ─────────────────────
-
-/** @internal Exposed for unit testing. */
-export { parseFullDiff as _parseFullDiff };

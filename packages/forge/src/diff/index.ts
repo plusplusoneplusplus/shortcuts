@@ -32,3 +32,15 @@ export {
     createPullRequestIterationDiffProvider,
     createPullRequestIterationDiffProviderFromParams,
 } from './pr-diff-provider';
+
+export {
+    parseFullDiff,
+    splitDiffByFile,
+    makeDiffContent,
+    computeSummary,
+    splitIntoChunks,
+    extractBPath,
+    extractAPath,
+    inferStatusFromDiffChunk,
+    countAdditionsDeletions,
+} from './diff-utils';

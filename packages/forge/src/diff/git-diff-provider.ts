@@ -17,6 +17,7 @@ import type {
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
+import { makeDiffContent, computeSummary, splitDiffByFile } from './diff-utils';
 
 // ── Shared helpers ───────────────────────────────────────────
 
@@ -117,22 +118,7 @@ async function buildFileList(
     return files;
 }
 
-function makeDiffContent(raw: string): DiffContent {
-    const totalLines = raw ? raw.split('\n').length : 0;
-    return { raw, truncated: false, totalLines };
-}
-
-function computeSummary(files: DiffFileEntry[]): DiffSummary {
-    let additions = 0;
-    let deletions = 0;
-    for (const f of files) {
-        additions += f.additions ?? 0;
-        deletions += f.deletions ?? 0;
-    }
-    return { filesChanged: files.length, additions, deletions };
-}
-
-// ── Commit diff provider ─────────────────────────────────────
+// ── Commit diff provider─────────────────────────────────────
 
 /**
  * Create a diff provider for a single commit vs its parent.
@@ -388,39 +374,4 @@ export function createWorkingTreeDiffProvider(
             return computeSummary(files);
         },
     };
-}
-
-// ── Diff splitting utility ───────────────────────────────────
-
-/**
- * Split a combined unified diff into per-file chunks.
- * Matches each chunk to the known file list by path.
- */
-function splitDiffByFile(
-    fullDiff: string,
-    files: DiffFileEntry[],
-    target: Map<string, DiffContent>,
-): void {
-    if (!fullDiff.trim()) return;
-
-    // Split on "diff --git" headers
-    const chunks = fullDiff.split(/(?=^diff --git )/m);
-
-    for (const chunk of chunks) {
-        if (!chunk.trim()) continue;
-
-        // Extract the b/ path from "diff --git a/... b/..."
-        const headerMatch = chunk.match(/^diff --git a\/.+ b\/(.+)$/m);
-        if (!headerMatch) continue;
-
-        const bPath = headerMatch[1];
-        // Match against known files
-        const file = files.find(f => f.path === bPath);
-        if (file) {
-            target.set(file.path, makeDiffContent(chunk));
-        } else {
-            // File may not be in the list (e.g. binary); store by bPath anyway
-            target.set(bPath, makeDiffContent(chunk));
-        }
-    }
 }

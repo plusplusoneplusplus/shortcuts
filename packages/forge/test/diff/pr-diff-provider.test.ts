@@ -12,8 +12,8 @@ import {
     createPullRequestDiffProviderFromParams,
     createPullRequestIterationDiffProvider,
     createPullRequestIterationDiffProviderFromParams,
-    _parseFullDiff,
 } from '../../src/diff/pr-diff-provider';
+import { parseFullDiff } from '../../src/diff/diff-utils';
 import type { IPullRequestsService } from '../../src/providers/interfaces';
 import type { IDiffProvider, PullRequestDiffSource, PullRequestIterationDiffSource } from '../../src/diff/types';
 
@@ -113,24 +113,24 @@ function mockPrService(diffResult: string): IPullRequestsService {
     };
 }
 
-// ── _parseFullDiff tests ─────────────────────────────────────
+// ── parseFullDiff tests ─────────────────────────────────────
 
-describe('_parseFullDiff', () => {
+describe('parseFullDiff', () => {
     it('parses a multi-file unified diff into entries and content', () => {
-        const { files, contentByPath } = _parseFullDiff(FULL_DIFF);
+        const { files, contentByPath } = parseFullDiff(FULL_DIFF);
 
         expect(files.length).toBe(4);
         expect(contentByPath.size).toBe(4);
     });
 
     it('returns sorted files', () => {
-        const { files } = _parseFullDiff(FULL_DIFF);
+        const { files } = parseFullDiff(FULL_DIFF);
         const paths = files.map(f => f.path);
         expect(paths).toEqual([...paths].sort());
     });
 
     it('detects added files', () => {
-        const { files } = _parseFullDiff(FILE_DIFF_BAR);
+        const { files } = parseFullDiff(FILE_DIFF_BAR);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('added');
         expect(files[0].additions).toBe(2);
@@ -138,7 +138,7 @@ describe('_parseFullDiff', () => {
     });
 
     it('detects deleted files', () => {
-        const { files } = _parseFullDiff(FILE_DIFF_DELETED);
+        const { files } = parseFullDiff(FILE_DIFF_DELETED);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('deleted');
         expect(files[0].additions).toBe(0);
@@ -146,7 +146,7 @@ describe('_parseFullDiff', () => {
     });
 
     it('detects modified files', () => {
-        const { files } = _parseFullDiff(FILE_DIFF_FOO);
+        const { files } = parseFullDiff(FILE_DIFF_FOO);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('modified');
         expect(files[0].additions).toBe(1);
@@ -154,7 +154,7 @@ describe('_parseFullDiff', () => {
     });
 
     it('detects renamed files with originalPath', () => {
-        const { files } = _parseFullDiff(FILE_DIFF_RENAMED);
+        const { files } = parseFullDiff(FILE_DIFF_RENAMED);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('renamed');
         expect(files[0].path).toBe('src/after.ts');
@@ -162,24 +162,24 @@ describe('_parseFullDiff', () => {
     });
 
     it('detects binary files', () => {
-        const { files } = _parseFullDiff(FILE_DIFF_BINARY);
+        const { files } = parseFullDiff(FILE_DIFF_BINARY);
         expect(files).toHaveLength(1);
         expect(files[0].isBinary).toBe(true);
     });
 
     it('handles empty diff', () => {
-        const { files, contentByPath } = _parseFullDiff('');
+        const { files, contentByPath } = parseFullDiff('');
         expect(files).toHaveLength(0);
         expect(contentByPath.size).toBe(0);
     });
 
     it('handles whitespace-only diff', () => {
-        const { files } = _parseFullDiff('  \n  \n  ');
+        const { files } = parseFullDiff('  \n  \n  ');
         expect(files).toHaveLength(0);
     });
 
     it('stores raw content per file', () => {
-        const { contentByPath } = _parseFullDiff(FULL_DIFF);
+        const { contentByPath } = parseFullDiff(FULL_DIFF);
         const fooContent = contentByPath.get('src/foo.ts');
         expect(fooContent).toBeDefined();
         expect(fooContent!.raw).toContain('-old line');
@@ -421,7 +421,7 @@ describe('edge cases', () => {
             '+new',
         ].join('\n');
 
-        const { files, contentByPath } = _parseFullDiff(diffWithSpaces);
+        const { files, contentByPath } = parseFullDiff(diffWithSpaces);
         expect(files).toHaveLength(1);
         expect(files[0].path).toBe('path with spaces/file.ts');
         expect(contentByPath.has('path with spaces/file.ts')).toBe(true);
