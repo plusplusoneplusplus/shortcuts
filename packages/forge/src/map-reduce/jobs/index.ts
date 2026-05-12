@@ -7,21 +7,6 @@
 // Base mapper (shared scaffold for all mappers)
 export { BaseMapper } from './base-mapper';
 
-// Code review job
-export {
-    createCodeReviewJob
-} from './code-review-job';
-export type {
-    ReviewSeverity,
-    ReviewFinding,
-    RuleReviewResult,
-    ReviewSummary,
-    CodeReviewOutput,
-    CodeReviewInput,
-    CodeReviewJobOptions,
-    CommitReference
-} from './code-review-job';
-
 // Template job
 export {
     createTemplateJob,

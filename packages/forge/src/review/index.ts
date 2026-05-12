@@ -30,12 +30,3 @@ export {
     parseReviewFindings,
     extractJsonFromResponse,
 } from './ai-reviewer';
-export {
-    FindingToCommentOptions,
-    findingToComment,
-    findingsToComments,
-    commentToFinding,
-    commentsToFindings,
-    codeReviewOutputToResult,
-    resultToCodeReviewOutput,
-} from './migration';

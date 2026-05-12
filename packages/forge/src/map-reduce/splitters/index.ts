@@ -33,20 +33,3 @@ export type {
     ChunkSplitterOptions
 } from './chunk-splitter';
 
-// Rule splitter
-export {
-    RuleSplitter,
-    createRuleSplitter,
-    createAlphabeticRuleSplitter,
-    createPriorityRuleSplitter,
-    createPatternFilteredRuleSplitter,
-    BatchedRuleSplitter,
-    createBatchedRuleSplitter
-} from './rule-splitter';
-export type {
-    Rule,
-    RuleInput,
-    RuleWorkItemData,
-    RuleSplitterOptions,
-    BatchedRuleWorkItemData
-} from './rule-splitter';

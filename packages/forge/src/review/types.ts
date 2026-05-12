@@ -12,7 +12,6 @@ import type { BaseAnchorData } from '../editor/anchor-types';
 
 /**
  * Severity levels for review comments.
- * Compatible with the existing `ReviewSeverity` from code-review-job.
  */
 export type ReviewSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 

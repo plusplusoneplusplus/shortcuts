@@ -7,13 +7,6 @@ import {
     createBatchedFileSplitter,
     createExtensionFilteredSplitter,
 } from '../../src/map-reduce/splitters/file-splitter';
-import {
-    RuleSplitter,
-    BatchedRuleSplitter,
-    createRuleSplitter,
-    createBatchedRuleSplitter,
-} from '../../src/map-reduce/splitters/rule-splitter';
-import type { Rule } from '../../src/map-reduce/splitters/rule-splitter';
 
 // ---------------------------------------------------------------------------
 // ChunkSplitter
@@ -171,70 +164,3 @@ describe('createExtensionFilteredSplitter', () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// RuleSplitter
-// ---------------------------------------------------------------------------
-
-function makeRule(id: string, filename?: string): Rule {
-    return {
-        id,
-        filename: filename ?? `${id}.md`,
-        path: `/rules/${filename ?? `${id}.md`}`,
-        content: `# Rule ${id}`,
-    };
-}
-
-describe('RuleSplitter', () => {
-    it('creates one work item per rule', () => {
-        const splitter = createRuleSplitter();
-        const rules = [makeRule('r1'), makeRule('r2'), makeRule('r3')];
-        const items = splitter.split({ rules, targetContent: 'diff text' });
-        expect(items).toHaveLength(3);
-    });
-
-    it('includes targetContent in each work item', () => {
-        const splitter = createRuleSplitter();
-        const rules = [makeRule('r1')];
-        const items = splitter.split({ rules, targetContent: 'my diff' });
-        expect(items[0].data.targetContent).toBe('my diff');
-    });
-
-    it('applies filter to exclude rules', () => {
-        const splitter = createRuleSplitter({ filter: r => r.id !== 'skip' });
-        const rules = [makeRule('keep'), makeRule('skip')];
-        const items = splitter.split({ rules, targetContent: '' });
-        expect(items).toHaveLength(1);
-        expect(items[0].data.rule.id).toBe('keep');
-    });
-
-    it('applies validate to exclude rules', () => {
-        const splitter = createRuleSplitter({ validate: r => r.content.length > 0 });
-        const emptyRule: Rule = { id: 'empty', filename: 'empty.md', path: '/r/empty.md', content: '' };
-        const rules = [makeRule('valid'), emptyRule];
-        const items = splitter.split({ rules, targetContent: '' });
-        expect(items).toHaveLength(1);
-    });
-
-    it('applies sort to order rules', () => {
-        const splitter = createRuleSplitter({ sort: (a, b) => a.id.localeCompare(b.id) });
-        const rules = [makeRule('c'), makeRule('a'), makeRule('b')];
-        const items = splitter.split({ rules, targetContent: '' });
-        expect(items.map(i => i.data.rule.id)).toEqual(['a', 'b', 'c']);
-    });
-
-    it('returns empty array for empty rules', () => {
-        const splitter = createRuleSplitter();
-        expect(splitter.split({ rules: [], targetContent: '' })).toEqual([]);
-    });
-});
-
-describe('BatchedRuleSplitter', () => {
-    it('groups rules into batches of specified size', () => {
-        const splitter = createBatchedRuleSplitter(2);
-        const rules = [makeRule('r1'), makeRule('r2'), makeRule('r3')];
-        const items = splitter.split({ rules, targetContent: 'diff' });
-        expect(items).toHaveLength(2); // ceil(3/2) = 2 batches
-        expect(items[0].data.rules).toHaveLength(2);
-        expect(items[1].data.rules).toHaveLength(1);
-    });
-});
