@@ -154,7 +154,10 @@ describe('POST /api/processes/:id/ralph-start', () => {
         // no skills.
         expect(enqueueArg.payload.prompt).toContain('Build a feature');
         expect(enqueueArg.payload.prompt).toContain('<goal>');
+        expect(enqueueArg.payload.prompt).toContain('<work_intent>');
         expect(enqueueArg.payload.prompt).not.toBe('Begin Ralph execution loop.');
+        expect(Object.keys(enqueueArg.payload.context)).toEqual(['ralph']);
+        expect(enqueueArg.payload.context).not.toHaveProperty('skills');
     });
 
     it('initialises the per-session journal directory and session.json', async () => {

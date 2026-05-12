@@ -6,9 +6,9 @@
  * surfaces matching skills via cosine similarity. If the user prompt is
  * a constant placeholder like "Begin Ralph execution loop." it carries
  * no semantic signal about what the iteration is actually doing, so
- * skills such as `impl`, `code-review`, etc. never get advertised to the
- * model. Embedding the original goal text into the user prompt fixes
- * that without changing skills or system prompts.
+ * relevant project skills may never get advertised to the model. A short
+ * work-intent block plus the original goal text gives retrieval stable,
+ * repository-agnostic implementation vocabulary without naming any skill.
  *
  * The retriever also skips messages that begin with `<available_skills>`,
  * `<additional_tool_instructions>`, or `<skill-context` — so the prompt
@@ -22,6 +22,10 @@ const TRUNCATION_MARKER = '\n…[truncated]';
 
 const PROMPT_PREFIX =
     'Continue the Ralph execution loop toward the goal below. Read the progress journal first, then pick and implement the next subtask, run tests/build, and commit.';
+
+export const RALPH_WORK_INTENT_PROMPT = `<work_intent>
+This is an autonomous implementation iteration. The agent should inspect the repository, modify source files as needed, add or update tests, run the project's validation commands such as build, test, type-check, or lint, and commit the completed change. Match this request with any project skill that handles coding, implementation, bug fixes, refactors, test updates, or source-file changes.
+</work_intent>`;
 
 export interface BuildRalphIterationPromptInput {
     /** The user's original goal text from the grilling phase. */
@@ -40,12 +44,12 @@ export function buildRalphIterationPrompt(
 ): string {
     const goal = (input.originalGoal ?? '').trim();
     if (!goal) {
-        return PROMPT_PREFIX;
+        return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}`;
     }
     const limit = Math.max(1, input.maxGoalLength ?? RALPH_GOAL_PROMPT_MAX_LENGTH);
     const truncated =
         goal.length > limit
             ? goal.slice(0, limit).trimEnd() + TRUNCATION_MARKER
             : goal;
-    return `${PROMPT_PREFIX}\n\n<goal>\n${truncated}\n</goal>`;
+    return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n<goal>\n${truncated}\n</goal>`;
 }

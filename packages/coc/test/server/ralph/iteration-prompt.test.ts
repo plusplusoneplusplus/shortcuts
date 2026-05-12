@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildRalphIterationPrompt,
     RALPH_GOAL_PROMPT_MAX_LENGTH,
+    RALPH_WORK_INTENT_PROMPT,
 } from '../../../src/server/ralph/iteration-prompt';
 
 // The Copilot host CLI's embedding retriever explicitly skips messages
@@ -17,6 +18,10 @@ const RETRIEVER_SKIP_PREFIXES = [
 ];
 
 describe('buildRalphIterationPrompt', () => {
+    function goalSection(prompt: string): string {
+        return prompt.split('<goal>\n')[1].split('\n</goal>')[0];
+    }
+
     it('embeds the goal verbatim inside a <goal> block', () => {
         const goal = 'Implement diff providers in forge/src/diff and add tests.';
         const prompt = buildRalphIterationPrompt({ originalGoal: goal });
@@ -32,10 +37,22 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).toMatch(/commit/);
     });
 
-    it('returns the bare prefix when the goal is empty or whitespace', () => {
+    it('includes repository-agnostic work intent before the goal', () => {
+        const prompt = buildRalphIterationPrompt({ originalGoal: 'Build a feature' });
+        expect(prompt).toContain(RALPH_WORK_INTENT_PROMPT);
+        expect(prompt.indexOf('<work_intent>')).toBeGreaterThan(
+            prompt.indexOf('Continue the Ralph execution loop'),
+        );
+        expect(prompt.indexOf('</work_intent>')).toBeLessThan(prompt.indexOf('<goal>'));
+        expect(prompt).not.toContain('<selected_skills>');
+        expect(prompt).not.toMatch(/\bimpl\b/);
+    });
+
+    it('keeps work intent when the goal is empty or whitespace', () => {
         for (const goal of ['', '   ', '\n\t', undefined]) {
             const prompt = buildRalphIterationPrompt({ originalGoal: goal });
             expect(prompt).not.toContain('<goal>');
+            expect(prompt).toContain('<work_intent>');
             expect(prompt).toMatch(/Continue the Ralph execution loop/);
         }
     });
@@ -58,10 +75,10 @@ describe('buildRalphIterationPrompt', () => {
         const prompt = buildRalphIterationPrompt({ originalGoal: goal });
         expect(prompt).toContain('[truncated]');
         // Goal section length should respect the cap (modulo the marker).
-        const goalSection = prompt.split('<goal>\n')[1].split('\n</goal>')[0];
-        expect(goalSection.length).toBeLessThanOrEqual(
+        expect(goalSection(prompt).length).toBeLessThanOrEqual(
             RALPH_GOAL_PROMPT_MAX_LENGTH + '\n…[truncated]'.length,
         );
+        expect(prompt).toContain(RALPH_WORK_INTENT_PROMPT);
     });
 
     it('respects a custom maxGoalLength override', () => {
@@ -70,9 +87,10 @@ describe('buildRalphIterationPrompt', () => {
             originalGoal: goal,
             maxGoalLength: 4,
         });
-        expect(prompt).toContain('abcd');
+        expect(goalSection(prompt)).toContain('abcd');
         expect(prompt).toContain('[truncated]');
-        expect(prompt).not.toContain('efghij');
+        expect(goalSection(prompt)).not.toContain('efghij');
+        expect(prompt).toContain('source-file changes');
     });
 
     it('preserves non-ASCII characters in the goal', () => {

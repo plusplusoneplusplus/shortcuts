@@ -11,6 +11,9 @@ Ralph sessions live under
 `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`. Keep the durable
 architecture details in `.github/skills/coc-knowledge/references/ralph.md`;
 this local file should only carry package-specific pointers and invariants.
+Execution iteration prompts include a generic `<work_intent>` block before
+`<goal>` and must not hard-code implementation skill names or set
+`context.skills`.
 
 A completed ask-mode chat can be promoted to a Ralph session in place via
 `POST /api/processes/:id/promote-to-ralph`

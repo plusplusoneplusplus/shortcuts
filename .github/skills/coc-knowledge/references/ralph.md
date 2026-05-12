@@ -64,10 +64,14 @@ content.
 ## Per-Iteration User Prompt
 
 Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` in
-`packages/coc/src/server/ralph/iteration-prompt.ts` and embeds the
-`originalGoal` inside a `<goal>` block. This is required because the host
+`packages/coc/src/server/ralph/iteration-prompt.ts`. The prompt begins with a
+plain-language execution directive, then includes a short `<work_intent>` block
+with generic coding, testing, validation, and commit vocabulary before embedding
+the `originalGoal` inside a `<goal>` block. This is required because the host
 Copilot CLI's embedding-based skill retriever queries against the most recent
-user message; a static placeholder would surface no skills. The prompt must
-not begin with `<available_skills>`, `<additional_tool_instructions>`, or
-`<skill-context`, since the retriever skips messages with those prefixes when
-locating the user query.
+user message; a static placeholder would surface no skills, and long goals can
+dilute implementation-related retrieval signal. The prompt must not name
+repository-specific implementation skills, set `context.skills`, or begin with
+`<available_skills>`, `<additional_tool_instructions>`, or `<skill-context`,
+since the retriever skips messages with those prefixes when locating the user
+query.
