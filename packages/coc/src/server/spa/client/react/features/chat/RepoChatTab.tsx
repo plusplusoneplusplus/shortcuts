@@ -301,6 +301,32 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
 
     // Track unseen activity for completed tasks
     const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenChat(workspaceId, history, selectedTaskId);
+
+    /**
+     * Set of process IDs that currently have one or more pending ask-user questions
+     * (i.e. the AI is waiting for user input). Derived from the global process index,
+     * which is seeded from `/api/processes/summaries` on bootstrap and kept fresh by
+     * `process-updated` WebSocket events. Falls back to `running` task entries that
+     * carry a `pendingAskUserCount` from the /api/queue response so the indicator is
+     * correct even if the process index has not arrived yet.
+     */
+    const awaitingInputProcessIds = useMemo(() => {
+        const ids = new Set<string>();
+        const procs = Array.isArray(appState.processes) ? appState.processes : [];
+        for (const proc of procs) {
+            if (proc && typeof proc.pendingAskUserCount === 'number' && proc.pendingAskUserCount > 0) {
+                ids.add(proc.id);
+            }
+        }
+        for (const task of running) {
+            const count = typeof task?.pendingAskUserCount === 'number' ? task.pendingAskUserCount : 0;
+            if (count > 0) {
+                if (task.processId) ids.add(task.processId);
+                if (task.id) ids.add(task.id);
+            }
+        }
+        return ids;
+    }, [appState.processes, running]);
     const { markReadByProcessId } = useNotifications();
 
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
@@ -496,6 +522,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             now={now}
             workspaceId={workspaceId}
             unseenProcessIds={unseenProcessIds}
+            awaitingInputProcessIds={awaitingInputProcessIds}
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}

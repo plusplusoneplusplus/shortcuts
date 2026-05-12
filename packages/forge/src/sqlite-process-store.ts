@@ -811,8 +811,12 @@ export class SqliteProcessStore implements ProcessStore {
         const countRow = this.db.prepare(countQuery).get(...params) as CountRow;
         const total = countRow.cnt;
 
-        // Fetch summary columns with pagination
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
+        // Fetch summary columns with pagination. Derive `pending_ask_user_count` from
+        // the metadata JSON envelope so list/sidebar views can show an "awaiting input"
+        // indicator without loading the full process row.
+        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived, ` +
+            `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count ` +
+            `FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
@@ -820,11 +824,13 @@ export class SqliteProcessStore implements ProcessStore {
         if (filter?.limit !== undefined) queryParams.push(filter.limit);
         if (filter?.offset !== undefined) queryParams.push(filter.offset);
 
-        // Use .iterate() to avoid materializing all summary rows at once
+        type SummaryRow = ProcessRow & { pending_ask_user_count?: number | null };
+
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<ProcessRow>) {
+        for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<SummaryRow>) {
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
+            const askUserCount = typeof row.pending_ask_user_count === 'number' ? row.pending_ask_user_count : 0;
             entries.push({
                 id: row.id,
                 workspaceId: row.workspace_id,
@@ -841,6 +847,7 @@ export class SqliteProcessStore implements ProcessStore {
                 activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
+                pendingAskUserCount: askUserCount > 0 ? askUserCount : undefined,
             });
         }
 

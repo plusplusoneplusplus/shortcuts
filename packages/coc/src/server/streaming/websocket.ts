@@ -63,6 +63,12 @@ export interface ProcessSummary {
     workingDirectory?: string;
     title?: string;
     lastEventAt?: string;
+    /**
+     * Number of unanswered interactive ask-user questions awaiting the user. Omitted
+     * (or 0) when the process is not waiting for input. List/sidebar views use this
+     * to surface an "awaiting input" indicator on running tasks.
+     */
+    pendingAskUserCount?: number;
 }
 
 /** Lightweight queue task summary for WebSocket messages. */
@@ -460,6 +466,7 @@ export class ProcessWebSocketServer {
  * Strips large fields (fullPrompt, result, structuredResult) to keep messages small.
  */
 export function toProcessSummary(process: AIProcess): ProcessSummary {
+    const askUserCount = Array.isArray(process.pendingAskUser) ? process.pendingAskUser.length : 0;
     return {
         id: process.id,
         promptPreview: process.promptPreview,
@@ -473,6 +480,7 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         workingDirectory: process.workingDirectory,
         title: process.title,
         lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
+        pendingAskUserCount: askUserCount > 0 ? askUserCount : 0,
     };
 }
 

@@ -285,6 +285,12 @@ export interface ProcessIndexEntry {
     pinnedAt?: string;
     /** Whether the process is archived. */
     archived?: boolean;
+    /**
+     * Number of unanswered interactive ask-user questions currently awaiting the user.
+     * Omitted (or 0) when the process is not waiting for input. Used by list/sidebar
+     * views to surface an "awaiting input" indicator without loading the full process.
+     */
+    pendingAskUserCount?: number;
 }
 
 /**

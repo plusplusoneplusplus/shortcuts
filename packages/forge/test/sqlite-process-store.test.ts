@@ -388,6 +388,49 @@ describe('SqliteProcessStore — getProcessSummaries', () => {
         expect(entries.map(e => e.id)).toEqual(['active']);
         expect(entries[0].activityAt).toBe('2026-04-29T12:00:00.000Z');
     });
+
+    it('surfaces pendingAskUserCount in entries when the process is awaiting input', async () => {
+        const questions = [
+            {
+                batchId: 'batch-1',
+                questionId: 'q1',
+                question: 'Pick one',
+                type: 'select',
+                options: [{ value: 'a', label: 'Option A' }],
+                defaultValue: 'a',
+                turnIndex: 1,
+                index: 0,
+                batchSize: 2,
+            },
+            {
+                batchId: 'batch-1',
+                questionId: 'q2',
+                question: 'Pick another',
+                type: 'select',
+                options: [{ value: 'a', label: 'Option A' }],
+                defaultValue: 'a',
+                turnIndex: 1,
+                index: 1,
+                batchSize: 2,
+            },
+        ];
+
+        await store.addProcess(makeProcess('waiting', {
+            status: 'running',
+            pendingAskUser: questions as AIProcess['pendingAskUser'],
+        }));
+        await store.addProcess(makeProcess('thinking', { status: 'running' }));
+
+        const { entries } = await store.getProcessSummaries!();
+        const byId = Object.fromEntries(entries.map(e => [e.id, e]));
+        expect(byId['waiting'].pendingAskUserCount).toBe(2);
+        expect(byId['thinking'].pendingAskUserCount).toBeUndefined();
+
+        // Clearing pendingAskUser should drop the count from subsequent summaries.
+        await store.updateProcess('waiting', { pendingAskUser: undefined });
+        const { entries: cleared } = await store.getProcessSummaries!();
+        expect(cleared.find(e => e.id === 'waiting')!.pendingAskUserCount).toBeUndefined();
+    });
 });
 
 // ============================================================================

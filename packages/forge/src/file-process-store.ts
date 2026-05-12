@@ -959,6 +959,7 @@ export class FileProcessStore implements ProcessStore {
     }
 
     private toIndexEntry(entry: StoredProcessEntry): ProcessIndexEntry {
+        const askUserCount = Array.isArray(entry.process.pendingAskUser) ? entry.process.pendingAskUser.length : 0;
         return {
             id: entry.process.id,
             workspaceId: entry.workspaceId,
@@ -975,6 +976,7 @@ export class FileProcessStore implements ProcessStore {
                 : undefined,
             lastEventAt: entry.process.lastEventAt,
             activityAt: entry.process.lastEventAt ?? entry.process.startTime,
+            pendingAskUserCount: askUserCount > 0 ? askUserCount : undefined,
         };
     }
 

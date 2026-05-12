@@ -109,4 +109,25 @@ describe('toProcessSummary — field completeness for notifications', () => {
         const summary = toProcessSummary(makeAIProcess({ lastEventAt: undefined }));
         expect(summary.lastEventAt).toBeUndefined();
     });
+
+    it('includes pendingAskUserCount when the process is awaiting interactive input', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            status: 'running',
+            pendingAskUser: [
+                { batchId: 'b', questionId: 'q1' },
+                { batchId: 'b', questionId: 'q2' },
+            ],
+        }));
+        expect(summary.pendingAskUserCount).toBe(2);
+    });
+
+    it('reports pendingAskUserCount as 0 when no questions are pending', () => {
+        const summary = toProcessSummary(makeAIProcess({ pendingAskUser: undefined }));
+        expect(summary.pendingAskUserCount).toBe(0);
+    });
+
+    it('reports pendingAskUserCount as 0 for an empty pendingAskUser array', () => {
+        const summary = toProcessSummary(makeAIProcess({ pendingAskUser: [] }));
+        expect(summary.pendingAskUserCount).toBe(0);
+    });
 });

@@ -202,6 +202,31 @@ export function ProcessesView() {
         }
     }, [isRefreshing, fetchQueue]);
 
+    /**
+     * Set of process / task IDs whose AI is currently awaiting interactive user
+     * input. Derived from the global process index (kept fresh by `process-updated`
+     * WebSocket events) plus any `pendingAskUserCount` carried on the running task
+     * snapshot so the indicator appears immediately after the initial /api/queue
+     * fetch.
+     */
+    const awaitingInputProcessIds = useMemo(() => {
+        const ids = new Set<string>();
+        const procs = Array.isArray(appState.processes) ? appState.processes : [];
+        for (const proc of procs) {
+            if (proc && typeof proc.pendingAskUserCount === 'number' && proc.pendingAskUserCount > 0) {
+                ids.add(proc.id);
+            }
+        }
+        for (const task of running) {
+            const count = typeof task?.pendingAskUserCount === 'number' ? task.pendingAskUserCount : 0;
+            if (count > 0) {
+                if (task.processId) ids.add(task.processId);
+                if (task.id) ids.add(task.id);
+            }
+        }
+        return ids;
+    }, [appState.processes, running]);
+
     const heightClass = isMobile
         ? 'h-[calc(100vh-48px-48px)]'
         : 'h-[calc(100vh-48px)]';
@@ -226,6 +251,7 @@ export function ProcessesView() {
             selectedTaskId={selectedTaskId}
             isMobile={isMobile}
             now={now}
+            awaitingInputProcessIds={awaitingInputProcessIds}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
             onRefresh={handleRefresh}

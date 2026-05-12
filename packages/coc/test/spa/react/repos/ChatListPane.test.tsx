@@ -698,6 +698,61 @@ describe('ChatListPane', () => {
             fireEvent.click(screen.getByTestId('running-tasks-section-toggle'));
             expect(document.querySelector('[data-task-id="run-1"]')).toBeNull();
         });
+
+        it('shows "Thinking" indicator when the task is running without pending ask_user', () => {
+            renderPane({ running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })] });
+            expect(screen.queryByTestId('thinking-indicator')).toBeTruthy();
+            expect(screen.queryByTestId('awaiting-input-indicator')).toBeNull();
+            const row = document.querySelector('[data-task-id="run-1"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-awaiting-input')).toBeNull();
+        });
+
+        it('renders "Needs input" indicator when awaitingInputProcessIds contains the task id', () => {
+            renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' } })],
+                awaitingInputProcessIds: new Set(['run-1']),
+            });
+            const indicator = screen.queryByTestId('awaiting-input-indicator');
+            expect(indicator).toBeTruthy();
+            expect(indicator!.textContent).toContain('Needs input');
+            expect(screen.queryByTestId('thinking-indicator')).toBeNull();
+            const row = document.querySelector('[data-task-id="run-1"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-awaiting-input')).toBe('true');
+            expect(row!.getAttribute('title')).toContain('waiting for your input');
+            expect(row!.className).toContain('border-l-amber-400');
+        });
+
+        it('matches on task.processId when the running id and processId differ', () => {
+            renderPane({
+                running: [makeRunningTask({ id: 'queue-task', processId: 'proc-99', type: 'chat', payload: { mode: 'plan' } })],
+                awaitingInputProcessIds: new Set(['proc-99']),
+            });
+            expect(screen.queryByTestId('awaiting-input-indicator')).toBeTruthy();
+            const row = document.querySelector('[data-task-id="queue-task"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-awaiting-input')).toBe('true');
+        });
+
+        it('falls back to pendingAskUserCount on the running task when no set is supplied', () => {
+            renderPane({
+                running: [makeRunningTask({ type: 'chat', payload: { mode: 'ask' }, pendingAskUserCount: 2 })],
+            });
+            expect(screen.queryByTestId('awaiting-input-indicator')).toBeTruthy();
+            expect(screen.queryByTestId('thinking-indicator')).toBeNull();
+        });
+
+        it('does not show "Needs input" for queued tasks even if their id is in the set', () => {
+            renderPane({
+                queued: [makeQueuedTask({ id: 'q-1', type: 'chat', payload: { mode: 'ask' } })],
+                awaitingInputProcessIds: new Set(['q-1']),
+            });
+            expect(screen.queryByTestId('awaiting-input-indicator')).toBeNull();
+            const row = document.querySelector('[data-task-id="q-1"]') as HTMLElement | null;
+            expect(row).toBeTruthy();
+            expect(row!.getAttribute('data-awaiting-input')).toBeNull();
+        });
     });
 
     // ── Queued Tasks section ───────────────────────────────────────────

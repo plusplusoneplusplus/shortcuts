@@ -443,6 +443,42 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(entries.map(e => e.id)).toEqual(['inside']);
     });
 
+    it('getProcessSummaries surfaces pendingAskUserCount when the process is awaiting input', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const questions = [
+            {
+                batchId: 'b',
+                questionId: 'q1',
+                question: 'pick',
+                type: 'select',
+                options: [{ value: 'a', label: 'A' }],
+                defaultValue: 'a',
+                turnIndex: 0,
+                index: 0,
+                batchSize: 1,
+            },
+        ];
+        await store.addProcess(makeProcess('waiting', {
+            status: 'running',
+            metadata: { type: 'ai', workspaceId: 'ws-await' },
+            pendingAskUser: questions as AIProcess['pendingAskUser'],
+        }));
+        await store.addProcess(makeProcess('thinking', {
+            status: 'running',
+            metadata: { type: 'ai', workspaceId: 'ws-await' },
+        }));
+
+        const { entries } = await store.getProcessSummaries({ workspaceId: 'ws-await' });
+        const byId = Object.fromEntries(entries.map(e => [e.id, e]));
+        expect(byId['waiting'].pendingAskUserCount).toBe(1);
+        expect(byId['thinking'].pendingAskUserCount).toBeUndefined();
+
+        await store.updateProcess('waiting', { pendingAskUser: undefined });
+        const { entries: cleared } = await store.getProcessSummaries({ workspaceId: 'ws-await' });
+        const clearedWaiting = cleared.find(e => e.id === 'waiting')!;
+        expect(clearedWaiting.pendingAskUserCount).toBeUndefined();
+    });
+
     it('getProcessCount across workspaces agrees with getAllProcesses().length', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));

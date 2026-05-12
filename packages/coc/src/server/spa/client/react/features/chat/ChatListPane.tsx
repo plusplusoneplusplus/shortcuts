@@ -186,6 +186,14 @@ export interface ChatListPaneProps {
     workspaceId?: string;
     /** Set of process IDs with unseen activity (bold + dot indicator). */
     unseenProcessIds?: Set<string>;
+    /**
+     * Set of process / task IDs whose AI is currently awaiting interactive user
+     * input (an `ask_user` tool call is pending). When a running row's id or
+     * processId is in this set, the row swaps the "Thinking" indicator for a
+     * prominent "Needs input" affordance and uses an amber accent so the user
+     * can spot it at a glance.
+     */
+    awaitingInputProcessIds?: Set<string>;
     /** Mark all completed tasks as read (receives the currently-filtered task list). */
     onMarkAllRead?: (tasks: any[]) => void;
     /** Mark a single completed task as read. */
@@ -319,6 +327,7 @@ export function ChatListPane({
     now,
     workspaceId,
     unseenProcessIds,
+    awaitingInputProcessIds,
     onMarkAllRead,
     onMarkRead,
     onMarkUnread,
@@ -1155,6 +1164,12 @@ export function ChatListPane({
         const isFrozen = !!task.frozen;
         const isHeld = isAutopilotPaused === true && isQueued && task.payload?.mode === 'autopilot' && !task.admitted;
         const isAdmitted = isAutopilotPaused === true && isQueued && task.payload?.mode === 'autopilot' && !!task.admitted;
+        const askUserCountOnTask = typeof task?.pendingAskUserCount === 'number' ? task.pendingAskUserCount : 0;
+        const isAwaitingInput = isRunning && (
+            (!!task.processId && (awaitingInputProcessIds?.has(task.processId) ?? false))
+            || (awaitingInputProcessIds?.has(task.id) ?? false)
+            || askUserCountOnTask > 0
+        );
 
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
@@ -1198,7 +1213,8 @@ export function ChatListPane({
 
         const dotClasses = cn(
             'w-2 h-2 rounded-full justify-self-center transition-shadow',
-            isRunning && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
+            isRunning && isAwaitingInput && 'bg-amber-500 dark:bg-amber-400 shadow-[0_0_0_3px_rgba(245,158,11,0.28)]',
+            isRunning && !isAwaitingInput && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
             !isRunning && isFailed && 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.20)]',
             !isRunning && isQueued && !isFailed && 'bg-[#dcdcdc] dark:bg-[#6b6b6b]',
             !isRunning && !isQueued && !isFailed && 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
@@ -1208,6 +1224,7 @@ export function ChatListPane({
 
         const contextMenuKind: 'running' | 'queued' | 'completed' = taskStatus;
         const defaultTestid = isRunning ? 'running-task-row' : isQueued ? 'queued-task-row' : 'history-task-row';
+        const rowTitle = isAwaitingInput ? `${titleText} — waiting for your input` : titleText;
 
         return (
             <SwipeableHistoryItem
@@ -1226,7 +1243,8 @@ export function ChatListPane({
                         'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                         isFrozen && 'opacity-70 task-frozen',
                         isArchived && 'opacity-70',
-                        isPinned && !isQueued && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
+                        isAwaitingInput && 'bg-amber-50/70 dark:bg-amber-500/[0.08] border-l-2 border-l-amber-400 dark:border-l-amber-500',
+                        !isAwaitingInput && isPinned && !isQueued && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                         isHistorySelected && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40',
                         !isHistorySelected && isRowSelected && 'bg-[#0078d4]/[0.08] dark:bg-[#3794ff]/[0.10] ring-2 ring-[#0078d4]/40 dark:ring-[#3794ff]/40',
                         !isHistorySelected && isRowSelected && 'before:content-[""] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-[#0078d4] dark:before:bg-[#3794ff]',
@@ -1255,9 +1273,10 @@ export function ChatListPane({
                     data-pinned={isPinned ? 'true' : undefined}
                     data-archived={isArchived ? 'true' : undefined}
                     data-group-child={isGroupChild ? 'true' : undefined}
-                    title={titleText}
+                    data-awaiting-input={isAwaitingInput ? 'true' : undefined}
+                    title={rowTitle}
                 >
-                    <span className={dotClasses} aria-label={`status: ${isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
+                    <span className={dotClasses} aria-label={`status: ${isAwaitingInput ? 'awaiting input' : isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
                     <span className={modeBadgeClasses} title={modeTitle}>{modeLabel}</span>
                     <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                         {isHistorySelected && (
@@ -1292,9 +1311,21 @@ export function ChatListPane({
                             ) : null;
                         })()}
                     </span>
-                    <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
+                    <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
                         <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
-                            {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />{statusLabel('running', task.type)}</span> : timeText}
+                            {isRunning ? (
+                                isAwaitingInput ? (
+                                    <span className="inline-flex items-center gap-1" data-testid="awaiting-input-indicator">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                                        Needs input
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />
+                                        {statusLabel('running', task.type)}
+                                    </span>
+                                )
+                            ) : timeText}
                         </span>
                         <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
                             {!isQueued && (
@@ -1347,6 +1378,7 @@ export function ChatListPane({
         );
     }, [
         unseenProcessIds,
+        awaitingInputProcessIds,
         running,
         pinnedChatIds,
         archivedChatIds,

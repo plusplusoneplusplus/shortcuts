@@ -134,12 +134,16 @@ describe('ChatListPane pinned chats', () => {
     });
 
     describe('title tooltip on truncated elements', () => {
-        it('compact row passes title={titleText} on the row container', () => {
-            // The unified row sets title={titleText} on the container <div>; this provides
-            // the native browser tooltip for truncated content across pinned / unpinned /
-            // archived sections, and replaces the per-section title attributes the old
-            // Card-based layout used.
-            expect(source).toContain('title={titleText}');
+        it('compact row passes a row-level title attribute on the container', () => {
+            // The unified row sets a `title` attribute on the container <div>; this
+            // provides the native browser tooltip for truncated content across pinned /
+            // unpinned / archived sections, and replaces the per-section title attributes
+            // the old Card-based layout used. The tooltip text is derived inside the row
+            // renderer (it may be augmented when the task is awaiting user input) so the
+            // test asserts both the binding and the underlying source of the text.
+            expect(source).toMatch(/title=\{(?:titleText|rowTitle)\}/);
+            expect(source).toContain('const rowTitle = ');
+            expect(source).toContain('titleText');
         });
 
         it('compact row also sets title={titleText} on the truncated title span', () => {
@@ -881,8 +885,14 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('thinking indicator is in the timestamp area via isRunning ternary', () => {
-            // The thinking indicator is now rendered in the timestamp span as a ternary: isRunning ? <indicator> : timestamp
-            expect(source).toContain('{isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">');
+            // The thinking indicator is rendered inside an `isRunning ? … : timeText` ternary
+            // in the timestamp span. The inner branch may further split between the
+            // awaiting-input indicator and the default thinking indicator, so the test
+            // only requires that the indicator follows an `isRunning ?` opening.
+            const thinkingIdx = source.indexOf('data-testid="thinking-indicator"');
+            expect(thinkingIdx).toBeGreaterThanOrEqual(0);
+            const before = source.substring(Math.max(0, thinkingIdx - 800), thinkingIdx);
+            expect(before).toMatch(/isRunning\s*\?/);
         });
 
         it('thinking indicator is NOT rendered as a separate element before the title', () => {

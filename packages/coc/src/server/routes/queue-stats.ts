@@ -75,6 +75,26 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 running = running.filter(t => t.type === typeFilter);
             }
 
+            // Enrich running tasks with `pendingAskUserCount` so the activity list can
+            // immediately surface tasks that are waiting on the user for input (before
+            // the WebSocket `process-updated` stream has had a chance to populate the
+            // global process index on the client).
+            if (store && running.length > 0) {
+                await Promise.all(running.map(async (task) => {
+                    const processId = typeof task.processId === 'string' ? task.processId : undefined;
+                    if (!processId) return;
+                    try {
+                        const proc = await store.getProcess(processId);
+                        const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;
+                        if (count > 0) {
+                            task.pendingAskUserCount = count;
+                        }
+                    } catch {
+                        // Best-effort enrichment — never fail the list response over it.
+                    }
+                }));
+            }
+
             sendJSON(res, 200, { queued, running, stats });
         },
     });
