@@ -3,8 +3,13 @@ name: coc-knowledge
 description: >-
   Comprehensive reference for CoC (Copilot of Copilot) architecture — server,
   memory system, LLM tools, SDK wrapper, process store, workflow engine, deep-wiki,
-  and dashboard SPA. Use when building or modifying CoC features, debugging server
-  behavior, or understanding how subsystems interact.
+  and dashboard SPA. Use whenever the user asks anything related to CoC (Copilot of
+  Copilot), forge, deep-wiki, coc-client, the CoC server, dashboard, workflow engine,
+  memory system, LLM tools, process store, or any of their subsystems. Also use
+  whenever you need background knowledge to answer a question, plan a change, or
+  ground your reasoning in this codebase — read the relevant reference file(s) under
+  `references/` before responding. Use when building, modifying, debugging, or
+  explaining CoC features, or when understanding how subsystems interact.
 ---
 
 # CoC Codebase Knowledge

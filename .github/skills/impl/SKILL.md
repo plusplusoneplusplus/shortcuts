@@ -1,9 +1,11 @@
 ---
 name: impl
-description: Implement the requested code change and add comprehensive test coverage, ensuring tests pass across Linux, macOS, and Windows. Use when you need to execute implementation work (not just planning) and must include tests. Commit the changes to the repository after the implementation is complete.
+description: MUST BE LOADED for any code change in this repository. Implements the requested code change and adds comprehensive test coverage, ensuring tests pass across Linux, macOS, and Windows. Use whenever you are about to modify, add, refactor, fix, or delete source code in this repo — including bug fixes, feature work, refactors, and small tweaks. Use when you need to execute implementation work (not just planning) and must include tests. Commit the changes to the repository after the implementation is complete.
 ---
 
 # Implementation (with Tests)
+
+**MANDATORY:** This skill MUST be loaded and followed for ANY code change in this repository — including bug fixes, new features, refactors, small tweaks, and dependency updates that touch source code. If you are about to edit, add, or remove code in this repo, read and follow this skill first.
 
 Use this skill when the user asks you to **implement** a change in the codebase (not just propose a plan) and expects **comprehensive tests** and cross-platform reliability.
 
