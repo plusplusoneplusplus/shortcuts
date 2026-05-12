@@ -18,6 +18,7 @@ import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
 import { useUnseenChat } from './hooks/useUnseenChat';
+import { useChatPaneNavigation } from './hooks/useChatPaneNavigation';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPreferencesContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
@@ -92,6 +93,8 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    const listContainerRef = useRef<HTMLDivElement | null>(null);
+    const detailContainerRef = useRef<HTMLDivElement | null>(null);
     // Ref to signal that mobileShowDetail=true was set intentionally for the new-chat flow,
     // so the selectedTaskId=null reset effect does not immediately clear it.
     const mobileNewChatRef = useRef(false);
@@ -505,6 +508,18 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile]);
 
+    const { focusedPane, cursorTaskId } = useChatPaneNavigation({
+        listContainerRef,
+        detailContainerRef,
+        selectedTaskId,
+        onSelectTask: (id) => selectTask(id),
+        enabled: true,
+        isMobile,
+        mobileShowDetail,
+        onEnterDetail: () => setMobileShowDetail(true),
+        onEnterList: () => setMobileShowDetail(false),
+    });
+
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -555,6 +570,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             activeTab={mode}
             selectedRalphSessionId={selectedRalphSessionId}
             onSelectRalphSession={handleSelectRalphSession}
+            cursorTaskId={cursorTaskId}
             onNewChat={() => {
                 if (isMobile) {
                     mobileNewChatRef.current = true;
@@ -574,7 +590,19 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail ? (
-                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
+                        <div
+                            ref={detailContainerRef}
+                            tabIndex={-1}
+                            role="region"
+                            aria-label="Chat detail"
+                            data-pane-focus={focusedPane === 'detail' ? 'true' : undefined}
+                            className={cn(
+                                'flex-1 flex flex-col overflow-hidden outline-none',
+                                focusedPane === 'detail' && 'ring-1 ring-[#0078d4]/30',
+                            )}
+                            data-testid="activity-detail-panel"
+                            data-pane="detail"
+                        >
                             {selectedRalphSessionId ? (
                                 <RalphWorkflowPaneContainer
                                     workspaceId={workspaceId}
@@ -596,7 +624,18 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                             )}
                         </div>
                     ) : (
-                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
+                        <div
+                            ref={listContainerRef}
+                            tabIndex={-1}
+                            role="region"
+                            aria-label="Chat list"
+                            data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
+                            className={cn(
+                                'flex-1 flex flex-col overflow-hidden outline-none',
+                                focusedPane === 'list' && 'ring-1 ring-[#0078d4]/30',
+                            )}
+                            data-testid="activity-mobile-list"
+                        >
                             {listPane}
                         </div>
                     )}
@@ -611,7 +650,15 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {/* Left panel — task list */}
             <div
-                className="flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
+                ref={listContainerRef}
+                tabIndex={-1}
+                role="region"
+                aria-label="Chat list"
+                data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
+                className={cn(
+                    'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden outline-none',
+                    focusedPane === 'list' && 'ring-1 ring-inset ring-[#0078d4]/30',
+                )}
                 style={{ width: leftPanelWidth }}
                 data-testid="activity-list-panel"
             >
@@ -631,7 +678,19 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             />
 
             {/* Right panel — workflow pane (Ralph session selected) or chat detail */}
-            <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel" data-pane="detail">
+            <div
+                ref={detailContainerRef}
+                tabIndex={-1}
+                role="region"
+                aria-label="Chat detail"
+                data-pane-focus={focusedPane === 'detail' ? 'true' : undefined}
+                className={cn(
+                    'flex-1 min-w-0 overflow-hidden flex flex-col outline-none',
+                    focusedPane === 'detail' && 'ring-1 ring-inset ring-[#0078d4]/30',
+                )}
+                data-testid="activity-detail-panel"
+                data-pane="detail"
+            >
                 {selectedRalphSessionId ? (
                     <RalphWorkflowPaneContainer
                         workspaceId={workspaceId}

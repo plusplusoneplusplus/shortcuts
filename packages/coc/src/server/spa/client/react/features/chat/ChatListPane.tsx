@@ -245,6 +245,8 @@ export interface ChatListPaneProps {
     selectedRalphSessionId?: string | null;
     /** Called when the user clicks a Ralph session row body (right-pane switch). */
     onSelectRalphSession?: (sessionId: string) => void;
+    /** Keyboard cursor highlight id from useChatPaneNavigation. May differ from selectedTaskId. */
+    cursorTaskId?: string | null;
 }
 
 function formatMetadataText(task: any): string {
@@ -356,6 +358,7 @@ export function ChatListPane({
     onNewChat,
     selectedRalphSessionId,
     onSelectRalphSession,
+    cursorTaskId,
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -468,6 +471,26 @@ export function ChatListPane({
         document.addEventListener('mousedown', handler, true);
         return () => document.removeEventListener('mousedown', handler, true);
     }, []);
+
+    useEffect(() => {
+        const root = containerRef.current;
+        if (!root) return;
+        const prev = root.querySelectorAll<HTMLElement>('[data-cursor="true"]');
+        prev.forEach(el => {
+            el.removeAttribute('data-cursor');
+            el.classList.remove('outline', 'outline-1', 'outline-[#0078d4]/60');
+        });
+        if (!cursorTaskId) return;
+        let target: HTMLElement | null = null;
+        try {
+            target = root.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(cursorTaskId)}"]`);
+        } catch {
+            target = null;
+        }
+        if (!target) return;
+        target.setAttribute('data-cursor', 'true');
+        target.classList.add('outline', 'outline-1', 'outline-[#0078d4]/60');
+    }, [cursorTaskId, running, queued, history, searchResults]);
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {

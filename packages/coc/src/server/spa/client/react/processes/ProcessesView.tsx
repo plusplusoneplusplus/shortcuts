@@ -15,6 +15,7 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { toQueueProcessId } from '../utils/queue-process-id';
 import { ChatListPane } from '../features/chat/ChatListPane';
 import { ChatDetailPane } from '../features/chat/ChatDetailPane';
+import { useChatPaneNavigation } from '../features/chat/hooks/useChatPaneNavigation';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../contexts/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
 import { TaskDefs } from '../../../../tasks/task-types';
@@ -48,6 +49,8 @@ export function ProcessesView() {
     const selectedTaskId = queueState.selectedTaskId;
     const { isMobile, isTablet } = useBreakpoint();
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    const listContainerRef = useRef<HTMLDivElement | null>(null);
+    const detailContainerRef = useRef<HTMLDivElement | null>(null);
 
     const [selectedTask, setSelectedTask] = useState<any>(null);
     const selectedTaskRef = useRef<any>(null);
@@ -231,6 +234,18 @@ export function ProcessesView() {
         ? 'h-[calc(100vh-48px-48px)]'
         : 'h-[calc(100vh-48px)]';
 
+    const { focusedPane, cursorTaskId } = useChatPaneNavigation({
+        listContainerRef,
+        detailContainerRef,
+        selectedTaskId,
+        onSelectTask: (id) => selectTask(id),
+        enabled: true,
+        isMobile,
+        mobileShowDetail,
+        onEnterDetail: () => setMobileShowDetail(true),
+        onEnterList: () => setMobileShowDetail(false),
+    });
+
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -253,6 +268,7 @@ export function ProcessesView() {
             now={now}
             awaitingInputProcessIds={awaitingInputProcessIds}
             onSelectTask={selectTask}
+            cursorTaskId={cursorTaskId}
             onPauseResume={handlePauseResume}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG' })}
@@ -266,7 +282,18 @@ export function ProcessesView() {
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div id="view-processes" className={`flex flex-col ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
                     {mobileShowDetail && selectedTaskId ? (
-                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
+                        <div
+                            ref={detailContainerRef}
+                            tabIndex={-1}
+                            role="region"
+                            aria-label="Chat detail"
+                            data-pane-focus={focusedPane === 'detail' ? 'true' : undefined}
+                            className={cn(
+                                'flex-1 flex flex-col overflow-hidden outline-none',
+                                focusedPane === 'detail' && 'ring-1 ring-[#0078d4]/30',
+                            )}
+                            data-testid="activity-detail-panel"
+                        >
                             <ChatDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
@@ -274,7 +301,18 @@ export function ProcessesView() {
                             />
                         </div>
                     ) : (
-                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
+                        <div
+                            ref={listContainerRef}
+                            tabIndex={-1}
+                            role="region"
+                            aria-label="Chat list"
+                            data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
+                            className={cn(
+                                'flex-1 flex flex-col overflow-hidden outline-none',
+                                focusedPane === 'list' && 'ring-1 ring-[#0078d4]/30',
+                            )}
+                            data-testid="activity-mobile-list"
+                        >
                             {listPane}
                         </div>
                     )}
@@ -288,15 +326,34 @@ export function ProcessesView() {
             <ChatPrefsSync history={history} workspaceId={workspaceId} />
             <div id="view-processes" className={`flex ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
                 {/* Left panel — task list */}
-                <div className={cn(
-                    'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden',
-                    isTablet ? 'w-64' : 'w-80',
-                )}>
+                <div
+                    ref={listContainerRef}
+                    tabIndex={-1}
+                    role="region"
+                    aria-label="Chat list"
+                    data-pane-focus={focusedPane === 'list' ? 'true' : undefined}
+                    className={cn(
+                        'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden outline-none',
+                        isTablet ? 'w-64' : 'w-80',
+                        focusedPane === 'list' && 'ring-1 ring-inset ring-[#0078d4]/30',
+                    )}
+                >
                     {listPane}
                 </div>
 
                 {/* Right panel — detail or placeholder */}
-                <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
+                <div
+                    ref={detailContainerRef}
+                    tabIndex={-1}
+                    role="region"
+                    aria-label="Chat detail"
+                    data-pane-focus={focusedPane === 'detail' ? 'true' : undefined}
+                    className={cn(
+                        'flex-1 min-w-0 overflow-hidden flex flex-col outline-none',
+                        focusedPane === 'detail' && 'ring-1 ring-inset ring-[#0078d4]/30',
+                    )}
+                    data-testid="activity-detail-panel"
+                >
                     <ChatDetailPane
                         selectedTaskId={selectedTaskId}
                         selectedTask={selectedTask}
