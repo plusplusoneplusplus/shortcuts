@@ -18,3 +18,9 @@ export {
     filterByFile,
     groupByFile,
 } from './utils';
+export {
+    HumanReviewer,
+    HumanReviewerConfig,
+    HumanReviewOptions,
+    DefaultReviewSession,
+} from './human-reviewer';
