@@ -18,6 +18,23 @@ export function makeDiffContent(raw: string): DiffContent {
     return { raw, truncated: false, totalLines };
 }
 
+// ── Truncation ───────────────────────────────────────────────
+
+/**
+ * Truncate a `DiffContent` to at most `maxLines` lines.
+ * Returns the original object unchanged if the diff fits within the limit.
+ */
+export function truncateDiffContent(content: DiffContent, maxLines: number): DiffContent {
+    if (maxLines <= 0) return { raw: '', truncated: true, totalLines: content.totalLines };
+    const lines = content.raw.split('\n');
+    if (lines.length <= maxLines) return content;
+    return {
+        raw: lines.slice(0, maxLines).join('\n'),
+        truncated: true,
+        totalLines: content.totalLines,
+    };
+}
+
 // ── Summary computation ──────────────────────────────────────
 
 /**

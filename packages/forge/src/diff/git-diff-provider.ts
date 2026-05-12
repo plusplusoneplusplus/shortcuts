@@ -17,7 +17,7 @@ import type {
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
-import { makeDiffContent, computeSummary, splitDiffByFile } from './diff-utils';
+import { makeDiffContent, computeSummary, splitDiffByFile, truncateDiffContent } from './diff-utils';
 
 // ── Shared helpers ───────────────────────────────────────────
 
@@ -161,13 +161,14 @@ export function createCommitDiffProvider(
             return cachedFiles;
         },
 
-        async getFileDiff(filePath: string, _options?: GetFileDiffOptions): Promise<DiffContent> {
+        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
             const parent = await getParentRef();
             const raw = await execGitAsync(
                 ['diff', ...diffArgs(parent), '--', filePath],
                 repositoryRoot,
             );
-            return makeDiffContent(raw);
+            const content = makeDiffContent(raw);
+            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
         },
 
         async getFullDiff(): Promise<DiffContent> {
@@ -224,12 +225,13 @@ export function createRangeDiffProvider(
             return cachedFiles;
         },
 
-        async getFileDiff(filePath: string, _options?: GetFileDiffOptions): Promise<DiffContent> {
+        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
             const raw = await execGitAsync(
                 ['diff', rangeSpec, '--', filePath],
                 repositoryRoot,
             );
-            return makeDiffContent(raw);
+            const content = makeDiffContent(raw);
+            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
         },
 
         async getFullDiff(): Promise<DiffContent> {
@@ -299,7 +301,7 @@ export function createWorkingTreeDiffProvider(
             return cachedFiles;
         },
 
-        async getFileDiff(filePath: string, _options?: GetFileDiffOptions): Promise<DiffContent> {
+        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
             if (scope === 'all') {
                 const [staged, unstaged] = await Promise.all([
                     execGitAsync(['diff', '--cached', '--', filePath], repositoryRoot).catch(() => ''),
@@ -308,13 +310,15 @@ export function createWorkingTreeDiffProvider(
                 const parts: string[] = [];
                 if (staged.trim()) parts.push(staged);
                 if (unstaged.trim()) parts.push(unstaged);
-                return makeDiffContent(parts.join('\n'));
+                const content = makeDiffContent(parts.join('\n'));
+                return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
             }
             const raw = await execGitAsync(
                 ['diff', ...diffArgsForScope(scope), '--', filePath],
                 repositoryRoot,
             );
-            return makeDiffContent(raw);
+            const content = makeDiffContent(raw);
+            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
         },
 
         async getFullDiff(): Promise<DiffContent> {

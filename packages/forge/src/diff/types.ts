@@ -198,4 +198,11 @@ export interface GetFileDiffOptions {
      * Default: false.
      */
     full?: boolean;
+
+    /**
+     * Maximum number of lines to include in the diff output.
+     * When set, the diff is truncated after this many lines and
+     * `DiffContent.truncated` is set to `true`.
+     */
+    maxLines?: number;
 }

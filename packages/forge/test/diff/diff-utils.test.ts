@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     makeDiffContent,
     computeSummary,
+    truncateDiffContent,
     splitIntoChunks,
     extractBPath,
     extractAPath,
@@ -249,5 +250,60 @@ describe('splitDiffByFile', () => {
         const target = new Map();
         splitDiffByFile('', [], target);
         expect(target.size).toBe(0);
+    });
+});
+
+// ── truncateDiffContent ──────────────────────────────────────
+
+describe('truncateDiffContent', () => {
+    const multiLineDiff = makeDiffContent('line1\nline2\nline3\nline4\nline5');
+
+    it('returns original when within maxLines limit', () => {
+        const result = truncateDiffContent(multiLineDiff, 10);
+        expect(result).toBe(multiLineDiff); // same reference
+        expect(result.truncated).toBe(false);
+    });
+
+    it('returns original when exactly at maxLines', () => {
+        const result = truncateDiffContent(multiLineDiff, 5);
+        expect(result).toBe(multiLineDiff);
+    });
+
+    it('truncates when exceeding maxLines', () => {
+        const result = truncateDiffContent(multiLineDiff, 3);
+        expect(result.raw).toBe('line1\nline2\nline3');
+        expect(result.truncated).toBe(true);
+        expect(result.totalLines).toBe(multiLineDiff.totalLines);
+    });
+
+    it('truncates to 1 line', () => {
+        const result = truncateDiffContent(multiLineDiff, 1);
+        expect(result.raw).toBe('line1');
+        expect(result.truncated).toBe(true);
+    });
+
+    it('returns empty string when maxLines is 0', () => {
+        const result = truncateDiffContent(multiLineDiff, 0);
+        expect(result.raw).toBe('');
+        expect(result.truncated).toBe(true);
+        expect(result.totalLines).toBe(multiLineDiff.totalLines);
+    });
+
+    it('returns empty for negative maxLines', () => {
+        const result = truncateDiffContent(multiLineDiff, -1);
+        expect(result.raw).toBe('');
+        expect(result.truncated).toBe(true);
+    });
+
+    it('handles empty content', () => {
+        const empty = makeDiffContent('');
+        const result = truncateDiffContent(empty, 5);
+        expect(result).toBe(empty);
+    });
+
+    it('preserves totalLines from original', () => {
+        const result = truncateDiffContent(multiLineDiff, 2);
+        expect(result.totalLines).toBe(5);
+        expect(result.raw.split('\n').length).toBe(2);
     });
 });

@@ -31,5 +31,6 @@ describe('diff/index barrel exports', () => {
         expect(typeof diff.extractAPath).toBe('function');
         expect(typeof diff.inferStatusFromDiffChunk).toBe('function');
         expect(typeof diff.countAdditionsDeletions).toBe('function');
+        expect(typeof diff.truncateDiffContent).toBe('function');
     });
 });

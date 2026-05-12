@@ -18,7 +18,7 @@ import type {
     PullRequestDiffSource,
     PullRequestIterationDiffSource,
 } from './types';
-import { makeDiffContent, computeSummary, parseFullDiff } from './diff-utils';
+import { makeDiffContent, computeSummary, parseFullDiff, truncateDiffContent } from './diff-utils';
 
 // ── Core remote provider builder ─────────────────────────────
 function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestIterationDiffSource>(
@@ -43,9 +43,10 @@ function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestI
             return files;
         },
 
-        async getFileDiff(filePath: string, _options?: GetFileDiffOptions): Promise<DiffContent> {
+        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
             const { contentByPath } = await ensureParsed();
-            return contentByPath.get(filePath) ?? makeDiffContent('');
+            const content = contentByPath.get(filePath) ?? makeDiffContent('');
+            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
         },
 
         async getFullDiff(): Promise<DiffContent> {

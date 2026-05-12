@@ -38,6 +38,7 @@ export {
     splitDiffByFile,
     makeDiffContent,
     computeSummary,
+    truncateDiffContent,
     splitIntoChunks,
     extractBPath,
     extractAPath,

@@ -159,6 +159,19 @@ describe('createCommitDiffProvider', () => {
         expect(content.totalLines).toBeGreaterThan(0);
     });
 
+    it('getFileDiff truncates with maxLines option', async () => {
+        const full = await provider.getFileDiff('src/foo.ts');
+        const truncated = await provider.getFileDiff('src/foo.ts', { maxLines: 2 });
+        expect(truncated.raw.split('\n').length).toBe(2);
+        expect(truncated.truncated).toBe(true);
+        expect(truncated.totalLines).toBe(full.totalLines);
+    });
+
+    it('getFileDiff does not truncate when maxLines exceeds content', async () => {
+        const content = await provider.getFileDiff('src/foo.ts', { maxLines: 10000 });
+        expect(content.truncated).toBe(false);
+    });
+
     it('getFullDiff returns combined diff', async () => {
         const content = await provider.getFullDiff();
         expect(content.raw).toContain('src/foo.ts');
