@@ -148,6 +148,13 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(enqueueArg.payload.context.ralph.sessionId).toBe('ralph-session-abc');
         expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
         expect(enqueueArg.payload.context.ralph.maxIterations).toBe(10);
+        // The user prompt MUST embed the goal text so the host CLI's
+        // embedding-based skill retriever can match it. A static
+        // placeholder like "Begin Ralph execution loop." would surface
+        // no skills.
+        expect(enqueueArg.payload.prompt).toContain('Build a feature');
+        expect(enqueueArg.payload.prompt).toContain('<goal>');
+        expect(enqueueArg.payload.prompt).not.toBe('Begin Ralph execution loop.');
     });
 
     it('initialises the per-session journal directory and session.json', async () => {

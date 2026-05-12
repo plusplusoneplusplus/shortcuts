@@ -13,6 +13,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId, isQueueProcessId, toTaskId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { getRalphContext } from '../tasks/task-types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -113,7 +114,7 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 payload: {
                     kind: 'chat',
                     mode: 'ralph',
-                    prompt: 'Begin Ralph execution loop.',
+                    prompt: buildRalphIterationPrompt({ originalGoal: goalSpec }),
                     workspaceId: wsId,
                     workingDirectory,
                     folderPath,

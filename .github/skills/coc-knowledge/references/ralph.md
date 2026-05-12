@@ -60,3 +60,14 @@ banner with the original byte size.
 The cap is intentionally lossy. There is no compaction pass or historical
 archive, so runaway sessions remain bounded at the cost of older journal
 content.
+
+## Per-Iteration User Prompt
+
+Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` in
+`packages/coc/src/server/ralph/iteration-prompt.ts` and embeds the
+`originalGoal` inside a `<goal>` block. This is required because the host
+Copilot CLI's embedding-based skill retriever queries against the most recent
+user message; a static placeholder would surface no skills. The prompt must
+not begin with `<available_skills>`, `<additional_tool_instructions>`, or
+`<skill-context`, since the retriever skips messages with those prefixes when
+locating the user query.
