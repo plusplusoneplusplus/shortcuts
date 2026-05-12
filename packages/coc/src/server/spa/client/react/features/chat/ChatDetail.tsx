@@ -50,6 +50,7 @@ import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
+import { ImplementPlanCard } from './ImplementPlanCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -977,6 +978,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             />
                         );
                     })()}
+                    {/* Plan-mode complete — offer one-click handoff to autopilot */}
+                    {isTerminal && resolveLoadedTaskMode(task) === 'plan' && effectivePlanPath && (
+                        <ImplementPlanCard
+                            planFilePath={effectivePlanPath}
+                            workspaceId={workspaceId}
+                            workingDirectory={workingDirectory}
+                            onImplemented={(newProcessId) => {
+                                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                            }}
+                        />
+                    )}
                     {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
                         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                             <div className="text-[#848484] text-sm text-center">
