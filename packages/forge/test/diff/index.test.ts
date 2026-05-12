@@ -20,4 +20,16 @@ describe('diff/index barrel exports', () => {
         expect(typeof diff.createPullRequestIterationDiffProvider).toBe('function');
         expect(typeof diff.createPullRequestIterationDiffProviderFromParams).toBe('function');
     });
+
+    it('exports diff utility functions', () => {
+        expect(typeof diff.parseFullDiff).toBe('function');
+        expect(typeof diff.splitDiffByFile).toBe('function');
+        expect(typeof diff.makeDiffContent).toBe('function');
+        expect(typeof diff.computeSummary).toBe('function');
+        expect(typeof diff.splitIntoChunks).toBe('function');
+        expect(typeof diff.extractBPath).toBe('function');
+        expect(typeof diff.extractAPath).toBe('function');
+        expect(typeof diff.inferStatusFromDiffChunk).toBe('function');
+        expect(typeof diff.countAdditionsDeletions).toBe('function');
+    });
 });
