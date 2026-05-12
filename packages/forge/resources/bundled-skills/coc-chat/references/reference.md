@@ -20,8 +20,8 @@ python <skill-dir>/scripts/coc_chat.py <command> [args...]
 | `list-all [options]` | List processes across all workspaces |
 | `show <workspaceId> <processId>` | Show full process metadata + conversation preview |
 | `conversation <workspaceId> <processId>` | Print full conversation turns (no truncation) |
-| `search <keyword> [--workspace <id>]` | Search titles/previews |
-| `search-content <keyword> [--workspace <id>]` | Search inside conversation content (heavier) |
+| `search <keyword> [--workspace <id>]` | Search titles/previews (index-only) |
+| `search-content <keyword> [filters]` | Full-text FTS5 search across conversation turns (server-side) |
 | `tools <workspaceId> <processId>` | Summarize tool usage in a process |
 | `tokens <workspaceId> <processId>` | Show per-turn token usage breakdown |
 | `stats [workspaceId]` | Aggregate counts by status, type, and workspace |
@@ -100,11 +100,12 @@ python <skill-dir>/scripts/coc_chat.py output <processId>
 
 ### 4. Search Across Conversations
 
-`search` checks titles/previews (fast, index-only). `search-content` scans full conversation bodies (slower — fetches each process).
+`search` filters summaries by title/promptPreview client-side (fast, index-only). `search-content` uses the server's FTS5 full-text index over conversation turn content — single round trip, returns snippets with the matched text.
 
 ```bash
 python <skill-dir>/scripts/coc_chat.py search "keyword"
 python <skill-dir>/scripts/coc_chat.py search-content "keyword" --workspace <workspaceId>
+python <skill-dir>/scripts/coc_chat.py search-content "DAG executor" --status completed --limit 50
 ```
 
 ### 5. Analyze Tool and Token Usage
@@ -262,8 +263,8 @@ Supported query params: `workspace`, `status` (comma-separated), `type`, `since`
 | `tool-complete` | `{ toolCallId, result }` | Tool done |
 | `tool-failed` | `{ toolCallId, error }` | Tool failed |
 | `token-usage` | `{ tokenUsage }` | Per-turn tokens |
-| `status` | `{ status }` | Status change |
-| `done` | `{ status, duration }` | Completed |
+| `status` | `{ status }` | Status change (the final status is delivered here) |
+| `done` | `{ processId }` | Stream ended (status came on the preceding `status` event) |
 | `suggestions` | `{ suggestions }` | Follow-up suggestions |
 | `heartbeat` | `{}` | Keep-alive |
 
@@ -285,6 +286,39 @@ Supported query params: `workspace`, `status` (comma-separated), `type`, `since`
 |--------|------|-------------|
 | `GET` | `/api/stats` | Process counts by status and workspace |
 | `GET` | `/api/stats/token-usage?days=N` | Aggregated per-day per-model token usage |
+
+`/api/stats/token-usage` response:
+
+```json
+{
+  "entries": [
+    { "date": "2026-03-23",
+      "byModel": { "gpt-4": { "inputTokens": 30000, "outputTokens": 12000, "totalTokens": 42000, "turnCount": 6 } },
+      "dayTotal": { "inputTokens": 40000, "outputTokens": 17000, "totalTokens": 57000, "turnCount": 9 } }
+  ],
+  "models": ["claude-sonnet", "gpt-4"],
+  "generatedAt": "2026-03-23T11:00:00Z",
+  "totalDays": 1
+}
+```
+
+### Full-text Search
+
+**`GET /api/processes/search?q=<kw>&workspace=<id>&status=<s>&type=<t>&since=<iso>&limit=<n>&offset=<n>`** — FTS5 over conversation turn content.
+
+```json
+{
+  "results": [
+    { "processId": "queue_proc-1", "turnIndex": 2, "role": "user",
+      "snippet": "Explain the <mark>DAG</mark> executor",
+      "rank": -3.14, "processTitle": "Workflow DAG",
+      "promptPreview": "...", "processStatus": "completed",
+      "processType": "chat", "workspaceId": "ws-abc123",
+      "startTime": "2026-03-23T10:15:00Z" }
+  ],
+  "total": 1, "query": "DAG", "limit": 30, "offset": 0
+}
+```
 
 ### Process Output
 

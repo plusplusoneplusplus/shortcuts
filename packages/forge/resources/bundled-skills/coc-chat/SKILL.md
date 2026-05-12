@@ -22,7 +22,8 @@ Read [references/reference.md](references/reference.md) for the full command ref
 | List workspaces | `workspaces` |
 | List recent chats | `list <wsId> --limit 10` |
 | Read a conversation | `show <wsId> <pid>` or `conversation <wsId> <pid>` |
-| Search chats | `search <keyword>` or `search-content <keyword>` |
+| Search titles | `search <keyword>` |
+| Full-text content search | `search-content <keyword> [--workspace <id>] [--status …] [--type …]` |
 | Aggregate stats | `stats [wsId]` |
 | Token usage report | `token-usage --days 7` |
 | Task history | `history --workspace <wsId>` |

@@ -18,8 +18,8 @@ python <skill-dir>/scripts/coc_chat.py <command> [args...]
 | `list-all [options]` | List processes across all workspaces |
 | `show <workspaceId> <processId>` | Show full process metadata + conversation preview |
 | `conversation <workspaceId> <processId>` | Print full conversation turns (no truncation) |
-| `search <keyword> [--workspace <id>]` | Search titles/previews across indices |
-| `search-content <keyword> [--workspace <id>]` | Search inside conversation content |
+| `search <keyword> [--workspace <id>]` | Search titles/previews across indices (index-only) |
+| `search-content <keyword> [filters]` | Full-text FTS5 search across conversation turns (server-side) |
 | `tools <workspaceId> <processId>` | Summarize tool usage in a process |
 | `tokens <workspaceId> <processId>` | Show per-turn token usage breakdown |
 | `stats [workspaceId]` | Aggregate counts by status and type |
@@ -67,11 +67,12 @@ For very large conversations, read the raw JSON directly:
 
 ### 4. Search Across Conversations
 
-`search` checks titles/previews (fast, index-only). `search-content` scans full conversation bodies (slower).
+`search` filters summaries by title/promptPreview client-side (fast, index-only). `search-content` uses the server's FTS5 full-text index over conversation turn content — single round trip, returns snippets with the matched text.
 
 ```bash
 python <skill-dir>/scripts/coc_chat.py search "keyword"
 python <skill-dir>/scripts/coc_chat.py search-content "keyword" --workspace <workspaceId>
+python <skill-dir>/scripts/coc_chat.py search-content "DAG executor" --status completed --limit 50
 ```
 
 ### 5. Analyze Tool and Token Usage

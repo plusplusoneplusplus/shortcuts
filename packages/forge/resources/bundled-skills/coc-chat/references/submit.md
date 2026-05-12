@@ -142,8 +142,8 @@ Response: **202** `{ processId, turnIndex }`. Returns **410** if session expired
 | `tool-complete` | `{ toolCallId, result }` | Tool done |
 | `tool-failed` | `{ toolCallId, error }` | Tool failed |
 | `token-usage` | `{ tokenUsage }` | Per-turn tokens |
-| `status` | `{ status }` | Status change |
-| `done` | `{ status, duration }` | Completed |
+| `status` | `{ status }` | Status change (final status arrives here) |
+| `done` | `{ processId }` | Stream ended (status came on the preceding `status` event) |
 | `suggestions` | `{ suggestions }` | Follow-up suggestions |
 | `heartbeat` | `{}` | Keep-alive |
 

@@ -15,8 +15,9 @@ Query Commands:
     list-all [options]                        List processes across all workspaces
     show <workspaceId> <processId>            Show full process metadata + conversation
     conversation <workspaceId> <processId>    Print conversation turns only
-    search <keyword> [--workspace <id>]       Search titles/previews
-    search-content <keyword> [--workspace <id>]  Search inside conversation content
+    search <keyword> [--workspace <id>]       Search titles/previews (index-only)
+    search-content <keyword> [opts]           Full-text FTS5 search across turns
+                                              (--workspace, --status, --type, --since, --limit)
     tools <workspaceId> <processId>           Summarize tool usage in a process
     tokens <workspaceId> <processId>          Show token usage breakdown
     stats [workspaceId]                       Aggregate stats (counts by status/type)
@@ -437,45 +438,51 @@ def cmd_search(keyword: str, opts: dict):
 
 
 def cmd_search_content(keyword: str, opts: dict):
-    keyword_lower = keyword.lower()
-    ws = opts.get("workspace")
-    params: dict = {"limit": "200"}
-    if ws:
-        params["workspace"] = ws
+    # Uses the server's FTS5 full-text search endpoint:
+    # GET /api/processes/search?q=<kw>&workspace=<id>&status=<s>&type=<t>&limit=<n>
+    # The server returns one row per matching turn, with snippet+rank.
+    params: dict = {"q": keyword}
+    if opts.get("workspace"):
+        params["workspace"] = opts["workspace"]
+    if opts.get("status"):
+        params["status"] = opts["status"]
+    if opts.get("type_filter"):
+        params["type"] = opts["type_filter"]
+    if opts.get("since"):
+        params["since"] = opts["since"]
+    limit = opts.get("limit", 30)
+    params["limit"] = str(limit)
     qs = f"?{urllib.parse.urlencode(params)}"
-    url = api_url(opts["base_url"], f"/processes/summaries{qs}")
+    url = api_url(opts["base_url"], f"/processes/search{qs}")
     result = get_json(url)
-    require_ok(result, opts["raw_json"])
-    entries = result["body"].get("summaries", [])
-    total = result["body"].get("total", len(entries))
-    if total > len(entries):
-        print(
-            f"  (scanning {len(entries)} of {total} processes;"
-            " use --workspace to narrow scope)",
-            file=sys.stderr,
-        )
-    hits = []
-    for e in entries:
-        pid = e.get("id")
-        if not pid:
-            continue
-        ws_id = e.get("workspaceId", "") or ws or ""
-        p_result = _fetch_process(opts, pid, ws_id or None)
-        if p_result.get("error"):
-            continue
-        p = p_result.get("body", {}).get("process", {})
-        for t in p.get("conversationTurns") or []:
-            if keyword_lower in (t.get("content") or "").lower():
-                title = p.get("title") or p.get("promptPreview") or "(untitled)"
-                hits.append((ws_id or "?", pid, title, t.get("turnIndex"), t.get("role")))
-                break
     if opts["raw_json"]:
-        print(json.dumps(hits, indent=2)); return
-    print(f"Found {len(hits)} process(es) with content matching '{keyword}':")
-    for ws_id, pid, title, turn_idx, role in hits[:30]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    body = result["body"]
+    hits = body.get("results", []) or []
+    total = body.get("total", len(hits))
+    if not hits:
+        print(f"No content matches for '{keyword}'.")
+        return
+    suffix = "" if total == len(hits) else f" (showing top {len(hits)} of {total})"
+    print(f"Found {total} match(es) for '{keyword}'{suffix}:")
+    for r in hits:
+        ws_id = r.get("workspaceId", "") or "?"
+        pid = str(r.get("processId", "?"))
+        title = r.get("processTitle") or r.get("promptPreview") or "(untitled)"
         if len(title) > 50:
             title = title[:47] + "..."
-        print(f"  [{str(ws_id)[:12]}] {str(pid)[:36]:36s}  turn {turn_idx} ({role})  {title}")
+        snippet = (r.get("snippet") or "").replace("\n", " ").strip()
+        # FTS5 wraps matches in <mark>...</mark>; strip for plain terminal output.
+        snippet = snippet.replace("<mark>", "").replace("</mark>", "")
+        if len(snippet) > 120:
+            snippet = snippet[:117] + "..."
+        print(
+            f"  [{str(ws_id)[:12]}] {pid[:36]:36s}"
+            f"  turn {r.get('turnIndex')} ({r.get('role')})  {title}"
+        )
+        if snippet:
+            print(f"    {snippet}")
 
 
 def cmd_tools(workspace_id: str, process_id: str, opts: dict):
@@ -609,29 +616,49 @@ def cmd_token_usage(opts: dict):
         print(json.dumps(result, indent=2)); return
     require_ok(result)
     body = result["body"]
-    summary = body.get("summary", {})
-    daily = body.get("dailyStats", [])
+    # Server shape: { entries: [{ date, byModel: {model: TokenUsage},
+    #                             dayTotal: TokenUsage }], models, generatedAt, totalDays }
+    entries = body.get("entries", []) or []
+    total_in = total_out = total_all = 0
+    model_totals: dict = {}
+    for entry in entries:
+        day_total = entry.get("dayTotal") or {}
+        total_in += day_total.get("inputTokens", 0) or 0
+        total_out += day_total.get("outputTokens", 0) or 0
+        total_all += day_total.get("totalTokens", 0) or 0
+        for model, usage in (entry.get("byModel") or {}).items():
+            agg = model_totals.setdefault(
+                model, {"inputTokens": 0, "outputTokens": 0, "turnCount": 0},
+            )
+            agg["inputTokens"] += usage.get("inputTokens", 0) or 0
+            agg["outputTokens"] += usage.get("outputTokens", 0) or 0
+            agg["turnCount"] += usage.get("turnCount", 0) or 0
     print("Token Usage Summary:")
-    print(f"  Total input:   {summary.get('totalInputTokens', 0):>12,}")
-    print(f"  Total output:  {summary.get('totalOutputTokens', 0):>12,}")
-    print(f"  Total:         {summary.get('totalTokens', 0):>12,}")
-    breakdown = summary.get("modelBreakdown", {})
-    if breakdown:
+    print(f"  Total input:   {total_in:>12,}")
+    print(f"  Total output:  {total_out:>12,}")
+    print(f"  Total:         {total_all:>12,}")
+    if model_totals:
         print("\n  By model:")
-        for model, stats in sorted(breakdown.items()):
+        for model in sorted(model_totals.keys()):
+            stats = model_totals[model]
             print(
                 f"    {model:30s}"
-                f"  in={stats.get('inputTokens', 0):>10,}"
-                f"  out={stats.get('outputTokens', 0):>10,}"
-                f"  calls={stats.get('callCount', 0)}"
+                f"  in={stats['inputTokens']:>10,}"
+                f"  out={stats['outputTokens']:>10,}"
+                f"  turns={stats['turnCount']}"
             )
-    if daily:
-        print(f"\n  Daily breakdown ({len(daily)} days):")
-        for day in daily[-10:]:
+    if entries:
+        recent = entries[:10]
+        print(
+            f"\n  Daily breakdown ({len(entries)} day(s),"
+            f" showing {len(recent)} most recent):"
+        )
+        for day in recent:
+            day_total = day.get("dayTotal") or {}
             print(
                 f"    {day.get('date', '?'):12s}"
-                f"  in={day.get('totalInputTokens', 0):>10,}"
-                f"  out={day.get('totalOutputTokens', 0):>10,}"
+                f"  in={day_total.get('inputTokens', 0) or 0:>10,}"
+                f"  out={day_total.get('outputTokens', 0) or 0:>10,}"
             )
 
 
@@ -799,6 +826,7 @@ def cmd_stream(process_id: str, opts: dict):
         with urllib.request.urlopen(req) as resp:
             print(f"Streaming process {process_id} (Ctrl+C to stop)...\n")
             event_type = ""
+            last_status = None
             for raw_line in resp:
                 line = raw_line.decode("utf-8").rstrip("\n\r")
                 if line.startswith("event: "):
@@ -812,16 +840,21 @@ def cmd_stream(process_id: str, opts: dict):
                         except Exception:
                             print(data_str, end="", flush=True)
                     elif event_type == "done":
-                        try:
-                            d = json.loads(data_str)
-                            print(f"\n\n--- Done ({d.get('status', '?')}) ---")
-                        except Exception:
+                        # The server's `done` event payload is { processId } —
+                        # the terminal status was delivered in a preceding
+                        # `status` event, so reuse that.
+                        if last_status:
+                            print(f"\n\n--- Done ({last_status}) ---")
+                        else:
                             print("\n\n--- Done ---")
                         break
                     elif event_type == "status":
                         try:
                             d = json.loads(data_str)
-                            print(f"\n[status: {d.get('status', '?')}]", flush=True)
+                            status = d.get("status")
+                            if status:
+                                last_status = status
+                                print(f"\n[status: {status}]", flush=True)
                         except Exception:
                             pass
                     elif event_type in ("tool-start", "tool-complete", "tool-failed"):

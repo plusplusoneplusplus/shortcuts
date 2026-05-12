@@ -115,22 +115,86 @@ MOCK_HISTORY = {
 }
 
 MOCK_TOKEN_USAGE = {
-    "dailyStats": [
+    "entries": [
         {
             "date": "2026-03-23",
-            "totalInputTokens": 50000,
-            "totalOutputTokens": 20000,
-            "modelStats": {},
-        }
-    ],
-    "summary": {
-        "totalInputTokens": 50000,
-        "totalOutputTokens": 20000,
-        "totalTokens": 70000,
-        "modelBreakdown": {
-            "gpt-4": {"inputTokens": 50000, "outputTokens": 20000, "totalTokens": 70000, "callCount": 10}
+            "byModel": {
+                "gpt-4": {
+                    "inputTokens": 30000,
+                    "outputTokens": 12000,
+                    "totalTokens": 42000,
+                    "turnCount": 6,
+                },
+                "claude-sonnet": {
+                    "inputTokens": 10000,
+                    "outputTokens": 5000,
+                    "totalTokens": 15000,
+                    "turnCount": 3,
+                },
+            },
+            "dayTotal": {
+                "inputTokens": 40000,
+                "outputTokens": 17000,
+                "totalTokens": 57000,
+                "turnCount": 9,
+            },
         },
-    },
+        {
+            "date": "2026-03-22",
+            "byModel": {
+                "gpt-4": {
+                    "inputTokens": 10000,
+                    "outputTokens": 3000,
+                    "totalTokens": 13000,
+                    "turnCount": 4,
+                },
+            },
+            "dayTotal": {
+                "inputTokens": 10000,
+                "outputTokens": 3000,
+                "totalTokens": 13000,
+                "turnCount": 4,
+            },
+        },
+    ],
+    "models": ["claude-sonnet", "gpt-4"],
+    "generatedAt": "2026-03-23T11:00:00.000Z",
+    "totalDays": 2,
+}
+
+MOCK_SEARCH_RESULTS = {
+    "results": [
+        {
+            "processId": "queue_proc-1",
+            "turnIndex": 2,
+            "role": "user",
+            "snippet": "Explain the <mark>DAG</mark> executor pipeline",
+            "rank": -3.14,
+            "processTitle": "Workflow DAG Discussion",
+            "promptPreview": "Walk me through the DAG executor",
+            "processStatus": "completed",
+            "processType": "chat",
+            "workspaceId": "ws-abc123",
+            "startTime": "2026-03-23T10:15:00.000Z",
+        },
+        {
+            "processId": "queue_proc-2",
+            "turnIndex": 0,
+            "role": "user",
+            "snippet": "What is the <mark>DAG</mark>?",
+            "rank": -2.0,
+            "processTitle": None,
+            "promptPreview": "DAG question",
+            "processStatus": "completed",
+            "processType": "chat",
+            "workspaceId": "ws-abc123",
+            "startTime": "2026-03-22T08:00:00.000Z",
+        },
+    ],
+    "total": 2,
+    "query": "DAG",
+    "limit": 30,
+    "offset": 0,
 }
 
 MOCK_OUTPUT = {"content": "# Conversation Output\n\nHello world", "format": "markdown"}
@@ -438,21 +502,49 @@ class TestCmdSearch(unittest.TestCase):
 class TestCmdSearchContent(unittest.TestCase):
     @patch("coc_chat.get_json")
     def test_finds_content_match(self, mock_get):
-        def side_effect(url):
-            if "summaries" in url:
-                return {"status": 200, "body": MOCK_SUMMARIES}
-            elif "clarification-1" in url:
-                return {"status": 200, "body": MOCK_PROCESS}
-            elif "pipeline-2" in url:
-                return {"status": 200, "body": {"process": {"conversationTurns": []}}}
-            return {"status": 404, "body": {}, "error": "Not found"}
-        mock_get.side_effect = side_effect
+        mock_get.return_value = {"status": 200, "body": MOCK_SEARCH_RESULTS}
         opts = {"base_url": "http://localhost:4000", "raw_json": False}
         captured = StringIO()
         with patch("sys.stdout", captured):
             coc_chat.cmd_search_content("DAG", opts)
         output = captured.getvalue()
-        self.assertIn("1 process(es)", output)
+        self.assertIn("2 match(es)", output)
+        self.assertIn("queue_proc-1", output)
+        self.assertIn("turn 2 (user)", output)
+        self.assertIn("Workflow DAG Discussion", output)
+        self.assertIn("Explain the DAG executor pipeline", output)
+        # <mark> tags should be stripped for terminal output
+        self.assertNotIn("<mark>", output)
+
+    @patch("coc_chat.get_json")
+    def test_hits_fts5_endpoint_with_filters(self, mock_get):
+        mock_get.return_value = {"status": 200, "body": {"results": [], "total": 0}}
+        opts = {
+            "base_url": "http://localhost:4000",
+            "raw_json": False,
+            "workspace": "ws-abc123",
+            "status": "completed",
+            "type_filter": "chat",
+            "limit": 5,
+        }
+        with patch("sys.stdout", StringIO()):
+            coc_chat.cmd_search_content("foo bar", opts)
+        called_url = mock_get.call_args[0][0]
+        self.assertIn("/api/processes/search?", called_url)
+        self.assertIn("q=foo+bar", called_url)
+        self.assertIn("workspace=ws-abc123", called_url)
+        self.assertIn("status=completed", called_url)
+        self.assertIn("type=chat", called_url)
+        self.assertIn("limit=5", called_url)
+
+    @patch("coc_chat.get_json")
+    def test_no_matches(self, mock_get):
+        mock_get.return_value = {"status": 200, "body": {"results": [], "total": 0}}
+        opts = {"base_url": "http://localhost:4000", "raw_json": False}
+        captured = StringIO()
+        with patch("sys.stdout", captured):
+            coc_chat.cmd_search_content("nope", opts)
+        self.assertIn("No content matches", captured.getvalue())
 
 
 class TestCmdTools(unittest.TestCase):
@@ -559,10 +651,46 @@ class TestCmdTokenUsage(unittest.TestCase):
             coc_chat.cmd_token_usage(opts)
         output = captured.getvalue()
         self.assertIn("Token Usage Summary:", output)
-        self.assertIn("50,000", output)
-        self.assertIn("70,000", output)
+        # Totals are summed across all entries' dayTotal.
+        self.assertIn("50,000", output)   # total input  (40k + 10k)
+        self.assertIn("20,000", output)   # total output (17k + 3k)
+        self.assertIn("70,000", output)   # total tokens (57k + 13k)
+        # Per-model section aggregates across days.
         self.assertIn("gpt-4", output)
+        self.assertIn("40,000", output)   # gpt-4 input (30k + 10k)
+        self.assertIn("claude-sonnet", output)
+        # Daily breakdown lists each date.
         self.assertIn("Daily breakdown", output)
+        self.assertIn("2026-03-23", output)
+        self.assertIn("2026-03-22", output)
+
+    @patch("coc_chat.get_json")
+    def test_empty_entries(self, mock_get):
+        mock_get.return_value = {
+            "status": 200,
+            "body": {"entries": [], "models": [], "totalDays": 0, "generatedAt": "x"},
+        }
+        opts = {"base_url": "http://localhost:4000", "raw_json": False}
+        captured = StringIO()
+        with patch("sys.stdout", captured):
+            coc_chat.cmd_token_usage(opts)
+        output = captured.getvalue()
+        self.assertIn("Token Usage Summary:", output)
+        self.assertIn("Total input:              0", output)
+        self.assertNotIn("By model:", output)
+        self.assertNotIn("Daily breakdown", output)
+
+    @patch("coc_chat.get_json")
+    def test_days_param_forwarded(self, mock_get):
+        mock_get.return_value = {
+            "status": 200,
+            "body": {"entries": [], "models": [], "totalDays": 0, "generatedAt": "x"},
+        }
+        opts = {"base_url": "http://localhost:4000", "raw_json": False, "days": 7}
+        with patch("sys.stdout", StringIO()):
+            coc_chat.cmd_token_usage(opts)
+        called_url = mock_get.call_args[0][0]
+        self.assertIn("/api/stats/token-usage?days=7", called_url)
 
 
 class TestCmdOutput(unittest.TestCase):
@@ -673,6 +801,57 @@ class TestCmdModels(unittest.TestCase):
         output = captured.getvalue()
         self.assertIn("gpt-4", output)
         self.assertIn("claude-sonnet", output)
+
+
+def _sse_response(events):
+    """Build a fake urlopen() return value yielding SSE lines for the given (event, data) pairs."""
+    lines = []
+    for event_type, data in events:
+        if event_type:
+            lines.append(f"event: {event_type}\n".encode("utf-8"))
+        if data is not None:
+            lines.append(f"data: {json.dumps(data)}\n".encode("utf-8"))
+        lines.append(b"\n")
+    fake = MagicMock()
+    fake.__enter__.return_value = iter(lines)
+    fake.__exit__.return_value = False
+    return fake
+
+
+class TestCmdStream(unittest.TestCase):
+    @patch("coc_chat.urllib.request.urlopen")
+    def test_uses_last_status_for_done_line(self, mock_urlopen):
+        """`done` event payload is just {processId} now — the displayed status
+        must come from the most recent `status` event, not the done payload."""
+        mock_urlopen.return_value = _sse_response([
+            ("chunk", {"content": "hello "}),
+            ("chunk", {"content": "world"}),
+            ("status", {"status": "completed"}),
+            ("done", {"processId": "queue_x"}),
+        ])
+        opts = {"base_url": "http://localhost:4000", "raw_json": False}
+        captured = StringIO()
+        with patch("sys.stdout", captured):
+            coc_chat.cmd_stream("queue_x", opts)
+        output = captured.getvalue()
+        self.assertIn("hello world", output)
+        self.assertIn("[status: completed]", output)
+        self.assertIn("--- Done (completed) ---", output)
+        self.assertNotIn("(?)", output)
+
+    @patch("coc_chat.urllib.request.urlopen")
+    def test_done_without_prior_status(self, mock_urlopen):
+        mock_urlopen.return_value = _sse_response([
+            ("chunk", {"content": "x"}),
+            ("done", {"processId": "queue_y"}),
+        ])
+        opts = {"base_url": "http://localhost:4000", "raw_json": False}
+        captured = StringIO()
+        with patch("sys.stdout", captured):
+            coc_chat.cmd_stream("queue_y", opts)
+        output = captured.getvalue()
+        self.assertIn("--- Done ---", output)
+        self.assertNotIn("Done (", output)
 
 
 class TestCmdRunWorkflow(unittest.TestCase):
