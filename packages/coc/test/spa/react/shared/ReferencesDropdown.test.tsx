@@ -26,7 +26,10 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
         ) : null,
 }));
 
-import { ReferencesDropdown } from '../../../../src/server/spa/client/react/ui/ReferencesDropdown';
+import {
+    computeReferencesDropdownPlacement,
+    ReferencesDropdown,
+} from '../../../../src/server/spa/client/react/ui/ReferencesDropdown';
 
 // FilePathLink renders a span with the path — no context needed
 
@@ -37,6 +40,40 @@ beforeEach(() => {
     mockBreakpoint.isDesktop = true;
     mockBreakpoint.breakpoint = 'desktop';
     cleanup();
+    vi.restoreAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+});
+
+function mockTriggerRect(rect: Partial<DOMRect>) {
+    return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 28,
+        top: 20,
+        right: 760,
+        bottom: 48,
+        left: 660,
+        toJSON: () => ({}),
+        ...rect,
+    } as DOMRect);
+}
+
+describe('computeReferencesDropdownPlacement', () => {
+    it('right-aligns the panel to the trigger with the existing vertical gap', () => {
+        expect(computeReferencesDropdownPlacement({ right: 760, bottom: 48 }, 520, 1024)).toEqual({
+            top: 55,
+            left: 240,
+        });
+    });
+
+    it('clamps the panel inside the left viewport margin', () => {
+        expect(computeReferencesDropdownPlacement({ right: 300, bottom: 48 }, 520, 1024).left).toBe(12);
+    });
+
+    it('clamps the panel inside the right viewport margin', () => {
+        expect(computeReferencesDropdownPlacement({ right: 1200, bottom: 48 }, 520, 1024).left).toBe(492);
+    });
 });
 
 describe('ReferencesDropdown — desktop', () => {
@@ -91,6 +128,55 @@ describe('ReferencesDropdown — desktop', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         expect(document.querySelector('[data-full-path="/plan.md"]')).toBeTruthy();
+    });
+
+    it('renders desktop dropdown in a document.body portal with fixed placement', () => {
+        mockTriggerRect({ right: 760, bottom: 48 });
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+
+        const dialog = screen.getByRole('dialog', { name: 'References' });
+        expect(dialog.parentElement).toBe(document.body);
+        expect(dialog.className).toContain('fixed');
+        expect(dialog.className).not.toContain('absolute');
+        expect(dialog.style.top).toBe('55px');
+        expect(dialog.style.left).toBe('240px');
+    });
+
+    it('keeps clicks inside the portaled panel from closing the dropdown', () => {
+        mockTriggerRect({ right: 760, bottom: 48 });
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+
+        const dialog = screen.getByRole('dialog', { name: 'References' });
+        fireEvent.mouseDown(dialog);
+
+        expect(screen.getByRole('dialog', { name: 'References' })).toBeTruthy();
+    });
+
+    it('recomputes fixed placement when the viewport changes while open', () => {
+        let right = 760;
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 28,
+            top: 20,
+            right,
+            bottom: 48,
+            left: right - 100,
+            toJSON: () => ({}),
+        } as DOMRect));
+
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        const dialog = screen.getByRole('dialog', { name: 'References' });
+        expect(dialog.style.left).toBe('240px');
+
+        right = 700;
+        fireEvent(window, new Event('resize'));
+
+        expect(dialog.style.left).toBe('180px');
     });
 
     it('hides dropdown on second click (toggle)', () => {

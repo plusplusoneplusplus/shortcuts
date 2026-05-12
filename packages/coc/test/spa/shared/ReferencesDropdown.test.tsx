@@ -41,6 +41,7 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('useRef');
         expect(SOURCE).toContain('useEffect');
         expect(SOURCE).toContain('mousedown');
+        expect(SOURCE).toContain('panelRef');
     });
 
     it('renders plan file row with no emoji (uses text icon label instead)', () => {
@@ -71,6 +72,28 @@ describe('ReferencesDropdown component', () => {
         // New design uses a fixed 520px popover at sm+ instead of min-w-[420px]
         expect(SOURCE).toContain('sm:w-[520px]');
         expect(SOURCE).toContain('z-50');
+    });
+
+    it('renders the desktop panel through a body-level portal with fixed positioning', () => {
+        expect(SOURCE).toContain("import { createPortal } from 'react-dom'");
+        expect(SOURCE).toContain('createPortal(');
+        expect(SOURCE).toContain('document.body');
+        expect(SOURCE).toContain("'fixed z-50 overflow-hidden'");
+        expect(SOURCE).not.toContain('absolute top-full right-0');
+    });
+
+    it('exports a viewport-clamping placement helper for the portaled panel', () => {
+        expect(SOURCE).toContain('export function computeReferencesDropdownPlacement');
+        expect(SOURCE).toContain('triggerRect.right - panelWidth');
+        expect(SOURCE).toContain('viewportWidth - panelWidth - margin');
+        expect(SOURCE).toContain('triggerRect.bottom + gap');
+    });
+
+    it('recomputes desktop placement while open on resize and scroll', () => {
+        expect(SOURCE).toContain("window.addEventListener('resize', updatePlacement)");
+        expect(SOURCE).toContain("window.addEventListener('scroll', updatePlacement, true)");
+        expect(SOURCE).toContain("window.removeEventListener('resize', updatePlacement)");
+        expect(SOURCE).toContain("window.removeEventListener('scroll', updatePlacement, true)");
     });
 
     it('renders header chrome around the list', () => {

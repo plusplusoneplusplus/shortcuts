@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { BottomSheet } from './BottomSheet';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -9,6 +10,30 @@ export interface ReferencesDropdownProps {
     files?: { filePath: string }[];
     /** Workspace ID stamped on the mobile BottomSheet content so DOM traversal in file-path-preview.ts can resolve it. */
     wsId?: string;
+}
+
+const DESKTOP_PANEL_WIDTH = 520;
+const DESKTOP_PANEL_GAP = 7;
+const DESKTOP_VIEWPORT_MARGIN = 12;
+
+export interface ReferencesDropdownPlacement {
+    top: number;
+    left: number;
+}
+
+export function computeReferencesDropdownPlacement(
+    triggerRect: Pick<DOMRect, 'bottom' | 'right'>,
+    panelWidth: number,
+    viewportWidth: number,
+    margin = DESKTOP_VIEWPORT_MARGIN,
+    gap = DESKTOP_PANEL_GAP,
+): ReferencesDropdownPlacement {
+    const maxLeft = Math.max(margin, viewportWidth - panelWidth - margin);
+    const left = Math.min(Math.max(triggerRect.right - panelWidth, margin), maxLeft);
+    return {
+        top: triggerRect.bottom + gap,
+        left,
+    };
 }
 
 /** Normalize a file path for dedup comparison: forward slashes, lowercased. */
@@ -181,13 +206,25 @@ export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdown
     const pinnedCount = uniqueFiles.length;
     const total = planCount + pinnedCount;
     const [open, setOpen] = useState(false);
+    const [placement, setPlacement] = useState<ReferencesDropdownPlacement | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
+    const updatePlacement = useCallback(() => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setPlacement(computeReferencesDropdownPlacement(rect, DESKTOP_PANEL_WIDTH, window.innerWidth));
+    }, []);
 
     useEffect(() => {
         if (!open || isMobile) return;
         function handleOutsideInteraction(e: MouseEvent | TouchEvent) {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            if (
+                containerRef.current
+                && !containerRef.current.contains(target)
+                && !panelRef.current?.contains(target)
+            ) {
                 setOpen(false);
             }
         }
@@ -198,6 +235,22 @@ export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdown
             document.removeEventListener('touchstart', handleOutsideInteraction);
         };
     }, [open, isMobile]);
+
+    useLayoutEffect(() => {
+        if (!open || isMobile) return;
+        updatePlacement();
+    }, [open, isMobile, updatePlacement]);
+
+    useEffect(() => {
+        if (!open || isMobile) return;
+        updatePlacement();
+        window.addEventListener('resize', updatePlacement);
+        window.addEventListener('scroll', updatePlacement, true);
+        return () => {
+            window.removeEventListener('resize', updatePlacement);
+            window.removeEventListener('scroll', updatePlacement, true);
+        };
+    }, [open, isMobile, updatePlacement]);
 
     // Auto-close when a reference is opened (consistent with ChatHeader's
     // standalone mobile sheet behavior).
@@ -220,7 +273,12 @@ export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdown
                 'dark:hover:bg-[rgba(56,139,253,0.15)] dark:hover:border-[rgba(56,139,253,0.4)]',
                 open && 'bg-[#ddf4ff] border-[#b3d7ff] dark:bg-[rgba(56,139,253,0.15)] dark:border-[rgba(56,139,253,0.4)]',
             )}
-            onClick={() => setOpen(o => !o)}
+            onClick={() => {
+                if (!open && !isMobile) {
+                    updatePlacement();
+                }
+                setOpen(o => !o);
+            }}
             aria-expanded={open}
             aria-haspopup="dialog"
             data-testid="references-dropdown-btn"
@@ -265,18 +323,24 @@ export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdown
     return (
         <div ref={containerRef} className="relative inline-flex items-center">
             {button}
-            {open && (
+            {open && createPortal(
                 <div
+                    ref={panelRef}
                     role="dialog"
                     aria-label="References"
                     className={cn(
-                        'absolute top-full right-0 mt-[7px] z-50 overflow-hidden',
+                        'fixed z-50 overflow-hidden',
                         'w-[calc(100vw-24px)] sm:w-[520px] sm:max-w-[520px]',
                         'bg-white dark:bg-[#252526]',
                         'border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md',
                         'shadow-[0_8px_24px_rgba(31,35,40,0.14)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.4)]',
                         'text-xs text-[#1e1e1e] dark:text-[#cccccc]',
                     )}
+                    style={{
+                        top: placement?.top ?? 0,
+                        left: placement?.left ?? DESKTOP_VIEWPORT_MARGIN,
+                        visibility: placement ? 'visible' : 'hidden',
+                    }}
                 >
                     <ReferencesPanelChrome
                         planCount={planCount}
@@ -285,7 +349,8 @@ export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdown
                     >
                         <ReferenceList planPath={planPath} files={files} />
                     </ReferencesPanelChrome>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );
