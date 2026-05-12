@@ -122,6 +122,32 @@ export class ConcurrencyLimiter {
     }
 
     /**
+     * Try to synchronously acquire a slot without queueing. Returns `true` if a slot
+     * was reserved (caller MUST eventually call {@link releaseSlot}); returns `false`
+     * if the limiter is at capacity.
+     *
+     * Use this when you want to atomically check-and-reserve a slot under a single-
+     * threaded JS turn (e.g., in a dispatch loop) without ever blocking on the
+     * limiter's wait queue. This is the pattern used by `QueueExecutor` to ensure
+     * that a task is only marked "running" in queue state after a slot is reserved.
+     */
+    tryAcquire(): boolean {
+        if (this.running < this.maxConcurrency) {
+            this.running++;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Release a slot previously reserved via {@link tryAcquire}. If there are
+     * queued waiters from {@link run}, the next one will be started.
+     */
+    releaseSlot(): void {
+        this.release();
+    }
+
+    /**
      * Acquire a slot for execution.
      * If maxConcurrency is reached, this will wait until a slot is available.
      */

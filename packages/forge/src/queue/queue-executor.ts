@@ -324,15 +324,21 @@ export class QueueExecutor extends EventEmitter {
 
             const task = item as import('./types').QueuedTask;
 
-            // Check if we have capacity on the correct limiter
+            // Atomically reserve a slot on the correct limiter BEFORE marking
+            // the task as started. This guarantees the queue manager's running
+            // map only contains tasks that have actually acquired a slot, so the
+            // UI/API never reports a task as "running" while it's actually
+            // blocked behind another exclusive task. See `executeTask` for the
+            // matching `releaseSlot()` call.
             const limiter = this.isExclusive(task) ? this.exclusiveLimiter : this.sharedLimiter;
-            if (limiter.runningCount >= limiter.limit) {
+            if (!limiter.tryAcquire()) {
                 await this.delay(50);
                 continue;
             }
 
-            // Start executing the task (don't await - let it run in parallel)
-            this.executeTask(task).catch(error => {
+            // Slot reserved — start executing the task (don't await - let it run in parallel).
+            // executeTask is responsible for calling limiter.releaseSlot() when done.
+            this.executeTask(task, limiter).catch(error => {
                 // Log error but don't crash the loop
                 this.emit('error', error);
             });
@@ -343,35 +349,37 @@ export class QueueExecutor extends EventEmitter {
     }
 
     /**
-     * Execute a single task
+     * Execute a single task. The caller (dispatch loop) must have already
+     * reserved a slot via `limiter.tryAcquire()` and pass that limiter in;
+     * this method is responsible for calling `limiter.releaseSlot()` exactly
+     * once when execution completes (success, failure, or cancellation).
      */
-    private async executeTask(task: QueuedTask): Promise<void> {
+    private async executeTask(task: QueuedTask, limiter: ConcurrencyLimiter): Promise<void> {
         const taskId = task.id;
-
-        // Check if already cancelled
-        if (this.cancelledTasks.has(taskId)) {
-            return;
-        }
-
-        // Mark as started in queue manager
-        const startedTask = this.queueManager.markStarted(taskId);
-        if (!startedTask) {
-            // Task was removed from queue
-            return;
-        }
-
-        this.emit('taskStarted', startedTask);
-
-        // Create cancellation checker
-        const isCancelled = () => this.cancelledTasks.has(taskId);
+        let startedTask: QueuedTask | undefined;
 
         try {
-            // Execute with concurrency limiting via correct pool
-            const taskLimiter = this.isExclusive(startedTask) ? this.exclusiveLimiter : this.sharedLimiter;
-            const result = await taskLimiter.run(
-                () => this.executeWithTimeout(startedTask),
-                isCancelled
-            );
+            // Check if already cancelled (after slot was reserved but before markStarted)
+            if (this.cancelledTasks.has(taskId)) {
+                this.cancelledTasks.delete(taskId);
+                // Task may still be in queue — cancel it through the queue manager
+                this.queueManager.cancelTask(taskId);
+                return;
+            }
+
+            // Mark as started in queue manager. Now (and only now) does the task
+            // appear in `getRunning()` — by this point we already hold a limiter
+            // slot, so the running map and the limiter's `runningCount` agree.
+            startedTask = this.queueManager.markStarted(taskId);
+            if (!startedTask) {
+                // Task was removed from queue (e.g., cancelled in another path)
+                return;
+            }
+
+            this.emit('taskStarted', startedTask);
+
+            const isCancelled = () => this.cancelledTasks.has(taskId);
+            const result = await this.executeWithTimeout(startedTask);
 
             // Check if cancelled during execution
             if (isCancelled()) {
@@ -388,12 +396,18 @@ export class QueueExecutor extends EventEmitter {
             }
         } catch (error) {
             if (error instanceof CancellationError) {
-                // Task was cancelled
                 this.cancelledTasks.delete(taskId);
-                this.emit('taskCancelled', startedTask);
-            } else {
+                if (startedTask) {
+                    this.emit('taskCancelled', startedTask);
+                }
+            } else if (startedTask) {
                 await this.handleTaskFailure(startedTask, error as Error);
+            } else {
+                this.emit('error', error);
             }
+        } finally {
+            // Always release the slot the dispatch loop reserved for this task.
+            limiter.releaseSlot();
         }
     }
 

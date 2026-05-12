@@ -809,6 +809,46 @@ describe('QueueExecutor', () => {
             ]);
         });
 
+        it('queue manager running map never exceeds exclusive limiter capacity', async () => {
+            // Regression: previously markStarted ran BEFORE acquire(), so a second
+            // exclusive task could appear in queueManager.getRunning() while blocked
+            // on the limiter. The UI/API would then show two "running" tasks even
+            // though only one was actually executing.
+            let maxObserved = 0;
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                await delay(80);
+                return task.displayName;
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                sharedConcurrency: 5,
+                exclusiveConcurrency: 1,
+                isExclusive: (task) => task.concurrencyMode !== 'shared',
+                autoStart: true,
+            });
+
+            // Enqueue three exclusive tasks back-to-back; only one should ever be
+            // in the running map at a time.
+            queueManager.enqueue(createTestTask({ displayName: 'A', concurrencyMode: 'exclusive' }));
+            queueManager.enqueue(createTestTask({ displayName: 'B', concurrencyMode: 'exclusive' }));
+            queueManager.enqueue(createTestTask({ displayName: 'C', concurrencyMode: 'exclusive' }));
+
+            const sampler = setInterval(() => {
+                maxObserved = Math.max(maxObserved, queueManager.getRunning().length);
+            }, 5);
+
+            try {
+                await waitFor(() => queueManager.getCompleted().length === 3, 5000);
+            } finally {
+                clearInterval(sampler);
+            }
+
+            // One final sample after completion
+            maxObserved = Math.max(maxObserved, queueManager.getRunning().length);
+
+            expect(maxObserved).toBeLessThanOrEqual(1);
+        });
+
         it('shared and exclusive tasks run simultaneously on independent pools', async () => {
             const executionOrder: string[] = [];
             taskExecutor = createSimpleTaskExecutor(async (task) => {
