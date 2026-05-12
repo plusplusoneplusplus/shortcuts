@@ -21,12 +21,15 @@ import { BaseReducer, Deduplicatable, DeterministicReducer, DeterministicReducer
 import { BaseMapper } from './base-mapper';
 
 /**
- * Severity levels for code review findings
+ * Severity levels for code review findings.
+ * @deprecated Use `ReviewSeverity` from `review/types` instead.
  */
 export type ReviewSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
 /**
- * A single code review finding
+ * A single code review finding.
+ * @deprecated Use `ReviewComment` from `review/types` instead.
+ * Use `findingToComment()` from `review/migration` for conversion.
  */
 export interface ReviewFinding extends Deduplicatable {
     /** Unique identifier */
@@ -70,7 +73,9 @@ export interface RuleReviewResult {
 }
 
 /**
- * Summary of review results
+ * Summary of review results.
+ * @deprecated Use `ReviewStats` + `ReviewAssessment` from `review/types` instead.
+ * Use `resultToCodeReviewOutput()` from `review/migration` for conversion.
  */
 export interface ReviewSummary {
     /** Total findings count */
@@ -91,7 +96,9 @@ export interface ReviewSummary {
 }
 
 /**
- * Final reduced output for code review
+ * Final reduced output for code review.
+ * @deprecated Use `ReviewResult` from `review/types` instead.
+ * Use `codeReviewOutputToResult()` from `review/migration` for conversion.
  */
 export interface CodeReviewOutput {
     /** Deduplicated findings */
