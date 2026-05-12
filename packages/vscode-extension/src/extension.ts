@@ -19,7 +19,6 @@ import {
     getWorkspaceInfo,
     computeProcessViewStatus
 } from './shortcuts/ai-service';
-import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { DebugPanelTreeDataProvider, testCopilotSDK } from './shortcuts/debug-panel';
@@ -2322,54 +2321,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
-        // Command to view code review details in the structured viewer
-        const viewCodeReviewDetailsCommand = vscode.commands.registerCommand(
-            'clarificationProcesses.viewCodeReviewDetails',
-            async (item: { process?: { structuredResult?: string } }) => {
-                if (!item?.process?.structuredResult) {
-                    vscode.window.showWarningMessage('No structured result available for this code review.');
-                    return;
-                }
-
-                try {
-                    const { deserializeCodeReviewResult, CodeReviewViewer } = await import('./shortcuts/code-review');
-                    const serialized = JSON.parse(item.process.structuredResult);
-                    const result = deserializeCodeReviewResult(serialized);
-                    CodeReviewViewer.createOrShow(context.extensionUri, result);
-                } catch (error) {
-                    getExtensionLogger().error(LogCategory.AI, 'Failed to parse code review result', error instanceof Error ? error : undefined);
-                    vscode.window.showErrorMessage('Failed to display code review result.');
-                }
-            }
-        );
-
-        // Command to view aggregated code review group details in the structured viewer
-        const viewCodeReviewGroupDetailsCommand = vscode.commands.registerCommand(
-            'clarificationProcesses.viewCodeReviewGroupDetails',
-            async (item: { process?: { structuredResult?: string } }) => {
-                if (!item?.process?.structuredResult) {
-                    vscode.window.showWarningMessage('No aggregated result available for this code review group.');
-                    return;
-                }
-
-                try {
-                    const { CodeReviewViewer } = await import('./shortcuts/code-review');
-                    const parsed = JSON.parse(item.process.structuredResult);
-                    // Convert the aggregated result back to CodeReviewResult format for the viewer
-                    const result = {
-                        metadata: parsed.metadata,
-                        summary: parsed.summary,
-                        findings: parsed.findings,
-                        rawResponse: parsed.rawResponse,
-                        timestamp: new Date(parsed.timestamp)
-                    };
-                    CodeReviewViewer.createOrShow(context.extensionUri, result);
-                } catch (error) {
-                    getExtensionLogger().error(LogCategory.AI, 'Failed to parse code review group result', error instanceof Error ? error : undefined);
-                    vscode.window.showErrorMessage('Failed to display aggregated code review result.');
-                }
-            }
-        );
+        // (code review commands removed)
 
         // Command to view pipeline execution details in the enhanced result viewer
         const viewPipelineExecutionDetailsCommand = vscode.commands.registerCommand(
@@ -2844,8 +2796,6 @@ export async function activate(context: vscode.ExtensionContext) {
             clearAllProcessesCommand,
             removeProcessCommand,
             viewProcessDetailsCommand,
-            viewCodeReviewDetailsCommand,
-            viewCodeReviewGroupDetailsCommand,
             viewPipelineExecutionDetailsCommand,
             viewRawResponseCommand,
             viewDiscoveryResultsCommand,
@@ -2909,11 +2859,9 @@ export async function activate(context: vscode.ExtensionContext) {
         // Add Debug Panel disposables
         disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand, testCopilotSDKCommand);
 
-        // Register code review commands (requires git log service)
+        // Git log service initialization (code review commands removed)
         if (gitInitialized) {
             const gitLogService = gitTreeDataProvider['gitLogService'] as GitLogService;
-            const codeReviewDisposables = registerCodeReviewCommands(context, gitLogService, aiProcessManager);
-            disposables.push(...codeReviewDisposables);
 
             // Connect GitLogService to LogicalTreeDataProvider for commit file expansion
             treeDataProvider.setGitLogService(gitLogService);
