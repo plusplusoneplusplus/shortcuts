@@ -873,6 +873,7 @@ describe('ChatListPane', () => {
             expect(card!.className).toContain('min-h-[40px]');
             expect(card!.className).toContain('md:px-3');
             expect(card!.className).toContain('md:py-1');
+            expect(card!.className).toContain('md:min-h-0');
             expect(card!.className).toContain('md:h-[26px]');
         });
 

@@ -1238,7 +1238,7 @@ export function ChatListPane({
                         'chat-row group relative cursor-pointer leading-none transition-colors',
                         'grid items-center gap-2 px-4 py-2 md:px-3 md:py-1',
                         'grid-cols-[10px_36px_minmax(0,1fr)_auto]',
-                        'text-[12.5px] min-h-[40px] md:h-[26px]',
+                        'text-[12.5px] min-h-[40px] md:min-h-0 md:h-[26px]',
                         'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                         'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
                         isFrozen && 'opacity-70 task-frozen',
