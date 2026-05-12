@@ -252,13 +252,13 @@ describe('Split-panel layout', () => {
         expect(screen.getByText('Create a recurring prompt with "+ New"')).toBeTruthy();
     });
 
-    it('active row has border-l-2 border-[#0078d4] classes', async () => {
+    it('active row carries the refined-primer highlight (bg + inset border)', async () => {
         await renderWithSchedules();
 
         await waitFor(() => {
             const activeItem = screen.getByRole('option', { selected: true });
-            expect(activeItem.className).toContain('border-l-2');
-            expect(activeItem.className).toContain('border-[#0078d4]');
+            expect(activeItem.className).toContain('bg-[#ddf4ff]');
+            expect(activeItem.className).toContain('shadow-[inset_0_0_0_1px_#b6e3ff]');
         });
     });
 

@@ -664,14 +664,16 @@ describe('Split-panel layout', () => {
         });
     });
 
-    it('selected row has border-l-2 class applied', async () => {
+    it('selected row gets the active highlight (bg + inset border)', async () => {
         await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
 
         // First schedule is auto-selected
         await waitFor(() => {
             const rows = screen.getAllByRole('option');
             const firstRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE.name));
-            expect(firstRow?.className).toContain('border-l-2');
+            expect(firstRow?.getAttribute('aria-selected')).toBe('true');
+            expect(firstRow?.className).toContain('bg-[#ddf4ff]');
+            expect(firstRow?.className).toContain('shadow-[inset_0_0_0_1px_#b6e3ff]');
         });
 
         // Click the second schedule; it should gain the class and first should lose it
@@ -680,10 +682,12 @@ describe('Split-panel layout', () => {
         await waitFor(() => {
             const rows = screen.getAllByRole('option');
             const secondRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE_2.name));
-            expect(secondRow?.className).toContain('border-l-2');
+            expect(secondRow?.getAttribute('aria-selected')).toBe('true');
+            expect(secondRow?.className).toContain('bg-[#ddf4ff]');
 
             const firstRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE.name));
-            expect(firstRow?.className).not.toContain('border-l-2');
+            expect(firstRow?.getAttribute('aria-selected')).toBe('false');
+            expect(firstRow?.className).not.toContain('bg-[#ddf4ff]');
         });
     });
 

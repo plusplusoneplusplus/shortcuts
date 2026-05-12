@@ -422,8 +422,8 @@ describe('Schedule selection state', () => {
             expect(screen.getByTestId('edit-btn')).toBeTruthy();
         });
 
-        // Click the already-selected schedule
-        fireEvent.click(screen.getByText('Test Schedule'));
+        // Click the already-selected schedule (target the list row, not the detail header)
+        fireEvent.click(screen.getByRole('option', { selected: true }));
 
         // Detail should still be visible
         await waitFor(() => {
