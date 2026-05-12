@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
+import { useMessageNavigation } from './hooks/useMessageNavigation';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
 import { cn } from '../../ui/cn';
 import { QueuedFollowUps } from './QueuedBubble';
@@ -77,6 +78,11 @@ export interface ConversationAreaProps {
     processType?: string;
     /** Called when the user cancels a queued/pending follow-up message. */
     onCancelPendingMessage?: (messageId: string) => void;
+    /**
+     * Optional handle to the chat follow-up input. When provided,
+     * vim-style `i` re-focuses the input from nav mode.
+     */
+    inputRef?: React.RefObject<{ focus: () => void } | null> | null;
 }
 
 export function ConversationArea({
@@ -114,8 +120,15 @@ export function ConversationArea({
     processId,
     processType,
     onCancelPendingMessage,
+    inputRef,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { currentTurnIndex, navHintVisible } = useMessageNavigation({
+        scrollRef,
+        containerRef,
+        inputRef,
+    });
     // Escape key exits selection mode
     useEffect(() => {
         if (!isSelecting) return;
@@ -129,7 +142,14 @@ export function ConversationArea({
     const selectedCount = selectedTurns?.size ?? 0;
 
     return (
-        <div className="relative flex-1 min-h-0 overflow-x-hidden min-w-0">
+        <div
+            ref={containerRef}
+            className="relative flex-1 min-h-0 overflow-x-hidden min-w-0 focus:outline-none"
+            tabIndex={-1}
+            role="region"
+            aria-label="Chat conversation"
+            data-current-turn={currentTurnIndex ?? undefined}
+        >
             <div
                 ref={scrollRef}
                 data-testid="activity-chat-conversation"
@@ -150,7 +170,7 @@ export function ConversationArea({
                             const pinnedTurns = turns.filter(t => t.pinnedAt && !t.deletedAt);
                             if (pinnedTurns.length === 0) return null;
                             return (
-                                <details className="border border-amber-300/30 dark:border-amber-500/20 rounded-lg p-2 mb-2">
+                                <details data-pinned-section className="border border-amber-300/30 dark:border-amber-500/20 rounded-lg p-2 mb-2">
                                     <summary className="cursor-pointer text-xs font-semibold text-[#848484] dark:text-[#999] select-none">
                                         📌 Pinned Messages ({pinnedTurns.length})
                                     </summary>
@@ -332,6 +352,17 @@ export function ConversationArea({
                     >
                         Undo
                     </button>
+                </div>
+            )}
+            {/* Nav-mode hint pill (vim-style j/k navigation). */}
+            {navHintVisible && (
+                <div
+                    data-testid="nav-mode-hint"
+                    className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-full bg-black/75 text-white text-[11px] shadow-lg pointer-events-none select-none"
+                    role="status"
+                    aria-live="polite"
+                >
+                    Nav mode — j/k move · i to type · gg/G jump · Esc to exit
                 </div>
             )}
             <button

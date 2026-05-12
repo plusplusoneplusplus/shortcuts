@@ -949,6 +949,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processId={processId ?? bareTaskId}
                         processType={fullTask?.type ?? task?.type}
                         onCancelPendingMessage={handleCancelPendingMessage}
+                        inputRef={richTextRef}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
