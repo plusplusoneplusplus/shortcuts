@@ -22,7 +22,6 @@
     "review",
     "comments",
     "annotations",
-    "code review",
     "git diff",
     "shortcuts",
     "productivity"
@@ -599,61 +598,6 @@
           "minimum": 0,
           "markdownDescription": "Maximum time (in milliseconds) to wait for queued tasks to complete when the server shuts down. `0` means wait indefinitely. Only applies when the extension manages the `coc serve` server lifecycle."
         },
-        "workspaceShortcuts.codeReview.rulesFolder": {
-          "type": "string",
-          "default": ".github/cr-rules",
-          "markdownDescription": "Path to folder containing code review rule files (relative to workspace root). Rule files should be markdown files describing coding standards and guidelines."
-        },
-        "workspaceShortcuts.codeReview.rulesPattern": {
-          "type": "string",
-          "default": "**/*.md",
-          "markdownDescription": "Glob pattern for rule files within the rules folder. Files are loaded alphabetically, so prefix with numbers (e.g., `01-naming.md`) to control order."
-        },
-        "workspaceShortcuts.codeReview.promptTemplate": {
-          "type": "string",
-          "default": "Review the following code changes against the provided coding rules. Identify violations and suggest fixes.",
-          "markdownDescription": "Prompt template for code review. This text appears at the beginning of the prompt, followed by the rules and diff."
-        },
-        "workspaceShortcuts.codeReview.outputMode": {
-          "type": "string",
-          "default": "aiProcess",
-          "enum": [
-            "aiProcess",
-            "clipboard",
-            "editor"
-          ],
-          "enumDescriptions": [
-            "Show in AI Processes panel - Track progress and view results in the AI Processes tree view",
-            "Copy to clipboard - Copy the prompt to clipboard for use with external AI tools",
-            "Open in editor - Send to Copilot CLI and open the result in a new editor tab"
-          ],
-          "markdownDescription": "Output mode for code review results."
-        },
-        "workspaceShortcuts.codeReview.maxConcurrency": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "maximum": 20,
-          "markdownDescription": "Maximum number of concurrent rule reviews. Higher values may speed up reviews but could hit API rate limits. Default: 5"
-        },
-        "workspaceShortcuts.codeReview.reduceMode": {
-          "type": "string",
-          "default": "deterministic",
-          "enum": [
-            "deterministic",
-            "ai"
-          ],
-          "enumDescriptions": [
-            "Use deterministic code-based reduction (faster, no API calls, consistent results)",
-            "Use AI-powered synthesis to deduplicate, resolve conflicts, and generate a coherent report"
-          ],
-          "markdownDescription": "Mode for aggregating results from multiple rule reviews. **Deterministic** uses programmatic deduplication and is the default. **AI** uses an additional AI call to synthesize findings intelligently."
-        },
-        "workspaceShortcuts.codeReview.apply.showPreview": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show a diff preview before applying selected fixes. When enabled, clicking 'Apply Selected' will show a preview with Confirm/Cancel options."
-        },
         "workspaceShortcuts.discovery.enabled": {
           "type": "boolean",
           "default": false,
@@ -1218,18 +1162,6 @@
         "icon": "$(eye)"
       },
       {
-        "command": "clarificationProcesses.viewCodeReviewDetails",
-        "title": "View Code Review Results",
-        "category": "AI Processes",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "clarificationProcesses.viewCodeReviewGroupDetails",
-        "title": "View Aggregated Code Review",
-        "category": "AI Processes",
-        "icon": "$(check-all)"
-      },
-      {
         "command": "clarificationProcesses.viewPipelineExecutionDetails",
         "title": "View Pipeline Results",
         "category": "AI Processes",
@@ -1678,54 +1610,6 @@
         "title": "Copy Path",
         "category": "Git",
         "icon": "$(copy)"
-      },
-      {
-        "command": "shortcuts.reviewRangeAgainstRules",
-        "title": "Review Range Against Rules",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewCommitAgainstRules",
-        "title": "Review Against Rules",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewCommitAgainstRulesSelect",
-        "title": "Review Against Rules...",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewPendingAgainstRules",
-        "title": "Review Pending Changes Against Rules",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewPendingAgainstRulesSelect",
-        "title": "Review Pending Changes Against Rules...",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewStagedAgainstRules",
-        "title": "Review Staged Changes Against Rules",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.reviewStagedAgainstRulesSelect",
-        "title": "Review Staged Changes Against Rules...",
-        "category": "Code Review",
-        "icon": "$(checklist)"
-      },
-      {
-        "command": "shortcuts.configureReviewRules",
-        "title": "Configure Code Review Rules",
-        "category": "Code Review",
-        "icon": "$(gear)"
       },
       {
         "command": "shortcuts.discovery.start",
@@ -2645,32 +2529,12 @@
         },
         {
           "command": "clarificationProcesses.cancel",
-          "when": "view == clarificationProcessesView && viewItem == codeReviewProcess_running",
-          "group": "process@1"
-        },
-        {
-          "command": "clarificationProcesses.cancel",
-          "when": "view == clarificationProcessesView && viewItem == codeReviewGroupProcess_running",
-          "group": "process@1"
-        },
-        {
-          "command": "clarificationProcesses.cancel",
           "when": "view == clarificationProcessesView && viewItem == workflowExecutionProcess_running",
           "group": "process@1"
         },
         {
           "command": "clarificationProcesses.viewDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_/",
-          "group": "process@2"
-        },
-        {
-          "command": "clarificationProcesses.viewCodeReviewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed/",
-          "group": "process@2"
-        },
-        {
-          "command": "clarificationProcesses.viewCodeReviewGroupDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_completed$/",
           "group": "process@2"
         },
         {
@@ -2699,21 +2563,6 @@
           "group": "process@4"
         },
         {
-          "command": "clarificationProcesses.viewRawResponse",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed/",
-          "group": "process@3"
-        },
-        {
-          "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(running|failed|cancelled)/",
-          "group": "process@2"
-        },
-        {
-          "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_(running|failed|cancelled)$/",
-          "group": "process@2"
-        },
-        {
           "command": "clarificationProcesses.resumeSession",
           "when": "view == clarificationProcessesView && viewItem =~ /_completed(_child)?_resumable$/",
           "group": "process@2"
@@ -2721,16 +2570,6 @@
         {
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)/",
-          "group": "process@3"
-        },
-        {
-          "command": "clarificationProcesses.remove",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(completed|failed|cancelled)/",
-          "group": "process@3"
-        },
-        {
-          "command": "clarificationProcesses.remove",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
         },
         {
@@ -2799,16 +2638,6 @@
           "group": "gitCommit@1"
         },
         {
-          "command": "shortcuts.reviewCommitAgainstRules",
-          "when": "view == gitView && viewItem =~ /^gitCommit(_hasComments)?$/",
-          "group": "gitCommit@2"
-        },
-        {
-          "command": "shortcuts.reviewCommitAgainstRulesSelect",
-          "when": "view == gitView && viewItem =~ /^gitCommit(_hasComments)?$/",
-          "group": "gitCommit@3"
-        },
-        {
           "command": "gitDiffComments.showCommentsForCommit",
           "when": "view == gitView && viewItem == gitCommit_hasComments",
           "group": "inline@1"
@@ -2824,24 +2653,9 @@
           "group": "lookedUpCommit@1"
         },
         {
-          "command": "shortcuts.reviewCommitAgainstRules",
-          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
-          "group": "lookedUpCommit@2"
-        },
-        {
-          "command": "shortcuts.reviewCommitAgainstRulesSelect",
-          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
-          "group": "lookedUpCommit@3"
-        },
-        {
           "command": "gitView.clearAllLookedUpCommits",
           "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "lookedUpCommit@9"
-        },
-        {
-          "command": "shortcuts.reviewRangeAgainstRules",
-          "when": "view == gitView && viewItem == gitCommitRange",
-          "group": "gitCommitRange@1"
         },
         {
           "command": "gitView.copyRangeRef",
@@ -3139,26 +2953,6 @@
           "group": "inline@3"
         },
         {
-          "command": "shortcuts.reviewPendingAgainstRules",
-          "when": "view == gitView && viewItem == gitSection_changes",
-          "group": "codeReview@1"
-        },
-        {
-          "command": "shortcuts.reviewPendingAgainstRulesSelect",
-          "when": "view == gitView && viewItem == gitSection_changes",
-          "group": "codeReview@2"
-        },
-        {
-          "command": "shortcuts.reviewStagedAgainstRules",
-          "when": "view == gitView && viewItem == gitSection_changes",
-          "group": "codeReview@3"
-        },
-        {
-          "command": "shortcuts.reviewStagedAgainstRulesSelect",
-          "when": "view == gitView && viewItem == gitSection_changes",
-          "group": "codeReview@4"
-        },
-        {
           "command": "gitView.stageAll",
           "when": "view == gitView && viewItem == gitSection_changes",
           "group": "inline@1"
@@ -3435,14 +3229,6 @@
         },
         {
           "command": "clarificationProcesses.viewDetails",
-          "when": "false"
-        },
-        {
-          "command": "clarificationProcesses.viewCodeReviewDetails",
-          "when": "false"
-        },
-        {
-          "command": "clarificationProcesses.viewCodeReviewGroupDetails",
           "when": "false"
         },
         {
@@ -3835,34 +3621,6 @@
         },
         {
           "command": "markdownComments.resolveAll",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewCommitAgainstRules",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewCommitAgainstRulesSelect",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewRangeAgainstRules",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewPendingAgainstRules",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewPendingAgainstRulesSelect",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewStagedAgainstRules",
-          "when": "false"
-        },
-        {
-          "command": "shortcuts.reviewStagedAgainstRulesSelect",
           "when": "false"
         },
         {
