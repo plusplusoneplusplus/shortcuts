@@ -332,7 +332,11 @@ async function executeAITaskCreation(
                     const saved = saveImagesToTempFiles(images);
                     tempDir = saved.tempDir;
                     if (saved.filePaths.length > 0) {
-                        attachments = saved.filePaths.map(fp => ({ type: 'file' as const, path: fp }));
+                        attachments = saved.filePaths.map(fp => ({
+                            type: 'file' as const,
+                            path: fp,
+                            displayName: path.basename(fp),
+                        }));
                     }
                 }
 

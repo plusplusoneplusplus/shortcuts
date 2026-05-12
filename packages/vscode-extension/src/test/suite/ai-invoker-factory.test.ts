@@ -721,7 +721,7 @@ suite('AI Invoker Factory Tests', () => {
             });
 
             const attachments: Attachment[] = [
-                { type: 'file', path: '/tmp/image.png' }
+                { type: 'file', path: '/tmp/image.png', displayName: 'image.png' }
             ];
             // Type-level verification: both model and attachments accepted
             const callWithBoth = () => invoker('test prompt', { model: 'gpt-4', attachments });
@@ -760,7 +760,7 @@ suite('AI Invoker Factory Tests', () => {
             const attachments: Attachment[] = [
                 { type: 'file', path: '/tmp/image1.png', displayName: 'first.png' },
                 { type: 'file', path: '/tmp/image2.png', displayName: 'second.png' },
-                { type: 'directory', path: '/tmp/project' }
+                { type: 'directory', path: '/tmp/project', displayName: 'project' }
             ];
             const callWithMultiple = () => invoker('test prompt', { attachments });
             assert.ok(typeof callWithMultiple === 'function', 'Should accept multiple attachments');
@@ -770,7 +770,7 @@ suite('AI Invoker Factory Tests', () => {
             // Verify the Attachment type is re-exported for convenience
             // This is a compile-time check - if this file compiles, the re-export works
             // (Attachment is a type, not a value, so runtime import check is not applicable)
-            const attachment: Attachment = { type: 'file', path: '/tmp/test.png' };
+            const attachment: Attachment = { type: 'file', path: '/tmp/test.png', displayName: 'test.png' };
             assert.strictEqual(attachment.type, 'file', 'Attachment type should be usable');
             assert.strictEqual(attachment.path, '/tmp/test.png', 'Attachment path should be set');
         });
