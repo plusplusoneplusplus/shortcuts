@@ -83,12 +83,19 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
             if (!proc) return sendError(res, 404, 'Process not found');
 
             const procPayload = (proc as any).payload as Record<string, any> | undefined;
+            const procMetadata = (proc.metadata ?? {}) as Record<string, any>;
+
+            // For persisted processes, the queue-task `payload` is not always
+            // mirrored onto the process record — `kind`/`mode` live on
+            // `metadata.type`/`metadata.mode` instead. Accept either source.
+            const procKind = procPayload?.kind ?? procMetadata.type;
+            const procMode = procPayload?.mode ?? procMetadata.mode;
 
             // Validation gates — order is significant for clearest error messages.
             if (proc.status !== 'completed') {
                 return sendError(res, 400, 'Process is not completed');
             }
-            if (procPayload?.kind !== 'chat' || procPayload?.mode !== 'ask') {
+            if (procKind !== 'chat' || procMode !== 'ask') {
                 return sendError(res, 400, 'Only completed ask-mode chats can be promoted to Ralph');
             }
             if (getRalphContext(proc)) {
@@ -104,13 +111,16 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
 
             const wsId: string | undefined = workspaceId
                 ?? procPayload?.workspaceId
-                ?? (proc.metadata?.workspaceId as string | undefined);
+                ?? (procMetadata.workspaceId as string | undefined);
 
             const workingDirectory: string | undefined =
                 procPayload?.workingDirectory
                 ?? procPayload?.folderPath
-                ?? proc.workingDirectory;
-            const folderPath: string | undefined = procPayload?.folderPath;
+                ?? proc.workingDirectory
+                ?? (procMetadata.folderPath as string | undefined);
+            const folderPath: string | undefined =
+                procPayload?.folderPath
+                ?? (procMetadata.folderPath as string | undefined);
 
             // maxIterations resolution: per-repo preference > hardcoded default.
             // The grilling phase itself does not use maxIterations, but we
@@ -136,7 +146,7 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
             // ralph context, so even if this metadata write loses a race the
             // chat-base-executor will still inject the grilling system prompt
             // for the synthesis turn.
-            const existingMetadata = (proc.metadata ?? {}) as Record<string, unknown>;
+            const existingMetadata = procMetadata as Record<string, unknown>;
             const nextMetadata = { ...existingMetadata, ralph: ralphMetadata };
             try {
                 await store.updateProcess(proc.id, { metadata: nextMetadata as any });

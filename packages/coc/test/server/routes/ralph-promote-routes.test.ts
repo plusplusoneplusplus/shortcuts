@@ -186,6 +186,32 @@ describe('POST /api/processes/:id/promote-to-ralph', () => {
         expect(enqueueArg.payload.prompt).toContain('focus the goal on the queue refactor');
     });
 
+    it('accepts processes whose mode/kind only live in metadata (payload=null)', async () => {
+        // Real persisted processes do not always mirror the queue-task
+        // payload onto the process record — `mode`/`type` live on
+        // `metadata.mode` / `metadata.type`. The route must accept either
+        // source, otherwise every promotion request 400s in production.
+        const fixture = makeFixture({ id: 'queue_p-meta-only', workspaceId: 'ws-meta' });
+        fixture.payload = null;
+        fixture.metadata = {
+            ...fixture.metadata,
+            type: 'chat',
+            mode: 'ask',
+            workspaceId: 'ws-meta',
+        };
+        await store.addProcess(fixture);
+
+        const res = await post(baseUrl, '/api/processes/queue_p-meta-only/promote-to-ralph', {
+            workspaceId: 'ws-meta',
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.mode).toBe('ask');
+        expect(enqueueArg.payload.context.ralph.phase).toBe('grilling');
+    });
+
     // ── 404 ──
 
     it('returns 404 when the process does not exist', async () => {
