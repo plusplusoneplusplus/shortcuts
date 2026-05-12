@@ -259,3 +259,12 @@ export interface RalphSessionResponse {
   record: RalphSessionRecord;
   sections: ParsedProgressSection[];
 }
+
+export interface RalphContinueResponse {
+  resumed: true;
+  sessionId: string;
+  workspaceId: string;
+  taskId: string;
+  nextIteration: number;
+  newMaxIterations: number;
+}

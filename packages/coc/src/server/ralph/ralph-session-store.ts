@@ -184,6 +184,82 @@ export class RalphSessionStore {
         return parseProgressSections(progressMd);
     }
 
+    /**
+     * Extend an existing session's iteration cap. Resets the session to
+     * `executing` phase and clears the previous terminal markers so the
+     * loop can resume from `currentIteration + 1`.
+     *
+     * Returns the updated record. Throws if the session does not exist.
+     */
+    async extendSession(
+        workspaceId: string,
+        sessionId: string,
+        addBy: number,
+        nowIso?: string,
+    ): Promise<RalphSessionRecord> {
+        if (!Number.isInteger(addBy) || addBy <= 0) {
+            throw new Error(`extendSession: addBy must be a positive integer, got ${addBy}`);
+        }
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing) {
+            throw new Error(`Ralph session ${sessionId} not found in workspace ${workspaceId}`);
+        }
+        const newMax = existing.maxIterations + addBy;
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const next: RalphSessionRecord = { ...base };
+            next.maxIterations = newMax;
+            next.phase = 'executing';
+            delete next.completedAt;
+            delete next.terminalReason;
+            return next;
+        });
+    }
+
+    /**
+     * Append a "Loop continued at <ts> — extending to <newMax>" banner to
+     * `progress.md`. Idempotent against double-appends within the same
+     * tick — re-running with an identical `(newMax, timestamp)` pair will
+     * skip if the most recent line already matches.
+     */
+    async appendContinuationMarker(
+        workspaceId: string,
+        sessionId: string,
+        newMax: number,
+        nowIso?: string,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const progressPath = this.getProgressPath(workspaceId, sessionId);
+        const ts = nowIso ?? new Date().toISOString();
+        const marker = `\n---\n## Loop continued at ${ts} — extending to ${newMax}\n`;
+
+        // Idempotency: skip if the tail already contains an identical marker
+        // for this newMax in the last 1 KB. Cheaply guards against accidental
+        // double-appends from concurrent continue requests.
+        try {
+            const stat = await fs.promises.stat(progressPath);
+            const readBytes = Math.min(stat.size, 1024);
+            if (readBytes > 0) {
+                const fd = await fs.promises.open(progressPath, 'r');
+                try {
+                    const buf = Buffer.alloc(readBytes);
+                    await fd.read(buf, 0, readBytes, stat.size - readBytes);
+                    const tail = buf.toString('utf-8');
+                    if (tail.includes(`## Loop continued at ${ts} — extending to ${newMax}`)) {
+                        return;
+                    }
+                } finally {
+                    await fd.close();
+                }
+            }
+        } catch {
+            // Missing file — fall through and append (which will create it).
+        }
+
+        await fs.promises.appendFile(progressPath, marker, 'utf-8');
+    }
+
     private async atomicWriteJson(filePath: string, value: unknown): Promise<void> {
         const dir = path.dirname(filePath);
         await fs.promises.mkdir(dir, { recursive: true });

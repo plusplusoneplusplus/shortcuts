@@ -148,7 +148,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const payload = completedTask.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
         const currentIteration = ralphCtx?.currentIteration ?? 1;
-        const maxIterations = ralphCtx?.maxIterations ?? 10;
+        const maxIterations = ralphCtx?.maxIterations ?? 20;
         const workspaceId = payload.workspaceId;
         const sessionId = ralphCtx?.sessionId;
 

@@ -227,7 +227,17 @@ export interface PerRepoPreferences {
     defaultModel?: string;
     /** Per-mode default model overrides. Take precedence over defaultModel. */
     defaultModels?: DefaultModelsByMode;
+    /**
+     * Maximum number of iterations a Ralph loop runs before stopping.
+     * Range: 1..200. When unset, server falls back to {@link RALPH_DEFAULT_MAX_ITERATIONS} (20).
+     */
+    maxRalphIterations?: number;
 }
+
+/** Hardcoded fallback for Ralph max iterations when no preference is set. */
+export const RALPH_DEFAULT_MAX_ITERATIONS = 20;
+/** Inclusive upper bound for the per-repo `maxRalphIterations` setting. */
+export const RALPH_MAX_ITERATIONS_LIMIT = 200;
 
 export interface SkillUsageEntry {
     skillName: string;
@@ -679,6 +689,14 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
 
     if (typeof obj.defaultModel === 'string' && obj.defaultModel.length <= 100) {
         result.defaultModel = obj.defaultModel;
+    }
+
+    if (typeof obj.maxRalphIterations === 'number'
+        && Number.isFinite(obj.maxRalphIterations)
+        && Number.isInteger(obj.maxRalphIterations)
+        && obj.maxRalphIterations >= 1
+        && obj.maxRalphIterations <= RALPH_MAX_ITERATIONS_LIMIT) {
+        result.maxRalphIterations = obj.maxRalphIterations;
     }
 
     if (typeof obj.defaultModels === 'object' && obj.defaultModels !== null && !Array.isArray(obj.defaultModels)) {

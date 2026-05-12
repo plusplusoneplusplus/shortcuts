@@ -296,6 +296,10 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                         <option value="classic">Classic (Activity)</option>
                     </select>
                 </div>
+                <RalphMaxIterationsRow
+                    value={prefs.maxRalphIterations}
+                    onChange={prefs.setMaxRalphIterations}
+                />
             </div>
 
             <div className={dividerClass} />
@@ -411,6 +415,78 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
+
+const RALPH_MAX_ITERATIONS_DEFAULT = 20;
+const RALPH_MAX_ITERATIONS_MIN = 1;
+const RALPH_MAX_ITERATIONS_MAX = 200;
+
+function RalphMaxIterationsRow({ value, onChange }: {
+    value: number | undefined;
+    onChange: (n: number | undefined) => void;
+}) {
+    const [text, setText] = useState<string>(value !== undefined ? String(value) : '');
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setText(value !== undefined ? String(value) : '');
+        setError(null);
+    }, [value]);
+
+    const commit = useCallback((raw: string) => {
+        const trimmed = raw.trim();
+        if (trimmed === '') {
+            setError(null);
+            // Empty clears back to server default; we don't currently support
+            // patch-clear via the server, so leave the saved value as-is.
+            return;
+        }
+        const n = Number(trimmed);
+        if (!Number.isInteger(n) || n < RALPH_MAX_ITERATIONS_MIN || n > RALPH_MAX_ITERATIONS_MAX) {
+            setError(`Enter an integer between ${RALPH_MAX_ITERATIONS_MIN} and ${RALPH_MAX_ITERATIONS_MAX}`);
+            return;
+        }
+        setError(null);
+        if (n !== value) onChange(n);
+    }, [value, onChange]);
+
+    return (
+        <div className="flex flex-col gap-0.5" data-testid="pref-max-ralph-iterations-row">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                <label className={labelClass}>Ralph max iterations</label>
+                <input
+                    type="number"
+                    min={RALPH_MAX_ITERATIONS_MIN}
+                    max={RALPH_MAX_ITERATIONS_MAX}
+                    step={1}
+                    placeholder={String(RALPH_MAX_ITERATIONS_DEFAULT)}
+                    className={selectClass}
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onBlur={e => commit(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commit((e.target as HTMLInputElement).value);
+                        }
+                    }}
+                    data-testid="pref-max-ralph-iterations"
+                />
+            </div>
+            {error ? (
+                <p
+                    className="text-[11px] text-red-600 dark:text-red-400 ml-28 pl-2"
+                    data-testid="pref-max-ralph-iterations-error"
+                >
+                    {error}
+                </p>
+            ) : (
+                <p className="text-[11px] text-[#848484] ml-28 pl-2">
+                    How many iterations a Ralph loop runs before stopping. Can be extended later from the report page.
+                </p>
+            )}
+        </div>
+    );
+}
 
 function ModelRow({ label, mode, value, models, onChange, helperText }: {
     label: string;

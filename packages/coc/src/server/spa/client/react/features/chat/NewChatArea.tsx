@@ -159,14 +159,15 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             let contextOverride: Record<string, unknown> | undefined;
 
             if (selectedMode === 'ralph') {
-                // Grilling phase: submit as ask mode with ralph context
+                // Grilling phase: submit as ask mode with ralph context.
+                // maxIterations is intentionally omitted — the server resolves
+                // it from per-repo preferences, falling back to the default.
                 mode = 'ask';
                 contextOverride = {
                     skills: [...extractedSkills, 'grill-me'],
                     ralph: {
                         phase: 'grilling',
                         sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        maxIterations: 10,
                     },
                 };
             } else if (extractedSkills.length > 0) {

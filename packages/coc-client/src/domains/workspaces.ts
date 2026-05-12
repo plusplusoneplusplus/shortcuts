@@ -12,6 +12,7 @@ import type {
   MyWorkSummaryResponse,
   MyWorkSyncRequest,
   MyWorkSyncResponse,
+  RalphContinueResponse,
   RalphSessionResponse,
   RegisterWorkspaceRequest,
   TerminalPinResponse,
@@ -184,6 +185,26 @@ export class WorkspacesClient {
     return this.transport.request<RalphSessionResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}`,
       { signal: options?.signal },
+    );
+  }
+
+  /**
+   * Continue a Ralph session that hit its iteration cap. Extends the session
+   * by `additionalIterations` (or the per-repo default when omitted) and
+   * enqueues the next iteration on the same `sessionId`.
+   */
+  continueRalphSession(
+    workspaceId: string,
+    sessionId: string,
+    request: { additionalIterations?: number } = {},
+  ): Promise<RalphContinueResponse> {
+    const body: Record<string, unknown> = {};
+    if (typeof request.additionalIterations === 'number') {
+      body.additionalIterations = request.additionalIterations;
+    }
+    return this.transport.request<RalphContinueResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/continue`,
+      { method: 'POST', body },
     );
   }
 

@@ -14,6 +14,7 @@ import { toQueueProcessId, isQueueProcessId, toTaskId, getLogger, LogCategory } 
 import { getRalphContext } from '../tasks/task-types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
+import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -85,7 +86,16 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 ?? procPayload?.folderPath
                 ?? proc.workingDirectory;
             const folderPath: string | undefined = procPayload?.folderPath;
-            const maxIterations = ralphCtx.maxIterations ?? 10;
+            // Resolution order: explicit context > per-repo preference > hardcoded default.
+            let prefMax: number | undefined;
+            if (dataDir && wsId) {
+                try {
+                    prefMax = readRepoPreferences(dataDir, wsId).maxRalphIterations;
+                } catch {
+                    // Preferences are optional
+                }
+            }
+            const maxIterations = ralphCtx.maxIterations ?? prefMax ?? RALPH_DEFAULT_MAX_ITERATIONS;
 
             // Initialise the per-session journal (idempotent). Best-effort:
             // on failure we still enqueue — the bridge will create the file

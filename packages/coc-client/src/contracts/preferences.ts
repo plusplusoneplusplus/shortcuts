@@ -37,6 +37,8 @@ export interface PerRepoPreferences {
   defaultModel?: string;
   /** Per-mode default model overrides. Take precedence over defaultModel. */
   defaultModels?: Record<string, string | undefined>;
+  /** Max iterations a Ralph loop runs before stopping. Range 1..200. */
+  maxRalphIterations?: number;
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;

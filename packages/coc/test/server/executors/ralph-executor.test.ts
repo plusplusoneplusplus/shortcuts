@@ -144,7 +144,7 @@ describe('buildRalphSystemMessage', () => {
 
     it('includes iteration counter with defaults', () => {
         const msg = buildRalphSystemMessage({});
-        expect(msg).toContain('Iteration 1 of 10.');
+        expect(msg).toContain('Iteration 1 of 20.');
     });
 
     it('includes custom iteration counter', () => {
@@ -223,7 +223,7 @@ describe('RalphExecutor', () => {
         expect(call.systemMessage.content).toContain('## Progress Journal');
         expect(call.systemMessage.content).toContain('sess-xyz');
         expect(call.systemMessage.content).toContain('progress.md');
-        expect(call.systemMessage.content).toContain('Iteration 2 of 10.');
+        expect(call.systemMessage.content).toContain('Iteration 2 of 20.');
     });
 
     it('returns AI response and sessionId', async () => {

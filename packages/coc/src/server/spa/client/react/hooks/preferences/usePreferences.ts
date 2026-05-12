@@ -35,6 +35,9 @@ export interface UsePreferencesResult {
     setEffort: (e: string) => void;
     skills: LastSkillsByMode;
     setSkill: (mode: SkillMode, s: string[]) => void;
+    /** Max iterations a Ralph loop runs before stopping. `undefined` falls back to server default. */
+    maxRalphIterations: number | undefined;
+    setMaxRalphIterations: (n: number | undefined) => void;
     loaded: boolean;
 }
 
@@ -46,6 +49,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
     const [skills, setSkillsState] = useState<LastSkillsByMode>({ ...EMPTY_SKILLS });
+    const [maxRalphIterations, setMaxRalphIterationsLocal] = useState<number | undefined>(undefined);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -53,6 +57,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         setDepthState('');
         setEffortState('');
         setSkillsState({ ...EMPTY_SKILLS });
+        setMaxRalphIterationsLocal(undefined);
         if (!repoId) {
             setLoaded(true);
             return;
@@ -98,6 +103,11 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                             plan: normalizeArr(prefs.lastSkills.plan),
                         });
                     }
+                    if (typeof prefs.maxRalphIterations === 'number'
+                        && Number.isInteger(prefs.maxRalphIterations)
+                        && prefs.maxRalphIterations > 0) {
+                        setMaxRalphIterationsLocal(prefs.maxRalphIterations);
+                    }
                 }
             } catch {
                 // Preferences are optional
@@ -132,8 +142,30 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         getSpaCocClient().preferences.patchRepo(repoId, { lastSkills: { [mode]: s } }).catch(() => {});
     }, [repoId]);
 
+    const setMaxRalphIterations = useCallback((n: number | undefined) => {
+        setMaxRalphIterationsLocal(n);
+        if (!repoId) return;
+        // Send null to clear (matches server-side patch semantics for omit).
+        getSpaCocClient().preferences.patchRepo(repoId, {
+            maxRalphIterations: n as any,
+        }).catch(() => {});
+    }, [repoId]);
+
     // Backward compat: expose task model as the single 'model' property
     const model = models.task;
 
-    return { model, models, setModel, depth, setDepth, effort, setEffort, skills, setSkill, loaded };
+    return {
+        model,
+        models,
+        setModel,
+        depth,
+        setDepth,
+        effort,
+        setEffort,
+        skills,
+        setSkill,
+        maxRalphIterations,
+        setMaxRalphIterations,
+        loaded,
+    };
 }

@@ -2344,3 +2344,59 @@ describe('resolveDefaultModel', () => {
         expect(resolveDefaultModel(tmpDir, 'ws-1', 'followUp')).toBe('gpt-5.4');
     });
 });
+
+// ============================================================================
+// maxRalphIterations validation
+// ============================================================================
+
+describe('validatePerRepoPreferences — maxRalphIterations', () => {
+    it('accepts a valid integer in range', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 25 }).maxRalphIterations).toBe(25);
+    });
+
+    it('accepts the lower bound (1)', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 1 }).maxRalphIterations).toBe(1);
+    });
+
+    it('accepts the upper bound (200)', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 200 }).maxRalphIterations).toBe(200);
+    });
+
+    it('rejects 0', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 0 }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects negative integers', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: -5 }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects values above 200', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 201 }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects non-integer numbers', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: 10.5 }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects NaN', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: NaN }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects Infinity', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: Infinity }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('rejects strings', () => {
+        expect(validatePerRepoPreferences({ maxRalphIterations: '25' as any }).maxRalphIterations).toBeUndefined();
+    });
+
+    it('round-trips through write and read', () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-ralph-iter-'));
+        try {
+            writeRepoPreferences(tmpDir, 'r', { maxRalphIterations: 42 });
+            expect(readRepoPreferences(tmpDir, 'r').maxRalphIterations).toBe(42);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});

@@ -8,6 +8,7 @@
  */
 
 import type React from 'react';
+import { useState } from 'react';
 import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
 import type {
@@ -16,6 +17,7 @@ import type {
     RalphTerminalReason,
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
+import { getSpaCocClient } from '../../api/cocClient';
 
 /** Combined view fetched from the server. */
 export interface RalphSessionView {
@@ -35,6 +37,11 @@ export interface RalphWorkflowPaneProps {
     onClose?: () => void;
     /** Override clock for tests. */
     now?: number;
+    /** Default additional iterations applied when the user clicks "Continue loop"
+     *  without providing an explicit override. Falls back to 20. */
+    continueDefaultIterations?: number;
+    /** Override the continue handler (used by tests). */
+    onContinue?: (additionalIterations: number) => Promise<void>;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
@@ -56,7 +63,18 @@ function singleLine(s: string, max = 140): string {
 }
 
 export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactElement {
-    const { sessionId, view, onSelectIteration, onClose } = props;
+    const {
+        workspaceId,
+        sessionId,
+        view,
+        onSelectIteration,
+        onClose,
+        continueDefaultIterations = 20,
+        onContinue,
+    } = props;
+
+    const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
+    const [continueError, setContinueError] = useState<string | null>(null);
 
     if (view === undefined) {
         return (
@@ -96,6 +114,29 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         ...sections.map(s => s.iteration),
     ])).sort((a, b) => a - b);
 
+    const isCapHit = record.phase === 'complete'
+        && (record.terminalReason === 'CAP_REACHED'
+            || (record.terminalReason === 'NO_SIGNAL'
+                && record.currentIteration >= record.maxIterations));
+
+    const handleContinueConfirmed = async () => {
+        setContinueState('submitting');
+        setContinueError(null);
+        try {
+            if (onContinue) {
+                await onContinue(continueDefaultIterations);
+            } else {
+                await getSpaCocClient().workspaces.continueRalphSession(workspaceId, sessionId, {
+                    additionalIterations: continueDefaultIterations,
+                });
+            }
+            setContinueState('idle');
+        } catch (err) {
+            setContinueError(err instanceof Error ? err.message : String(err));
+            setContinueState('confirm');
+        }
+    };
+
     return (
         <div
             data-testid="ralph-workflow-pane"
@@ -126,6 +167,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                 {formatRelativeTime(record.completedAt)}
                             </span>
                         )}
+                        {isCapHit && continueState === 'idle' && (
+                            <button
+                                type="button"
+                                onClick={() => { setContinueError(null); setContinueState('confirm'); }}
+                                data-testid="ralph-workflow-continue"
+                                className="rounded border border-blue-500 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+                            >
+                                ↻ Continue loop
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -153,6 +204,45 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
             {/* Timeline */}
             <div className="flex-1 overflow-y-auto px-4 py-3" data-testid="ralph-workflow-timeline">
+                {isCapHit && continueState !== 'idle' && (
+                    <div
+                        className="mb-3 rounded border border-blue-300 bg-blue-50 p-3 text-xs dark:border-blue-700 dark:bg-blue-950/40"
+                        data-testid="ralph-workflow-continue-confirm"
+                    >
+                        <p className="mb-2 font-semibold text-blue-900 dark:text-blue-100">
+                            Continue this Ralph loop for {continueDefaultIterations} more iterations?
+                        </p>
+                        <p className="mb-2 text-blue-800 dark:text-blue-200">
+                            New cap will be {record.maxIterations + continueDefaultIterations}. The journal
+                            continues in the same progress.md.
+                        </p>
+                        {continueError && (
+                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-continue-error">
+                                {continueError}
+                            </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { setContinueState('idle'); setContinueError(null); }}
+                                disabled={continueState === 'submitting'}
+                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                data-testid="ralph-workflow-continue-cancel"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleContinueConfirmed}
+                                disabled={continueState === 'submitting'}
+                                className="rounded border border-blue-500 bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                data-testid="ralph-workflow-continue-confirm-button"
+                            >
+                                {continueState === 'submitting' ? 'Continuing…' : 'Continue'}
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {allIters.length === 0 ? (
                     <div className="text-xs italic text-zinc-500 dark:text-zinc-400">
                         Waiting for the first iteration to complete…

@@ -96,7 +96,7 @@ function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput): string {
     }
 
     const current = ralph.currentIteration ?? 1;
-    const max = ralph.maxIterations ?? 10;
+    const max = ralph.maxIterations ?? 20;
     parts.push(`Iteration ${current} of ${max}.`);
 
     return parts.join('\n\n');

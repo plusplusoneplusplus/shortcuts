@@ -319,4 +319,76 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(res.status).toBe(400);
         expect(res.json().error).toMatch(/completed/i);
     });
+
+    // -----------------------------------------------------------------------
+    // maxIterations resolution: prefs vs fallback
+    // -----------------------------------------------------------------------
+
+    it('resolves maxIterations from per-repo preferences when context omits it', async () => {
+        const fsMod = await import('fs');
+        const pathMod = await import('path');
+        const prefsDir = pathMod.join(dataDir, 'repos', 'ws-prefs');
+        fsMod.mkdirSync(prefsDir, { recursive: true });
+        fsMod.writeFileSync(
+            pathMod.join(prefsDir, 'preferences.json'),
+            JSON.stringify({ maxRalphIterations: 25 }),
+            'utf-8',
+        );
+
+        await store.addProcess({
+            id: 'queue_grilling-prefs',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'p',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-prefs',
+                workingDirectory: '/repos/r',
+                context: { ralph: { phase: 'grilling', sessionId: 'sess-prefs' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-prefs/ralph-start', {
+            goalSpec: 'do the thing',
+            workspaceId: 'ws-prefs',
+        });
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
+        expect(enqueueArg.payload.context.ralph.maxIterations).toBe(25);
+
+        const recordRaw = fsMod.readFileSync(
+            pathMod.join(dataDir, 'repos', 'ws-prefs', 'ralph-sessions', 'sess-prefs', 'session.json'),
+            'utf-8',
+        );
+        expect(JSON.parse(recordRaw).maxIterations).toBe(25);
+    });
+
+    it('falls back to default 20 when neither context nor prefs provide a value', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-default',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'p',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-default',
+                workingDirectory: '/repos/r',
+                context: { ralph: { phase: 'grilling', sessionId: 'sess-default' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-default/ralph-start', {
+            goalSpec: 'do the thing',
+            workspaceId: 'ws-default',
+        });
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
+        expect(enqueueArg.payload.context.ralph.maxIterations).toBe(20);
+    });
 });

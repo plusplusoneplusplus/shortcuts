@@ -174,4 +174,140 @@ describe('RalphWorkflowPane', () => {
         expect(screen.getByTestId('ralph-workflow-node-2')).toBeInTheDocument();
         expect(screen.getByTestId('ralph-workflow-node-3')).toBeInTheDocument();
     });
+
+    // ----------------------------------------------------------------------
+    // Continue loop button
+    // ----------------------------------------------------------------------
+
+    it('shows the Continue loop button when the session hit CAP_REACHED', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'CAP_REACHED',
+                iterations: [makeIter(10)],
+            }),
+            sections: [makeSection(10)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-continue')).toBeInTheDocument();
+    });
+
+    it('shows the Continue loop button when NO_SIGNAL hits the cap', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 10,
+                maxIterations: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'NO_SIGNAL',
+                iterations: [makeIter(10)],
+            }),
+            sections: [makeSection(10)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-continue')).toBeInTheDocument();
+    });
+
+    it('hides the Continue loop button when terminalReason is RALPH_COMPLETE', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 5,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(5)],
+            }),
+            sections: [makeSection(5)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+    });
+
+    it('hides the Continue loop button when terminalReason is CANCELLED', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 3,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'CANCELLED',
+                iterations: [makeIter(3)],
+            }),
+            sections: [makeSection(3)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+    });
+
+    it('hides the Continue loop button when NO_SIGNAL did not reach the cap', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 4,
+                maxIterations: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'NO_SIGNAL',
+                iterations: [makeIter(4)],
+            }),
+            sections: [makeSection(4)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+    });
+
+    it('opens a confirmation panel and calls onContinue when confirmed', async () => {
+        const user = userEvent.setup();
+        const onContinue = vi.fn().mockResolvedValue(undefined);
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'CAP_REACHED',
+                iterations: [makeIter(10)],
+            }),
+            sections: [makeSection(10)],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                continueDefaultIterations={5}
+                onContinue={onContinue}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-continue'));
+        expect(screen.getByTestId('ralph-workflow-continue-confirm')).toBeInTheDocument();
+        await user.click(screen.getByTestId('ralph-workflow-continue-confirm-button'));
+        expect(onContinue).toHaveBeenCalledWith(5);
+    });
+
+    it('cancel button hides the confirmation panel', async () => {
+        const user = userEvent.setup();
+        const onContinue = vi.fn().mockResolvedValue(undefined);
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 10,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'CAP_REACHED',
+                iterations: [makeIter(10)],
+            }),
+            sections: [makeSection(10)],
+        };
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onContinue={onContinue}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-continue'));
+        await user.click(screen.getByTestId('ralph-workflow-continue-cancel'));
+        expect(screen.queryByTestId('ralph-workflow-continue-confirm')).toBeNull();
+        expect(onContinue).not.toHaveBeenCalled();
+    });
 });
