@@ -1,0 +1,62 @@
+# Ralph
+
+Ralph is a CoC server feature for iterative AI execution with a small
+file-backed session journal. The session store lives in
+`packages/coc/src/server/ralph/ralph-session-store.ts`.
+
+## Session Journal
+
+Each Ralph session owns a journal directory under the repo data directory:
+
+```text
+~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/
+  session.json    # metadata, written via temp file + rename
+  progress.md     # append-only Markdown journal, AI-writable
+```
+
+`session.json` is a `RalphSessionRecord` from
+`packages/coc/src/server/ralph/types.ts`. It includes `sessionId`,
+`workspaceId`, `originalGoal`, `maxIterations`, `currentIteration`, `phase`
+(`executing`, `complete`, or `failed`), `startedAt`, and an `iterations[]`
+array. Each iteration records at least `iteration`, `signal`, `startedAt`, and
+optionally `processId` and `completedAt`.
+
+`progress.md` starts with a small header from `initSession(...)`. Every
+iteration appends a Markdown block:
+
+```text
+## Iteration <N> - <SIGNAL> - <ISO_TIMESTAMP>
+<body>
+```
+
+`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. The writer uses
+an em dash in generated headings; the parser also accepts a plain hyphen
+separator.
+
+## Writer Protocol
+
+The Ralph executor is the only writer. It must:
+
+1. Call `RalphSessionStore.initSession(workspaceId, sessionId, ...)` once when
+   the session starts. The call is idempotent.
+2. After each iteration, call `appendProgressSection(...)` with the iteration
+   number, exit signal, timestamp, and AI-produced summary body.
+3. After each iteration, call `updateSessionRecord(...)` to bump
+   `currentIteration`, append to `iterations[]`, and update `phase` for
+   terminal signals.
+
+Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
+`session.json` and `progress.md` as source of truth and never mutate them. A
+missing journal is surfaced as `null` or empty state. A partially written
+`session.json` is tolerated as `null`; the next mutator pass rewrites it.
+
+## Size Cap
+
+`appendProgressSection(...)` enforces a defensive 10 MB hard cap on
+`progress.md`. If the file exceeds the cap, the store keeps only the last
+approximately 500 KB of content and prepends a `# Ralph Session (truncated)`
+banner with the original byte size.
+
+The cap is intentionally lossy. There is no compaction pass or historical
+archive, so runaway sessions remain bounded at the cost of older journal
+content.

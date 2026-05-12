@@ -94,6 +94,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
+| `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `models/` | Model registry endpoints |
 | `spa/` | Dashboard SPA (HTML template, React client) |
 
@@ -176,6 +177,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
+- `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
 - `paste-context/` — temp files for large pasted content
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.

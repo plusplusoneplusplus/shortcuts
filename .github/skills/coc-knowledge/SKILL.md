@@ -17,6 +17,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Domain | Reference | Summary |
 |--------|-----------|---------|
 | Server Architecture | [server-architecture.md](references/server-architecture.md) | Module layout, feature domains, route registration, config schema |
+| Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap |
 | Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | Session lifecycle, streaming state machine, MCP config, model registry |
