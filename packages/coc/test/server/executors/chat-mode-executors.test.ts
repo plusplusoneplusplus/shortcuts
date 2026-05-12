@@ -522,6 +522,86 @@ describe('AutopilotExecutor has no system message', () => {
 });
 
 // ============================================================================
+// Ralph grilling phase — ask_user clarification protocol
+// ============================================================================
+
+describe('ChatExecutor ralph grilling phase', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    function makeGrillingTask(id = 'task-grill'): QueuedTask {
+        return {
+            id,
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Grill me on this idea',
+                context: { ralph: { phase: 'grilling' } },
+            } as any,
+            config: {},
+            displayName: 'Grill me',
+        };
+    }
+
+    it('appends grilling-specific ask_user directive to the system message', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeGrillingTask();
+
+        await executor.execute(task, 'Grill me on this idea');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const systemContent = call.systemMessage?.content ?? '';
+        expect(systemContent).toContain('Ralph Grilling Phase');
+        expect(systemContent).toContain('`ask_user` tool for EVERY clarification');
+        expect(systemContent).toContain('Batch related questions');
+        expect(systemContent).toContain('ignore the earlier "Do NOT use ask_user for simple yes/no" guidance');
+        // Final goal-spec template is still present, but only emitted at the end.
+        expect(systemContent).toContain('## Goal');
+        expect(systemContent).toContain('## Acceptance Criteria');
+        expect(systemContent).toContain('## Out of Scope');
+    });
+
+    it('exposes the ask_user tool to grilling tasks when askUser is enabled', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeGrillingTask('task-grill-tools');
+
+        await executor.execute(task, 'Grill me');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).toContain('ask_user');
+    });
+
+    it('does NOT add the grilling directive to a non-grilling ask task', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeChatTask('ask', 'task-not-grill');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const systemContent = call.systemMessage?.content ?? '';
+        expect(systemContent).not.toContain('Ralph Grilling Phase');
+        expect(systemContent).not.toContain('`ask_user` tool for EVERY clarification');
+    });
+});
+
+// ============================================================================
 // Skill injection tests (context.skills)
 // ============================================================================
 

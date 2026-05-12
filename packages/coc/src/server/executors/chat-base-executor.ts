@@ -237,7 +237,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // When this is a Ralph grilling session, append the goal-spec instruction.
         if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
             const ralphGrillSuffix = [
-                'When you have gathered enough information, produce a concise goal spec:',
+                '## Ralph Grilling Phase — Clarification Protocol',
+                '',
+                'You are in the Ralph grilling phase. Your job right now is to interactively interview the user to nail down a precise goal spec before any coding begins.',
+                '',
+                'Rules for this phase (these OVERRIDE any earlier guidance about ask_user):',
+                '- Use the `ask_user` tool for EVERY clarification, confirmation, or choice question. Do NOT write clarification questions as plain assistant text.',
+                '- Batch related questions into a SINGLE `ask_user` call by passing multiple entries in `questions[]`. Do not call the tool repeatedly for one round of clarification.',
+                '- Yes/no clarifications ARE in scope here — ignore the earlier "Do NOT use ask_user for simple yes/no" guidance during grilling. In this phase, simple yes/no clarifications MUST also go through `ask_user`.',
+                '- Keep questions concrete and answerable. Prefer choice questions with explicit options when there are a few obvious paths.',
+                '- Only after the user explicitly signals they are done (e.g. "enough", "go", "that\'s it") OR you have gathered enough answers to write a precise spec, emit the final goal-spec block as plain assistant text using the template below. Do not emit the goal spec while still asking questions.',
+                '',
+                'Final goal-spec template (emit ONLY at the end, as plain assistant text — not via ask_user):',
                 '',
                 '## Goal',
                 '<one-sentence goal>',
