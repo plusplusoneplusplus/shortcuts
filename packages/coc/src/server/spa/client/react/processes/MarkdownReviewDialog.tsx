@@ -9,10 +9,10 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import { FloatingDialog } from '../ui/FloatingDialog';
 import { BottomSheet } from '../ui/BottomSheet';
-import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { NoteEditor } from '../features/notes/editor/NoteEditor';
 import { noopCommentBackend } from '../features/notes/editor/NoteEditorCommentBackend';
 import { createTasksNoteEditorIO } from '../tasks/TasksNoteEditorIO';
+import { createWorkspaceFileNoteEditorIO } from '../tasks/WorkspaceFileNoteEditorIO';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMarkdownPopOut } from '../contexts/MarkdownPopOutContext';
 import { useGlobalToast } from '../contexts/ToastContext';
@@ -98,13 +98,19 @@ export function MarkdownReviewDialog({
     const [isMaximized, setIsMaximized] = useState(false);
     const handleToggleMaximize = () => setIsMaximized(v => !v);
 
-    // Tasks path: stateless IO adapter + container-level scroll tracking.
+    // IO adapter selection: tasks branch uses the tasks content API; auto
+    // branch uses the workspace file-preview + content API for files outside
+    // `.vscode/tasks/`. Both render through the shared NoteEditor shell —
+    // the legacy MarkdownReviewEditor is no longer used here. (It still ships
+    // for other surfaces; remove once those callers are migrated too.)
     const tasksIO = useMemo(() => createTasksNoteEditorIO(), []);
+    const workspaceIO = useMemo(() => createWorkspaceFileNoteEditorIO(), []);
+    const editorIO = fetchMode === 'tasks' ? tasksIO : workspaceIO;
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Restore scroll position when the dialog opens (tasks path only).
+    // Restore scroll position when the dialog opens.
     useEffect(() => {
-        if (fetchMode === 'tasks' && open && initialScrollTop && containerRef.current) {
+        if (open && initialScrollTop && containerRef.current) {
             containerRef.current.scrollTop = initialScrollTop;
         }
     }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -191,31 +197,20 @@ export function MarkdownReviewDialog({
                     </button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                    {fetchMode === 'tasks' ? (
-                        <div
-                            ref={containerRef}
-                            className="flex-1 min-h-0 overflow-auto flex flex-col"
-                            onScroll={handleContainerScroll}
-                        >
-                            <NoteEditor
-                                workspaceId={wsId}
-                                notePath={filePath}
-                                io={tasksIO}
-                                commentBackend={noopCommentBackend}
-                                notesRoot={taskRootPath ?? undefined}
-                            />
-                        </div>
-                    ) : (
-                        <MarkdownReviewEditor
-                            wsId={wsId}
-                            filePath={filePath}
-                            taskRootPath={taskRootPath}
-                            fetchMode={fetchMode}
-                            showAiButtons={true}
-                            initialScrollTop={initialScrollTop}
-                            onScrollTopChange={(st) => { scrollTopRef.current = st; }}
+                    <div
+                        ref={containerRef}
+                        className="flex-1 min-h-0 overflow-auto flex flex-col"
+                        onScroll={handleContainerScroll}
+                        data-testid="markdown-review-note-editor"
+                    >
+                        <NoteEditor
+                            workspaceId={wsId}
+                            notePath={filePath}
+                            io={editorIO}
+                            commentBackend={noopCommentBackend}
+                            notesRoot={taskRootPath ?? undefined}
                         />
-                    )}
+                    </div>
                 </div>
                 </div>
             </BottomSheet>
@@ -307,31 +302,20 @@ export function MarkdownReviewDialog({
             )}
         >
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col" {...(wsId ? { 'data-ws-id': wsId } : {})}>
-            {fetchMode === 'tasks' ? (
-                <div
-                    ref={containerRef}
-                    className="flex-1 min-h-0 overflow-auto flex flex-col"
-                    onScroll={handleContainerScroll}
-                >
-                    <NoteEditor
-                        workspaceId={wsId}
-                        notePath={filePath}
-                        io={tasksIO}
-                        commentBackend={noopCommentBackend}
-                        notesRoot={taskRootPath ?? undefined}
-                    />
-                </div>
-            ) : (
-                <MarkdownReviewEditor
-                    wsId={wsId}
-                    filePath={filePath}
-                    taskRootPath={taskRootPath}
-                    fetchMode={fetchMode}
-                    showAiButtons={true}
-                    initialScrollTop={initialScrollTop}
-                    onScrollTopChange={(st) => { scrollTopRef.current = st; }}
+            <div
+                ref={containerRef}
+                className="flex-1 min-h-0 overflow-auto flex flex-col"
+                onScroll={handleContainerScroll}
+                data-testid="markdown-review-note-editor"
+            >
+                <NoteEditor
+                    workspaceId={wsId}
+                    notePath={filePath}
+                    io={editorIO}
+                    commentBackend={noopCommentBackend}
+                    notesRoot={taskRootPath ?? undefined}
                 />
-            )}
+            </div>
             </div>
         </FloatingDialog>
     );

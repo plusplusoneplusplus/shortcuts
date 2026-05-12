@@ -398,6 +398,55 @@ describe('Tasks Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.lines).toContain('# Plan from another repo path');
         });
+
+        it('should always return mtime for file responses', async () => {
+            const srv = await startServer();
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
+            fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
+            const target = path.join(taskRoot.absolutePath, 'with-mtime.md');
+            fs.writeFileSync(target, '# Hi', 'utf-8');
+
+            await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(target);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(typeof body.mtime).toBe('number');
+            expect(body.mtime).toBeGreaterThan(0);
+        });
+
+        it('should include the full content field when lines=0 is requested', async () => {
+            const srv = await startServer();
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
+            fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
+            const target = path.join(taskRoot.absolutePath, 'all-lines.md');
+            const original = '# Title\n\nbody line 1\nbody line 2\n';
+            fs.writeFileSync(target, original, 'utf-8');
+
+            await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(target);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}&lines=0`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBe(original);
+            expect(typeof body.mtime).toBe('number');
+        });
+
+        it('should omit the content field when lines>0 (preview only)', async () => {
+            const srv = await startServer();
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
+            fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
+            const target = path.join(taskRoot.absolutePath, 'preview-only.md');
+            fs.writeFileSync(target, '# Hi\n\nbody\n', 'utf-8');
+
+            await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(target);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}&lines=20`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBeUndefined();
+            expect(Array.isArray(body.lines)).toBe(true);
+        });
     });
 
     // ========================================================================
@@ -546,6 +595,56 @@ describe('Tasks Handler', () => {
 
             const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'test.md');
             expect(fs.readFileSync(filePath, 'utf-8')).toBe('');
+        });
+
+        it('should allow writing a workspace .md file outside the tasks folder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const docsDir = path.join(workspaceDir, 'docs');
+            fs.mkdirSync(docsDir, { recursive: true });
+            const target = path.join(docsDir, 'readme.md');
+            fs.writeFileSync(target, '# Old', 'utf-8');
+
+            // Mirror the dialog's auto-branch: chat-linked file paths are absolute.
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: target, content: '# Updated from dialog'
+            });
+            expect(res.status).toBe(200);
+            expect(fs.readFileSync(target, 'utf-8')).toBe('# Updated from dialog');
+        });
+
+        it('should reject writing a workspace non-.md file (fallback only allows .md)', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const target = path.join(workspaceDir, 'config.json');
+            fs.writeFileSync(target, '{}', 'utf-8');
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: target, content: '{"hacked":true}'
+            });
+            expect(res.status).toBe(403);
+            expect(fs.readFileSync(target, 'utf-8')).toBe('{}');
+        });
+
+        it('should reject writing a path outside the workspace entirely', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const evilDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evil-'));
+            try {
+                const target = path.join(evilDir, 'pwned.md');
+                fs.writeFileSync(target, 'old', 'utf-8');
+
+                const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                    path: target, content: 'hacked'
+                });
+                expect(res.status).toBe(403);
+                expect(fs.readFileSync(target, 'utf-8')).toBe('old');
+            } finally {
+                fs.rmSync(evilDir, { recursive: true, force: true });
+            }
         });
     });
 

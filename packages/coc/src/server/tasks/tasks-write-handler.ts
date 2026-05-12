@@ -130,9 +130,17 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             }
 
             const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
-            const resolvedPath = resolveAndValidatePath(tasksFolder, filePath);
+            let resolvedPath = resolveAndValidatePath(tasksFolder, filePath);
             if (!resolvedPath) {
-                return sendError(res, 403, 'Access denied: path is outside tasks folder');
+                // Allow writing arbitrary workspace markdown files
+                // (mirrors the PATCH /tasks fallback). Used by the
+                // floating markdown dialog when the file lives outside
+                // the tasks folder.
+                const wsResolved = resolveAndValidatePath(ws.rootPath, filePath);
+                if (!wsResolved || !wsResolved.toLowerCase().endsWith('.md')) {
+                    return sendError(res, 403, 'Access denied: path is outside tasks folder');
+                }
+                resolvedPath = wsResolved;
             }
 
             // File must already exist — no creation via write-back

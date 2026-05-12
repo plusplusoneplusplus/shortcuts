@@ -10,7 +10,7 @@
  *  - Markdown content (headings, code blocks) renders correctly
  *  - Document title is set from displayPath
  *  - fetchMode=tasks calls the tasks/content endpoint
- *  - fetchMode=auto falls back to files/preview when tasks/content returns 404
+ *  - fetchMode=auto loads via files/preview (workspace-file IO adapter)
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -196,17 +196,19 @@ test.describe('PopOutMarkdownShell — fetchMode', () => {
         expect(tasksContentCalled).toBe(true);
     });
 
-    test('fetchMode=auto falls back to files/preview when tasks/content returns 404', async ({
+    test('fetchMode=auto loads via files/preview (workspace-file IO adapter)', async ({
         page,
         serverUrl,
     }) => {
         const wsId = 'ws-popout-fetchmode-auto';
         await seedWorkspace(serverUrl, wsId, 'popout-auto-ws');
 
-        // tasks/content returns 404 → auto falls back to files/preview
-        await page.route('**/api/workspaces/*/tasks/content*', (route) =>
-            route.fulfill({ status: 404, body: JSON.stringify({ error: 'Not found' }), contentType: 'application/json' }),
-        );
+        // Auto branch goes straight to files/preview — it never hits tasks/content.
+        let tasksContentCalled = false;
+        await page.route('**/api/workspaces/*/tasks/content*', (route) => {
+            tasksContentCalled = true;
+            return route.fulfill({ status: 404, body: JSON.stringify({ error: 'Not found' }), contentType: 'application/json' });
+        });
         await mockFilesPreview(page, '# From Files Preview\n\nLoaded via fallback.');
 
         await page.goto(popoutUrl(serverUrl, {
@@ -216,6 +218,8 @@ test.describe('PopOutMarkdownShell — fetchMode', () => {
         }));
 
         await expect(page.locator('[data-testid="popout-markdown-shell"]')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('.md-h1')).toContainText('From Files Preview', { timeout: 8_000 });
+        // Now rendered via NoteEditor (Tiptap) — same as the tasks branch.
+        await expect(page.locator('.ProseMirror h1')).toContainText('From Files Preview', { timeout: 8_000 });
+        expect(tasksContentCalled).toBe(false);
     });
 });

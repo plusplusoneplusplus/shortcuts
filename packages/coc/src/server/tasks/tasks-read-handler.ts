@@ -234,6 +234,12 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     totalLines: allLines.length,
                     truncated,
                     language,
+                    mtime: stat.mtimeMs,
+                    // Include full text content when caller requested all lines
+                    // (lines=0). Enables the NoteEditor IO adapter to reconstruct
+                    // exact content (including trailing newline / blank lines) and
+                    // to use mtime for optimistic-concurrency saves.
+                    ...(maxLines === 0 ? { content } : {}),
                 });
             } catch (err: any) {
                 if (err.code === 'ENOENT') {

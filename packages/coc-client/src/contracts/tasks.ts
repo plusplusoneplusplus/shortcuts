@@ -140,6 +140,8 @@ export interface FilePreviewResponse {
   language?: string;
   mimeType?: string;
   size?: number;
+  /** File modification time in milliseconds (only present for file responses). */
+  mtime?: number;
   [key: string]: unknown;
 }
 

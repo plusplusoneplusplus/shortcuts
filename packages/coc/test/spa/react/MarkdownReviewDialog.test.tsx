@@ -841,3 +841,41 @@ describe('MarkdownReviewDialog — data-ws-id on desktop FloatingDialog', () => 
         expect(classes).toContain('flex-col');
     });
 });
+
+describe('MarkdownReviewDialog — NoteEditor rendering', () => {
+    beforeEach(() => {
+        setupFetch();
+        mockBreakpoint.isMobile = false;
+        mockBreakpoint.isDesktop = true;
+    });
+
+    it('renders the NoteEditor shell when fetchMode=tasks', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="plan.md"
+                displayPath="/workspace/tasks/plan.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(document.querySelector('[data-testid="markdown-review-note-editor"]')).not.toBeNull();
+    });
+
+    it('renders the NoteEditor shell when fetchMode=auto (no legacy MarkdownReviewEditor)', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="docs/readme.md"
+                displayPath="/workspace/docs/readme.md"
+                fetchMode="auto"
+            />
+        );
+        expect(document.querySelector('[data-testid="markdown-review-note-editor"]')).not.toBeNull();
+        // Legacy editor's mode toggle / source-editor textarea should be absent.
+        expect(document.querySelector('[data-testid="source-editor"]')).toBeNull();
+    });
+});
