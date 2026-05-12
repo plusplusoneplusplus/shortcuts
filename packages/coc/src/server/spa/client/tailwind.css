@@ -2116,6 +2116,40 @@
     .markdown-body .md-h3 { font-size: 1.15em; }
 }
 
+/* Ask-user inline questions render real <strong>, <ol>, <code>, etc. via marked.
+   Provide tight prose styling so the bordered question card stays compact. */
+.ask-user-markdown > :first-child { margin-top: 0; }
+.ask-user-markdown > :last-child { margin-bottom: 0; }
+.ask-user-markdown p { margin: 0.25rem 0; line-height: 1.5; }
+.ask-user-markdown strong { font-weight: 600; }
+.ask-user-markdown em { font-style: italic; }
+.ask-user-markdown ol { list-style: decimal; padding-left: 1.5rem; margin: 0.25rem 0; }
+.ask-user-markdown ul { list-style: disc; padding-left: 1.5rem; margin: 0.25rem 0; }
+.ask-user-markdown li { margin: 0.125rem 0; }
+.ask-user-markdown code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.875em;
+    padding: 1px 4px;
+    background-color: rgba(110, 118, 129, 0.15);
+    border-radius: 3px;
+}
+.ask-user-markdown pre {
+    background-color: rgba(110, 118, 129, 0.12);
+    padding: 8px 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.375rem 0;
+}
+.ask-user-markdown pre > code { padding: 0; background: transparent; }
+.ask-user-markdown a { color: #0078d4; text-decoration: underline; }
+.dark .ask-user-markdown a { color: #4cc2ff; }
+.ask-user-markdown blockquote {
+    border-left: 3px solid rgba(110, 118, 129, 0.4);
+    padding-left: 0.625rem;
+    margin: 0.375rem 0;
+    color: #848484;
+}
+
 /* Build-time comment highlights injected by renderMarkdownToHtml */
 .commented-text {
     background-color: rgba(255, 235, 59, 0.3);

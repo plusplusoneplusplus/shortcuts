@@ -7,6 +7,7 @@
 import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
+import { AskUserMarkdown } from './AskUserMarkdown';
 
 export interface AskUserInlineProps {
     batch: AskUserBatch;
@@ -109,9 +110,14 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                     return (
                         <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
                             <div className="flex items-start justify-between gap-3 mb-3">
-                                <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium">
-                                    <span className="text-[#848484] mr-1">{questionIndex + 1}.</span>{question.question}
-                                </p>
+                                <div className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium flex items-start gap-1 min-w-0">
+                                    <span className="text-[#848484] shrink-0">{questionIndex + 1}.</span>
+                                    <AskUserMarkdown
+                                        markdown={question.question}
+                                        className="markdown-body ask-user-markdown min-w-0 flex-1"
+                                        data-testid="ask-user-question-markdown"
+                                    />
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => updateQuestion(question.questionId, { skipped: !state.skipped })}
@@ -141,8 +147,19 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                                                         className="mt-0.5 accent-[#0078d4]"
                                                     />
                                                     <div>
-                                                        <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
-                                                        {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
+                                                        <AskUserMarkdown
+                                                            inline
+                                                            markdown={opt.label}
+                                                            className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]"
+                                                            data-testid="ask-user-option-label"
+                                                        />
+                                                        {opt.description && (
+                                                            <AskUserMarkdown
+                                                                markdown={opt.description}
+                                                                className="text-xs text-[#848484] mt-0.5 ask-user-markdown ask-user-markdown--description"
+                                                                data-testid="ask-user-option-description"
+                                                            />
+                                                        )}
                                                     </div>
                                                 </label>
                                             ))}
@@ -200,8 +217,19 @@ export function AskUserInline({ batch, processId, onAnswered }: AskUserInlinePro
                                                         className="mt-0.5 accent-[#0078d4]"
                                                     />
                                                     <div>
-                                                        <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">{opt.label}</span>
-                                                        {opt.description && <p className="text-xs text-[#848484] mt-0.5">{opt.description}</p>}
+                                                        <AskUserMarkdown
+                                                            inline
+                                                            markdown={opt.label}
+                                                            className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]"
+                                                            data-testid="ask-user-option-label"
+                                                        />
+                                                        {opt.description && (
+                                                            <AskUserMarkdown
+                                                                markdown={opt.description}
+                                                                className="text-xs text-[#848484] mt-0.5 ask-user-markdown ask-user-markdown--description"
+                                                                data-testid="ask-user-option-description"
+                                                            />
+                                                        )}
                                                     </div>
                                                 </label>
                                             ))}

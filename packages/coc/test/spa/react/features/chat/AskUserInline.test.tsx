@@ -219,4 +219,105 @@ describe('AskUserInline', () => {
         expect(source).not.toMatch(/\bfetch\s*\(/);
         expect(source).toContain('getSpaCocClient');
     });
+
+    describe('markdown rendering', () => {
+        it('renders bold and inline code in the question text', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            question: 'Pick the **best** option for `useState` hooks',
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const md = screen.getByTestId('ask-user-question-markdown');
+            expect(md.querySelector('strong')?.textContent).toBe('best');
+            expect(md.querySelector('code')?.textContent).toBe('useState');
+        });
+
+        it('renders an ordered list when the question contains numbered items', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            question: 'Choose one:\n\n1. First\n2. Second\n3. Third',
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const md = screen.getByTestId('ask-user-question-markdown');
+            const ol = md.querySelector('ol');
+            expect(ol).not.toBeNull();
+            expect(ol?.querySelectorAll('li')).toHaveLength(3);
+            expect(ol?.querySelectorAll('li')[0].textContent).toContain('First');
+        });
+
+        it('renders markdown inside select option labels', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            options: [
+                                { value: 'red', label: '**Red** option', description: 'Use the `red` value' },
+                                { value: 'blue', label: 'Blue' },
+                            ],
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const labels = screen.getAllByTestId('ask-user-option-label');
+            expect(labels[0].querySelector('strong')?.textContent).toBe('Red');
+            const desc = screen.getByTestId('ask-user-option-description');
+            expect(desc.querySelector('code')?.textContent).toBe('red');
+        });
+
+        it('sanitizes <script> tags and javascript: URLs', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            question: 'Hi <script>window.__pwn=1<\/script> [click](javascript:alert(1))',
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const md = screen.getByTestId('ask-user-question-markdown');
+            expect(md.querySelector('script')).toBeNull();
+            // The script tag must appear as escaped text, not as an executing element.
+            expect(md.innerHTML).not.toMatch(/<script/i);
+            expect((window as unknown as { __pwn?: unknown }).__pwn).toBeUndefined();
+            const link = md.querySelector('a');
+            expect(link).not.toBeNull();
+            expect(link!.getAttribute('href')).toBe('#');
+            expect(link!.getAttribute('href')).not.toMatch(/^javascript:/i);
+        });
+
+        it('does not let select option labels inject script tags', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            options: [
+                                { value: 'a', label: 'A <script>window.__pwn2=1<\/script>' },
+                            ],
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const label = screen.getByTestId('ask-user-option-label');
+            expect(label.querySelector('script')).toBeNull();
+            expect((window as unknown as { __pwn2?: unknown }).__pwn2).toBeUndefined();
+        });
+    });
 });
