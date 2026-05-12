@@ -145,6 +145,83 @@ describe('ProcessLifecycleRunner — selected_skills directive in stored turns',
 });
 
 // ============================================================================
+// Initial user turn mode/model stamping
+// ============================================================================
+
+describe('ProcessLifecycleRunner — initial user turn mode/model stamping', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('copies payload mode and configured model onto the initial user turn', async () => {
+        const task = makeTask({
+            config: { model: 'claude-sonnet-4.6' } as any,
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Hello world',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const initialTurn = proc?.conversationTurns?.[0];
+        expect(initialTurn?.role).toBe('user');
+        expect(initialTurn?.mode).toBe('ask');
+        expect(initialTurn?.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('copies mode without adding a model property when no model is configured', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'plan',
+                prompt: 'Plan this',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const initialTurn = proc?.conversationTurns?.[0];
+        expect(initialTurn?.mode).toBe('plan');
+        expect(initialTurn).not.toHaveProperty('model');
+    });
+
+    it('copies model without adding a mode property when no mode is provided', async () => {
+        const task = makeTask({
+            config: { model: 'gpt-5.4' } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const initialTurn = proc?.conversationTurns?.[0];
+        expect(initialTurn?.model).toBe('gpt-5.4');
+        expect(initialTurn).not.toHaveProperty('mode');
+    });
+
+    it('leaves both mode and model absent when neither is provided', async () => {
+        const task = makeTask();
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const initialTurn = proc?.conversationTurns?.[0];
+        expect(initialTurn).not.toHaveProperty('mode');
+        expect(initialTurn).not.toHaveProperty('model');
+    });
+});
+
+// ============================================================================
 // Cancellation detection tests
 // ============================================================================
 

@@ -225,6 +225,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // New task: create a process entry
         const processId = toQueueProcessId(task.id);
         const prompt = applySkillContent(extractPrompt(task), task);
+        const payload = task.payload as any;
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills
             : undefined;
@@ -248,8 +249,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: task.config.model,
-                mode: (task.payload as any)?.mode,
-                workspaceId: (task.payload as any)?.workspaceId || task.repoId,
+                mode: payload?.mode,
+                workspaceId: payload?.workspaceId || task.repoId,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
@@ -267,7 +268,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             },
         };
 
-        const payload = task.payload as any;
         await rehydrateImagesIfNeeded(payload);
 
         const payloadImages = Array.isArray(payload?.images)
@@ -281,6 +281,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 turnIndex: 0,
                 timeline: [],
                 images: payloadImages?.length > 0 ? payloadImages : undefined,
+                ...(task.config.model !== undefined ? { model: task.config.model } : {}),
+                ...(payload?.mode !== undefined ? { mode: payload.mode } : {}),
             },
         ];
 
