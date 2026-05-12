@@ -143,10 +143,15 @@ export function saveAttachmentsToTempFiles(
         if (category === 'image') {
             const parsed = parseDataUrl(payload.dataUrl);
             if (parsed) {
-                const safeName = sanitizeFileName(payload.name) || `image-${i}.${parsed.extension}`;
+                const sanitizedName = sanitizeFileName(payload.name);
+                const safeName = sanitizedName.trim().length > 0 ? sanitizedName : `image-${i}.${parsed.extension}`;
                 const filePath = path.join(tempDir, safeName);
                 fs.writeFileSync(filePath, parsed.buffer);
-                attachments.push({ type: 'file', path: filePath });
+                attachments.push({
+                    type: 'file',
+                    path: filePath,
+                    displayName: getAttachmentDisplayName(payload.name, filePath),
+                });
                 continue;
             }
         }
@@ -155,7 +160,8 @@ export function saveAttachmentsToTempFiles(
         const parsed = parseGenericDataUrl(payload.dataUrl);
         if (!parsed) continue;
 
-        const safeName = sanitizeFileName(payload.name) || `file-${i}`;
+        const sanitizedName = sanitizeFileName(payload.name);
+        const safeName = sanitizedName.trim().length > 0 ? sanitizedName : `file-${i}`;
         const filePath = path.join(tempDir, safeName);
         fs.writeFileSync(filePath, parsed.buffer);
 
@@ -164,7 +170,11 @@ export function saveAttachmentsToTempFiles(
             textContents.push({ name: payload.name, content, filePath });
         }
 
-        attachments.push({ type: 'file', path: filePath });
+        attachments.push({
+            type: 'file',
+            path: filePath,
+            displayName: getAttachmentDisplayName(payload.name, filePath),
+        });
     }
 
     return { attachments, textContents };
@@ -206,6 +216,10 @@ function sanitizeFileName(name: string): string {
         .replace(/\.\./g, '_')
         .replace(/[<>:"|?*]/g, '_')
         .slice(0, 200);
+}
+
+function getAttachmentDisplayName(name: string, filePath: string): string {
+    return name.trim().length > 0 ? name : path.basename(filePath);
 }
 
 /**

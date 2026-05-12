@@ -222,10 +222,11 @@ describe('Copilot SDK Wrapper Module', () => {
             const attachment: Attachment = {
                 type: 'directory',
                 path: '/home/user/project',
+                displayName: 'project',
             };
             expect(attachment.type).toBe('directory');
             expect(attachment.path).toBe('/home/user/project');
-            expect(attachment.displayName).toBeUndefined();
+            expect(attachment.displayName).toBe('project');
         });
 
         it('should work in SendMessageOptions.attachments', () => {
@@ -233,7 +234,7 @@ describe('Copilot SDK Wrapper Module', () => {
                 prompt: 'Describe this image',
                 attachments: [
                     { type: 'file', path: '/tmp/img.png', displayName: 'image' },
-                    { type: 'directory', path: '/src' },
+                    { type: 'directory', path: '/src', displayName: 'src' },
                 ],
             };
             expect(opts.attachments).toHaveLength(2);
@@ -253,6 +254,7 @@ describe('Copilot SDK Wrapper Module', () => {
             const attachment: AiAttachment = {
                 type: 'file',
                 path: '/tmp/test.txt',
+                displayName: 'test.txt',
             };
             expect(attachment.type).toBe('file');
         });

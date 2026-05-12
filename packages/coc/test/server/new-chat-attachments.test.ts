@@ -166,7 +166,7 @@ describe('decodeChatPayloadAttachments', () => {
     });
 
     it('is a no-op when attachments is already SDK form (idempotent)', () => {
-        const fakeSdkAttachment = { type: 'file' as const, path: '/tmp/already-saved.png' };
+        const fakeSdkAttachment = { type: 'file' as const, path: '/tmp/already-saved.png', displayName: 'already-saved.png' };
         const payload: Record<string, unknown> = {
             kind: 'chat',
             prompt: 'hi',

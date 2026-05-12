@@ -47,9 +47,10 @@ export function saveImagesToTempFiles(
     for (let i = 0; i < images.length; i++) {
         const parsed = parseDataUrl(images[i]);
         if (!parsed) { continue; }
-        const filePath = path.join(tempDir, `image-${i}.${parsed.extension}`);
+        const fileName = `image-${i}.${parsed.extension}`;
+        const filePath = path.join(tempDir, fileName);
         fs.writeFileSync(filePath, parsed.buffer);
-        attachments.push({ type: 'file', path: filePath });
+        attachments.push({ type: 'file', path: filePath, displayName: fileName });
     }
 
     return { tempDir, attachments };

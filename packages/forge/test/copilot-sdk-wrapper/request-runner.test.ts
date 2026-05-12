@@ -163,7 +163,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         await runner.send({
             prompt: 'hi',
             workingDirectory,
-            attachments: [{ type: 'file', path: attachmentPath }],
+            attachments: [{ type: 'file', path: attachmentPath, displayName: 'README.md' }],
             timeoutMs: 5000,
             loadDefaultMcpConfig: false,
         });
@@ -171,7 +171,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(mockSession.sendAndWait).toHaveBeenCalledWith(
             {
                 prompt: 'hi',
-                attachments: [{ type: 'file', path: '/home/tester/repo/README.md' }],
+                attachments: [{ type: 'file', path: '/home/tester/repo/README.md', displayName: 'README.md' }],
             },
             5000,
         );
@@ -186,7 +186,7 @@ describe('RequestRunner.send() — non-streaming path', () => {
         const result = await runner.send({
             prompt: 'hi',
             workingDirectory,
-            attachments: [{ type: 'file', path: 'C:\\temp\\outside.txt' }],
+            attachments: [{ type: 'file', path: 'C:\\temp\\outside.txt', displayName: 'outside.txt' }],
             timeoutMs: 5000,
             loadDefaultMcpConfig: false,
         });

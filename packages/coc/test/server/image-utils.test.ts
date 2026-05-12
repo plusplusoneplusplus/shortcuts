@@ -86,11 +86,14 @@ describe('saveImagesToTempFiles', () => {
         for (const att of result.attachments) {
             expect(att.type).toBe('file');
             expect(fs.existsSync(att.path)).toBe(true);
+            expect(att.displayName).toBe(path.basename(att.path));
         }
 
         // Verify file names match expected pattern
         expect(path.basename(result.attachments[0].path)).toBe('image-0.png');
         expect(path.basename(result.attachments[1].path)).toBe('image-1.jpg');
+        expect(result.attachments[0].displayName).toBe('image-0.png');
+        expect(result.attachments[1].displayName).toBe('image-1.jpg');
     });
 
     it('should skip invalid images in a mix of valid and invalid', () => {

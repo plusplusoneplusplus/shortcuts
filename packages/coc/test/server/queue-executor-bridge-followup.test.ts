@@ -129,7 +129,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
 
         const spy = vi.spyOn(CLITaskExecutor.prototype as any, 'executeFollowUp');
 
-        const attachments = [{ type: 'file', path: '/a.ts' }];
+        const attachments = [{ type: 'file', path: '/a.ts', displayName: 'a.ts' }];
         const task = followUpTask({ processId: 'proc-1', content: 'follow up', attachments });
 
         await executor.execute(task);
@@ -309,7 +309,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         await store.addProcess(proc);
 
-        const attachments = [{ type: 'file', path: '/a.ts' }];
+        const attachments = [{ type: 'file', path: '/a.ts', displayName: 'a.ts' }];
         const task = followUpTask({
             processId: 'proc-1',
             content: 'follow up',
@@ -334,7 +334,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         const spy = vi.spyOn(CLITaskExecutor.prototype as any, 'executeFollowUp');
         spy.mockRejectedValue(new Error('boom'));
 
-        const attachments = [{ type: 'file', path: '/b.ts' }];
+        const attachments = [{ type: 'file', path: '/b.ts', displayName: 'b.ts' }];
         const task = followUpTask({
             processId: 'proc-1',
             content: 'follow up',
@@ -358,7 +358,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         await store.addProcess({ ...proc, status: 'running' });
 
-        const attachments = [{ type: 'file', path: '/c.ts' }];
+        const attachments = [{ type: 'file', path: '/c.ts', displayName: 'c.ts' }];
         const task = followUpTask({
             processId: 'proc-1',
             content: 'follow up',

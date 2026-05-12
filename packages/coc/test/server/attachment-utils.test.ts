@@ -163,6 +163,7 @@ describe('saveAttachmentsToTempFiles', () => {
         expect(attachments).toHaveLength(1);
         expect(attachments[0].type).toBe('file');
         expect(fs.existsSync(attachments[0].path)).toBe(true);
+        expect(attachments[0].displayName).toBe('test.txt');
 
         expect(textContents).toHaveLength(1);
         expect(textContents[0].name).toBe('test.txt');
@@ -180,6 +181,37 @@ describe('saveAttachmentsToTempFiles', () => {
         expect(attachments).toHaveLength(1);
         expect(textContents).toHaveLength(0);
         expect(fs.existsSync(attachments[0].path)).toBe(true);
+        expect(attachments[0].displayName).toBe('photo.png');
+    });
+
+    it('uses the original payload name as the display name for binary files', () => {
+        const tempDir = makeTempDir();
+        const binaryContent = Buffer.from([0, 1, 2, 3]);
+        const { attachments, textContents } = saveAttachmentsToTempFiles(
+            [makePayload({
+                name: 'archive.zip',
+                mimeType: 'application/zip',
+                size: binaryContent.length,
+                dataUrl: `data:application/zip;base64,${binaryContent.toString('base64')}`,
+            })],
+            tempDir,
+        );
+
+        expect(attachments).toHaveLength(1);
+        expect(textContents).toHaveLength(0);
+        expect(attachments[0].displayName).toBe('archive.zip');
+    });
+
+    it('falls back to the saved file basename when the payload name is blank', () => {
+        const tempDir = makeTempDir();
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: '   ', mimeType: 'application/octet-stream' })],
+            tempDir,
+        );
+
+        expect(attachments).toHaveLength(1);
+        expect(path.basename(attachments[0].path)).toBe('file-0');
+        expect(attachments[0].displayName).toBe('file-0');
     });
 
     it('saves a JSON file as text', () => {
@@ -324,6 +356,7 @@ describe('processMessageAttachments', () => {
 
         const result = processMessageAttachments(body, tempDir);
         expect(result.sdkAttachments.length).toBeGreaterThan(0);
+        expect(result.sdkAttachments[0].displayName).toBe('code.ts');
         expect(result.textContext).toContain('code.ts');
         expect(result.fileAttachmentMeta).toHaveLength(1);
         expect(result.fileAttachmentMeta![0].category).toBe('text');
@@ -375,6 +408,7 @@ describe('processMessageAttachments', () => {
         const result = processMessageAttachments(body, tempDir);
         expect(result.validatedImages).toHaveLength(1);
         expect(result.sdkAttachments.length).toBeGreaterThan(0);
+        expect(result.sdkAttachments[0].displayName).toBe(path.basename(result.sdkAttachments[0].path));
     });
 
     it('extracts image data URLs from new-style attachments for backward compat', () => {
@@ -412,6 +446,7 @@ describe('processMessageAttachments', () => {
         expect(result.sdkAttachments).toHaveLength(1);
         expect(result.sdkAttachments[0].type).toBe('file');
         expect(fs.existsSync(result.sdkAttachments[0].path)).toBe(true);
+        expect(result.sdkAttachments[0].displayName).toBe('screenshot.png');
         // Image content should NOT appear in text context
         expect(result.textContext).toBe('');
     });

@@ -178,7 +178,7 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
         const executor = new CLITaskExecutor(store);
         executor.setQueueManager(queueManager);
 
-        const fakeAttachment = { type: 'file' as const, path: '/tmp/coc-attach-x/screenshot.png' };
+        const fakeAttachment = { type: 'file' as const, path: '/tmp/coc-attach-x/screenshot.png', displayName: 'screenshot.png' };
         const proc: AIProcess = {
             id: 'proc-drain',
             type: 'clarification',

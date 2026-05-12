@@ -295,15 +295,16 @@ export interface SystemMessageConfig {
 
 /**
  * File or directory attachment for SDK messages.
- * Mirrors the SDK's `MessageOptions.attachments` element type.
+ * The SDK send-side accepts a missing display name, but its persisted session
+ * resume schema requires one for every attachment.
  */
 export interface Attachment {
     /** Attachment type: file or directory */
     type: 'file' | 'directory';
     /** Absolute path to the file or directory */
     path: string;
-    /** Optional display name shown to the AI */
-    displayName?: string;
+    /** Display name shown to the AI and persisted for SDK session resume */
+    displayName: string;
 }
 
 // ============================================================================
