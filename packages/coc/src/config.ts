@@ -117,6 +117,10 @@ export interface CLIConfig {
     ralph?: {
         enabled?: boolean;
     };
+    /** Vim-style navigation configuration (hjkl pane focus, j/k message stepping). Disabled by default. */
+    vimNavigation?: {
+        enabled?: boolean;
+    };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -269,6 +273,10 @@ export interface ResolvedCLIConfig {
     ralph: {
         enabled: boolean;
     };
+    /** Vim-style navigation configuration. */
+    vimNavigation: {
+        enabled: boolean;
+    };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -381,6 +389,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     ralph: {
+        enabled: false,
+    },
+    vimNavigation: {
         enabled: false,
     },
     features: {

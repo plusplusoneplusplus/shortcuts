@@ -1567,6 +1567,61 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // PUT /api/admin/config — vimNavigation.enabled
+    // ========================================================================
+
+    describe('vimNavigation.enabled', () => {
+        it('should return vimNavigation.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.vimNavigation.enabled).toBe(false);
+            expect(body.sources['vimNavigation.enabled']).toBe('default');
+        });
+
+        it('should accept vimNavigation.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'vimNavigation.enabled': true }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.vimNavigation.enabled).toBe(true);
+            expect(body.sources['vimNavigation.enabled']).toBe('file');
+        });
+
+        it('should accept vimNavigation.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'vimNavigation.enabled': false }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.vimNavigation.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean vimNavigation.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'vimNavigation.enabled': 'yes' }),
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('vimNavigation.enabled');
+        });
+    });
+
+    // ========================================================================
 
     describe('serve.serverName', () => {
         it('should accept a valid serverName string', async () => {

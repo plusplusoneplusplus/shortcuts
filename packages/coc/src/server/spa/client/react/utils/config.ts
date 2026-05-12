@@ -17,6 +17,7 @@ interface DashboardConfig {
     pullRequestsEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
+    vimNavigationEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -77,4 +78,8 @@ export function isServersEnabled(): boolean {
 
 export function isRalphEnabled(): boolean {
     return getConfig().ralphEnabled === true;
+}
+
+export function isVimNavigationEnabled(): boolean {
+    return getConfig().vimNavigationEnabled === true;
 }

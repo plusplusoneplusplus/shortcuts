@@ -94,6 +94,9 @@ export const CLIConfigSchema = z.object({
     servers: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    vimNavigation: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     features: z.object({
         autoMemoryPromotion: z.boolean().optional(),
     }).passthrough().optional(),

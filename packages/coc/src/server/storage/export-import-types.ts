@@ -77,6 +77,9 @@ export interface CLIConfig {
     ralph?: {
         enabled?: boolean;
     };
+    vimNavigation?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

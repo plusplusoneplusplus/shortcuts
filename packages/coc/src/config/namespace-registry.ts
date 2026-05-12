@@ -30,6 +30,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'pullRequests'
     | 'servers'
     | 'ralph'
+    | 'vimNavigation'
     | 'features'
     | 'memoryPromotion'
     | 'store'
@@ -63,6 +64,7 @@ const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
 const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
+const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
@@ -90,6 +92,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...PULL_REQUESTS_SOURCE_KEYS,
     ...SERVERS_SOURCE_KEYS,
     ...RALPH_SOURCE_KEYS,
+    ...VIM_NAVIGATION_SOURCE_KEYS,
     ...FEATURES_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
@@ -221,6 +224,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'ralph',
             sourceDescriptors: [source('ralph.', ['ralph'], RALPH_SOURCE_KEYS)],
             merge: (base, override) => ({ ralph: { enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false } }),
+        },
+        {
+            name: 'vimNavigation',
+            sourceDescriptors: [source('vimNavigation.', ['vimNavigation'], VIM_NAVIGATION_SOURCE_KEYS)],
+            merge: (base, override) => ({ vimNavigation: { enabled: override?.vimNavigation?.enabled ?? base.vimNavigation?.enabled ?? false } }),
         },
         {
             name: 'features',

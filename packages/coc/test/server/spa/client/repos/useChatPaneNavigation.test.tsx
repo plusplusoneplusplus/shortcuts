@@ -10,6 +10,28 @@ import { useRef } from 'react';
 import { render, fireEvent, act } from '@testing-library/react';
 import { useChatPaneNavigation } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatPaneNavigation';
 
+// Mock useDisplaySettings so we control vimNavigationEnabled per test.
+let mockVimEnabled = true;
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({
+        showReportIntent: false,
+        toolCompactness: 3 as const,
+        taskCardDensity: 'dense' as const,
+        historyGrouping: true,
+        groupSingleLineMessages: true,
+        terminalEnabled: true,
+        notesEnabled: true,
+        myWorkEnabled: false,
+        myLifeEnabled: false,
+        scratchpadEnabled: false,
+        scratchpadLayout: 'vertical' as const,
+        workflowsEnabled: false,
+        pullRequestsEnabled: false,
+        vimNavigationEnabled: mockVimEnabled,
+    }),
+    invalidateDisplaySettings: () => {},
+}));
+
 interface HarnessProps {
     taskIds: string[];
     selectedTaskId?: string | null;
@@ -73,6 +95,7 @@ function Harness({
 }
 
 beforeEach(() => {
+    mockVimEnabled = true;
     Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -264,6 +287,32 @@ describe('useChatPaneNavigation', () => {
         list.focus();
         act(() => { fireEvent.keyDown(window, { key: 'o' }); });
         expect((window as any).__onSelectTask).toHaveBeenCalledWith('a');
+    });
+});
+
+describe('useChatPaneNavigation — vimNavigationEnabled flag', () => {
+    it('returns null focusedPane and cursorTaskId when vimNavigationEnabled is false', () => {
+        mockVimEnabled = false;
+        const { container } = render(<Harness taskIds={['a', 'b']} selectedTaskId="a" />);
+        // focusedPane should be null (rendered as empty string) and cursor 'none'.
+        expect(pane(container)).toBe('');
+        expect(cursor(container)).toBe('none');
+    });
+
+    it('does not handle h/l/j/k/i/Enter/o keys when vimNavigationEnabled is false', () => {
+        mockVimEnabled = false;
+        const { container } = render(<Harness taskIds={['a', 'b', 'c']} selectedTaskId={null} withInput />);
+        const onSelect = (window as any).__onSelectTask as ReturnType<typeof vi.fn>;
+        const inputFocus = (window as any).__inputFocus as ReturnType<typeof vi.fn>;
+        onSelect.mockClear();
+        inputFocus.mockClear();
+        for (const key of ['h', 'l', 'j', 'k', 'i', 'Enter', 'o']) {
+            act(() => { fireEvent.keyDown(window, { key }); });
+        }
+        expect(pane(container)).toBe('');
+        expect(cursor(container)).toBe('none');
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(inputFocus).not.toHaveBeenCalled();
     });
 });
 

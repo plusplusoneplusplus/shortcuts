@@ -11,6 +11,28 @@ import { useRef } from 'react';
 import { render, fireEvent, act } from '@testing-library/react';
 import { useMessageNavigation } from '../../../../../src/server/spa/client/react/features/chat/hooks/useMessageNavigation';
 
+// Mock useDisplaySettings so we control vimNavigationEnabled per test.
+let mockVimEnabled = true;
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({
+        showReportIntent: false,
+        toolCompactness: 3 as const,
+        taskCardDensity: 'dense' as const,
+        historyGrouping: true,
+        groupSingleLineMessages: true,
+        terminalEnabled: true,
+        notesEnabled: true,
+        myWorkEnabled: false,
+        myLifeEnabled: false,
+        scratchpadEnabled: false,
+        scratchpadLayout: 'vertical' as const,
+        workflowsEnabled: false,
+        pullRequestsEnabled: false,
+        vimNavigationEnabled: mockVimEnabled,
+    }),
+    invalidateDisplaySettings: () => {},
+}));
+
 interface HarnessProps {
     turnIndices: number[];
     /** Render an editable textarea inside the container so we can test focus rules. */
@@ -57,6 +79,7 @@ function Harness({ turnIndices, withInput, withPinned }: HarnessProps) {
 }
 
 beforeEach(() => {
+    mockVimEnabled = true;
     Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -202,5 +225,22 @@ describe('useMessageNavigation', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe('useMessageNavigation — vimNavigationEnabled flag', () => {
+    it('does not handle j/k/gg/G/Esc/i when vimNavigationEnabled is false', () => {
+        mockVimEnabled = false;
+        const { container } = render(<Harness turnIndices={[0, 1, 2]} withInput />);
+        const root = container.querySelector('[data-testid="container"]') as HTMLElement;
+        root.focus();
+        const inputFocus = (window as any).__inputFocus as ReturnType<typeof vi.fn>;
+        inputFocus.mockClear();
+        for (const key of ['j', 'k', 'g', 'G', 'Escape', 'i']) {
+            fireEvent.keyDown(root, key === 'G' ? { key: 'G', shiftKey: true } : { key });
+        }
+        expect(getCursor(container)).toBe('none');
+        expect((window as any).__navHintVisible).toBe(false);
+        expect(inputFocus).not.toHaveBeenCalled();
     });
 });

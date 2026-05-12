@@ -31,6 +31,8 @@ export interface DashboardOptions {
     serversEnabled?: boolean;
     /** Whether the Ralph mode feature is enabled in server config. */
     ralphEnabled?: boolean;
+    /** Whether vim-style navigation (hjkl/jk/gg/G/Esc/i bindings) is enabled. */
+    vimNavigationEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

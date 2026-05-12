@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 
 export interface MessageNavigationOptions {
     /** The scrolling element that contains the rendered turn bubbles. */
@@ -68,6 +69,9 @@ const G_CHORD_TIMEOUT_MS = 500;
 export function useMessageNavigation(opts: MessageNavigationOptions): MessageNavigationState {
     const { scrollRef, containerRef, inputRef, enabled = true } = opts;
 
+    const { vimNavigationEnabled } = useDisplaySettings();
+    const effectiveEnabled = enabled && vimNavigationEnabled;
+
     const [currentTurnIndex, setCurrentTurnIndex] = useState<number | null>(null);
     const [navHintVisible, setNavHintVisible] = useState(false);
 
@@ -101,7 +105,7 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
     }, [scrollRef]);
 
     useEffect(() => {
-        if (!enabled) return;
+        if (!effectiveEnabled) return;
         const container = containerRef.current;
         if (!container) return;
 
@@ -214,7 +218,7 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
         return () => {
             container.removeEventListener('keydown', handler);
         };
-    }, [enabled, containerRef, scrollRef, inputRef, currentTurnIndex, scrollTo, showHint, hideHint]);
+    }, [effectiveEnabled, containerRef, scrollRef, inputRef, currentTurnIndex, scrollTo, showHint, hideHint]);
 
     useEffect(() => {
         return () => {
@@ -222,5 +226,8 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
         };
     }, []);
 
-    return { currentTurnIndex, navHintVisible };
+    return {
+        currentTurnIndex: effectiveEnabled ? currentTurnIndex : null,
+        navHintVisible: effectiveEnabled ? navHintVisible : false,
+    };
 }

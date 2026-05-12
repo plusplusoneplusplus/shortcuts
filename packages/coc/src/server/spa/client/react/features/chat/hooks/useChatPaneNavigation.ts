@@ -31,6 +31,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 
 export interface UseChatPaneNavigationArgs {
     listContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -46,7 +47,7 @@ export interface UseChatPaneNavigationArgs {
 }
 
 export interface UseChatPaneNavigationResult {
-    focusedPane: 'list' | 'detail';
+    focusedPane: 'list' | 'detail' | null;
     cursorTaskId: string | null;
 }
 
@@ -85,6 +86,9 @@ export function useChatPaneNavigation(args: UseChatPaneNavigationArgs): UseChatP
         onEnterList,
     } = args;
 
+    const { vimNavigationEnabled } = useDisplaySettings();
+    const effectiveEnabled = enabled && vimNavigationEnabled;
+
     const [focusedPane, setFocusedPane] = useState<'list' | 'detail'>(
         selectedTaskId ? 'detail' : 'list',
     );
@@ -95,7 +99,7 @@ export function useChatPaneNavigation(args: UseChatPaneNavigationArgs): UseChatP
         focusedPane,
         cursorTaskId,
         selectedTaskId,
-        enabled,
+        enabled: effectiveEnabled,
         isMobile,
         mobileShowDetail,
     });
@@ -103,7 +107,7 @@ export function useChatPaneNavigation(args: UseChatPaneNavigationArgs): UseChatP
         focusedPane,
         cursorTaskId,
         selectedTaskId,
-        enabled,
+        enabled: effectiveEnabled,
         isMobile,
         mobileShowDetail,
     };
@@ -245,5 +249,8 @@ export function useChatPaneNavigation(args: UseChatPaneNavigationArgs): UseChatP
         return () => window.removeEventListener('keydown', handler);
     }, [listContainerRef, detailContainerRef, inputRef, focusList, focusDetail, scrollCursorIntoView]);
 
-    return { focusedPane, cursorTaskId };
+    return {
+        focusedPane: effectiveEnabled ? focusedPane : null,
+        cursorTaskId: effectiveEnabled ? cursorTaskId : null,
+    };
 }

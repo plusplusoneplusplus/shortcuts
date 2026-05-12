@@ -773,6 +773,8 @@ timeout: 300
                 '  enabled: true',
                 'ralph:',
                 '  enabled: true',
+                'vimNavigation:',
+                '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
                 'memoryPromotion:',
@@ -851,6 +853,8 @@ timeout: 300
                 'servers:',
                 '  enabled: true',
                 'ralph:',
+                '  enabled: true',
+                'vimNavigation:',
                 '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
@@ -990,6 +994,9 @@ timeout: 300
                   },
                   "timeout": 450,
                   "toolCompactness": 2,
+                  "vimNavigation": {
+                    "enabled": true,
+                  },
                   "workflows": {
                     "enabled": true,
                   },
@@ -1030,6 +1037,7 @@ timeout: 300
                   "terminal.enabled": "file",
                   "timeout": "file",
                   "toolCompactness": "file",
+                  "vimNavigation.enabled": "file",
                   "workflows.enabled": "file",
                 },
               }
