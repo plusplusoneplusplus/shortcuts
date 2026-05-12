@@ -152,7 +152,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesWriteRoutes(routes, store, dataDir);
     registerNotesCommentsRoutes(routes, store, dataDir, bridge);
     registerNotesImageRoutes(routes, store, dataDir);
-    registerNotesGitRoutes(routes, store, dataDir);
+    registerNotesGitRoutes(routes, store, dataDir, notesGitTimerManager);
     registerNotesGitAutoCommitRoutes(routes, store, dataDir, notesGitTimerManager, scheduleManager);
     registerNotesFilePreviewRoutes(routes, store, dataDir);
     registerNotesAICreateRoutes(routes, store, dataDir, bridge);

@@ -175,6 +175,69 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // DELETE / (deinit)
+    // ========================================================================
+    describe('DELETE /api/workspaces/:id/notes/git', () => {
+        function deleteRequest(reqUrl: string) {
+            return request(reqUrl, { method: 'DELETE' });
+        }
+
+        it('removes the .git directory and returns 200', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            expect(fs.existsSync(path.join(notesRoot(), '.git'))).toBe(true);
+
+            const res = await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/git`);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ deinitialized: true });
+
+            expect(fs.existsSync(path.join(notesRoot(), '.git'))).toBe(false);
+        });
+
+        it('preserves notes files', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            writeNote('keep.md', '# Keep me');
+
+            const res = await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/git`);
+            expect(res.status).toBe(200);
+
+            expect(fs.existsSync(path.join(notesRoot(), 'keep.md'))).toBe(true);
+            expect(fs.readFileSync(path.join(notesRoot(), 'keep.md'), 'utf-8')).toBe('# Keep me');
+        });
+
+        it('is idempotent — second call still returns 200', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const r1 = await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/git`);
+            expect(r1.status).toBe(200);
+            const r2 = await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/git`);
+            expect(r2.status).toBe(200);
+        });
+
+        it('subsequent /status reports initialized: false', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/git`);
+
+            const statusRes = await request(gitUrl(srv, 'status'));
+            expect(statusRes.status).toBe(200);
+            expect(JSON.parse(statusRes.body).initialized).toBe(false);
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const srv = await startServer();
+            const res = await deleteRequest(`${srv.url}/api/workspaces/does-not-exist/notes/git`);
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
     // GET /status
     // ========================================================================
     describe('GET /status', () => {

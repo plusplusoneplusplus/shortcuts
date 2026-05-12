@@ -43,8 +43,15 @@ function mockAutoCommitHook(state: AutoCommitState) {
 async function renderSection(opts: {
     gitInitialized?: boolean;
     autoCommit?: AutoCommitState;
+    initializeGit?: ReturnType<typeof vi.fn>;
+    deinitGit?: ReturnType<typeof vi.fn>;
 }) {
-    const { gitInitialized = true, autoCommit = { enabled: false } } = opts;
+    const {
+        gitInitialized = true,
+        autoCommit = { enabled: false },
+        initializeGit = vi.fn().mockResolvedValue({ initialized: true }),
+        deinitGit = vi.fn().mockResolvedValue({ deinitialized: true }),
+    } = opts;
 
     const mockHook = mockAutoCommitHook(autoCommit);
 
@@ -55,6 +62,8 @@ async function renderSection(opts: {
     vi.doMock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         notesApi: {
             getGitStatus: vi.fn().mockResolvedValue({ initialized: gitInitialized }),
+            initializeGit,
+            deinitGit,
         },
     }));
 
@@ -69,7 +78,7 @@ async function renderSection(opts: {
         expect(screen.queryByTestId('notes-settings-loading')).toBeNull();
     });
 
-    return { result, mockHook };
+    return { result, mockHook, initializeGit, deinitGit };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -106,11 +115,32 @@ describe('NotesSettingsSection', () => {
         expect(screen.getByTestId('notes-settings-loading')).toBeTruthy();
     });
 
-    it('shows git-not-initialized hint when git is not set up', async () => {
+    it('shows inline init button when git is not set up', async () => {
         await renderSection({ gitInitialized: false });
 
         expect(screen.getByTestId('notes-git-not-initialized')).toBeTruthy();
-        expect(screen.getByTestId('notes-git-init-link')).toBeTruthy();
+        expect(screen.getByTestId('notes-git-init-button')).toBeTruthy();
+        // No redirect link in the new design
+        expect(screen.queryByTestId('notes-git-init-link')).toBeNull();
+    });
+
+    it('clicking init button calls notesApi.initializeGit and shows initialized UI', async () => {
+        const initializeGit = vi.fn().mockResolvedValue({ initialized: true });
+        await renderSection({ gitInitialized: false, initializeGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-init-button'));
+        });
+
+        await waitFor(() => {
+            expect(initializeGit).toHaveBeenCalledWith('ws-1');
+        });
+
+        // After init, the not-initialized panel goes away and the auto-commit toggle appears
+        await waitFor(() => {
+            expect(screen.queryByTestId('notes-git-not-initialized')).toBeNull();
+            expect(screen.getByTestId('auto-commit-toggle')).toBeTruthy();
+        });
     });
 
     it('does not show git-not-initialized hint when git is initialized', async () => {
@@ -239,6 +269,112 @@ describe('NotesSettingsSection', () => {
     it('notes-settings-section testid is present', async () => {
         await renderSection({ gitInitialized: true });
         expect(screen.getByTestId('notes-settings-section')).toBeTruthy();
+    });
+
+    it('shows danger-zone disable button when git is initialized', async () => {
+        await renderSection({ gitInitialized: true });
+        expect(screen.getByTestId('notes-git-danger-zone')).toBeTruthy();
+        expect(screen.getByTestId('notes-git-deinit-button')).toBeTruthy();
+        // Confirm panel is hidden by default
+        expect(screen.queryByTestId('notes-git-deinit-confirm')).toBeNull();
+    });
+
+    it('clicking disable button reveals confirmation panel without calling API', async () => {
+        const deinitGit = vi.fn().mockResolvedValue({ deinitialized: true });
+        await renderSection({ gitInitialized: true, deinitGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-button'));
+        });
+
+        expect(screen.getByTestId('notes-git-deinit-confirm')).toBeTruthy();
+        expect(deinitGit).not.toHaveBeenCalled();
+    });
+
+    it('cancel button hides confirmation panel without calling API', async () => {
+        const deinitGit = vi.fn().mockResolvedValue({ deinitialized: true });
+        await renderSection({ gitInitialized: true, deinitGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-button'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-cancel-button'));
+        });
+
+        expect(screen.queryByTestId('notes-git-deinit-confirm')).toBeNull();
+        expect(deinitGit).not.toHaveBeenCalled();
+    });
+
+    it('confirming disable calls notesApi.deinitGit and shows init UI again', async () => {
+        const deinitGit = vi.fn().mockResolvedValue({ deinitialized: true });
+        await renderSection({ gitInitialized: true, deinitGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-button'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-confirm-button'));
+        });
+
+        await waitFor(() => {
+            expect(deinitGit).toHaveBeenCalledWith('ws-1');
+        });
+
+        // UI flips back to the init button
+        await waitFor(() => {
+            expect(screen.getByTestId('notes-git-init-button')).toBeTruthy();
+        });
+    });
+
+    it('confirming disable also calls hook disable() when auto-commit is on', async () => {
+        const deinitGit = vi.fn().mockResolvedValue({ deinitialized: true });
+        const { mockHook } = await renderSection({
+            gitInitialized: true,
+            autoCommit: { enabled: true, intervalMs: 1_800_000 },
+            deinitGit,
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-button'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-confirm-button'));
+        });
+
+        await waitFor(() => {
+            expect(mockHook.disable).toHaveBeenCalled();
+            expect(deinitGit).toHaveBeenCalledWith('ws-1');
+        });
+    });
+
+    it('shows error toast when init fails', async () => {
+        const initializeGit = vi.fn().mockRejectedValue(new Error('boom-init'));
+        await renderSection({ gitInitialized: false, initializeGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-init-button'));
+        });
+
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('boom-init', 'error');
+        });
+    });
+
+    it('shows error toast when deinit fails', async () => {
+        const deinitGit = vi.fn().mockRejectedValue(new Error('boom-deinit'));
+        await renderSection({ gitInitialized: true, deinitGit });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-button'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-deinit-confirm-button'));
+        });
+
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('boom-deinit', 'error');
+        });
     });
 });
 

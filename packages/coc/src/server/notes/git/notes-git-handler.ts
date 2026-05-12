@@ -19,6 +19,8 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../../shared/handler-
 import type { Route } from '../../types';
 import { getRepoDataPath } from '../../paths';
 import { NotesGitService } from './notes-git-service';
+import { readRepoPreferences, writeRepoPreferences } from '../../preferences-handler';
+import type { NotesGitTimerManager } from './notes-git-timer-manager';
 
 function getNotesRoot(dataDir: string, workspaceId: string): string {
     return getRepoDataPath(dataDir, workspaceId, 'notes');
@@ -32,6 +34,7 @@ export function registerNotesGitRoutes(
     routes: Route[],
     store: ProcessStore,
     dataDir: string,
+    timerManager?: NotesGitTimerManager,
 ): void {
 
     // ------------------------------------------------------------------
@@ -53,6 +56,48 @@ export function registerNotesGitRoutes(
                 sendJSON(res, 200, { initialized: true });
             } catch (err: any) {
                 sendError(res, 500, 'Failed to initialize notes git: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // DELETE /api/workspaces/:id/notes/git — Disable git tracking
+    // Stops auto-commit (if running), clears the autocommit preference,
+    // and removes the `.git` directory from the notes folder. Notes files
+    // themselves are preserved.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const wsId = ws.id;
+
+            const notesRoot = getNotesRoot(dataDir, wsId);
+
+            try {
+                if (timerManager) {
+                    timerManager.stopForWorkspace(wsId);
+                }
+
+                const prefs = readRepoPreferences(dataDir, wsId);
+                if (prefs.notesGit?.autoCommit?.enabled) {
+                    writeRepoPreferences(dataDir, wsId, {
+                        ...prefs,
+                        notesGit: {
+                            ...prefs.notesGit,
+                            enabled: prefs.notesGit?.enabled ?? false,
+                            autoCommit: { enabled: false },
+                        },
+                    });
+                }
+
+                const service = new NotesGitService(notesRoot);
+                await service.deinit();
+                sendJSON(res, 200, { deinitialized: true });
+            } catch (err: any) {
+                sendError(res, 500, 'Failed to disable notes git: ' + err.message);
             }
         },
     });

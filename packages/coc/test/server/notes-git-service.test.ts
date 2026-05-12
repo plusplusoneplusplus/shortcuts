@@ -90,6 +90,53 @@ describe('NotesGitService', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // deinit
+    // ========================================================================
+    describe('deinit', () => {
+        it('removes the .git directory', async () => {
+            await service.init();
+            expect(fs.existsSync(path.join(tmpDir, '.git'))).toBe(true);
+
+            await service.deinit();
+
+            expect(fs.existsSync(path.join(tmpDir, '.git'))).toBe(false);
+            expect(await service.isInitialized()).toBe(false);
+        });
+
+        it('preserves notes files and .gitignore', async () => {
+            await service.init();
+            fs.writeFileSync(path.join(tmpDir, 'note.md'), '# Hello', 'utf-8');
+
+            await service.deinit();
+
+            expect(fs.existsSync(path.join(tmpDir, 'note.md'))).toBe(true);
+            expect(fs.readFileSync(path.join(tmpDir, 'note.md'), 'utf-8')).toBe('# Hello');
+            expect(fs.existsSync(path.join(tmpDir, '.gitignore'))).toBe(true);
+        });
+
+        it('is idempotent — second call does not error', async () => {
+            await service.init();
+            await service.deinit();
+            await expect(service.deinit()).resolves.toBeUndefined();
+        });
+
+        it('does not error when never initialized', async () => {
+            await expect(service.deinit()).resolves.toBeUndefined();
+            expect(await service.isInitialized()).toBe(false);
+        });
+
+        it('init after deinit re-initializes successfully', async () => {
+            await service.init();
+            await service.deinit();
+            await service.init();
+
+            expect(await service.isInitialized()).toBe(true);
+            const log = await service.getLog(10, 0);
+            expect(log.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    // ========================================================================
     // getStatus
     // ========================================================================
     describe('getStatus', () => {

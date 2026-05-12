@@ -154,6 +154,10 @@ export const notesApi = {
         return withSpaErrors(notesClient().initializeGit(wsId));
     },
 
+    deinitGit(wsId: string): Promise<{ deinitialized: boolean }> {
+        return withSpaErrors(notesClient().deinitializeGit(wsId));
+    },
+
     getGitStatus(wsId: string): Promise<NotesGitStatus> {
         return withSpaErrors(notesClient().getGitStatus(wsId));
     },

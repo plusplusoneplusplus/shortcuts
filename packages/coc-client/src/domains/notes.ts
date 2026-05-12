@@ -270,6 +270,10 @@ export class NotesClient {
     return this.transport.request<{ initialized: boolean }>(notesGitPath(workspaceId, '/init'), { method: 'POST' });
   }
 
+  deinitializeGit(workspaceId: string): Promise<{ deinitialized: boolean }> {
+    return this.transport.request<{ deinitialized: boolean }>(notesGitPath(workspaceId), { method: 'DELETE' });
+  }
+
   getGitStatus(workspaceId: string): Promise<NotesGitStatus> {
     return this.transport.request<NotesGitStatus>(notesGitPath(workspaceId, '/status'));
   }

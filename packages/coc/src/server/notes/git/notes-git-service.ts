@@ -58,6 +58,21 @@ export class NotesGitService {
     }
 
     /**
+     * Remove the `.git` directory from notesDir, disabling git tracking.
+     * Idempotent — does nothing if not initialized. Notes files themselves
+     * are preserved; only the version-control history is removed.
+     */
+    async deinit(): Promise<void> {
+        const gitDir = path.join(this.notesDir, '.git');
+        try {
+            await fs.promises.rm(gitDir, { recursive: true, force: true });
+        } catch (err: any) {
+            // ENOENT is fine — already deinitialized
+            if (err?.code !== 'ENOENT') throw err;
+        }
+    }
+
+    /**
      * Return working-tree status parsed from `git status --porcelain=v1`.
      * If not initialized, return `{ initialized: false, ... }`.
      */
