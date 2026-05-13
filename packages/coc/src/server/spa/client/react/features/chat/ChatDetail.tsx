@@ -48,6 +48,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
+import { isRalphEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
@@ -217,7 +218,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const ralphCtx = getRalphContext(task);
         const payloadMode = resolveLoadedTaskMode(task);
         const noPending = (pendingQueue?.length ?? 0) === 0;
-        const ralphEligible = !readOnly
+        const ralphEligible = isRalphEnabled()
+            && !readOnly
             && !ralphCtx
             && payloadMode === 'ask'
             && effectiveStatus === 'completed'

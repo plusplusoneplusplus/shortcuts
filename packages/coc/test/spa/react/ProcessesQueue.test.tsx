@@ -42,6 +42,11 @@ vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', 
     ChatPreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock('../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return { ...actual, isRalphEnabled: () => true };
+});
+
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }
