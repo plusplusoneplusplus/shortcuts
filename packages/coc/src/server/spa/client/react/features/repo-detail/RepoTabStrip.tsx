@@ -487,6 +487,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     }, [selectedRepoId, allRepoIds]);
 
     useEffect(() => {
+        if (isContainerMode()) return; // container mode uses agent pill layout, not repo overflow
         const el = tabContainerRef.current;
         if (!el) return;
         if (typeof ResizeObserver === 'undefined') return;
@@ -498,6 +499,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     // Recalc when repos change
     useEffect(() => {
+        if (isContainerMode()) return;
         recalcOverflow();
     }, [repos, recalcOverflow]);
 
@@ -515,7 +517,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     const overflowCount = visibleRepoIds ? allRepoIds.length - visibleRepoIds.size : 0;
     const hasOverflow = overflowCount > 0;
-    const showOverflowControl = hasOverflow || customizeRepoTabs;
+    const showOverflowControl = !isContainerMode() && (hasOverflow || customizeRepoTabs);
     const overflowHasUnseen = hasOverflow && allRepoIds.some(
         id => !visibleRepoIds!.has(id) && (unseenCounts[id] ?? 0) > 0
     );
@@ -734,10 +736,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     return (
         <div
-            className="flex items-center flex-1 min-w-0"
+            className={'flex items-center' + (isContainerMode() ? ' flex-1 overflow-hidden' : ' flex-1 min-w-0')}
             data-testid="repo-tab-strip"
         >
-        {/* Hidden measurement container — lightweight spans to measure natural widths */}
+        {/* Hidden measurement container — lightweight spans to measure natural widths (non-container mode only) */}
+        {!isContainerMode() && (
         <div
             ref={measureContainerRef}
             className="flex items-center gap-0.5 absolute invisible overflow-hidden h-0"
@@ -751,10 +754,15 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 </div>
             ))}
         </div>
+        )}
         {/* Visible tab container */}
         <div
             ref={tabContainerRef}
-            className="flex items-center gap-0.5 flex-1 min-w-0 px-1"
+            className={
+                'flex items-center gap-0.5 flex-1 min-w-0 px-1' +
+                (isContainerMode() ? ' overflow-x-auto scrollbar-none' : '')
+            }
+            style={isContainerMode() ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : undefined}
             data-testid="repo-tab-visible-container"
         >
             {isContainerMode() ? (
