@@ -13,6 +13,7 @@ import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainer
 import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
+import { LoopBadge } from './LoopBadge';
 
 /**
  * Shared icon-button class for the right-side chat header actions.
@@ -82,6 +83,10 @@ export interface ChatHeaderProps {
     onFork?: () => void;
     /** Whether a fork operation is in progress */
     forking?: boolean;
+    /** Number of active loops for this conversation */
+    activeLoopCount?: number;
+    /** Called when the user clicks the loop badge */
+    onToggleLoopPanel?: () => void;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -297,6 +302,8 @@ export function ChatHeader({
     onOpenScratchpad,
     onFork,
     forking,
+    activeLoopCount,
+    onToggleLoopPanel,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -419,6 +426,9 @@ export function ChatHeader({
                         showDuration={isWide}
                         iconOnly={!isWide}
                     />
+                )}
+                {(activeLoopCount ?? 0) > 0 && (
+                    <LoopBadge activeCount={activeLoopCount!} onClick={onToggleLoopPanel} />
                 )}
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (

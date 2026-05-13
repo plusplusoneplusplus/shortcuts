@@ -55,6 +55,8 @@ import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
+import { useLoops } from './hooks/useLoops';
+import { LoopManagementPanel } from './LoopManagementPanel';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -175,6 +177,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     );
     const slashCommands = useSlashCommands(augmentedSkills);
 
+    // Loop management
+    const processId = task?.processId ?? (taskId
+        ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
+        : null);
+    const loopsHook = useLoops(workspaceId, processId);
+    const [loopPanelOpen, setLoopPanelOpen] = useState(false);
+
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
@@ -188,9 +197,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
 
-    const processId = task?.processId ?? (taskId
-        ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
-        : null);
     const effectiveStatus = processDetails?.status ?? task?.status;
     const isActiveGeneration = effectiveStatus === 'running' || effectiveStatus === 'cancelling' || isStreaming;
     const isCancelling = effectiveStatus === 'cancelling';
@@ -1023,8 +1029,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onOpenScratchpad={handleOpenScratchpad}
                 onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
                 forking={forking}
+                activeLoopCount={loopsHook.activeCount}
+                onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
             />
-            <div ref={scratchpadContainerRef} className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
+            {loopPanelOpen && (
+                <div className="relative">
+                    <LoopManagementPanel
+                        loops={loopsHook.loops}
+                        isOpen={loopPanelOpen}
+                        onClose={() => setLoopPanelOpen(false)}
+                        onPause={loopsHook.pause}
+                        onResume={loopsHook.resume}
+                        onCancel={loopsHook.cancel}
+                    />
+                </div>
+            )}
+            <div ref={scratchpadContainerRef}className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
                     className={`relative flex flex-col min-w-0 overflow-hidden ${isVerticalScratchpad ? 'min-h-0' : ''}${isMobileScratchpad && scratchpad.activeMobileTab !== 'chat' ? ' hidden' : ''}`}

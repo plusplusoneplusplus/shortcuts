@@ -1,4 +1,4 @@
-import { AdminClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, LoopsClient, MemoryClient, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -31,6 +31,7 @@ export class CocClient {
   readonly workItems: WorkItemsClient;
   readonly workspaces: WorkspacesClient;
   readonly repos: WorkspacesClient;
+  readonly loops: LoopsClient;
   readonly events: EventsClient;
 
   private readonly transport: HttpTransport;
@@ -64,6 +65,7 @@ export class CocClient {
     this.workItems = new WorkItemsClient(this.transport);
     this.workspaces = new WorkspacesClient(this.transport);
     this.repos = this.workspaces;
+    this.loops = new LoopsClient(this.transport);
     this.events = new EventsClient(this.options);
   }
 

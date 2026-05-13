@@ -23,3 +23,4 @@ export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';
 export { WorkflowClient } from './workflows';
 export { WikiClient } from './wiki';
+export { LoopsClient } from './loops';

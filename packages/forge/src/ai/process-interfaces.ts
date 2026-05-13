@@ -168,6 +168,8 @@ export interface ConversationTurn {
     pinnedAt?: Date;
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
+    /** Source metadata for automated follow-up turns (loops/wakeups). */
+    turnSource?: { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
 }
 
 /**
@@ -202,6 +204,8 @@ export interface SerializedConversationTurn {
     pinnedAt?: string;
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
+    /** Source metadata for automated follow-up turns (loops/wakeups). */
+    turnSource?: { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
 }
 
 /**

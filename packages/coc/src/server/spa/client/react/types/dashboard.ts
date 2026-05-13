@@ -115,6 +115,8 @@ export interface ClientConversationTurn {
     archived?: boolean;
     /** Client-side elapsed time in ms from user send to response completion */
     costTimeMs?: number;
+    /** Source metadata for automated follow-up turns (loops/wakeups). */
+    turnSource?: { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
 }
 
 /** Cached conversation data for a historical process. */
