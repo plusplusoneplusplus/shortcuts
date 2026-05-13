@@ -736,11 +736,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     return (
         <div
-            className={isContainerMode()
-                ? 'flex items-center flex-1 min-w-0 overflow-x-auto'
-                : 'flex items-center flex-1 min-w-0'
-            }
-            style={isContainerMode() ? { scrollbarWidth: 'none' } : undefined}
+            className="flex items-center flex-1 min-w-0"
             data-testid="repo-tab-strip"
         >
         {/* Hidden measurement container — lightweight spans to measure natural widths (non-container mode only) */}
