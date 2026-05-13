@@ -14,6 +14,8 @@ import {
     registerWorkspace,
     updateWorkspace,
 } from './repositoryService';
+import { isContainerMode, setCurrentAgentId } from '../utils/config';
+import { useContainerAgents } from '../contexts/ContainerAgentContext';
 
 const AUTO_VALUE = 'auto';
 
@@ -82,12 +84,22 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const isEdit = !!editId;
     const editRepo = isEdit ? repos.find(r => r.workspace.id === editId) : null;
     const pathPlaceholder = getPathPlaceholder();
+    const { agents } = useContainerAgents();
+    const onlineAgents = agents.filter(a => a.status !== 'offline');
 
+    const [selectedAgentId, setSelectedAgentId] = useState('');
     const [path, setPath] = useState('');
     const [name, setName] = useState('');
     const [color, setColor] = useState(AUTO_VALUE);
     const [validation, setValidation] = useState<{ msg: string; ok: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    // Auto-select first online agent when dialog opens in container mode
+    useEffect(() => {
+        if (open && isContainerMode() && !selectedAgentId && onlineAgents.length > 0) {
+            setSelectedAgentId(onlineAgents[0].id);
+        }
+    }, [open, selectedAgentId, onlineAgents]);
 
     // Browser state
     const [showBrowser, setShowBrowser] = useState(false);
@@ -121,6 +133,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         setBrowserLoading(true);
         setBrowserError(null);
         try {
+            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
@@ -168,6 +181,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             : color;
 
         try {
+            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             if (isEdit && editId) {
                 await updateWorkspace(editId, { name: name.trim(), color: resolvedColor });
             } else {
@@ -228,6 +242,26 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             }
         >
             <div className="flex flex-col gap-3">
+                {/* Agent selector (container mode only) */}
+                {isContainerMode() && !isEdit && (
+                    <>
+                        <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Agent</label>
+                        <select
+                            className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
+                            value={selectedAgentId}
+                            onChange={e => setSelectedAgentId(e.target.value)}
+                        >
+                            {onlineAgents.length === 0 && (
+                                <option value="" disabled>No agents online</option>
+                            )}
+                            {onlineAgents.map(agent => (
+                                <option key={agent.id} value={agent.id}>
+                                    {agent.name} ({agent.address})
+                                </option>
+                            ))}
+                        </select>
+                    </>
+                )}
                 {/* Path */}
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Path</label>
                 <div className="flex gap-2">

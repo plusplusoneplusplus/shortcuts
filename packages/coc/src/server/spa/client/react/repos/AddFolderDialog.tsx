@@ -15,6 +15,8 @@ import {
     getRepositoryApiErrorMessage,
     registerWorkspace,
 } from './repositoryService';
+import { isContainerMode, setCurrentAgentId } from '../utils/config';
+import { useContainerAgents } from '../contexts/ContainerAgentContext';
 
 interface BrowserEntry {
     name: string;
@@ -51,6 +53,9 @@ function joinBrowserPath(basePath: string, childName: string): string {
 
 export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps) {
     const [phase, setPhase] = useState<Phase>('pick');
+    const { agents } = useContainerAgents();
+    const onlineAgents = agents.filter(a => a.status !== 'offline');
+    const [selectedAgentId, setSelectedAgentId] = useState('');
 
     // Browser state
     const [browserPath, setBrowserPath] = useState('');
@@ -89,6 +94,9 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setAddingIdx(0);
             setErrors([]);
             cancelRef.current = false;
+            if (isContainerMode() && onlineAgents.length > 0) {
+                setSelectedAgentId(onlineAgents[0].id);
+            }
             navigateTo('~');
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,6 +106,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         setBrowserLoading(true);
         setBrowserError(null);
         try {
+            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
@@ -118,6 +127,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         setScanning(true);
         setScanError(null);
         try {
+            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await discoverWorkspaces(browserPath) as { repos: DiscoveredRepo[] };
             setRepos(data.repos);
             setChecked(new Set(data.repos.map(r => r.path)));
@@ -157,6 +167,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setAddingIdx(i + 1);
             const repo = selected[i];
             try {
+                if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
                 await registerWorkspace({
                     id: 'ws-' + hashString(repo.path),
                     name: repo.name,
@@ -236,6 +247,26 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         if (phase === 'pick') {
             return (
                 <div className="flex flex-col gap-2">
+                    {/* Agent selector (container mode only) */}
+                    {isContainerMode() && (
+                        <>
+                            <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Agent</label>
+                            <select
+                                className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
+                                value={selectedAgentId}
+                                onChange={e => setSelectedAgentId(e.target.value)}
+                            >
+                                {onlineAgents.length === 0 && (
+                                    <option value="" disabled>No agents online</option>
+                                )}
+                                {onlineAgents.map(agent => (
+                                    <option key={agent.id} value={agent.id}>
+                                        {agent.name} ({agent.address})
+                                    </option>
+                                ))}
+                            </select>
+                        </>
+                    )}
                     <p className="text-xs text-[#616161] dark:text-[#999]">
                         Select a parent folder. CoC will scan its direct child directories for git repositories.
                     </p>

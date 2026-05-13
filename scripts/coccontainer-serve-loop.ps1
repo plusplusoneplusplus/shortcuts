@@ -1,0 +1,99 @@
+<#
+.SYNOPSIS
+    Runs `coccontainer serve` in a rebuild-restart loop.
+    Hit POST /api/admin/restart from any browser/node to trigger a rebuild + restart.
+
+.DESCRIPTION
+    1. Builds all packages (forge → coc → coccontainer) and npm-links them.
+    2. Starts `coccontainer serve --no-open`.
+    3. When the server exits with code 75 (restart requested), loops back to step 1.
+    4. Any other exit code (0 = clean shutdown, Ctrl+C, etc.) stops the loop.
+
+.PARAMETER Port
+    Port to serve on (default: 5000).
+
+.PARAMETER SkipInitialBuild
+    Skip the first build (useful when you've just built manually).
+
+.EXAMPLE
+    .\scripts\coccontainer-serve-loop.ps1
+    .\scripts\coccontainer-serve-loop.ps1 -Port 8080
+    .\scripts\coccontainer-serve-loop.ps1 -SkipInitialBuild
+#>
+param(
+    [int]$Port = 5000,
+    [switch]$SkipInitialBuild
+)
+
+$RESTART_EXIT_CODE = 75
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+# If invoked from repo root, use that instead
+if (Test-Path (Join-Path $PWD "packages\coccontainer")) {
+    $repoRoot = $PWD.Path
+}
+
+function Build-CocContainer {
+    Write-Host "`n=== Installing dependencies ===" -ForegroundColor Cyan
+    Push-Location $repoRoot
+    try {
+        npm install
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "npm install failed with exit code $LASTEXITCODE" -ForegroundColor Red
+            return $false
+        }
+        Write-Host "`n=== Building coccontainer packages ===" -ForegroundColor Cyan
+        # Build forge → coccontainer, then npm link
+        Push-Location (Join-Path $repoRoot "packages\forge")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "forge build failed" -ForegroundColor Red; return $false }
+        npm link
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\coccontainer")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "coccontainer build failed" -ForegroundColor Red; return $false }
+        npm link
+        # Remove symlinked forge so global link resolves correctly
+        $forgeLink = Join-Path $PWD "node_modules\@plusplusoneplusplus\forge"
+        if (Test-Path $forgeLink) { Remove-Item $forgeLink -Recurse -Force }
+        Pop-Location
+
+        Write-Host "Build succeeded." -ForegroundColor Green
+        return $true
+    } finally {
+        Pop-Location
+    }
+}
+
+$first = $true
+
+while ($true) {
+    # Build step
+    if ($first -and $SkipInitialBuild) {
+        Write-Host "Skipping initial build (-SkipInitialBuild)." -ForegroundColor Yellow
+    } else {
+        $ok = Build-CocContainer
+        if (-not $ok) {
+            Write-Host "Build failed. Waiting 5s before retrying..." -ForegroundColor Red
+            Start-Sleep -Seconds 5
+            continue
+        }
+    }
+    $first = $false
+
+    # Serve step
+    Write-Host "`n=== Starting coccontainer serve (port $Port) ===" -ForegroundColor Cyan
+    Write-Host "POST /api/admin/restart to rebuild & restart.`n" -ForegroundColor DarkGray
+
+    & coccontainer serve --no-open --port $Port
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq $RESTART_EXIT_CODE) {
+        Write-Host "`nRestart requested (exit code $RESTART_EXIT_CODE). Rebuilding..." -ForegroundColor Yellow
+        continue
+    }
+
+    Write-Host "`nServer exited with code $exitCode. Stopping loop." -ForegroundColor Cyan
+    break
+}

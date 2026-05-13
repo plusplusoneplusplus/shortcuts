@@ -34,6 +34,8 @@ import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 
+import { ContainerAgentProvider } from './contexts/ContainerAgentContext';
+
 interface MarkdownReviewDialogState {
     open: boolean;
     minimized: boolean;
@@ -453,6 +455,7 @@ export function App() {
     return (
         <ErrorBoundary>
             <AppProvider>
+                <ContainerAgentProvider>
                 <QueueProvider>
                     <WorkItemProvider>
                     <NotificationProvider>
@@ -472,6 +475,7 @@ export function App() {
                     </NotificationProvider>
                     </WorkItemProvider>
                 </QueueProvider>
+                </ContainerAgentProvider>
             </AppProvider>
         </ErrorBoundary>
     );

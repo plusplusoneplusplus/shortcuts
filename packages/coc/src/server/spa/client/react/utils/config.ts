@@ -18,6 +18,7 @@ interface DashboardConfig {
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     vimNavigationEnabled?: boolean;
+    containerMode?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -82,4 +83,19 @@ export function isRalphEnabled(): boolean {
 
 export function isVimNavigationEnabled(): boolean {
     return getConfig().vimNavigationEnabled === true;
+}
+
+export function isContainerMode(): boolean {
+    return getConfig().containerMode === true;
+}
+
+// Module-level state for container mode agent routing
+let _currentAgentId: string | null = null;
+
+export function setCurrentAgentId(id: string | null): void {
+    _currentAgentId = id;
+}
+
+export function getCurrentAgentId(): string | null {
+    return _currentAgentId;
 }

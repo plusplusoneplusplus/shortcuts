@@ -6,14 +6,17 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
+import { AddAgentDialog } from '../../repos/AddAgentDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
-import { groupReposByRemote, applyGroupOrder } from '../../repos/repoGrouping';
+import { groupReposByRemote, groupReposByAgent, applyGroupOrder } from '../../repos/repoGrouping';
 import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
+import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { isContainerMode } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -198,6 +201,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [addAgentOpen, setAddAgentOpen] = useState(false);
+    const containerAgentCtx = useContainerAgents();
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [editRepoId, setEditRepoId] = useState<string | null>(null);
     const [generateDialog, setGenerateDialog] = useState<{
@@ -249,13 +254,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     );
     const orderedRepos = useMemo(() => resolveRepoTabOrder(repos, repoTabOrder), [repos, repoTabOrder]);
     const rawGroups = useMemo<RepoGroup[]>(() => {
+        if (isContainerMode()) return groupReposByAgent(repos, {});
         if (hasCustomRepoOrder) {
             return [{ normalizedUrl: null, label: 'Repositories', repos: orderedRepos, expanded: true }];
         }
         return groupReposByRemote(repos, {});
     }, [hasCustomRepoOrder, orderedRepos, repos]);
     const groups = useMemo(
-        () => hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
+        () => isContainerMode() ? rawGroups : hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
@@ -928,6 +934,19 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         ＋ Add specific repository
                     </button>
+                    {isContainerMode() && (
+                        <>
+                            <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                            <button
+                                data-testid="repo-tab-add-agent-option"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => { setDropdownOpen(false); setAddAgentOpen(true); }}
+                            >
+                                🔗 Add agent
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
         </div>
@@ -953,6 +972,13 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             onClose={() => setAddFolderOpen(false)}
             onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
         />
+        {isContainerMode() && (
+            <AddAgentDialog
+                open={addAgentOpen}
+                onClose={() => setAddAgentOpen(false)}
+                onAdded={() => { setAddAgentOpen(false); containerAgentCtx.refreshAgents(); onRefresh(); }}
+            />
+        )}
         <AddRepoDialog
             open={editRepoId !== null}
             onClose={() => setEditRepoId(null)}

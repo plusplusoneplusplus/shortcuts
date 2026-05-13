@@ -118,11 +118,11 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
         try {
             // ── Container-level APIs ──────────────────────────────
-            if (url.pathname === '/api/agents' && req.method === 'GET') {
+            if (url.pathname === '/api/container/agents' && req.method === 'GET') {
                 return sendJson(res, agentStore.list());
             }
 
-            if (url.pathname === '/api/agents' && req.method === 'POST') {
+            if (url.pathname === '/api/container/agents' && req.method === 'POST') {
                 const body = await readBody(req);
                 const { address, name } = body as { address: string; name?: string };
                 const agent = agentStore.add(address, name);
@@ -131,8 +131,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, agent, 201);
             }
 
-            if (url.pathname.startsWith('/api/agents/') && req.method === 'DELETE') {
-                const agentId = url.pathname.split('/')[3];
+            if (url.pathname.startsWith('/api/container/agents/') && req.method === 'DELETE') {
+                const agentId = url.pathname.split('/')[4];
                 const agent = agentStore.get(agentId);
                 if (agent) {
                     sseRelay.disconnect(agent.id);
@@ -146,7 +146,29 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
                 const workspaces = await aggregateWorkspaces(allAgents);
-                return sendJson(res, workspaces);
+                return sendJson(res, { workspaces });
+            }
+
+            // Aggregated process summaries from all agents
+            if (url.pathname === '/api/processes/summaries' && req.method === 'GET') {
+                const allAgents = agentStore.list().filter(a => a.status !== 'offline');
+                const results = await Promise.all(
+                    allAgents.map(async (agent) => {
+                        try {
+                            const resp = await fetch(`${agent.address}/api/processes/summaries${url.search}`);
+                            if (!resp.ok) return [];
+                            const data = await resp.json() as any;
+                            const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
+                            return summaries.map((p: any) => ({ ...p, agentId: agent.id, agentName: agent.name }));
+                        } catch { return []; }
+                    })
+                );
+                return sendJson(res, { summaries: results.flat() });
+            }
+
+            // Queue stub (container has no local queue — per-agent queues via proxy)
+            if (url.pathname === '/api/queue' && req.method === 'GET') {
+                return sendJson(res, { tasks: [], stats: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 } });
             }
 
             // ── Agent-scoped proxy ──────────────────────────────

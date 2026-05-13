@@ -138,13 +138,13 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should return empty agents list initially', async () => {
-        const res = await httpRequest(containerUrl + '/api/agents');
+        const res = await httpRequest(containerUrl + '/api/container/agents');
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
     });
 
     it('should register agent 1', async () => {
-        const res = await httpRequest(containerUrl + '/api/agents', {
+        const res = await httpRequest(containerUrl + '/api/container/agents', {
             method: 'POST',
             body: { address: mockAgent1.url, name: 'Agent-1' },
         });
@@ -154,7 +154,7 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should register agent 2', async () => {
-        const res = await httpRequest(containerUrl + '/api/agents', {
+        const res = await httpRequest(containerUrl + '/api/container/agents', {
             method: 'POST',
             body: { address: mockAgent2.url, name: 'Agent-2' },
         });
@@ -163,7 +163,7 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should list both agents', async () => {
-        const res = await httpRequest(containerUrl + '/api/agents');
+        const res = await httpRequest(containerUrl + '/api/container/agents');
         expect(res.status).toBe(200);
         expect(res.body).toHaveLength(2);
         const names = res.body.map((a: any) => a.name).sort();
@@ -176,11 +176,12 @@ describe('CoCContainer Server Integration', () => {
         // Agent1 has 1 workspace, Agent2 has 2
         // Note: agents may still be 'unknown' status since health check hasn't run
         // The aggregation filters out 'offline' but keeps 'unknown'
-        expect(res.body.length).toBeGreaterThanOrEqual(1);
+        const workspaces = res.body.workspaces || res.body;
+        expect(workspaces.length).toBeGreaterThanOrEqual(1);
     });
 
     it('should proxy workspace list to specific agent', async () => {
-        const agents = (await httpRequest(containerUrl + '/api/agents')).body;
+        const agents = (await httpRequest(containerUrl + '/api/container/agents')).body;
         const agent1 = agents.find((a: any) => a.name === 'Agent-1');
 
         const res = await httpRequest(containerUrl + `/api/agent/${agent1.id}/workspaces`);
@@ -191,7 +192,7 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should proxy process detail to agent', async () => {
-        const agents = (await httpRequest(containerUrl + '/api/agents')).body;
+        const agents = (await httpRequest(containerUrl + '/api/container/agents')).body;
         const agent1 = agents.find((a: any) => a.name === 'Agent-1');
 
         const res = await httpRequest(containerUrl + `/api/agent/${agent1.id}/processes/proc-1`);
@@ -206,14 +207,14 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should remove an agent', async () => {
-        const agents = (await httpRequest(containerUrl + '/api/agents')).body;
+        const agents = (await httpRequest(containerUrl + '/api/container/agents')).body;
         const agent2 = agents.find((a: any) => a.name === 'Agent-2');
 
-        const res = await httpRequest(containerUrl + `/api/agents/${agent2.id}`, { method: 'DELETE' });
+        const res = await httpRequest(containerUrl + `/api/container/agents/${agent2.id}`, { method: 'DELETE' });
         expect(res.status).toBe(200);
         expect(res.body.removed).toBe(true);
 
-        const updated = (await httpRequest(containerUrl + '/api/agents')).body;
+        const updated = (await httpRequest(containerUrl + '/api/container/agents')).body;
         expect(updated).toHaveLength(1);
         expect(updated[0].name).toBe('Agent-1');
     });

@@ -116,7 +116,7 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
     });
 
     it('step 1: register agent', async () => {
-        const res = await httpReq(containerUrl + '/api/agents', {
+        const res = await httpReq(containerUrl + '/api/container/agents', {
             method: 'POST',
             body: { address: agent.url, name: 'E2E-Agent' },
         });
@@ -125,7 +125,7 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
     });
 
     it('step 2: verify agent listed', async () => {
-        const res = await httpReq(containerUrl + '/api/agents');
+        const res = await httpReq(containerUrl + '/api/container/agents');
         expect(res.body).toHaveLength(1);
         expect(res.body[0].status).toMatch(/online|unknown/);
     });
@@ -134,13 +134,13 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
         const res = await httpReq(containerUrl + '/api/workspaces');
         expect(res.status).toBe(200);
         // Should have the E2E workspace
-        const ws = res.body.find((w: any) => w.name === 'E2E-Repo');
+        const ws = (res.body.workspaces || res.body).find((w: any) => w.name === 'E2E-Repo');
         expect(ws).toBeDefined();
         expect(ws.agentName).toBe('E2E-Agent');
     });
 
     it('step 4: proxy to agent workspaces', async () => {
-        const agents = (await httpReq(containerUrl + '/api/agents')).body;
+        const agents = (await httpReq(containerUrl + '/api/container/agents')).body;
         const a = agents[0];
 
         const res = await httpReq(containerUrl + `/api/agent/${a.id}/workspaces`);
