@@ -1,89 +1,163 @@
 /**
  * CoCContainer SPA Root Component
  *
- * Two-panel layout:
- *   Left sidebar  — agent list with expandable repo dropdowns
- *   Main area     — iframe showing the selected CoC agent dashboard (full CoC UI)
- *
- * The iframe loads the real CoC SPA directly from the agent address,
- * giving 100 % feature parity without duplicating any CoC code.
+ * Layout mirrors CoC:
+ *   Top bar       — agent selector with repo dropdown (instead of flat repo tabs)
+ *   Left sidebar  — process list for the selected agent+repo
+ *   Main area     — process detail / conversation view
  */
 
-import React, { useState, useCallback } from 'react';
-import { Sidebar } from './components/Sidebar';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { AgentRepoBar } from './components/AgentRepoBar';
 import { AgentSettings } from './components/AgentSettings';
-import { useAgents } from './hooks/useAgents';
-import type { RemoteWorkspace } from './types';
+import { ProcessSidebar } from './components/ProcessSidebar';
+import { ProcessDetail } from './components/ProcessDetail';
+import { useAgents, fetchApi } from './hooks/useAgents';
+import type { Selection, RemoteProcess } from './types';
 
-type View = 'dashboard' | 'settings';
-
-export interface IframeTarget {
-    agentId: string;
-    agentName: string;
-    agentAddress: string;
-    /** If set, deep-link into this workspace via hash */
-    workspace?: RemoteWorkspace;
-}
+type View = 'main' | 'settings';
 
 export function App() {
     const { agents, loading, refresh, addAgent, removeAgent } = useAgents();
-    const [view, setView] = useState<View>('dashboard');
-    const [iframeTarget, setIframeTarget] = useState<IframeTarget | null>(null);
+    const [view, setView] = useState<View>('main');
+    const [selection, setSelection] = useState<Selection | null>(null);
+    const [processes, setProcesses] = useState<RemoteProcess[]>([]);
+    const [processesLoading, setProcessesLoading] = useState(false);
+    const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+    const [streamEvents, setStreamEvents] = useState<any[]>([]);
+    const eventSourceRef = useRef<EventSource | null>(null);
 
-    const handleSelectAgent = useCallback((agentId: string) => {
-        const agent = agents.find(a => a.id === agentId);
-        if (!agent) return;
-        setIframeTarget({ agentId: agent.id, agentName: agent.name, agentAddress: agent.address });
-        setView('dashboard');
-    }, [agents]);
+    // SSE connection to get streaming events
+    useEffect(() => {
+        const es = new EventSource('/api/events');
+        eventSourceRef.current = es;
+        es.onmessage = (e) => {
+            try {
+                const envelope = JSON.parse(e.data);
+                const payload = typeof envelope.payload === 'string'
+                    ? JSON.parse(envelope.payload) : envelope.payload;
+                setStreamEvents(prev => [...prev.slice(-500), {
+                    agentId: envelope.agentId,
+                    agentName: envelope.agentName,
+                    ...payload,
+                }]);
+            } catch { /* ignore */ }
+        };
+        return () => es.close();
+    }, []);
 
-    const handleSelectWorkspace = useCallback((agentId: string, ws: RemoteWorkspace) => {
-        const agent = agents.find(a => a.id === agentId);
-        if (!agent) return;
-        setIframeTarget({
-            agentId: agent.id,
-            agentName: agent.name,
-            agentAddress: agent.address,
-            workspace: ws,
-        });
-        setView('dashboard');
-    }, [agents]);
+    // Fetch processes when selection changes
+    useEffect(() => {
+        if (!selection) {
+            setProcesses([]);
+            setSelectedProcessId(null);
+            return;
+        }
+        let cancelled = false;
+        setProcessesLoading(true);
+        fetchApi(`/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`)
+            .then(data => {
+                if (cancelled) return;
+                const list: RemoteProcess[] = Array.isArray(data)
+                    ? data
+                    : (data?.processes ?? []);
+                setProcesses(list);
+                setProcessesLoading(false);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setProcesses([]);
+                    setProcessesLoading(false);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [selection]);
 
-    // Build the iframe URL — CoC uses hash routing, so we can deep-link
-    const iframeSrc = iframeTarget
-        ? iframeTarget.workspace
-            ? `${iframeTarget.agentAddress}#repos/${iframeTarget.workspace.id}`
-            : iframeTarget.agentAddress
-        : '';
+    // Auto-refresh processes when stream events indicate changes
+    useEffect(() => {
+        if (!selection) return;
+        const last = streamEvents[streamEvents.length - 1];
+        if (!last) return;
+        if (last.agentId === selection.agentId &&
+            (last.type === 'process-updated' || last.type === 'process-completed' || last.type === 'process-created')) {
+            fetchApi(`/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`)
+                .then(data => {
+                    const list: RemoteProcess[] = Array.isArray(data)
+                        ? data : (data?.processes ?? []);
+                    setProcesses(list);
+                })
+                .catch(() => {});
+        }
+    }, [streamEvents, selection]);
+
+    const handleSelectProcess = useCallback((processId: string) => {
+        setSelectedProcessId(processId);
+    }, []);
+
+    const handleNewChat = useCallback(async (message: string) => {
+        if (!selection) return;
+        try {
+            const result = await fetchApi(`/api/agent/${selection.agentId}/processes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: message,
+                    workspaceId: selection.workspaceId,
+                }),
+            });
+            // Refresh process list
+            const data = await fetchApi(
+                `/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`
+            );
+            const list: RemoteProcess[] = Array.isArray(data) ? data : (data?.processes ?? []);
+            setProcesses(list);
+            // Select the new process
+            if (result?.id) {
+                setSelectedProcessId(result.id);
+            }
+        } catch (err) {
+            console.error('Failed to create process:', err);
+        }
+    }, [selection]);
+
+    const handleSendFollowUp = useCallback(async (processId: string, message: string) => {
+        if (!selection) return;
+        try {
+            await fetchApi(`/api/agent/${selection.agentId}/processes/${processId}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message }),
+            });
+        } catch (err) {
+            console.error('Failed to send follow-up:', err);
+        }
+    }, [selection]);
 
     return (
-        <div className="container-layout">
-            {/* ── Left sidebar ─────────────────────────── */}
-            <Sidebar
+        <div className="app-shell">
+            {/* ── Top bar ──────────────────────────── */}
+            <AgentRepoBar
                 agents={agents}
-                loading={loading}
-                selectedAgentId={iframeTarget?.agentId ?? null}
-                selectedWorkspaceId={iframeTarget?.workspace?.id ?? null}
-                onSelectAgent={handleSelectAgent}
-                onSelectWorkspace={handleSelectWorkspace}
+                selection={selection}
+                onSelect={setSelection}
                 onOpenSettings={() => setView('settings')}
             />
 
-            {/* ── Main area ────────────────────────────── */}
-            <main className="main-panel">
-                {view === 'settings' && (
-                    <AgentSettings
-                        agents={agents}
-                        loading={loading}
-                        onAdd={addAgent}
-                        onRemove={removeAgent}
-                        onRefresh={refresh}
-                        onClose={() => setView('dashboard')}
-                    />
-                )}
-
-                {view === 'dashboard' && !iframeTarget && (
-                    <div className="empty-main">
+            {/* ── Body ─────────────────────────────── */}
+            <div className="app-body">
+                {view === 'settings' ? (
+                    <div className="settings-container">
+                        <AgentSettings
+                            agents={agents}
+                            loading={loading}
+                            onAdd={addAgent}
+                            onRemove={removeAgent}
+                            onRefresh={refresh}
+                            onClose={() => setView('main')}
+                        />
+                    </div>
+                ) : !selection ? (
+                    <div className="empty-body">
                         {agents.length === 0 ? (
                             <>
                                 <div className="empty-icon">🔗</div>
@@ -95,42 +169,41 @@ export function App() {
                             </>
                         ) : (
                             <>
-                                <div className="empty-icon">👈</div>
+                                <div className="empty-icon">📂</div>
                                 <h2>Select a repo</h2>
-                                <p>Expand an agent in the sidebar and pick a repo to view its dashboard.</p>
+                                <p>Click an agent in the top bar, then pick a repo from the dropdown.</p>
                             </>
                         )}
                     </div>
-                )}
-
-                {view === 'dashboard' && iframeTarget && (
-                    <div className="iframe-wrapper">
-                        <div className="iframe-bar">
-                            <span className="iframe-agent-name">{iframeTarget.agentName}</span>
-                            {iframeTarget.workspace && (
-                                <span className="iframe-workspace-name">
-                                    / {iframeTarget.workspace.name || iframeTarget.workspace.rootPath}
-                                </span>
-                            )}
-                            <a
-                                className="iframe-open-link"
-                                href={iframeSrc}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Open in new tab"
-                            >
-                                ↗
-                            </a>
-                        </div>
-                        <iframe
-                            key={iframeSrc}
-                            className="agent-iframe"
-                            src={iframeSrc}
-                            title={`${iframeTarget.agentName} dashboard`}
+                ) : (
+                    <>
+                        {/* Left sidebar — process list */}
+                        <ProcessSidebar
+                            processes={processes}
+                            loading={processesLoading}
+                            selectedProcessId={selectedProcessId}
+                            onSelect={handleSelectProcess}
+                            onNewChat={handleNewChat}
                         />
-                    </div>
+
+                        {/* Main area — process detail */}
+                        <main className="main-content">
+                            {selectedProcessId && selection ? (
+                                <ProcessDetail
+                                    agentId={selection.agentId}
+                                    processId={selectedProcessId}
+                                    streamEvents={streamEvents}
+                                    onSendFollowUp={handleSendFollowUp}
+                                />
+                            ) : (
+                                <div className="empty-detail">
+                                    <p>Select a process from the sidebar, or start a new chat.</p>
+                                </div>
+                            )}
+                        </main>
+                    </>
                 )}
-            </main>
+            </div>
         </div>
     );
 }

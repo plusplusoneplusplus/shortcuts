@@ -21,20 +21,53 @@ export interface RemoteWorkspace {
     color?: string;
     gitInfo?: {
         branch?: string;
+        remote?: string;
     };
 }
 
 export interface RemoteProcess {
     id: string;
     title?: string;
+    prompt?: string;
     status?: string;
     createdAt?: string;
     updatedAt?: string;
     workspaceId?: string;
 }
 
+export interface ProcessDetail {
+    id: string;
+    title?: string;
+    prompt?: string;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    workspaceId?: string;
+    turns: Turn[];
+}
+
+export interface Turn {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp?: string;
+    toolCalls?: ToolCall[];
+}
+
+export interface ToolCall {
+    name?: string;
+    type?: string;
+    arguments?: string;
+    result?: unknown;
+}
+
 export interface SSEEnvelope {
     agentId: string;
     agentName: string;
     payload: string;
+}
+
+/** Selected context: which agent + workspace we're viewing */
+export interface Selection {
+    agentId: string;
+    workspaceId: string;
 }
