@@ -22,6 +22,7 @@ export interface Agent {
 export interface AgentStore {
     add(address: string, name?: string): Agent;
     remove(idOrName: string): boolean;
+    rename(id: string, newName: string): Agent | undefined;
     list(): Agent[];
     get(idOrName: string): Agent | undefined;
     updateStatus(id: string, status: Agent['status']): void;
@@ -57,6 +58,7 @@ export function createAgentStore(dataDir: string): AgentStore {
     const updateStatusStmt = db.prepare(
         `UPDATE agents SET status = ?, last_seen_at = CASE WHEN ? = 'online' THEN datetime('now') ELSE last_seen_at END WHERE id = ?`
     );
+    const renameStmt = db.prepare(`UPDATE agents SET name = ? WHERE id = ?`);
 
     function toAgent(row: Record<string, unknown>): Agent {
         return {
@@ -92,6 +94,12 @@ export function createAgentStore(dataDir: string): AgentStore {
                 result = deleteByNameStmt.run(idOrName);
             }
             return result.changes > 0;
+        },
+
+        rename(id: string, newName: string): Agent | undefined {
+            renameStmt.run(newName, id);
+            const row = selectByIdStmt.get(id) as Record<string, unknown> | undefined;
+            return row ? toAgent(row) : undefined;
         },
 
         list(): Agent[] {

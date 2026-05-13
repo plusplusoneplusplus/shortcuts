@@ -23,7 +23,11 @@ const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').the
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ default: m.LogsView })));
 const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
+<<<<<<< HEAD
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
+=======
+const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
+>>>>>>> 69577e26c (feat(coccontainer): agent management page with rename support)
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -41,6 +45,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'models') return 'models';
     if (h === 'servers') return 'servers';
     if (h === 'admin') return 'admin';
+    if (h === 'agents') return 'agents';
     return null;
 }
 
@@ -787,6 +792,14 @@ export function Router() {
             );
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
+        case 'agents':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <div className="h-full overflow-y-auto" data-testid="agents-scroll-container">
+                        <AgentManagementPanel />
+                    </div>
+                </Suspense>
+            );
         default:
             return <ReposView />;
     }

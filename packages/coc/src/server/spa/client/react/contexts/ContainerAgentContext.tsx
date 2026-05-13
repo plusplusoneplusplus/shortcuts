@@ -38,6 +38,7 @@ export interface ContainerAgentContextValue {
     refresh: () => Promise<void>;
     addAgent: (address: string, name?: string) => Promise<ContainerAgent>;
     removeAgent: (id: string) => Promise<void>;
+    renameAgent: (id: string, name: string) => Promise<ContainerAgent>;
 }
 
 const ContainerAgentContext = createContext<ContainerAgentContextValue | null>(null);
@@ -80,8 +81,18 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
         await refresh();
     }, [refresh]);
 
+    const renameAgent = useCallback(async (id: string, name: string): Promise<ContainerAgent> => {
+        const agent = await fetchContainerApi(`/container/agents/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        await refresh();
+        return agent;
+    }, [refresh]);
+
     return (
-        <ContainerAgentContext.Provider value={{ agents, loading, refresh, addAgent, removeAgent }}>
+        <ContainerAgentContext.Provider value={{ agents, loading, refresh, addAgent, removeAgent, renameAgent }}>
             {children}
         </ContainerAgentContext.Provider>
     );
@@ -97,6 +108,7 @@ export function useContainerAgents(): ContainerAgentContextValue {
             refresh: async () => {},
             addAgent: async () => { throw new Error('Not in container mode'); },
             removeAgent: async () => { throw new Error('Not in container mode'); },
+            renameAgent: async () => { throw new Error('Not in container mode'); },
         };
     }
     return ctx;

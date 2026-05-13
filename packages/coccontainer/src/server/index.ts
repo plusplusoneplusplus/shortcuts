@@ -142,6 +142,15 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, { removed });
             }
 
+            if (url.pathname.startsWith('/api/container/agents/') && req.method === 'PUT') {
+                const agentId = url.pathname.split('/')[4];
+                const body = await readBody(req);
+                const { name } = body as { name: string };
+                const agent = agentStore.rename(agentId, name);
+                if (!agent) return sendJson(res, { error: 'Agent not found' }, 404);
+                return sendJson(res, agent);
+            }
+
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
