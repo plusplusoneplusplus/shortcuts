@@ -14,7 +14,7 @@ import {
     registerWorkspace,
     updateWorkspace,
 } from './repositoryService';
-import { isContainerMode, setCurrentAgentId } from '../utils/config';
+import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 
 const AUTO_VALUE = 'auto';
@@ -132,6 +132,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const navigateTo = useCallback(async (dir: string) => {
         setBrowserLoading(true);
         setBrowserError(null);
+        const prevAgentId = getCurrentAgentId();
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
@@ -145,6 +146,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserParent(null);
             setBrowseRoots([]);
             setBrowserError('Unable to browse this path');
+        } finally {
+            setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
     }, [selectedAgentId]);
@@ -180,6 +183,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             ? resolveAutoColor(existingColors, REAL_PALETTE)
             : color;
 
+        const prevAgentId = getCurrentAgentId();
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             if (isEdit && editId) {
@@ -211,9 +215,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 }
             }
 
+            // Restore agent ID before triggering refresh so fetchRepos uses the correct base
+            setCurrentAgentId(prevAgentId);
             onSuccess();
             onClose();
         } catch (error) {
+            setCurrentAgentId(prevAgentId);
             setValidation({
                 msg: getRepositoryApiErrorMessage(
                     error,
