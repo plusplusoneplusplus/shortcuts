@@ -807,7 +807,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 )}
                             </button>
                             {isOpen && group.repos.length > 0 && (
-                                <div className="absolute top-full left-0 mt-1 z-[9999] min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
+                                <div className="absolute top-full left-0 pt-1 z-[9999]">
+                                <div className="min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
                                     {group.repos.map(repo => {
                                         const ws = repo.workspace;
                                         const isSelected = ws.id === selectedRepoId;
@@ -835,6 +836,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             </button>
                                         );
                                     })}
+                                </div>
                                 </div>
                             )}
                         </div>
@@ -916,10 +918,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                     </button>
                                     {openAgentDropdown === agentId && group.repos.length > 0 && (
                                         <div
-                                            className="absolute right-full top-0 mr-1 z-[10000] min-w-[180px] max-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1"
+                                            className="absolute right-full top-0 pr-1 z-[10000]"
                                             onMouseEnter={() => setOpenAgentDropdown(agentId)}
                                             onMouseLeave={() => setOpenAgentDropdown(null)}
                                         >
+                                        <div className="min-w-[180px] max-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
                                             {group.repos.map(repo => {
                                                 const ws = repo.workspace;
                                                 const isSelected = ws.id === selectedRepoId;
@@ -941,6 +944,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                     </button>
                                                 );
                                             })}
+                                        </div>
                                         </div>
                                     )}
                                 </div>
