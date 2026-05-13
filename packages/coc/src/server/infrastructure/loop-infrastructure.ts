@@ -26,6 +26,8 @@ import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 export interface LoopInfrastructure {
     loopStore: LoopStore;
     loopExecutor: LoopExecutor;
+    /** Timer registry for scheduling loop ticks and wakeups. */
+    timerRegistry: ScheduleTimerRegistry;
     /** Close owned resources. Call on server shutdown. */
     dispose: () => void;
 }
@@ -101,5 +103,5 @@ export function createLoopInfrastructure(options: LoopInfrastructureOptions): Lo
         }
     };
 
-    return { loopStore, loopExecutor, dispose };
+    return { loopStore, loopExecutor, timerRegistry, dispose };
 }

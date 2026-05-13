@@ -143,16 +143,20 @@ export class RalphExecutor extends ChatBaseExecutor {
             .appendMemory(boundedMemory)
             .build();
 
+        const processId = toQueueProcessId(task.id);
+        const loopDeps = this.buildLoopToolDeps(processId);
         const { tools, suffix } = buildChatToolBundle({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
-            processId: toQueueProcessId(task.id),
+            processId,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
             boundedMemory,
+            scheduleWakeup: loopDeps.scheduleWakeup,
+            loopTools: loopDeps.loopTools,
         });
 
         return {

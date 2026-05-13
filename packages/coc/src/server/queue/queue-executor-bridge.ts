@@ -23,6 +23,7 @@ export interface CLITaskExecutorOptions {
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
+    getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -99,6 +100,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             getWsServer: options.getWsServer,
+            getLoopInfra: options.getLoopInfra,
         });
     }
 

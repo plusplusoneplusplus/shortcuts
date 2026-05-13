@@ -255,6 +255,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 );
             }
 
+            const loopDeps = this.buildLoopToolDeps(processId);
             const toolBundle = buildChatToolBundle({
                 dataDir: this.dataDir,
                 store: this.store,
@@ -265,6 +266,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                     : undefined,
                 boundedMemory,
+                scheduleWakeup: loopDeps.scheduleWakeup,
+                loopTools: loopDeps.loopTools,
                 askUser: {
                     enabled: (currentMode === 'ask' || currentMode === 'plan') && this.askUser.enabled,
                     deps: {

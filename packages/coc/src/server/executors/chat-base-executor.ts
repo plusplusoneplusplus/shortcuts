@@ -64,6 +64,21 @@ import { buildChatToolBundle } from './chat-tool-builder';
 // Types
 // ============================================================================
 
+/** Late-bound loop infrastructure deps (created after executor registry). */
+export interface LoopInfraDeps {
+    store: import('../loops/loop-store').LoopStore;
+    executor: import('../loops/loop-executor').LoopExecutor;
+    resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    enqueueWakeup: (opts: {
+        processId: string;
+        prompt: string;
+        delayMs: number;
+        wakeupId: string;
+        model?: string;
+        workspaceId?: string;
+    }) => void;
+}
+
 export interface ChatModeExecutorOptions {
     /** Default working directory for AI sessions */
     workingDirectory?: string;
@@ -83,6 +98,8 @@ export interface ChatModeExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     /** Resolve workspace ID for a root path */
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
+    /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
+    getLoopInfra?: () => LoopInfraDeps | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -121,6 +138,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly toolCallCacheStore: FileToolCallCacheStore;
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
+    protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -133,6 +151,33 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
+        this.getLoopInfra = options.getLoopInfra;
+    }
+
+    /**
+     * Build per-request loop tool deps from the late-bound loop infrastructure.
+     * Returns `scheduleWakeup` deps (always) and `loopTools` deps (always,
+     * but gated by skill activation in buildChatToolBundle).
+     */
+    protected buildLoopToolDeps(processId: string): {
+        scheduleWakeup?: import('../llm-tools/loop-tools').WakeupToolDeps;
+        loopTools?: import('../llm-tools/loop-tools').LoopToolDeps;
+    } {
+        const infra = this.getLoopInfra?.();
+        if (!infra) return {};
+        return {
+            scheduleWakeup: {
+                executor: infra.executor,
+                processId,
+                resolveWorkspaceId: infra.resolveWorkspaceId,
+                enqueueWakeup: infra.enqueueWakeup,
+            },
+            loopTools: {
+                store: infra.store,
+                executor: infra.executor,
+                processId,
+            },
+        };
     }
 
     protected async getModelMetadataForReasoning(modelId: string | undefined): Promise<ModelInfo | undefined> {
@@ -270,6 +315,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         }
 
         const processId = toQueueProcessId(task.id);
+        const loopDeps = this.buildLoopToolDeps(processId);
 
         const toolBundle = buildChatToolBundle({
             dataDir: this.dataDir,
@@ -279,6 +325,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
             boundedMemory,
+            scheduleWakeup: loopDeps.scheduleWakeup,
+            loopTools: loopDeps.loopTools,
             askUser: {
                 enabled: (mode === 'plan' || mode === 'ask') && this.askUser.enabled,
                 deps: {

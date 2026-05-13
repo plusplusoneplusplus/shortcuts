@@ -157,10 +157,50 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — terminal infra is created after the HTTP server
     let terminalInfra: import('./infrastructure/terminal-infrastructure').TerminalInfrastructure | undefined;
 
+    // Forward declaration — loop infra is created after queue infra
+    let loopInfra: ReturnType<typeof createLoopInfrastructure> | undefined;
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, options, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
         resolvedConfig.memoryPromotion,
+        () => {
+            if (!loopInfra) return undefined;
+            return {
+                store: loopInfra.loopStore,
+                executor: loopInfra.loopExecutor,
+                resolveWorkspaceId: async (processId: string) => {
+                    try {
+                        const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
+                        const task = bridge.getTask(taskId);
+                        return task?.repoId;
+                    } catch { return undefined; }
+                },
+                enqueueWakeup: (opts) => {
+                    loopInfra!.timerRegistry.set(
+                        `wakeup:${opts.wakeupId}`,
+                        () => {
+                            const turnSource = { source: 'wakeup' as const, wakeupId: opts.wakeupId };
+                            bridge.executeFollowUp(
+                                opts.processId,
+                                opts.prompt,
+                                undefined,
+                                undefined,
+                                undefined,
+                                undefined,
+                                undefined,
+                                opts.model,
+                                turnSource,
+                            ).catch((err: unknown) => {
+                                const msg = err instanceof Error ? err.message : String(err);
+                                process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
+                            });
+                        },
+                        opts.delayMs,
+                    );
+                },
+            };
+        },
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -184,7 +224,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
 
     // Loop infrastructure — separate from schedules
-    const loopInfra = createLoopInfrastructure({
+    loopInfra = createLoopInfrastructure({
         dataDir,
         queueFacade,
         store,

@@ -42,6 +42,7 @@ export interface ExecutorRegistryOptions {
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
+    getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
 }
 
 /**
@@ -91,6 +92,7 @@ export class ExecutorRegistry {
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
+            getLoopInfra: options.getLoopInfra,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
