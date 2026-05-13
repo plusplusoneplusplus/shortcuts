@@ -61,8 +61,8 @@ export function generateDashboardHtml(): string {
     .top-bar-logo { font-size: 18px; }
     .top-bar-title { font-weight: 600; font-size: 14px; white-space: nowrap; }
 
-    .top-bar-agents { display: flex; align-items: center; gap: 4px; flex: 1; overflow-x: auto; }
-    .top-bar-agents::-webkit-scrollbar { height: 0; }
+    .top-bar-agents { display: flex; align-items: center; gap: 4px; flex: 1; overflow: visible; }
+    .top-bar { overflow: visible; }
 
     .agent-tab-wrapper { position: relative; }
     .agent-tab { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-primary); cursor: pointer; font-size: 12px; white-space: nowrap; }
