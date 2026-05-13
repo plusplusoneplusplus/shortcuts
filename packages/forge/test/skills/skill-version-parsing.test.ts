@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseSkillVersionFromContent, parseBundledSkillVersion, getBundledSkillsPath } from '../../src/skills/bundled-skills-provider';
+import { parseVersionFromFrontmatter } from '../../src/skills/skill-version-parser';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -40,6 +41,23 @@ describe('parseSkillVersionFromContent', () => {
     it('handles single-quoted version values', () => {
         const content = `---\nname: test\nmetadata:\n  version: '1.0.0'\n---\n\n# Test`;
         expect(parseSkillVersionFromContent(content)).toBe('1.0.0');
+    });
+});
+
+describe('parseVersionFromFrontmatter', () => {
+    it('parses double-quoted top-level versions', () => {
+        const content = `---\nname: test\nversion: "3.2.1"\n---\n\n# Test`;
+        expect(parseVersionFromFrontmatter(content)).toBe('3.2.1');
+    });
+
+    it('parses nested metadata versions with CRLF line endings', () => {
+        const content = '---\r\nname: test\r\nmetadata:\r\n  version: 4.5.6\r\n---\r\n\r\n# Test';
+        expect(parseVersionFromFrontmatter(content)).toBe('4.5.6');
+    });
+
+    it('returns undefined when metadata has no version', () => {
+        const content = `---\nname: test\nmetadata:\n  owner: docs\n---\n\n# Test`;
+        expect(parseVersionFromFrontmatter(content)).toBeUndefined();
     });
 });
 

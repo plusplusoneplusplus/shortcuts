@@ -169,7 +169,9 @@ describe('installBundledSkills', () => {
     });
 
     it('skips skill when conflict handler returns false', async () => {
-        // Create a fake existing skill
+        const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'source-skill-'));
+        fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), '# Source');
+
         const skillDir = path.join(tmpDir, 'my-skill');
         fs.mkdirSync(skillDir, { recursive: true });
         fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Existing');
@@ -177,13 +179,59 @@ describe('installBundledSkills', () => {
         const fakeSkills = [{
             name: 'my-skill',
             description: 'A fake skill',
-            path: skillDir,
+            path: sourceDir,
             alreadyExists: true,
         }];
 
-        const result = await installBundledSkills(fakeSkills, tmpDir, async () => false);
-        expect(result.skipped).toBe(1);
-        expect(result.installed).toBe(0);
+        try {
+            const result = await installBundledSkills(fakeSkills, tmpDir, async () => false);
+            expect(result.skipped).toBe(1);
+            expect(result.installed).toBe(0);
+            expect(result.details[0]).toMatchObject({
+                name: 'my-skill',
+                success: true,
+                action: 'skipped',
+                reason: 'User declined to replace existing skill',
+            });
+            expect(fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')).toBe('# Existing');
+        } finally {
+            fs.rmSync(sourceDir, { recursive: true, force: true });
+        }
+    });
+
+    it('replaces an existing skill when conflict handler returns true', async () => {
+        const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'source-skill-'));
+        const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-skill-'));
+
+        try {
+            fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), '# Replaced');
+
+            const targetDir = path.join(installDir, 'my-skill');
+            fs.mkdirSync(targetDir, { recursive: true });
+            fs.writeFileSync(path.join(targetDir, 'SKILL.md'), '# Existing');
+            fs.writeFileSync(path.join(targetDir, 'SENTINEL'), 'remove-me');
+
+            const fakeSkills = [{
+                name: 'my-skill',
+                description: 'A test skill',
+                path: sourceDir,
+                alreadyExists: true,
+            }];
+
+            const result = await installBundledSkills(fakeSkills, installDir, async () => true);
+            expect(result.installed).toBe(1);
+            expect(result.skipped).toBe(0);
+            expect(result.details[0]).toMatchObject({
+                name: 'my-skill',
+                success: true,
+                action: 'replaced',
+            });
+            expect(fs.readFileSync(path.join(targetDir, 'SKILL.md'), 'utf-8')).toBe('# Replaced');
+            expect(fs.existsSync(path.join(targetDir, 'SENTINEL'))).toBe(false);
+        } finally {
+            fs.rmSync(sourceDir, { recursive: true, force: true });
+            fs.rmSync(installDir, { recursive: true, force: true });
+        }
     });
 
     it('installs skill from a real source path', async () => {
@@ -258,7 +306,7 @@ describe('autoInstallDefaultSkills', () => {
         }
     });
 
-    it('does not overwrite an already-installed skill (idempotent)', async () => {
+    it('does not overwrite an already-installed skill without a parseable version', async () => {
         const skills = getBundledSkills(installDir);
         if (skills.length === 0) return;
 
@@ -278,16 +326,13 @@ describe('autoInstallDefaultSkills', () => {
         expect(fs.readFileSync(sentinelPath, 'utf-8')).toBe('original');
     });
 
-    it('installs only missing skills when some are already present', async () => {
+    it('installs only missing skills and skips up-to-date existing skills', async () => {
         const skills = getBundledSkills(installDir);
         if (skills.length < 2) return;
 
         const [first, second] = skills;
 
-        // Pre-install the first one
-        const firstDir = path.join(installDir, first.name);
-        fs.mkdirSync(firstDir, { recursive: true });
-        fs.writeFileSync(path.join(firstDir, 'SKILL.md'), '# pre-installed');
+        copyDirSync(first.path, path.join(installDir, first.name));
 
         const result = await autoInstallDefaultSkills(installDir, [first.name, second.name]);
         expect(result.errors).toHaveLength(0);
@@ -297,4 +342,41 @@ describe('autoInstallDefaultSkills', () => {
         const skipped = result.skipped.includes(second.name);
         expect(installed || skipped).toBe(true);
     });
+
+    it('replaces an older installed default skill during version-check install', async () => {
+        const skills = getBundledSkills(installDir);
+        if (skills.length === 0) return;
+
+        const skill = skills[0];
+        const existingDir = path.join(installDir, skill.name);
+        fs.mkdirSync(existingDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(existingDir, 'SKILL.md'),
+            `---\nname: ${skill.name}\ndescription: Old skill\nmetadata:\n  version: "0.0.0"\n---\n\n# Old Skill\n`,
+            'utf-8',
+        );
+        fs.writeFileSync(path.join(existingDir, 'SENTINEL'), 'remove-me');
+
+        const result = await autoInstallDefaultSkills(installDir, [skill.name]);
+        expect(result.errors).toHaveLength(0);
+        expect(result.installed).toContain(skill.name);
+        expect(result.skipped).not.toContain(skill.name);
+        expect(fs.existsSync(path.join(existingDir, 'SENTINEL'))).toBe(false);
+        expect(fs.readFileSync(path.join(existingDir, 'SKILL.md'), 'utf-8')).toBe(
+            fs.readFileSync(path.join(skill.path, 'SKILL.md'), 'utf-8'),
+        );
+    });
 });
+
+function copyDirSync(src: string, dest: string): void {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+        const sourcePath = path.join(src, entry.name);
+        const targetPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+            copyDirSync(sourcePath, targetPath);
+        } else if (entry.isFile()) {
+            fs.copyFileSync(sourcePath, targetPath);
+        }
+    }
+}

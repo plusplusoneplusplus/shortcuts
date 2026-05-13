@@ -8,89 +8,9 @@ import { BundledSkill, DiscoveredSkill, InstallResult, InstallDetail } from './t
 import { ensureDirectoryExists, safeExists } from '../utils';
 import { getLogger, LogCategory } from '../logger';
 import { copySkillDirectory } from './skill-copy';
-
-/**
- * Registry of bundled skills
- * Each skill must have a corresponding directory in resources/bundled-skills/
- * Version is read from each skill's SKILL.md frontmatter at runtime.
- */
-const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
-    {
-        name: 'pipeline-generator',
-        description: 'Generate optimized YAML pipeline or DAG workflow configurations from natural language requirements',
-        relativePath: 'pipeline-generator',
-    },
-    {
-        name: 'skill-for-skills',
-        description: 'Create and update Agent Skills following the agentskills.io specification',
-        relativePath: 'skill-for-skills',
-    },
-    {
-        name: 'go-deep',
-        description: 'Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents',
-        relativePath: 'go-deep',
-    },
-    {
-        name: 'coc-chat',
-        description: 'Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server',
-        relativePath: 'coc-chat',
-    },
-    {
-        name: 'rethink',
-        description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
-        relativePath: 'rethink',
-    },
-    {
-        name: 'code-refactoring',
-        description: 'Automated code refactoring suggestion that drafts a refactoring plan for critical, high-value technical debt issues',
-        relativePath: 'code-refactoring',
-    },
-    {
-        name: 'kb-refresh',
-        description: 'Distill recent CoC chat histories into knowledge-base skill improvements, proposing additions, updates, and removals',
-        relativePath: 'kb-refresh',
-    },
-    {
-        name: 'create-work-item',
-        description: 'Interactively create a work item for this repository with title, description, status, and an AI-generated plan',
-        relativePath: 'create-work-item',
-    },
-    {
-        name: 'create-bug',
-        description: 'Interactively create a bug report for this repository with title, description, priority, and an AI-generated plan',
-        relativePath: 'create-bug',
-    },
-    {
-        name: 'update-work-item',
-        description: 'Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning',
-        relativePath: 'update-work-item',
-    },
-    {
-        name: 'fresh-written',
-        description: 'Rewrite documents, plans, and notes as if authored fresh each iteration — produce only the final intended state, never patch deltas on top of the previous version',
-        relativePath: 'fresh-written',
-    },
-    {
-        name: 'terse-replies',
-        description: 'Ultra-compressed reply mode that cuts token usage ~50% while keeping full technical accuracy. Triggers on "be brief", "be terse", "less tokens", "/terse", or explicit token-efficiency requests',
-        relativePath: 'terse-replies',
-    },
-    {
-        name: 'for-each',
-        description: 'Process a list of items by dispatching ONE sub-agent per item, strictly sequentially (await each before the next). Same per-item sub-task and final summary contract as map-reduce — only the dispatch order differs',
-        relativePath: 'for-each',
-    },
-    {
-        name: 'map-reduce',
-        description: 'Process a list of items by dispatching one sub-agent per item in parallel (up to max_parallel concurrent), then aggregate results into a final summary. Same per-item sub-task and final summary contract as for-each',
-        relativePath: 'map-reduce',
-    },
-    {
-        name: 'loop',
-        description: 'Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing',
-        relativePath: 'loop',
-    }
-];
+import { BUNDLED_SKILLS_REGISTRY } from './bundled-skills-registry';
+import { parseVersionFromFrontmatter } from './skill-version-parser';
+import { compareVersions } from '../utils/version-compare';
 
 /**
  * Get the path to the bundled skills directory
@@ -124,16 +44,22 @@ export function getBundledSkills(installPath: string): DiscoveredSkill[] {
     return skills;
 }
 
+export type InstallConflictStrategy = 'skip' | 'overwrite' | 'version-check';
+
+export interface InstallOptions {
+    conflictStrategy: InstallConflictStrategy;
+    filter?: (skill: DiscoveredSkill) => boolean;
+    handleConflict?: (skillName: string) => Promise<boolean>;
+    onInstalled?: (skill: DiscoveredSkill, action: 'installed' | 'replaced') => void;
+}
+
 /**
- * Install bundled skills to the target directory
- * @param skills Skills to install (from getBundledSkills)
- * @param installPath Target installation path
- * @param handleConflict Callback to handle skill conflicts (returns true to replace)
+ * Shared installation loop for bundled skill operations.
  */
-export async function installBundledSkills(
+export async function performSkillInstallation(
     skills: DiscoveredSkill[],
     installPath: string,
-    handleConflict: (skillName: string) => Promise<boolean>
+    options: InstallOptions,
 ): Promise<InstallResult> {
     const logger = getLogger();
     const result: InstallResult = {
@@ -145,19 +71,24 @@ export async function installBundledSkills(
 
     ensureDirectoryExists(installPath);
 
-    for (const skill of skills) {
+    const selectedSkills = options.filter ? skills.filter(options.filter) : skills;
+
+    for (const skill of selectedSkills) {
         const targetPath = path.join(installPath, skill.name);
         let detail: InstallDetail;
 
         try {
-            if (safeExists(targetPath)) {
-                const shouldReplace = await handleConflict(skill.name);
-                if (!shouldReplace) {
+            const targetExists = safeExists(targetPath);
+            let action: 'installed' | 'replaced' = targetExists ? 'replaced' : 'installed';
+
+            if (targetExists) {
+                const resolution = await resolveExistingSkill(skill, targetPath, options);
+                if (!resolution.shouldReplace) {
                     detail = {
                         name: skill.name,
                         success: true,
                         action: 'skipped',
-                        reason: 'User declined to replace existing skill'
+                        reason: resolution.reason
                     };
                     result.skipped++;
                     result.details.push(detail);
@@ -165,6 +96,7 @@ export async function installBundledSkills(
                 }
 
                 fs.rmSync(targetPath, { recursive: true, force: true });
+                action = 'replaced';
             }
 
             await copySkillDirectory(skill.path, targetPath);
@@ -172,9 +104,10 @@ export async function installBundledSkills(
             detail = {
                 name: skill.name,
                 success: true,
-                action: skill.alreadyExists ? 'replaced' : 'installed'
+                action
             };
             result.installed++;
+            options.onInstalled?.(skill, action);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
@@ -192,6 +125,71 @@ export async function installBundledSkills(
     }
 
     return result;
+}
+
+async function resolveExistingSkill(
+    skill: DiscoveredSkill,
+    targetPath: string,
+    options: InstallOptions,
+): Promise<{ shouldReplace: boolean; reason?: string }> {
+    if (options.handleConflict) {
+        const shouldReplace = await options.handleConflict(skill.name);
+        return shouldReplace
+            ? { shouldReplace: true }
+            : { shouldReplace: false, reason: 'User declined to replace existing skill' };
+    }
+
+    switch (options.conflictStrategy) {
+        case 'overwrite':
+            return { shouldReplace: true };
+        case 'version-check':
+            return shouldReplaceForNewerVersion(skill.path, targetPath);
+        case 'skip':
+            return { shouldReplace: false, reason: 'Skill already exists' };
+    }
+}
+
+function shouldReplaceForNewerVersion(
+    sourcePath: string,
+    targetPath: string,
+): { shouldReplace: boolean; reason?: string } {
+    const sourceVersion = parseSkillVersionFromFile(path.join(sourcePath, 'SKILL.md'));
+    if (!sourceVersion) {
+        return { shouldReplace: false, reason: 'Bundled skill has no parseable version' };
+    }
+
+    const installedVersion = parseSkillVersionFromFile(path.join(targetPath, 'SKILL.md'));
+    if (!installedVersion) {
+        return { shouldReplace: false, reason: 'Installed skill has no parseable version' };
+    }
+
+    const comparison = compareVersions(sourceVersion, installedVersion);
+    if (comparison === undefined) {
+        return { shouldReplace: false, reason: 'Skill version could not be compared' };
+    }
+
+    if (comparison <= 0) {
+        return { shouldReplace: false, reason: 'Installed skill is up to date' };
+    }
+
+    return { shouldReplace: true };
+}
+
+/**
+ * Install bundled skills to the target directory
+ * @param skills Skills to install (from getBundledSkills)
+ * @param installPath Target installation path
+ * @param handleConflict Callback to handle skill conflicts (returns true to replace)
+ */
+export async function installBundledSkills(
+    skills: DiscoveredSkill[],
+    installPath: string,
+    handleConflict: (skillName: string) => Promise<boolean>
+): Promise<InstallResult> {
+    return performSkillInstallation(skills, installPath, {
+        conflictStrategy: 'overwrite',
+        handleConflict,
+    });
 }
 
 /**
@@ -228,23 +226,7 @@ export function parseSkillVersionFromFile(skillMdPath: string): string | undefin
  * Supports both top-level `version:` and nested `metadata:\n  version:`.
  */
 export function parseSkillVersionFromContent(content: string): string | undefined {
-    const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    if (!fmMatch) return undefined;
-
-    const frontmatter = fmMatch[1];
-
-    // Try top-level version: first
-    const topLevel = frontmatter.match(/^version:\s*["']?(.+?)["']?\s*$/m);
-    if (topLevel) return topLevel[1];
-
-    // Try nested metadata.version — version may appear anywhere within the metadata block
-    const metadataBlock = frontmatter.match(/^metadata:\s*\r?\n((?:[ \t]+[^\r\n]+\r?\n?)*)/m);
-    if (metadataBlock) {
-        const versionInBlock = metadataBlock[1].match(/^[ \t]+version:\s*["']?(.+?)["']?\s*$/m);
-        if (versionInBlock) return versionInBlock[1];
-    }
-
-    return undefined;
+    return parseVersionFromFrontmatter(content);
 }
 
 /**
@@ -266,9 +248,8 @@ export interface AutoInstallResult {
 }
 
 /**
- * Install whitelisted bundled skills into `installPath` if they are not
- * already present.  Existing installations are never overwritten — the
- * function is fully idempotent.
+ * Install whitelisted bundled skills into `installPath`, replacing an existing
+ * installation only when the bundled skill has a newer parseable version.
  *
  * Skills whose name does not appear in `BUNDLED_SKILLS_REGISTRY` or whose
  * source directory / SKILL.md is missing are silently skipped (not an error).
@@ -280,16 +261,14 @@ export async function autoInstallDefaultSkills(
     installPath: string,
     skillNames: string[],
 ): Promise<AutoInstallResult> {
-    const logger = getLogger();
     const result: AutoInstallResult = { installed: [], skipped: [], errors: [] };
 
     if (skillNames.length === 0) {
         return result;
     }
 
-    ensureDirectoryExists(installPath);
-
     const bundledPath = getBundledSkillsPath();
+    const skillsToInstall: DiscoveredSkill[] = [];
 
     for (const name of skillNames) {
         const entry = BUNDLED_SKILLS_REGISTRY.find(s => s.name === name);
@@ -305,20 +284,28 @@ export async function autoInstallDefaultSkills(
             continue;
         }
 
-        const targetPath = path.join(installPath, name);
-        if (safeExists(targetPath)) {
-            result.skipped.push(name);
-            continue;
-        }
+        skillsToInstall.push({
+            name: entry.name,
+            description: entry.description,
+            path: skillSrc,
+            alreadyExists: safeExists(path.join(installPath, name)),
+        });
+    }
 
-        try {
-            await copySkillDirectory(skillSrc, targetPath);
-            result.installed.push(name);
-            logger.info(LogCategory.GENERAL, `Auto-installed default skill "${name}"`);
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error(String(error));
-            logger.error(LogCategory.GENERAL, `Failed to auto-install default skill "${name}"`, err);
-            result.errors.push({ name, error: err.message });
+    const installResult = await performSkillInstallation(skillsToInstall, installPath, {
+        conflictStrategy: 'version-check',
+        onInstalled: (skill) => {
+            getLogger().info(LogCategory.GENERAL, `Auto-installed default skill "${skill.name}"`);
+        }
+    });
+
+    for (const detail of installResult.details) {
+        if (detail.success && (detail.action === 'installed' || detail.action === 'replaced')) {
+            result.installed.push(detail.name);
+        } else if (detail.success && detail.action === 'skipped') {
+            result.skipped.push(detail.name);
+        } else {
+            result.errors.push({ name: detail.name, error: detail.reason ?? 'Unknown installation error' });
         }
     }
 
