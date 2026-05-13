@@ -166,4 +166,55 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('memory_get');
         expect(result.suffix).not.toContain('memory_search');
     });
+
+    it('includes loop tools when loopTools deps are provided', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+
+        const mockLoopStore = {
+            insert: vi.fn(),
+            getById: vi.fn(),
+            getByProcess: vi.fn().mockReturnValue([]),
+            update: vi.fn(),
+            getActive: vi.fn().mockReturnValue([]),
+        } as any;
+
+        const mockLoopExecutor = {
+            armTimer: vi.fn(),
+            disarmTimer: vi.fn(),
+        } as any;
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            followUpSuggestions: { enabled: false, count: 0 },
+            loopTools: {
+                store: mockLoopStore,
+                executor: mockLoopExecutor,
+                processId: 'proc-1',
+            },
+        });
+
+        const toolNames = result.tools.map(t => t.name);
+        expect(toolNames).toContain('createLoop');
+        expect(toolNames).toContain('cancelLoop');
+        expect(toolNames).toContain('listLoops');
+        expect(result.suffix).toContain('loop management tools');
+    });
+
+    it('does not include loop tools when loopTools deps are not provided', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            followUpSuggestions: { enabled: false, count: 0 },
+        });
+
+        const toolNames = result.tools.map(t => t.name);
+        expect(toolNames).not.toContain('createLoop');
+        expect(toolNames).not.toContain('cancelLoop');
+        expect(toolNames).not.toContain('listLoops');
+    });
 });

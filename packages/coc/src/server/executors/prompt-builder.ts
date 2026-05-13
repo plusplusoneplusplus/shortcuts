@@ -47,7 +47,8 @@ import {
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import { createMemoryGetTool, createMemorySearchTool } from '../llm-tools/memory-read-tools';
-import { createScheduleWakeupTool } from '../llm-tools/loop-tools';
+import { createScheduleWakeupTool, createCreateLoopTool, createCancelLoopTool, createListLoopsTool } from '../llm-tools/loop-tools';
+import type { LoopToolDeps } from '../llm-tools/loop-tools';
 import { readRepoPreferences } from '../preferences-handler';
 
 
@@ -531,6 +532,28 @@ export function buildScheduleWakeupAddon(
         'Specify a delay like "30s", "5m", or "1h". Minimum delay is 1 second.';
 
     return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// Loop Tools (skill-gated — injected only when /loop skill is active)
+// ============================================================================
+
+export function buildLoopToolsAddon(
+    deps: LoopToolDeps | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!deps) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool: createTool } = createCreateLoopTool(deps);
+    const { tool: cancelTool } = createCancelLoopTool(deps);
+    const { tool: listTool } = createListLoopsTool(deps);
+
+    const suffix =
+        '\n\nYou have access to loop management tools: `createLoop` (recurring follow-ups), ' +
+        '`cancelLoop`, and `listLoops`. These are active because the /loop skill was selected.';
+
+    return { tools: [createTool, cancelTool, listTool], suffix };
 }
 
 // ============================================================================

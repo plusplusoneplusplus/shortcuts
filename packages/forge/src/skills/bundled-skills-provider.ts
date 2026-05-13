@@ -84,6 +84,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'map-reduce',
         description: 'Process a list of items by dispatching one sub-agent per item in parallel (up to max_parallel concurrent), then aggregate results into a final summary. Same per-item sub-task and final summary contract as for-each',
         relativePath: 'map-reduce',
+    },
+    {
+        name: 'loop',
+        description: 'Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing',
+        relativePath: 'loop',
     }
 ];
 

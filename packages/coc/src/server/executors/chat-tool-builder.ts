@@ -1,7 +1,7 @@
 import type { ProcessStore, Tool } from '@plusplusoneplusplus/forge';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import type { WakeupToolDeps } from '../llm-tools/loop-tools';
+import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
@@ -10,6 +10,7 @@ import {
     buildAskUserAddon,
     buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
+    buildLoopToolsAddon,
     buildMemoryReadToolsAddon,
     buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
@@ -32,6 +33,7 @@ export interface ChatToolBundleOptions {
     broadcastWorkItem?: BroadcastWorkItemFn;
     boundedMemory?: BoundedMemoryAddon;
     scheduleWakeup?: WakeupToolDeps;
+    loopTools?: LoopToolDeps;
     includeFollowUpSuggestions?: boolean;
     includeSearchConversations?: boolean;
     includeWorkItemTools?: boolean;
@@ -90,6 +92,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.includeScheduleWakeup !== false) {
         addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
+    }
+
+    if (options.loopTools) {
+        addons.push(buildLoopToolsAddon(options.loopTools));
     }
 
     if (options.boundedMemory) {

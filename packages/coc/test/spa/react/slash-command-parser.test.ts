@@ -249,4 +249,46 @@ describe('META_COMMANDS constant', () => {
     it('contains model', () => {
         expect(META_COMMANDS).toContain('model');
     });
+
+    it('contains loop', () => {
+        expect(META_COMMANDS).toContain('loop');
+    });
+});
+
+// ============================================================================
+// /loop meta-command
+// ============================================================================
+
+describe('parseSlashCommands — /loop meta-command', () => {
+    it('detects /loop as a meta-command', () => {
+        const result = parseSlashCommands('/loop', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('loop');
+        expect(result.skills).toEqual([]);
+        expect(result.prompt).toBe('');
+    });
+
+    it('strips /loop from the prompt', () => {
+        const result = parseSlashCommands('/loop monitor CI every 5m', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('loop');
+        expect(result.prompt).toBe('monitor CI every 5m');
+    });
+
+    it('handles /loop mixed with skills', () => {
+        const result = parseSlashCommands('/impl /loop check build status', AVAILABLE_SKILLS);
+        expect(result.skills).toEqual(['impl']);
+        expect(result.metaCommands).toContain('loop');
+        expect(result.prompt).toBe('check build status');
+    });
+
+    it('recognizes /loop as a meta-command via isMetaCommand', () => {
+        expect(isMetaCommand('loop')).toBe(true);
+        expect(isMetaCommand('LOOP')).toBe(true);
+    });
+
+    it('meta-command /loop has priority over a skill named loop', () => {
+        const skills = [...AVAILABLE_SKILLS, 'loop'];
+        const result = parseSlashCommands('/loop test', skills);
+        expect(result.metaCommands).toContain('loop');
+        expect(result.skills).toEqual([]);
+    });
 });

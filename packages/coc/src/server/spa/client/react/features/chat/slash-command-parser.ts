@@ -9,7 +9,7 @@
  */
 
 /** Built-in meta-commands (not skills). */
-export const META_COMMANDS = ['model'] as const;
+export const META_COMMANDS = ['model', 'loop'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
 
 export interface ParsedSlashCommands {

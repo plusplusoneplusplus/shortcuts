@@ -115,7 +115,12 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        return parseSlashCommands(text, skillNames);
+        const result = parseSlashCommands(text, skillNames);
+        // /loop meta-command activates the 'loop' bundled skill
+        if (result.metaCommands.includes('loop') && !result.skills.includes('loop')) {
+            result.skills.push('loop');
+        }
+        return result;
     }, [skillNames]);
 
     const dismissMenu = useCallback(() => {
