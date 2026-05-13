@@ -14,29 +14,48 @@ import {
     createWorkingTreeDiffProvider,
 } from '../../src/diff/git-diff-provider';
 import type { IDiffProvider, DiffFileEntry, DiffContent } from '../../src/diff/types';
-import path from 'path';
 
-// ── Resolve repo root dynamically ────────────────────────────
+// ── Resolve repo root and diff-module commit dynamically ─────
 
 let repoRoot: string;
+// Resolved at runtime to the commit that introduced
+// `packages/forge/src/diff/git-diff-provider.ts` — the file this test
+// suite exercises. Resolving from a path is robust to history rewrites
+// (rebase/squash on merge) which can change short commit hashes.
+let knownCommit: string;
 
 beforeAll(async () => {
-    // Find the repo root from the current working directory
     try {
         const root = await execGitAsync(['rev-parse', '--show-toplevel'], process.cwd());
         repoRoot = root.trim();
     } catch {
-        // If we can't find the repo root, skip all tests
+        repoRoot = '';
+        return;
+    }
+
+    try {
+        const out = await execGitAsync(
+            [
+                'log',
+                '--diff-filter=A',
+                '--reverse',
+                '--format=%H',
+                '--',
+                'packages/forge/src/diff/git-diff-provider.ts',
+            ],
+            repoRoot,
+        );
+        // Take the first line: the original commit that added the file.
+        knownCommit = out.split('\n').find(line => line.trim().length > 0)?.trim() ?? '';
+    } catch {
+        knownCommit = '';
+    }
+
+    if (!knownCommit) {
+        // Without a resolvable commit, downstream tests can't run meaningfully.
         repoRoot = '';
     }
 });
-
-/**
- * Use the first commit that introduced the diff module — a known commit
- * that added 7 files. We look it up by its short hash prefix so it works
- * even if the history is rewritten (but that's unlikely for merged commits).
- */
-const KNOWN_COMMIT_SHORT = '1412a6dc3';
 
 // ── Commit diff provider integration ─────────────────────────
 
@@ -46,8 +65,7 @@ describe('createCommitDiffProvider (integration)', () => {
 
     beforeAll(async () => {
         if (!repoRoot) return;
-        // Resolve full hash
-        commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
+        commitHash = knownCommit;
         provider = createCommitDiffProvider(repoRoot, commitHash);
     });
 
@@ -164,8 +182,8 @@ describe('createRangeDiffProvider (integration)', () => {
     beforeAll(async () => {
         if (!repoRoot) return;
         // Use the commit before the diff module commit as base, and the diff commit as head
-        headHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
-        baseHash = (await execGitAsync(['rev-parse', `${KNOWN_COMMIT_SHORT}^`], repoRoot)).trim();
+        headHash = knownCommit;
+        baseHash = (await execGitAsync(['rev-parse', `${knownCommit}^`], repoRoot)).trim();
         provider = createRangeDiffProvider(repoRoot, baseHash, headHash);
     });
 
@@ -289,8 +307,8 @@ describe('createWorkingTreeDiffProvider (integration)', () => {
 describe('cross-provider consistency (integration)', () => {
     it('commit and range providers should agree on file count for single-commit range', async () => {
         if (!repoRoot) return;
-        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
-        const parentHash = (await execGitAsync(['rev-parse', `${KNOWN_COMMIT_SHORT}^`], repoRoot)).trim();
+        const commitHash = knownCommit;
+        const parentHash = (await execGitAsync(['rev-parse', `${knownCommit}^`], repoRoot)).trim();
 
         const commitProvider = createCommitDiffProvider(repoRoot, commitHash);
         const rangeProvider = createRangeDiffProvider(repoRoot, parentHash, commitHash);
@@ -308,7 +326,7 @@ describe('cross-provider consistency (integration)', () => {
 
     it('prefetchAll should cover all listed files', async () => {
         if (!repoRoot) return;
-        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
+        const commitHash = knownCommit;
         const provider = createCommitDiffProvider(repoRoot, commitHash);
 
         const files = await provider.listFiles();
@@ -323,7 +341,7 @@ describe('cross-provider consistency (integration)', () => {
 
     it('getFileDiff should return content consistent with prefetchAll', async () => {
         if (!repoRoot) return;
-        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
+        const commitHash = knownCommit;
         const provider = createCommitDiffProvider(repoRoot, commitHash);
 
         const files = await provider.listFiles();
@@ -347,8 +365,7 @@ describe('contextLines option (integration)', () => {
 
     beforeAll(async () => {
         if (!repoRoot) return;
-        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
-        provider = createCommitDiffProvider(repoRoot, commitHash);
+        provider = createCommitDiffProvider(repoRoot, knownCommit);
     });
 
     it('should produce less context with contextLines=0 than default', async () => {
@@ -393,8 +410,7 @@ describe('maxLines option (integration)', () => {
 
     beforeAll(async () => {
         if (!repoRoot) return;
-        const commitHash = (await execGitAsync(['rev-parse', KNOWN_COMMIT_SHORT], repoRoot)).trim();
-        provider = createCommitDiffProvider(repoRoot, commitHash);
+        provider = createCommitDiffProvider(repoRoot, knownCommit);
     });
 
     it('should truncate diff when maxLines is small', async () => {
