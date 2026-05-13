@@ -147,7 +147,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserError('Unable to browse this path');
         }
         setBrowserLoading(false);
-    }, []);
+    }, [selectedAgentId]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);
