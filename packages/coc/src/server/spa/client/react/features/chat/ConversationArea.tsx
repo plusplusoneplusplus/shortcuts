@@ -326,7 +326,7 @@ export function ConversationArea({
                                 );
                             });
                         })()}
-                        {pendingAskUserBatch && (task?.status === 'running' || task?.status === 'queued') && (
+                        {pendingAskUserBatch && (
                             <AskUserInline
                                 batch={pendingAskUserBatch}
                                 processId={processId ?? taskId}

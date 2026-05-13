@@ -27,6 +27,7 @@ import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
+import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
 import { useChatWindowActions } from './hooks/useChatWindowActions';
@@ -542,6 +543,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     // Prune stale drafts once on mount
     useEffect(() => { pruneExpired(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Hydrate pendingAskUserBatch from processDetails.pendingAskUser so that
+    // the ask-user widget appears on cold load (or page refresh) without
+    // depending on an in-flight SSE `ask-user` event. The executor is the
+    // single source of truth: it persists pendingAskUser when the AI asks
+    // and clears it on answer/skip/cancel, so we mirror that state directly.
+    useEffect(() => {
+        setPendingAskUserBatch(prev => hydrateAskUserBatch(processDetails?.pendingAskUser, prev));
+    }, [processDetails]);
 
     // Load task + conversation on mount / taskId change
     useEffect(() => {

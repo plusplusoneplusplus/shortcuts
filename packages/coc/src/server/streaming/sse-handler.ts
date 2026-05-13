@@ -144,7 +144,12 @@ export async function handleProcessStream(
     // 4. Replay persisted conversation history as a structured snapshot
     replayConversationTurns(res, process);
 
-    if ((process.status === 'running' || process.status === 'queued') && process.pendingAskUser) {
+    // Replay pending ask-user questions whenever the process has them — regardless
+    // of status. ChatBaseExecutor finishes its SDK turn with `status='completed'`
+    // while an ask is still actionable; the executor is responsible for clearing
+    // `pendingAskUser` on answer/skip/cancel, so a non-empty list is the
+    // authoritative signal that the user still owes an answer.
+    if (process.pendingAskUser && process.pendingAskUser.length > 0) {
         for (const question of process.pendingAskUser) {
             sendEvent(res, 'ask-user', question);
         }

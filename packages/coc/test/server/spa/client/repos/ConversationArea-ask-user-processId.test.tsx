@@ -134,7 +134,7 @@ describe('ConversationArea AskUserInline processId routing', () => {
         expect(screen.queryByTestId('ask-user-inline')).toBeNull();
     });
 
-    it('does not render AskUserInline when task status is completed', () => {
+    it('renders AskUserInline when task status is completed (pendingAskUser is source of truth)', () => {
         capturedProcessIds.length = 0;
         render(
             <ConversationArea
@@ -144,6 +144,20 @@ describe('ConversationArea AskUserInline processId routing', () => {
                 task={{ status: 'completed' }}
             />,
         );
-        expect(screen.queryByTestId('ask-user-inline')).toBeNull();
+        const el = screen.getByTestId('ask-user-inline');
+        expect(el.getAttribute('data-process-id')).toBe('queue_1');
+    });
+
+    it('renders AskUserInline when task status is queued (regression)', () => {
+        capturedProcessIds.length = 0;
+        render(
+            <ConversationArea
+                {...baseProps}
+                taskId="queue_1"
+                processId="queue_1"
+                task={{ status: 'queued' }}
+            />,
+        );
+        expect(screen.getByTestId('ask-user-inline')).not.toBeNull();
     });
 });

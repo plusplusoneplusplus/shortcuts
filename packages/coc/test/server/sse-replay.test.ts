@@ -398,20 +398,76 @@ describe('SSE replay', () => {
         expect(frames.find(f => f.event === 'ask-user')!.data).toEqual(pendingAskUser[0]);
     });
 
-    it('does not replay stale pending ask-user for terminal processes', async () => {
+    it('replays pending ask-user for terminal processes (completed) before status+done', async () => {
+        const pendingAskUser = [{
+            batchId: 'batch-done',
+            questionId: 'ask-done',
+            question: 'Old question',
+            type: 'text' as const,
+            turnIndex: 1,
+            index: 0,
+            batchSize: 1,
+        }];
         const process = createProcessFixture({
             id: 'p-ask-done',
             status: 'completed',
             conversationTurns: [makeTurn('assistant', 'Done', 0)],
-            pendingAskUser: [{
-                batchId: 'stale-batch',
-                questionId: 'stale',
-                question: 'Old question',
-                type: 'text',
-                turnIndex: 1,
-                index: 0,
-                batchSize: 1,
-            }],
+            pendingAskUser,
+        });
+        store.processes.set(process.id, process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, process.id, store);
+
+        const frames = parseSSEFrames(res._chunks);
+        const askFrames = frames.filter(f => f.event === 'ask-user');
+        expect(askFrames).toHaveLength(1);
+        expect(askFrames[0].data).toEqual(pendingAskUser[0]);
+        // status + done still arrive after the ask-user replay so the stream closes cleanly
+        expect(frames.filter(f => f.event === 'status')).toHaveLength(1);
+        expect(frames.filter(f => f.event === 'done')).toHaveLength(1);
+        const askIdx = frames.findIndex(f => f.event === 'ask-user');
+        const statusIdx = frames.findIndex(f => f.event === 'status');
+        const doneIdx = frames.findIndex(f => f.event === 'done');
+        expect(askIdx).toBeLessThan(statusIdx);
+        expect(statusIdx).toBeLessThan(doneIdx);
+    });
+
+    it('replays pending ask-user for cancelled processes', async () => {
+        const pendingAskUser = [{
+            batchId: 'batch-cancel',
+            questionId: 'ask-cancel',
+            question: 'Pick one',
+            type: 'select' as const,
+            options: [{ value: 'a', label: 'A' }],
+            turnIndex: 2,
+            index: 0,
+            batchSize: 1,
+        }];
+        const process = createProcessFixture({
+            id: 'p-ask-cancelled',
+            status: 'cancelled',
+            conversationTurns: [makeTurn('assistant', 'Stopped', 0)],
+            pendingAskUser,
+        });
+        store.processes.set(process.id, process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, process.id, store);
+
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames.filter(f => f.event === 'ask-user')).toHaveLength(1);
+        expect(frames.filter(f => f.event === 'status')).toHaveLength(1);
+        expect(frames.filter(f => f.event === 'done')).toHaveLength(1);
+    });
+
+    it('does not replay ask-user when terminal process has no pendingAskUser', async () => {
+        const process = createProcessFixture({
+            id: 'p-no-ask-done',
+            status: 'completed',
+            conversationTurns: [makeTurn('assistant', 'Done', 0)],
         });
         store.processes.set(process.id, process);
 
