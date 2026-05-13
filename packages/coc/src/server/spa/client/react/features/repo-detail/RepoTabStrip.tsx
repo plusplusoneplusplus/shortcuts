@@ -16,7 +16,7 @@ import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { isContainerMode } from '../../utils/config';
+import { isContainerMode, getCurrentAgentId } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -770,7 +770,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 visibleAgentGroups.map((group) => {
                     const agentId = group.normalizedUrl ?? 'unknown';
                     const isOpen = openAgentDropdown === agentId;
-                    const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
+                    const isActiveAgent = getCurrentAgentId() === agentId;
+                    const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                     const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                     return (
                         <div
@@ -883,7 +884,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         {hiddenAgentGroups.map(group => {
                             const agentId = group.normalizedUrl ?? 'unknown';
-                            const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
+                            const isActiveAgent = getCurrentAgentId() === agentId;
+                            const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                             const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                             return (
                                 <div key={agentId} className="relative px-1 py-0.5 group/overflow-agent">
