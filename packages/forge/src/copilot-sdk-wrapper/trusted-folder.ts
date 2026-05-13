@@ -58,8 +58,22 @@ export function getCopilotConfigPath(): string {
 }
 
 /**
+ * Strip single-line `//` comments from JSONC content.
+ *
+ * Copilot CLI v1.0.40+ writes `~/.copilot/config.json` with leading `//`
+ * comment lines. Plain `JSON.parse` rejects these, so we strip them first.
+ * Only removes full-line `//` comments (not `//` inside strings).
+ */
+export function stripJsoncComments(text: string): string {
+    return text.replace(/^\s*\/\/[^\n]*/gm, '');
+}
+
+/**
  * Read and parse the Copilot config file.
- * Returns an empty object if the file doesn't exist or is invalid.
+ *
+ * Handles JSONC (files with `//` comment lines) written by Copilot CLI
+ * v1.0.40+.  Returns an empty object if the file doesn't exist or is
+ * unparseable even after stripping comments.
  */
 function readConfig(configPath: string): Record<string, unknown> {
     try {
@@ -67,7 +81,8 @@ function readConfig(configPath: string): Record<string, unknown> {
             return {};
         }
         const content = fs.readFileSync(configPath, 'utf-8');
-        const parsed = JSON.parse(content);
+        const stripped = stripJsoncComments(content);
+        const parsed = JSON.parse(stripped);
         return typeof parsed === 'object' && parsed !== null ? parsed : {};
     } catch {
         return {};
