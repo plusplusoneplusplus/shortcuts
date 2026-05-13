@@ -86,6 +86,7 @@ describe('Serve Command', () => {
     let stderrSpy: ReturnType<typeof vi.spyOn>;
     let tmpDir: string;
     let savedSigintListeners: Function[];
+    let savedSigtermListeners: Function[];
 
     beforeAll(() => {
         suiteLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-serve-logs-'));
@@ -103,17 +104,23 @@ describe('Serve Command', () => {
         mockCreateExecutionServer.mockResolvedValue(makeServerResult());
         mockLoadConfigFile.mockReset();
         mockLoadConfigFile.mockReturnValue(undefined);
-        // Save and remove all SIGINT listeners to isolate tests
+        // Save and remove all SIGINT/SIGTERM listeners to isolate tests
         savedSigintListeners = process.rawListeners('SIGINT') as Function[];
+        savedSigtermListeners = process.rawListeners('SIGTERM') as Function[];
         process.removeAllListeners('SIGINT');
+        process.removeAllListeners('SIGTERM');
     });
 
     afterEach(async () => {
         // Remove any listeners added during test
         process.removeAllListeners('SIGINT');
+        process.removeAllListeners('SIGTERM');
         // Restore original listeners
         for (const listener of savedSigintListeners) {
             process.on('SIGINT', listener as (...args: any[]) => void);
+        }
+        for (const listener of savedSigtermListeners) {
+            process.on('SIGTERM', listener as (...args: any[]) => void);
         }
         stderrSpy.mockRestore();
         setColorEnabled(true);
@@ -238,7 +245,49 @@ describe('Serve Command', () => {
 
         it('should call server.close() with drain options by default', async () => {
             await runServeWithSigint({ dataDir: tmpDir, open: false });
-            expect(mockClose).toHaveBeenCalledWith({ drain: true, drainTimeoutMs: undefined });
+            expect(mockClose).toHaveBeenCalledWith({ drain: true, drainTimeoutMs: 30000 });
+        });
+
+        it('should force shutdown on second SIGTERM', async () => {
+            // Make drain hang until force shutdown
+            mockClose.mockImplementation(async (opts: any) => {
+                if (opts?.drain) {
+                    // Simulate a slow drain — but we'll send a second signal to force
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                return { drainOutcome: 'completed' };
+            });
+
+            const { executeServe } = await import('../../src/commands/serve');
+            // Send SIGTERM, then a second one shortly after to force
+            const t1 = setTimeout(() => process.emit('SIGTERM', 'SIGTERM'), 30);
+            const t2 = setTimeout(() => process.emit('SIGTERM', 'SIGTERM'), 80);
+            const exitCode = await executeServe({ dataDir: tmpDir, open: false, logDir: suiteLogDir });
+            clearTimeout(t1);
+            clearTimeout(t2);
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+            // close() should have been called at least twice (drain attempt + force)
+            expect(mockClose.mock.calls.length).toBeGreaterThanOrEqual(2);
+        });
+
+        it('should force shutdown on SIGTERM after SIGINT', async () => {
+            mockClose.mockImplementation(async (opts: any) => {
+                if (opts?.drain) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                return { drainOutcome: 'completed' };
+            });
+
+            const { executeServe } = await import('../../src/commands/serve');
+            const t1 = setTimeout(() => process.emit('SIGINT', 'SIGINT'), 30);
+            const t2 = setTimeout(() => process.emit('SIGTERM', 'SIGTERM'), 80);
+            const exitCode = await executeServe({ dataDir: tmpDir, open: false, logDir: suiteLogDir });
+            clearTimeout(t1);
+            clearTimeout(t2);
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+            expect(mockClose.mock.calls.length).toBeGreaterThanOrEqual(2);
         });
     });
 
@@ -326,9 +375,9 @@ describe('Serve Command', () => {
         it('should call close with drain options when drain enabled', async () => {
             const exitCode = await runServeWithSigint({ dataDir: tmpDir, open: false });
             expect(mockClose).toHaveBeenCalled();
-            // Default is drain: true
+            // Default is drain: true with 30s timeout
             const closeArgs = mockClose.mock.calls[0];
-            expect(closeArgs[0]).toEqual({ drain: true, drainTimeoutMs: undefined });
+            expect(closeArgs[0]).toEqual({ drain: true, drainTimeoutMs: 30000 });
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
         });
 

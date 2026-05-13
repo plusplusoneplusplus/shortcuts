@@ -186,6 +186,49 @@ export function computeVisibleRepoIds(
 }
 
 /**
+ * Compute which agent group IDs are visible given a container width.
+ * Works like computeVisibleRepoIds but for agent pill elements.
+ * The agent containing the selected repo is always included.
+ */
+export function computeVisibleAgentIds(
+    pillElements: HTMLElement[],
+    containerWidth: number,
+    selectedAgentId: string | null,
+): Set<string> {
+    if (containerWidth <= 0) {
+        if (selectedAgentId) return new Set([selectedAgentId]);
+        return new Set<string>();
+    }
+
+    const visible = new Set<string>();
+    let usedWidth = 0;
+    let lastVisibleId: string | null = null;
+
+    for (const el of pillElements) {
+        const id = el.getAttribute('data-agent-id');
+        if (!id) continue;
+        const width = el.offsetWidth + 2;
+        if (usedWidth + width <= containerWidth) {
+            visible.add(id);
+            usedWidth += width;
+            lastVisibleId = id;
+        } else {
+            break;
+        }
+    }
+
+    // Ensure agent with selected repo is always visible
+    if (selectedAgentId && !visible.has(selectedAgentId)) {
+        if (lastVisibleId && visible.size > 0) {
+            visible.delete(lastVisibleId);
+        }
+        visible.add(selectedAgentId);
+    }
+
+    return visible;
+}
+
+/**
  * Flatten grouped repos into a flat ordered list of repo IDs.
  */
 function flattenGroups(groups: RepoGroup[]): string[] {
@@ -222,7 +265,10 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [repoDropIndicator, setRepoDropIndicator] = useState<RepoDropIndicator>(null);
     const [repoLiveMessage, setRepoLiveMessage] = useState('');
     const [openAgentDropdown, setOpenAgentDropdown] = useState<string | null>(null);
+    const [visibleAgentIds, setVisibleAgentIds] = useState<Set<string> | null>(null);
+    const [agentOverflowOpen, setAgentOverflowOpen] = useState(false);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
+    const agentMeasureRef = useRef<HTMLDivElement>(null);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -282,6 +328,12 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
+    const allAgentIds = useMemo(() => groups.map(g => g.normalizedUrl ?? 'unknown'), [groups]);
+    const selectedAgentId = useMemo(() => {
+        if (!selectedRepoId) return null;
+        const group = groups.find(g => g.repos.some(r => r.workspace.id === selectedRepoId));
+        return group?.normalizedUrl ?? null;
+    }, [groups, selectedRepoId]);
     const { dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -456,6 +508,58 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     useEffect(() => {
         recalcOverflow();
     }, [repos, recalcOverflow]);
+
+    // Container mode agent pill overflow detection
+    const recalcAgentOverflow = useCallback(() => {
+        if (!isContainerMode()) return;
+        const measureEl = agentMeasureRef.current;
+        const containerEl = tabContainerRef.current;
+        if (!measureEl || !containerEl) return;
+        const containerWidth = containerEl.clientWidth;
+        if (containerWidth <= 0) {
+            setVisibleAgentIds(prev => prev === null ? prev : null);
+            return;
+        }
+        const pillEls = Array.from(measureEl.querySelectorAll<HTMLElement>('[data-agent-id]'));
+        if (pillEls.length === 0) {
+            setVisibleAgentIds(null);
+            return;
+        }
+        const vis = computeVisibleAgentIds(pillEls, containerWidth, selectedAgentId);
+        if (vis.size >= allAgentIds.length) {
+            setVisibleAgentIds(prev => prev === null ? prev : null);
+        } else {
+            setVisibleAgentIds(prev => {
+                if (prev !== null && prev.size === vis.size && [...vis].every(id => prev.has(id))) {
+                    return prev;
+                }
+                return vis;
+            });
+        }
+    }, [selectedAgentId, allAgentIds]);
+
+    useEffect(() => {
+        if (!isContainerMode()) return;
+        const el = tabContainerRef.current;
+        if (!el) return;
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(recalcAgentOverflow);
+        ro.observe(el);
+        recalcAgentOverflow();
+        return () => ro.disconnect();
+    }, [recalcAgentOverflow]);
+
+    useEffect(() => {
+        if (isContainerMode()) recalcAgentOverflow();
+    }, [groups, recalcAgentOverflow]);
+
+    const agentOverflowCount = visibleAgentIds ? allAgentIds.length - visibleAgentIds.size : 0;
+    const hasAgentOverflow = agentOverflowCount > 0;
+    const isAgentVisible = (agentId: string) => !visibleAgentIds || visibleAgentIds.has(agentId);
+    const hiddenAgentGroups = useMemo(
+        () => hasAgentOverflow ? groups.filter(g => !isAgentVisible(g.normalizedUrl ?? 'unknown')) : [],
+        [groups, visibleAgentIds, hasAgentOverflow],
+    );
 
     const overflowCount = visibleRepoIds ? allRepoIds.length - visibleRepoIds.size : 0;
     const hasOverflow = overflowCount > 0;
@@ -695,6 +799,30 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 </div>
             ))}
         </div>
+        {/* Hidden measurement container for agent pills in container mode */}
+        {isContainerMode() && (
+            <div
+                ref={agentMeasureRef}
+                className="flex items-center gap-0.5 absolute invisible overflow-hidden h-0"
+                style={{ pointerEvents: 'none' }}
+                aria-hidden="true"
+                data-testid="agent-pill-measure-container"
+            >
+                {groups.map((group) => {
+                    const agentId = group.normalizedUrl ?? 'unknown';
+                    return (
+                        <span
+                            key={agentId}
+                            data-agent-id={agentId}
+                            className="inline-flex items-center gap-1 px-2.5 h-7 text-xs whitespace-nowrap"
+                        >
+                            <span>{group.label}</span>
+                            <span className="text-[9px]">▾</span>
+                        </span>
+                    );
+                })}
+            </div>
+        )}
         {/* Visible tab container */}
         <div
             ref={tabContainerRef}
@@ -703,7 +831,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         >
             {isContainerMode() ? (
                 /* Container mode: agent dropdown pills */
-                groups.map((group) => {
+                groups.filter(g => isAgentVisible(g.normalizedUrl ?? 'unknown')).map((group) => {
                     const agentId = group.normalizedUrl ?? 'unknown';
                     const isOpen = openAgentDropdown === agentId;
                     const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
@@ -782,6 +910,63 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 })
             )}
         </div>
+        {/* Agent overflow pill for container mode */}
+        {isContainerMode() && hasAgentOverflow && (
+            <div className="relative flex-shrink-0 px-0.5" data-testid="agent-overflow-pill-container">
+                <button
+                    data-testid="agent-overflow-pill"
+                    className={
+                        'relative flex items-center justify-center h-7 px-2.5 rounded-full text-xs font-medium transition-colors cursor-pointer ' +
+                        (selectedAgentId && !isAgentVisible(selectedAgentId)
+                            ? 'bg-[#0078d4]/15 dark:bg-[#3794ff]/20 text-[#0078d4] dark:text-[#3794ff] border-l-2 border-[#0078d4] dark:border-[#3794ff] '
+                            : 'bg-gray-200 dark:bg-gray-700 text-[#1e1e1e] dark:text-[#cccccc] ') +
+                        'hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }
+                    aria-label={`${agentOverflowCount} more agents - click to see all`}
+                    title={`${agentOverflowCount} more agents`}
+                    onClick={() => setAgentOverflowOpen(prev => !prev)}
+                >
+                    +{agentOverflowCount}
+                </button>
+                {agentOverflowOpen && (
+                    <div
+                        data-testid="agent-overflow-dropdown"
+                        className="absolute right-0 top-full mt-1 z-50 min-w-[200px] max-w-[320px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                        role="menu"
+                    >
+                        {hiddenAgentGroups.map(group => {
+                            const agentId = group.normalizedUrl ?? 'unknown';
+                            const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
+                            const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
+                            return (
+                                <div key={agentId} className="px-1 py-0.5">
+                                    <button
+                                        className={
+                                            'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs rounded cursor-pointer ' +
+                                            (selectedInGroup
+                                                ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
+                                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
+                                        }
+                                        onClick={() => {
+                                            setOpenAgentDropdown(agentId);
+                                            setAgentOverflowOpen(false);
+                                        }}
+                                    >
+                                        <span className="truncate">{group.label}</span>
+                                        <span className="text-[10px] opacity-60 ml-auto">{group.repos.length} repos</span>
+                                        {totalUnseen > 0 && (
+                                            <span className="min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
+                                                {totalUnseen > 99 ? '99+' : totalUnseen}
+                                            </span>
+                                        )}
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        )}
         {/* "+N" overflow pill / customize order list */}
         {showOverflowControl && (
             <div ref={overflowRef} className="relative flex-shrink-0 px-0.5" data-testid="overflow-pill-container">

@@ -26,6 +26,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
+    isContainerMode: () => false,
+    getRawApiBase: () => 'http://localhost:4000/api',
+    getHostname: () => 'localhost',
+    isServersEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -48,6 +52,44 @@ vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () =
             <button data-testid="generate-task-dialog-close" onClick={onClose} />
         </div>
     ),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/AddAgentDialog', () => ({
+    AddAgentDialog: ({ open }: { open: boolean }) =>
+        open ? <div data-testid="add-agent-dialog" /> : null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/contexts/ContainerAgentContext', () => ({
+    useContainerAgents: () => ({
+        agents: [],
+        loading: false,
+        refresh: async () => {},
+        addAgent: async () => { throw new Error('Not in container mode'); },
+        removeAgent: async () => { throw new Error('Not in container mode'); },
+        renameAgent: async () => { throw new Error('Not in container mode'); },
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
+    useUiLayoutMode: () => ['default'],
+}));
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        preferences: {
+            getGlobal: async () => ({}),
+            patchGlobal: async () => {},
+            replaceGlobal: async () => {},
+        },
+        workspaces: {
+            delete: async () => {},
+        },
+    }),
+    getSpaCocClientErrorMessage: (err: any, fallback: string) => fallback,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
+    isHidden: () => false,
 }));
 
 const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: string) => ({
@@ -666,5 +708,80 @@ describe('RepoTabStrip overflow', () => {
             const visibleTabs = visibleContainer.querySelectorAll('[data-repo-id="r5"]');
             expect(visibleTabs.length).toBe(1);
         });
+    });
+});
+
+// ============================================================================
+// computeVisibleAgentIds unit tests
+// ============================================================================
+
+import { computeVisibleAgentIds } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
+
+function mockAgentPillElements(entries: { id: string; width: number }[]): HTMLElement[] {
+    return entries.map(({ id, width }) => {
+        const el = document.createElement('span');
+        el.setAttribute('data-agent-id', id);
+        Object.defineProperty(el, 'offsetWidth', { value: width, configurable: true });
+        return el;
+    });
+}
+
+describe('computeVisibleAgentIds', () => {
+    it('returns all agents when they fit', () => {
+        const pills = mockAgentPillElements([
+            { id: 'a1', width: 80 },
+            { id: 'a2', width: 80 },
+            { id: 'a3', width: 80 },
+        ]);
+        const vis = computeVisibleAgentIds(pills, 300, null);
+        expect(vis.size).toBe(3);
+        expect(vis.has('a1')).toBe(true);
+        expect(vis.has('a2')).toBe(true);
+        expect(vis.has('a3')).toBe(true);
+    });
+
+    it('hides agents that do not fit', () => {
+        const pills = mockAgentPillElements([
+            { id: 'a1', width: 80 },
+            { id: 'a2', width: 80 },
+            { id: 'a3', width: 80 },
+            { id: 'a4', width: 80 },
+            { id: 'a5', width: 80 },
+            { id: 'a6', width: 80 },
+        ]);
+        // Each pill is 80 + 2 gap = 82, so container of 250 fits 3
+        const vis = computeVisibleAgentIds(pills, 250, null);
+        expect(vis.size).toBe(3);
+        expect(vis.has('a1')).toBe(true);
+        expect(vis.has('a2')).toBe(true);
+        expect(vis.has('a3')).toBe(true);
+        expect(vis.has('a4')).toBe(false);
+    });
+
+    it('ensures selected agent is always visible', () => {
+        const pills = mockAgentPillElements([
+            { id: 'a1', width: 80 },
+            { id: 'a2', width: 80 },
+            { id: 'a3', width: 80 },
+            { id: 'a4', width: 80 },
+        ]);
+        // Only 2 fit (82 * 2 = 164 < 170, 82 * 3 = 246 > 170)
+        const vis = computeVisibleAgentIds(pills, 170, 'a4');
+        expect(vis.has('a4')).toBe(true);
+        // The last naturally visible one was bumped
+        expect(vis.size).toBe(2);
+    });
+
+    it('returns empty set for zero container width with no selection', () => {
+        const pills = mockAgentPillElements([{ id: 'a1', width: 80 }]);
+        const vis = computeVisibleAgentIds(pills, 0, null);
+        expect(vis.size).toBe(0);
+    });
+
+    it('returns only selected agent for zero container width', () => {
+        const pills = mockAgentPillElements([{ id: 'a1', width: 80 }, { id: 'a2', width: 80 }]);
+        const vis = computeVisibleAgentIds(pills, 0, 'a2');
+        expect(vis.size).toBe(1);
+        expect(vis.has('a2')).toBe(true);
     });
 });

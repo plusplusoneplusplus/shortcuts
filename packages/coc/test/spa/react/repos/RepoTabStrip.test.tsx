@@ -23,6 +23,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
+    isContainerMode: () => false,
+    getRawApiBase: () => '/api',
+    getHostname: () => 'localhost',
+    isServersEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

@@ -41,9 +41,10 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     const host = options.host ?? '0.0.0.0';
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
     const drainEnabled = options.noDrain !== true;
+    const DEFAULT_DRAIN_TIMEOUT_S = 30;
     const drainTimeoutMs = options.drainTimeout !== undefined && options.drainTimeout > 0
         ? options.drainTimeout * 1000
-        : undefined; // undefined = infinite
+        : DEFAULT_DRAIN_TIMEOUT_S * 1000;
 
     // Set up Pino loggers before anything else
     const logDir = options.logDir ?? path.join(dataDir, 'logs');
@@ -97,7 +98,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
 
         // Wait for SIGINT/SIGTERM with graceful drain support
         await new Promise<void>((resolve) => {
-            let sigintCount = 0;
+            let signalCount = 0;
             let isShuttingDown = false;
 
             const shutdown = async (forceImmediate: boolean = false) => {
@@ -108,9 +109,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
                 process.stderr.write('\n');
 
                 if (drainEnabled && !forceImmediate) {
-                    const timeoutLabel = drainTimeoutMs
-                        ? ` (timeout: ${options.drainTimeout}s)`
-                        : ' (no timeout — Ctrl+C again to force)';
+                    const timeoutLabel = ` (timeout: ${drainTimeoutMs / 1000}s — send signal again to force)`;
                     printInfo(`Draining queue before shutdown...${timeoutLabel}`);
 
                     const result = await server.close({ drain: true, drainTimeoutMs });
@@ -127,18 +126,20 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
                 resolve();
             };
 
-            process.on('SIGINT', () => {
-                sigintCount++;
-                if (sigintCount >= 2) {
-                    // Force immediate shutdown on second Ctrl+C
+            const onSignal = () => {
+                signalCount++;
+                if (signalCount >= 2) {
+                    // Force immediate shutdown on second signal
                     process.stderr.write('\n');
                     printInfo('Force shutdown requested.');
                     void shutdown(true);
                 } else {
                     void shutdown(false);
                 }
-            });
-            process.on('SIGTERM', () => void shutdown(false));
+            };
+
+            process.on('SIGINT', onSignal);
+            process.on('SIGTERM', onSignal);
         });
 
         return EXIT_CODES.SUCCESS;

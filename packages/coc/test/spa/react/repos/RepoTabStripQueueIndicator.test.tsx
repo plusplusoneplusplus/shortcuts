@@ -29,6 +29,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
+    isContainerMode: () => false,
+    getRawApiBase: () => 'http://localhost:4000/api',
+    getHostname: () => 'localhost',
+    isServersEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
