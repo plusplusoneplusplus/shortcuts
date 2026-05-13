@@ -7,7 +7,6 @@
  */
 
 import * as http from 'http';
-import * as fs from 'fs';
 import * as path from 'path';
 import { URL } from 'url';
 import type { ResolvedContainerConfig } from '../config';
@@ -22,68 +21,33 @@ export interface ContainerServer {
     close(): void;
 }
 
-// ── CoC SPA bundle helpers ──────────────────────────────
+// ── CoC SPA HTML reuse ──────────────────────────────────
 
 /**
- * Resolve the path to CoC's compiled SPA client bundles.
- * In the monorepo, npm workspaces symlink `@plusplusoneplusplus/coc`
- * so `require.resolve` lands in the real package directory.
+ * Import CoC's generateDashboardHtml from its compiled dist so the
+ * container always serves the exact same HTML/config as CoC itself,
+ * just with `containerMode: true`.
  */
-function getCocSpaDistDir(): string {
+function getCocHtmlTemplate(): { generateDashboardHtml: (opts?: Record<string, unknown>) => string } {
     const cocPkg = require.resolve('@plusplusoneplusplus/coc/package.json');
-    return path.join(path.dirname(cocPkg), 'dist', 'server', 'spa', 'client', 'dist');
+    const templatePath = path.join(path.dirname(cocPkg), 'dist', 'server', 'spa', 'html-template.js');
+    return require(templatePath);
 }
 
 let cachedHtml: string | null = null;
 
 function generateContainerHtml(): string {
     if (cachedHtml) return cachedHtml;
-
-    const distDir = getCocSpaDistDir();
-    let css = '';
-    let js = '';
-    try { css = fs.readFileSync(path.join(distDir, 'bundle.css'), 'utf-8'); } catch { /* bundle not built */ }
-    try { js = fs.readFileSync(path.join(distDir, 'bundle.js'), 'utf-8'); } catch { /* bundle not built */ }
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CoCContainer</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"><\/script>
-    <style>
-${css}
-    </style>
-</head>
-<body>
-    <div id="app-root"></div>
-    <script>
-        window.__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            version: '',
-            terminalEnabled: false,
-            notesEnabled: false,
-            myWorkEnabled: false,
-            myLifeEnabled: false,
-            scratchpadEnabled: false,
-            scratchpadLayout: 'horizontal',
-            workflowsEnabled: false,
-            containerMode: true
-        };
-    </script>
-    <script>
-${js}
-    </script>
-</body>
-</html>`;
-
-    cachedHtml = html;
-    return html;
+    const { generateDashboardHtml } = getCocHtmlTemplate();
+    cachedHtml = generateDashboardHtml({
+        title: 'CoCContainer',
+        containerMode: true,
+        // Container doesn't run terminal/notes/wiki locally — agents provide those
+        terminalEnabled: false,
+        notesEnabled: false,
+        workflowsEnabled: false,
+    });
+    return cachedHtml;
 }
 
 // ── Server factory ──────────────────────────────────────

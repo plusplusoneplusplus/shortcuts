@@ -135,6 +135,7 @@ describe('CoCContainer Server Integration', () => {
         const res = await httpRequest(containerUrl + '/');
         expect(res.status).toBe(200);
         expect(res.body).toContain('CoCContainer');
+        expect(res.body).toContain('containerMode: true');
     });
 
     it('should return empty agents list initially', async () => {
