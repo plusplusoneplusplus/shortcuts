@@ -256,12 +256,27 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     );
     const orderedRepos = useMemo(() => resolveRepoTabOrder(repos, repoTabOrder), [repos, repoTabOrder]);
     const rawGroups = useMemo<RepoGroup[]>(() => {
-        if (isContainerMode()) return groupReposByAgent(repos, {});
+        if (isContainerMode()) {
+            const repoGroups = groupReposByAgent(repos, {});
+            // Ensure agents with 0 repos still appear as empty pills
+            const seen = new Set(repoGroups.map(g => g.normalizedUrl));
+            for (const agent of containerAgentCtx.agents) {
+                if (!seen.has(agent.id)) {
+                    repoGroups.push({
+                        normalizedUrl: agent.id,
+                        label: agent.name || agent.address,
+                        repos: [],
+                        expanded: true,
+                    });
+                }
+            }
+            return repoGroups;
+        }
         if (hasCustomRepoOrder) {
             return [{ normalizedUrl: null, label: 'Repositories', repos: orderedRepos, expanded: true }];
         }
         return groupReposByRemote(repos, {});
-    }, [hasCustomRepoOrder, orderedRepos, repos]);
+    }, [hasCustomRepoOrder, orderedRepos, repos, containerAgentCtx.agents]);
     const groups = useMemo(
         () => isContainerMode() ? rawGroups : hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
         [groupOrder, hasCustomRepoOrder, rawGroups],
