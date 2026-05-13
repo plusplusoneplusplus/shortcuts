@@ -51,8 +51,8 @@ export interface CreateNoteNodeResponse {
 export interface RenameNoteNodeResponse {
   oldPath: string;
   newPath: string;
-  /** Task IDs of chats whose payload notePath was rewritten by the cascade. */
-  affectedTaskIds?: string[];
+  /** Number of per-note chat binding rows moved by the cascade. */
+  bindingsMoved?: number;
 }
 
 export interface NoteChatBinding {

@@ -13,13 +13,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { getRepoDataPath } from '../paths';
 import { readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
+import { NoteChatBindingStore } from './note-chat-binding-store';
 
 // ============================================================================
 // Helpers
@@ -105,6 +106,25 @@ export function registerNotesWriteRoutes(
     store: ProcessStore,
     dataDir: string,
 ): void {
+    // Resolve the per-note chat binding store once. Bindings live in the
+    // shared `processes.db`, so the SQLite-backed process store exposes the
+    // database handle we need. With other backends (or in tests without a
+    // SQLite store) we leave the cascade disabled — rename/delete still
+    // succeed for the filesystem operation; only the binding row is not
+    // touched.
+    let bindingStore: NoteChatBindingStore | null = null;
+    if (store instanceof SqliteProcessStore) {
+        try {
+            bindingStore = new NoteChatBindingStore(store.getDatabase());
+        } catch {
+            bindingStore = null;
+        }
+    }
+
+    /** Forward-slash normalize a relative-to-notes path. */
+    function relNotePath(notesRoot: string, abs: string): string {
+        return path.relative(notesRoot, abs).split(path.sep).join('/');
+    }
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/notes/page — Create page/section/notebook
@@ -306,7 +326,25 @@ export function registerNotesWriteRoutes(
                     await removeFromOrder(oldParentDir, path.basename(resolvedOld));
                 }
 
-                sendJSON(res, 200, { oldPath, newPath });
+                // Cascade: move per-note chat binding rows. Determine file vs
+                // directory by inspecting the renamed entry.
+                let bindingsMoved = 0;
+                if (bindingStore) {
+                    const oldRel = relNotePath(notesRoot, resolvedOld);
+                    const newRel = relNotePath(notesRoot, resolvedNew);
+                    try {
+                        const renamedStat = await fs.promises.stat(resolvedNew);
+                        if (renamedStat.isDirectory()) {
+                            bindingsMoved = bindingStore.renamePrefix(ws.id, oldRel, newRel);
+                        } else {
+                            bindingsMoved = bindingStore.renamePath(ws.id, oldRel, newRel);
+                        }
+                    } catch {
+                        // Renamed entry no longer reachable (race?). Skip cascade.
+                    }
+                }
+
+                sendJSON(res, 200, { oldPath, newPath, bindingsMoved });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to rename: ' + (err.message || 'Unknown error'));
             }
@@ -362,6 +400,17 @@ export function registerNotesWriteRoutes(
                 }
                 // Remove the deleted entry from its parent's .order.json
                 await removeFromOrder(path.dirname(resolved), path.basename(resolved));
+
+                // Cascade: drop per-note chat binding rows for the deleted
+                // entry. Chats themselves remain in the global Chat list.
+                if (bindingStore) {
+                    const rel = relNotePath(notesRoot, resolved);
+                    if (stat.isDirectory()) {
+                        bindingStore.deletePrefix(ws.id, rel);
+                    } else {
+                        bindingStore.unbind(ws.id, rel);
+                    }
+                }
                 res.writeHead(204);
                 res.end();
             } catch (err: any) {
