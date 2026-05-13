@@ -70,7 +70,7 @@ export class SSERelay extends EventEmitter {
 
         req.on('error', () => {
             this.connections.delete(agentId);
-            this.emit('error', agentId);
+            this.emit('connection-error', agentId);
         });
     }
 
