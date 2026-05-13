@@ -52,6 +52,7 @@ import { isRalphEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
+import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -305,6 +306,73 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         planPatchedRef.current = false;
         setInvalidScratchpadPaths(new Set());
     }, [taskId]);
+
+    // ── Resolve existing implementation runs from task metadata ─────────
+    const rawImplementations: ImplementationRecord[] = useMemo(() => {
+        const impls = task?.metadata?.implementations;
+        return Array.isArray(impls) ? impls : [];
+    }, [task?.metadata?.implementations]);
+
+    // Resolve live status for each recorded implementation from the queue context
+    const existingRuns: ExistingRun[] = useMemo(() => {
+        if (rawImplementations.length === 0) return [];
+        const allTasks = [...queueState.queued, ...queueState.running, ...queueState.history];
+        return rawImplementations.map((rec) => {
+            const bareId = rec.processId.startsWith('queue_') ? rec.processId.slice(6) : rec.processId;
+            const found = allTasks.find((t: any) => t.id === bareId || t.id === rec.processId);
+            let liveStatus: RunLiveStatus = 'unknown';
+            if (found) {
+                const s = found.status as string;
+                if (s === 'queued' || s === 'running' || s === 'completed' || s === 'failed' || s === 'cancelled') {
+                    liveStatus = s;
+                }
+            }
+            return { ...rec, liveStatus };
+        });
+    }, [rawImplementations, queueState.queued, queueState.running, queueState.history]);
+
+    // One-time fetch for implementation runs not found in queue state
+    const implFetchedRef = useRef(false);
+    useEffect(() => {
+        if (implFetchedRef.current || rawImplementations.length === 0) return;
+        const unknown = existingRuns.filter(r => r.liveStatus === 'unknown');
+        if (unknown.length === 0) return;
+        implFetchedRef.current = true;
+        Promise.all(
+            unknown.map(async (run) => {
+                try {
+                    const data = await getSpaCocClient().processes.get(run.processId);
+                    return { processId: run.processId, status: data?.process?.status as RunLiveStatus ?? 'unknown' };
+                } catch {
+                    return { processId: run.processId, status: 'unknown' as RunLiveStatus };
+                }
+            }),
+        ).then((results) => {
+            const statusMap = Object.fromEntries(results.map(r => [r.processId, r.status]));
+            setTask((prev: any) => {
+                if (!prev) return prev;
+                const impls = Array.isArray(prev.metadata?.implementations) ? prev.metadata.implementations : [];
+                const updatedImpls = impls.map((rec: ImplementationRecord) => ({
+                    ...rec,
+                    _resolvedStatus: statusMap[rec.processId] ?? undefined,
+                }));
+                return { ...prev, metadata: { ...prev.metadata, implementations: updatedImpls, _implStatusMap: statusMap } };
+            });
+        });
+    }, [rawImplementations, existingRuns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Merge fetched statuses into existingRuns
+    const resolvedRuns: ExistingRun[] = useMemo(() => {
+        const statusMap = task?.metadata?._implStatusMap as Record<string, RunLiveStatus> | undefined;
+        if (!statusMap) return existingRuns;
+        return existingRuns.map(run => ({
+            ...run,
+            liveStatus: run.liveStatus === 'unknown' ? (statusMap[run.processId] ?? 'unknown') : run.liveStatus,
+        }));
+    }, [existingRuns, task?.metadata?._implStatusMap]);
+
+    // Reset impl-fetch guard when switching tasks
+    useEffect(() => { implFetchedRef.current = false; }, [taskId]);
 
     // Reactively sync title from process-updated WS events (via AppContext)
     useEffect(() => {
@@ -1025,6 +1093,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             planFilePath={effectivePlanPath}
                             workspaceId={workspaceId}
                             workingDirectory={workingDirectory}
+                            existingRuns={resolvedRuns}
+                            sourceProcessId={processId ?? undefined}
+                            sourceMetadata={task?.metadata}
+                            onViewRun={(runProcessId) => {
+                                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: runProcessId, repoId: workspaceId });
+                            }}
+                            onRecordPersisted={(record) => {
+                                setTask((prev: any) => {
+                                    if (!prev) return prev;
+                                    const prevImpls = Array.isArray(prev.metadata?.implementations)
+                                        ? prev.metadata.implementations
+                                        : [];
+                                    return {
+                                        ...prev,
+                                        metadata: {
+                                            ...prev.metadata,
+                                            implementations: [...prevImpls, record],
+                                        },
+                                    };
+                                });
+                            }}
                             onImplemented={(newProcessId) => {
                                 queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
                             }}

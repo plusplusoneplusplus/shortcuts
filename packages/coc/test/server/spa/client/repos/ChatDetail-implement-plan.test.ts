@@ -5,7 +5,7 @@
  *
  * We verify that ChatDetail.tsx imports ImplementPlanCard and gates its render
  * on the three required conditions: terminal status, plan mode, and a known
- * plan file path.
+ * plan file path. Also verifies that the new existing-runs props are wired.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -21,6 +21,10 @@ const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
 describe('ChatDetail implement-plan handoff', () => {
     it('imports ImplementPlanCard from the chat features folder', () => {
         expect(source).toContain("import { ImplementPlanCard } from './ImplementPlanCard'");
+    });
+
+    it('imports ImplementationRecord and ExistingRun types', () => {
+        expect(source).toContain("import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard'");
     });
 
     it('gates rendering on terminal status, plan mode, and a known plan path', () => {
@@ -44,5 +48,33 @@ describe('ChatDetail implement-plan handoff', () => {
         const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
         expect(cardBlock).not.toBeNull();
         expect(cardBlock![0]).toContain("queueDispatch({ type: 'SELECT_QUEUE_TASK'");
+    });
+
+    it('passes existingRuns (resolvedRuns) and onViewRun to the card', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        const block = cardBlock![0];
+        expect(block).toContain('existingRuns={resolvedRuns}');
+        expect(block).toContain('onViewRun=');
+    });
+
+    it('passes sourceProcessId and sourceMetadata for persistence', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        const block = cardBlock![0];
+        expect(block).toContain('sourceProcessId=');
+        expect(block).toContain('sourceMetadata=');
+    });
+
+    it('passes onRecordPersisted for optimistic local update', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        expect(cardBlock![0]).toContain('onRecordPersisted=');
+    });
+
+    it('resolves implementation runs from task metadata', () => {
+        expect(source).toContain('rawImplementations');
+        expect(source).toContain('task?.metadata?.implementations');
+        expect(source).toContain('resolvedRuns');
     });
 });
