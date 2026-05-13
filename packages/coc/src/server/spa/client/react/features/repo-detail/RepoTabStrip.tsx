@@ -736,7 +736,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     return (
         <div
-            className={'flex items-center' + (isContainerMode() ? ' flex-1 overflow-hidden' : ' flex-1 min-w-0')}
+            className={isContainerMode()
+                ? 'flex items-center flex-1 min-w-0 overflow-x-auto'
+                : 'flex items-center flex-1 min-w-0'
+            }
+            style={isContainerMode() ? { scrollbarWidth: 'none' } : undefined}
             data-testid="repo-tab-strip"
         >
         {/* Hidden measurement container — lightweight spans to measure natural widths (non-container mode only) */}
@@ -759,10 +763,10 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         <div
             ref={tabContainerRef}
             className={
-                'flex items-center gap-0.5 flex-1 min-w-0 px-1' +
-                (isContainerMode() ? ' overflow-x-auto scrollbar-none' : '')
+                isContainerMode()
+                    ? 'flex items-center gap-0.5 px-1'
+                    : 'flex items-center gap-0.5 flex-1 min-w-0 px-1'
             }
-            style={isContainerMode() ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : undefined}
             data-testid="repo-tab-visible-container"
         >
             {isContainerMode() ? (
@@ -873,7 +877,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     title={`${hiddenAgentGroups.length} more agents`}
                     onClick={() => setAgentOverflowOpen(prev => !prev)}
                 >
-                    ···
+                    +{hiddenAgentGroups.length}
                 </button>
                 {agentOverflowOpen && (
                     <div
@@ -914,7 +918,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                     </button>
                                     {openAgentDropdown === agentId && group.repos.length > 0 && (
                                         <div
-                                            className="absolute left-full top-0 ml-1 z-[10000] min-w-[180px] max-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1"
+                                            className="absolute right-full top-0 mr-1 z-[10000] min-w-[180px] max-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1"
                                             onMouseEnter={() => setOpenAgentDropdown(agentId)}
                                             onMouseLeave={() => setOpenAgentDropdown(null)}
                                         >
