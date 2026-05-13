@@ -27,7 +27,6 @@ export interface ClientTokenUsage {
     currentTokens?: number;
 }
 
-<<<<<<< HEAD
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models' | 'servers';
 
 export const REPO_SUB_TAB_VALUES = [
@@ -42,11 +41,6 @@ export const SETTINGS_SECTION_VALUES = [
     'instructions', 'memory', 'run-script-template', 'tasks', 'notes',
 ] as const;
 export type SettingsSection = typeof SETTINGS_SECTION_VALUES[number];
-=======
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models' | 'agents';
-export type RepoSubTab = 'chats' | 'work-items' | 'settings' | 'workflows' | 'templates' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'workflow' | 'explorer' | 'activity' | 'pull-requests' | 'terminal' | 'notes';
-export type SettingsSection = 'info' | 'preferences' | 'mcp' | 'skills' | 'llm-tools' | 'instructions' | 'memory' | 'run-script-template' | 'tasks';
->>>>>>> 69577e26c (feat(coccontainer): agent management page with rename support)
 /** @deprecated Use SettingsSection */
 export type CopilotSection = SettingsSection;
 
@@ -57,7 +51,7 @@ export const WIKI_ADMIN_TAB_VALUES = ['generate', 'seeds', 'config', 'delete'] a
 export type WikiAdminTab = typeof WIKI_ADMIN_TAB_VALUES[number];
 export type MemorySubTab = 'bounded' | 'config' | 'files';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
-export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database';
+export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database' | 'agents';
 
 /** UI layout mode: 'classic' shows unified Activity tab; 'dev-workflow' shows Chats + Work Items + Tasks */
 export type UiLayoutMode = 'classic' | 'dev-workflow';
