@@ -1,0 +1,168 @@
+/**
+ * Tests for loop infrastructure builder.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { initializeDatabase } from '@plusplusoneplusplus/forge';
+import { LoopStore } from '../../src/server/loops/loop-store';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createTestDb(): Database.Database {
+    const db = new Database(':memory:');
+    initializeDatabase(db);
+    return db;
+}
+
+function createTestLoopStore(db: Database.Database): LoopStore {
+    return new LoopStore(db);
+}
+
+function makeLoop(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+        id: `loop_${Math.random().toString(36).slice(2, 8)}`,
+        processId: 'proc_test1',
+        description: 'Test loop',
+        intervalMs: 60000,
+        status: 'active' as const,
+        createdAt: new Date().toISOString(),
+        lastTickAt: null,
+        nextTickAt: new Date(Date.now() + 60000).toISOString(),
+        tickCount: 0,
+        consecutiveFailures: 0,
+        expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        pausedReason: null,
+        prompt: 'Check status',
+        model: null,
+        ...overrides,
+    };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('Loop Infrastructure', () => {
+    let db: Database.Database;
+    let loopStore: LoopStore;
+
+    beforeEach(() => {
+        db = createTestDb();
+        loopStore = createTestLoopStore(db);
+    });
+
+    afterEach(() => {
+        try { db.close(); } catch { /* ok */ }
+    });
+
+    describe('createLoopInfrastructure pattern', () => {
+        it('LoopStore persists and retrieves loops via shared DB', () => {
+            const loop = makeLoop();
+            loopStore.insert(loop);
+
+            const retrieved = loopStore.getById(loop.id);
+            expect(retrieved).toBeDefined();
+            expect(retrieved!.id).toBe(loop.id);
+            expect(retrieved!.processId).toBe('proc_test1');
+            expect(retrieved!.status).toBe('active');
+        });
+
+        it('getActive returns only active loops', () => {
+            const active = makeLoop({ id: 'loop_active' });
+            const paused = makeLoop({ id: 'loop_paused', status: 'paused' });
+            loopStore.insert(active);
+            loopStore.insert(paused);
+
+            const activeLoops = loopStore.getActive();
+            expect(activeLoops).toHaveLength(1);
+            expect(activeLoops[0].id).toBe('loop_active');
+        });
+
+        it('pauseAllActive marks all active loops as paused with reason', () => {
+            loopStore.insert(makeLoop({ id: 'loop_1' }));
+            loopStore.insert(makeLoop({ id: 'loop_2' }));
+            loopStore.insert(makeLoop({ id: 'loop_3', status: 'paused' }));
+
+            const count = loopStore.pauseAllActive('server-restart');
+            expect(count).toBe(2);
+
+            const all = loopStore.getAll();
+            const paused = all.filter(l => l.status === 'paused');
+            expect(paused).toHaveLength(3);
+
+            const serverRestartPaused = paused.filter(l => l.pausedReason === 'server-restart');
+            expect(serverRestartPaused).toHaveLength(2);
+        });
+    });
+
+    describe('server shutdown flow', () => {
+        it('shutdownAll pauses active loops and cancels timers', async () => {
+            // Import directly for unit-level testing
+            const { LoopExecutor } = await import('../../src/server/loops/loop-executor');
+            const { ScheduleTimerRegistry } = await import('../../src/server/schedule/schedule-timer-registry');
+
+            const timerRegistry = new ScheduleTimerRegistry();
+            const loop1 = makeLoop({ id: 'loop_shutdown_1' });
+            const loop2 = makeLoop({ id: 'loop_shutdown_2' });
+            loopStore.insert(loop1);
+            loopStore.insert(loop2);
+
+            const executor = new LoopExecutor({
+                store: loopStore,
+                processStore: {
+                    getProcess: vi.fn().mockResolvedValue({ status: 'completed' }),
+                } as any,
+                timerRegistry,
+                queueManager: null,
+                emit: vi.fn(),
+                resolveWorkspaceId: vi.fn().mockResolvedValue('ws-test'),
+            });
+
+            // Arm timers first
+            executor.armAll();
+            expect(timerRegistry.has('loop_shutdown_1')).toBe(true);
+            expect(timerRegistry.has('loop_shutdown_2')).toBe(true);
+
+            // Shutdown
+            executor.shutdownAll('server-restart');
+
+            // Timers should be cancelled
+            expect(timerRegistry.has('loop_shutdown_1')).toBe(false);
+            expect(timerRegistry.has('loop_shutdown_2')).toBe(false);
+
+            // Loops should be paused
+            const l1 = loopStore.getById('loop_shutdown_1');
+            const l2 = loopStore.getById('loop_shutdown_2');
+            expect(l1!.status).toBe('paused');
+            expect(l1!.pausedReason).toBe('server-restart');
+            expect(l2!.status).toBe('paused');
+            expect(l2!.pausedReason).toBe('server-restart');
+        });
+    });
+
+    describe('close handler integration', () => {
+        it('loops are NOT auto-resumed on restart (left paused)', () => {
+            // Simulate a loop that was paused by a previous server shutdown
+            const pausedLoop = makeLoop({
+                id: 'loop_was_paused',
+                status: 'paused',
+                pausedReason: 'server-restart',
+                nextTickAt: null,
+            });
+            loopStore.insert(pausedLoop);
+
+            // On startup, getActive() should NOT return paused loops
+            const active = loopStore.getActive();
+            expect(active).toHaveLength(0);
+
+            // The paused loop should still be there
+            const all = loopStore.getAll();
+            expect(all).toHaveLength(1);
+            expect(all[0].status).toBe('paused');
+            expect(all[0].pausedReason).toBe('server-restart');
+        });
+    });
+});

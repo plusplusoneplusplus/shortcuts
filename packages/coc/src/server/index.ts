@@ -30,6 +30,7 @@ import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-
 import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
+import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
@@ -73,6 +74,8 @@ interface CloseHandlerDeps {
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
     autoPromoteScheduler?: { dispose(): void };
+    loopExecutor?: { shutdownAll(reason: string): void };
+    loopInfraDispose?: () => void;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -92,6 +95,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
+        deps.loopExecutor?.shutdownAll('server-restart');
+        deps.loopInfraDispose?.();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
         deps.autoPromoteScheduler?.dispose();
@@ -177,6 +182,33 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
+
+    // Loop infrastructure — separate from schedules
+    const loopInfra = createLoopInfrastructure({
+        dataDir,
+        queueFacade,
+        store,
+        emit: (event) => {
+            try {
+                wsServer?.broadcastProcessEvent({
+                    type: event.type,
+                    loopId: event.loop.id,
+                    processId: event.loop.processId,
+                    status: event.loop.status,
+                    timestamp: Date.now(),
+                });
+            } catch { /* best-effort broadcast */ }
+        },
+        resolveWorkspaceId: async (processId: string) => {
+            try {
+                const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
+                const task = bridge.getTask(taskId);
+                return task?.repoId;
+            } catch {
+                return undefined;
+            }
+        },
+    });
 
     // Cleanup infra is created after the store is ready
     let cleanupInfra: ReturnType<typeof createCleanupInfrastructure>;
@@ -264,6 +296,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedConfig,
         remoteServerStore,
         remoteServerConnector,
+        loopStore: loopInfra.loopStore,
+        loopExecutor: loopInfra.loopExecutor,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -325,6 +359,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
             autoPromoteScheduler,
+            loopExecutor: loopInfra.loopExecutor,
+            loopInfraDispose: loopInfra.dispose,
             activeSockets, server,
         }),
     };
@@ -397,6 +433,12 @@ export { ScheduleYamlPersistence } from './schedule/schedule-yaml-persistence';
 export { SqliteScheduleRunPersistence } from './schedule/sqlite-schedule-run-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule/schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule/schedule-manager';
+
+// Loops
+export { LoopStore, LoopExecutor, registerLoopRoutes } from './loops';
+export type { LoopEntry, LoopStatus, LoopChangeEvent, LoopEventEmit, LoopExecutorDeps, LoopRouteContext } from './loops';
+export { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
+export type { LoopInfrastructure, LoopInfrastructureOptions } from './infrastructure/loop-infrastructure';
 
 // Tasks
 export type { ChatPayload } from './tasks/task-types';
