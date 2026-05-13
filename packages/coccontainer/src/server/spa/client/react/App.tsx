@@ -1,16 +1,20 @@
 /**
  * CoCContainer SPA Root Component
  *
- * Mirrors CoC's layout exactly:
- *   Top bar   — hamburger, brand, repo tabs (from all agents), "+" menu, action buttons
- *   Left      — process sidebar (activity list, filters)
+ * Mirrors CoC's layout:
+ *   Top bar   — hamburger, brand, repo tabs grouped by agent, "+" menu, settings
+ *   Sub-tab   — Activity | Git | Schedules | Explorer | Pull Requests | Plans | Settings
+ *   Left      — process sidebar (queue tasks)
  *   Main      — conversation / empty state
  *
- * Key difference from CoC: repos come from multiple agents.
- * "+" menu has "Add agent" option. "Add Repo" dialog includes agent selector.
+ * Key differences from CoC:
+ *   - Repos come from multiple agents
+ *   - Chat creation goes through the queue system: POST /api/agent/:agentId/queue/tasks
+ *   - Process listing comes from queue: GET /api/agent/:agentId/queue/tasks
+ *   - Follow-ups via: POST /api/agent/:agentId/processes/:processId/message
  */
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { TopBar } from './components/TopBar';
 import { ProcessSidebar } from './components/ProcessSidebar';
 import { ProcessDetail } from './components/ProcessDetail';
@@ -18,7 +22,7 @@ import { AddAgentDialog } from './components/AddAgentDialog';
 import { AddRepoDialog } from './components/AddRepoDialog';
 import { AgentSettings } from './components/AgentSettings';
 import { useAgents, fetchApi } from './hooks/useAgents';
-import type { RemoteWorkspace, RemoteProcess } from './types';
+import type { RemoteWorkspace, QueueTask } from './types';
 
 /** A workspace tagged with which agent it belongs to */
 export interface TaggedWorkspace extends RemoteWorkspace {
@@ -28,17 +32,21 @@ export interface TaggedWorkspace extends RemoteWorkspace {
 
 type DialogState = 'none' | 'add-agent' | 'add-repo' | 'settings';
 
+const SUB_TABS = ['Activity', 'Git', 'Schedules', 'Explorer', 'Pull Requests', 'Plans', 'Settings'] as const;
+type SubTab = typeof SUB_TABS[number];
+
 export function App() {
     const { agents, loading: agentsLoading, refresh: refreshAgents, addAgent, removeAgent } = useAgents();
     const [workspaces, setWorkspaces] = useState<TaggedWorkspace[]>([]);
     const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
-    const [processes, setProcesses] = useState<RemoteProcess[]>([]);
-    const [processesLoading, setProcessesLoading] = useState(false);
+    const [tasks, setTasks] = useState<QueueTask[]>([]);
+    const [tasksLoading, setTasksLoading] = useState(false);
     const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<SubTab>('Activity');
     const [dialog, setDialog] = useState<DialogState>('none');
     const [streamEvents, setStreamEvents] = useState<any[]>([]);
 
-    // SSE connection
+    // SSE connection for container-level events
     useEffect(() => {
         const es = new EventSource('/api/events');
         es.onmessage = (e) => {
@@ -83,61 +91,91 @@ export function App() {
         [workspaces, selectedWsId]
     );
 
-    // Fetch processes when workspace changes
+    // Fetch queue tasks when workspace changes
     useEffect(() => {
         if (!selectedWs) {
-            setProcesses([]);
+            setTasks([]);
             setSelectedProcessId(null);
             return;
         }
         let cancelled = false;
-        setProcessesLoading(true);
-        fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`)
+        setTasksLoading(true);
+        fetchApi(`/api/agent/${selectedWs.agentId}/queue/tasks`)
             .then(data => {
                 if (cancelled) return;
-                const list: RemoteProcess[] = Array.isArray(data) ? data : (data?.processes ?? []);
-                setProcesses(list);
-                setProcessesLoading(false);
+                const allTasks: QueueTask[] = Array.isArray(data) ? data : (data?.tasks ?? []);
+                // Filter tasks by workspaceId on client side
+                const filtered = allTasks.filter(t =>
+                    t.payload?.workspaceId === selectedWs.id
+                );
+                setTasks(filtered);
+                setTasksLoading(false);
             })
             .catch(() => {
-                if (!cancelled) { setProcesses([]); setProcessesLoading(false); }
+                if (!cancelled) { setTasks([]); setTasksLoading(false); }
             });
         return () => { cancelled = true; };
     }, [selectedWs?.id, selectedWs?.agentId]);
 
-    // Refresh processes on stream events
+    // Refresh tasks on relevant stream events
     useEffect(() => {
         if (!selectedWs) return;
         const last = streamEvents[streamEvents.length - 1];
         if (!last || last.agentId !== selectedWs.agentId) return;
-        if (last.type === 'process-updated' || last.type === 'process-completed' || last.type === 'process-created') {
-            fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`)
-                .then(data => setProcesses(Array.isArray(data) ? data : (data?.processes ?? [])))
+        if (last.type === 'process-updated' || last.type === 'process-completed' ||
+            last.type === 'process-created' || last.type === 'task-updated' ||
+            last.type === 'task-completed' || last.type === 'task-created') {
+            fetchApi(`/api/agent/${selectedWs.agentId}/queue/tasks`)
+                .then(data => {
+                    const allTasks: QueueTask[] = Array.isArray(data) ? data : (data?.tasks ?? []);
+                    setTasks(allTasks.filter(t => t.payload?.workspaceId === selectedWs.id));
+                })
                 .catch(() => {});
         }
     }, [streamEvents, selectedWs]);
 
+    // Reset tab when workspace changes
+    useEffect(() => {
+        setActiveTab('Activity');
+    }, [selectedWsId]);
+
+    // Create chat via queue system
     const handleNewChat = useCallback(async (message: string) => {
         if (!selectedWs) return;
         try {
-            const result = await fetchApi(`/api/agent/${selectedWs.agentId}/processes`, {
+            const result = await fetchApi(`/api/agent/${selectedWs.agentId}/queue/tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: message, workspaceId: selectedWs.id }),
+                body: JSON.stringify({
+                    type: 'chat',
+                    priority: 'normal',
+                    payload: {
+                        kind: 'chat',
+                        mode: 'ask',
+                        prompt: message,
+                        workspaceId: selectedWs.id,
+                    },
+                }),
             });
-            const data = await fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`);
-            setProcesses(Array.isArray(data) ? data : (data?.processes ?? []));
-            if (result?.id) setSelectedProcessId(result.id);
-        } catch (err) { console.error('Failed to create process:', err); }
+            // Refresh task list
+            const data = await fetchApi(`/api/agent/${selectedWs.agentId}/queue/tasks`);
+            const allTasks: QueueTask[] = Array.isArray(data) ? data : (data?.tasks ?? []);
+            setTasks(allTasks.filter(t => t.payload?.workspaceId === selectedWs.id));
+            // Select the new process
+            const task = result?.task || result;
+            if (task?.processId) setSelectedProcessId(task.processId);
+            else if (task?.id) setSelectedProcessId(task.id);
+        } catch (err) { console.error('Failed to create chat:', err); }
     }, [selectedWs]);
 
+    // Follow-up messages
     const handleSendFollowUp = useCallback(async (processId: string, message: string) => {
         if (!selectedWs) return;
         try {
             await fetchApi(`/api/agent/${selectedWs.agentId}/processes/${processId}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message }),
+                body: JSON.stringify({ content: message }),
             });
         } catch (err) { console.error('Failed to send follow-up:', err); }
     }, [selectedWs]);
@@ -179,7 +217,15 @@ export function App() {
                         <span className="sub-tab-dot" style={{ background: selectedWs.color || '#848484' }} />
                         {selectedWs.name || selectedWs.rootPath || selectedWs.id}
                     </span>
-                    <span className="sub-tab active">Activity</span>
+                    {SUB_TABS.map(tab => (
+                        <button
+                            key={tab}
+                            className={`sub-tab ${activeTab === tab ? 'active' : ''}`}
+                            onClick={() => setActiveTab(tab)}
+                        >
+                            {tab}
+                        </button>
+                    ))}
                     <span className="sub-tab-agent-badge">{selectedWs.agentName}</span>
                 </div>
             )}
@@ -203,12 +249,12 @@ export function App() {
                         <h2>Start a new conversation</h2>
                         <p>Select a repo from the top bar to begin, or add a new agent.</p>
                     </div>
-                ) : (
+                ) : activeTab === 'Activity' ? (
                     <>
-                        {/* Left sidebar — process list */}
+                        {/* Left sidebar — task list */}
                         <ProcessSidebar
-                            processes={processes}
-                            loading={processesLoading}
+                            tasks={tasks}
+                            loading={tasksLoading}
                             selectedProcessId={selectedProcessId}
                             onSelect={setSelectedProcessId}
                             onNewChat={handleNewChat}
@@ -232,6 +278,20 @@ export function App() {
                             )}
                         </main>
                     </>
+                ) : (
+                    /* Placeholder for non-Activity tabs */
+                    <div className="empty-body">
+                        <div className="empty-chat-icon">🚧</div>
+                        <h2>{activeTab}</h2>
+                        <p>Coming soon — view on agent directly</p>
+                        {selectedWs.agentAddress && (
+                            <p className="placeholder-agent-link">
+                                Agent: <a href={selectedWs.agentAddress} target="_blank" rel="noopener noreferrer">
+                                    {selectedWs.agentAddress}
+                                </a>
+                            </p>
+                        )}
+                    </div>
                 )}
             </div>
 

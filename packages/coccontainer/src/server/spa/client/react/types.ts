@@ -55,6 +55,7 @@ export interface Turn {
 
 export interface ToolCall {
     name?: string;
+    callId?: string;
     type?: string;
     arguments?: string;
     result?: unknown;
@@ -70,4 +71,24 @@ export interface SSEEnvelope {
 export interface Selection {
     agentId: string;
     workspaceId: string;
+}
+
+/** Queue task from CoC's queue system */
+export interface QueueTask {
+    id: string;
+    processId?: string;
+    type: string;
+    status: string; // queued, running, completed, failed, cancelled
+    payload: {
+        kind?: string;
+        prompt?: string;
+        workspaceId?: string;
+        mode?: string;
+    };
+    displayName?: string;
+    createdAt: string;
+    startedAt?: string;
+    completedAt?: string;
+    result?: unknown;
+    error?: string;
 }

@@ -1,50 +1,50 @@
 /**
- * ProcessSidebar — left sidebar showing the process list.
+ * ProcessSidebar — left sidebar showing queue tasks.
  *
  * Mirrors CoC's ProcessesSidebar layout:
  *   - Stats bar (running / queued / completed counts)
  *   - New chat input
- *   - Process list grouped by status
+ *   - Task list grouped by status (Running → Queued → Recent)
  */
 
 import React, { useState, useMemo } from 'react';
-import type { RemoteProcess } from '../types';
+import type { QueueTask } from '../types';
 
 interface ProcessSidebarProps {
-    processes: RemoteProcess[];
+    tasks: QueueTask[];
     loading: boolean;
     selectedProcessId: string | null;
     onSelect: (processId: string) => void;
     onNewChat: (message: string) => void;
 }
 
-export function ProcessSidebar({ processes, loading, selectedProcessId, onSelect, onNewChat }: ProcessSidebarProps) {
+export function ProcessSidebar({ tasks, loading, selectedProcessId, onSelect, onNewChat }: ProcessSidebarProps) {
     const [chatInput, setChatInput] = useState('');
     const [filter, setFilter] = useState('');
 
     const grouped = useMemo(() => {
-        const running: RemoteProcess[] = [];
-        const queued: RemoteProcess[] = [];
-        const completed: RemoteProcess[] = [];
-        const failed: RemoteProcess[] = [];
+        const running: QueueTask[] = [];
+        const queued: QueueTask[] = [];
+        const completed: QueueTask[] = [];
+        const failed: QueueTask[] = [];
 
         const lowerFilter = filter.toLowerCase();
         const filtered = filter
-            ? processes.filter(p =>
-                (p.title || p.prompt || p.id).toLowerCase().includes(lowerFilter))
-            : processes;
+            ? tasks.filter(t =>
+                taskTitle(t).toLowerCase().includes(lowerFilter))
+            : tasks;
 
-        for (const p of filtered) {
-            switch (p.status) {
-                case 'running': running.push(p); break;
-                case 'queued': queued.push(p); break;
+        for (const t of filtered) {
+            switch (t.status) {
+                case 'running': running.push(t); break;
+                case 'queued': queued.push(t); break;
                 case 'failed':
-                case 'cancelled': failed.push(p); break;
-                default: completed.push(p);
+                case 'cancelled': failed.push(t); break;
+                default: completed.push(t);
             }
         }
         return { running, queued, completed, failed };
-    }, [processes, filter]);
+    }, [tasks, filter]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,7 +54,7 @@ export function ProcessSidebar({ processes, loading, selectedProcessId, onSelect
         setChatInput('');
     };
 
-    const total = processes.length;
+    const total = tasks.length;
     const runCount = grouped.running.length;
     const queueCount = grouped.queued.length;
 
@@ -95,17 +95,17 @@ export function ProcessSidebar({ processes, loading, selectedProcessId, onSelect
             <input
                 type="text"
                 className="sidebar-filter"
-                placeholder="Filter processes…"
+                placeholder="Filter tasks…"
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
             />
 
-            {/* Process list */}
+            {/* Task list */}
             <div className="process-list-scroll">
                 {loading && <div className="sidebar-loading-text">Loading…</div>}
 
-                {!loading && processes.length === 0 && (
-                    <div className="sidebar-empty-text">No processes yet. Start a new chat above.</div>
+                {!loading && tasks.length === 0 && (
+                    <div className="sidebar-empty-text">No tasks yet. Start a new chat above.</div>
                 )}
 
                 {renderGroup('Running', grouped.running, '⏳', selectedProcessId, onSelect)}
@@ -117,9 +117,18 @@ export function ProcessSidebar({ processes, loading, selectedProcessId, onSelect
     );
 }
 
+function taskTitle(t: QueueTask): string {
+    if (t.displayName) return t.displayName;
+    if (t.payload?.prompt) {
+        const prompt = t.payload.prompt;
+        return prompt.length > 80 ? prompt.slice(0, 77) + '…' : prompt;
+    }
+    return t.processId || t.id;
+}
+
 function renderGroup(
     label: string,
-    items: RemoteProcess[],
+    items: QueueTask[],
     icon: string,
     selectedId: string | null,
     onSelect: (id: string) => void,
@@ -130,22 +139,29 @@ function renderGroup(
             <div className="process-group-header">
                 {icon} {label} <span className="process-group-count">({items.length})</span>
             </div>
-            {items.map(p => (
-                <div
-                    key={p.id}
-                    className={`process-card ${selectedId === p.id ? 'selected' : ''}`}
-                    onClick={() => onSelect(p.id)}
-                >
-                    <div className="process-card-title">
-                        {p.title || p.prompt || p.id}
+            {items.map(t => {
+                const selectId = t.processId || t.id;
+                return (
+                    <div
+                        key={t.id}
+                        className={`process-card ${selectedId === selectId ? 'selected' : ''}`}
+                        onClick={() => onSelect(selectId)}
+                    >
+                        <div className="process-card-title">
+                            {taskTitle(t)}
+                        </div>
+                        <div className="process-card-meta">
+                            <span className={`task-status-badge task-status-${t.status}`}>{t.status}</span>
+                            {' '}
+                            {t.completedAt
+                                ? timeAgo(t.completedAt)
+                                : t.startedAt
+                                    ? timeAgo(t.startedAt)
+                                    : t.createdAt ? timeAgo(t.createdAt) : ''}
+                        </div>
                     </div>
-                    <div className="process-card-meta">
-                        {p.updatedAt
-                            ? timeAgo(p.updatedAt)
-                            : p.createdAt ? timeAgo(p.createdAt) : ''}
-                    </div>
-                </div>
-            ))}
+                );
+            })}
         </div>
     );
 }

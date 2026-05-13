@@ -1,11 +1,12 @@
 /**
  * ProcessDetail — main content area showing a process conversation.
  *
- * Mirrors CoC's process detail view:
- *   - Header with title, status badge, timestamps
- *   - Conversation turns (user / assistant) with tool calls
- *   - Live streaming indicator
- *   - Follow-up input for active processes
+ * Connects to the CoC agent's SSE stream for real-time updates:
+ *   1. Fetches initial process data via GET /api/agent/:agentId/processes/:processId
+ *   2. Connects to SSE stream via GET /api/agent/:agentId/processes/:processId/stream
+ *   3. Handles conversation-snapshot, chunk, tool-start, tool-complete, status, done events
+ *   4. Renders turns with user/assistant messages, tool calls, streaming indicator
+ *   5. Follow-up input sends POST /api/agent/:agentId/processes/:processId/message
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -19,25 +20,39 @@ interface ProcessDetailProps {
     onSendFollowUp: (processId: string, message: string) => void;
 }
 
+interface ActiveToolCall {
+    callId: string;
+    name: string;
+    result?: string;
+}
+
 export function ProcessDetail({ agentId, processId, streamEvents, onSendFollowUp }: ProcessDetailProps) {
     const [process, setProcess] = useState<ProcessDetailType | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [streamingContent, setStreamingContent] = useState('');
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [activeTools, setActiveTools] = useState<ActiveToolCall[]>([]);
+    const [processStatus, setProcessStatus] = useState<string>('unknown');
     const [followUp, setFollowUp] = useState('');
     const conversationEndRef = useRef<HTMLDivElement>(null);
+    const eventSourceRef = useRef<EventSource | null>(null);
 
-    // Fetch process detail
+    // Fetch initial process detail
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
         setError(null);
         setStreamingContent('');
+        setActiveTools([]);
+        setIsStreaming(false);
 
         fetchApi(`/api/agent/${agentId}/processes/${processId}`)
             .then(data => {
                 if (cancelled) return;
-                setProcess(normalize(data));
+                const normalized = normalize(data);
+                setProcess(normalized);
+                setProcessStatus(normalized.status || 'unknown');
                 setLoading(false);
             })
             .catch(err => {
@@ -49,24 +64,102 @@ export function ProcessDetail({ agentId, processId, streamEvents, onSendFollowUp
         return () => { cancelled = true; };
     }, [agentId, processId]);
 
-    // Handle streaming events
+    // Connect to SSE stream
     useEffect(() => {
-        const last = streamEvents[streamEvents.length - 1];
-        if (!last || last.agentId !== agentId) return;
-
-        if (last.processId === processId || last.id === processId) {
-            if (last.type === 'streaming-content' || last.type === 'content-delta') {
-                setStreamingContent(prev => prev + (last.chunk || last.delta || ''));
-            }
-            if (last.type === 'process-updated' || last.type === 'process-completed' || last.type === 'turn-complete') {
-                // Re-fetch to get latest turns
-                setStreamingContent('');
-                fetchApi(`/api/agent/${agentId}/processes/${processId}`)
-                    .then(data => setProcess(normalize(data)))
-                    .catch(() => {});
-            }
+        // Close previous connection
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
         }
-    }, [streamEvents, agentId, processId]);
+
+        const url = `/api/agent/${agentId}/processes/${processId}/stream`;
+        const es = new EventSource(url);
+        eventSourceRef.current = es;
+
+        es.addEventListener('conversation-snapshot', (e: MessageEvent) => {
+            try {
+                const turns: Turn[] = JSON.parse(e.data);
+                setProcess(prev => prev ? { ...prev, turns: normalizeTurns(turns) } : prev);
+                setStreamingContent('');
+                setActiveTools([]);
+            } catch { /* ignore parse errors */ }
+        });
+
+        es.addEventListener('chunk', (e: MessageEvent) => {
+            try {
+                const data = JSON.parse(e.data);
+                setStreamingContent(prev => prev + (data.content || ''));
+                setIsStreaming(true);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('tool-start', (e: MessageEvent) => {
+            try {
+                const data = JSON.parse(e.data);
+                setActiveTools(prev => [...prev, { callId: data.callId, name: data.name }]);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('tool-complete', (e: MessageEvent) => {
+            try {
+                const data = JSON.parse(e.data);
+                setActiveTools(prev =>
+                    prev.map(t => t.callId === data.callId ? { ...t, result: data.result } : t)
+                );
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('status', (e: MessageEvent) => {
+            try {
+                const data = JSON.parse(e.data);
+                setProcessStatus(data.status);
+                setProcess(prev => prev ? { ...prev, status: data.status } : prev);
+                if (data.status === 'completed' || data.status === 'failed') {
+                    setIsStreaming(false);
+                    // Re-fetch to get final conversation state
+                    fetchApi(`/api/agent/${agentId}/processes/${processId}`)
+                        .then(d => setProcess(normalize(d)))
+                        .catch(() => {});
+                }
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('done', () => {
+            setIsStreaming(false);
+            setStreamingContent('');
+            // Re-fetch final state
+            fetchApi(`/api/agent/${agentId}/processes/${processId}`)
+                .then(d => setProcess(normalize(d)))
+                .catch(() => {});
+        });
+
+        // Also handle generic message events (fallback)
+        es.onmessage = (e: MessageEvent) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.type === 'conversation-snapshot' && Array.isArray(data.turns)) {
+                    setProcess(prev => prev ? { ...prev, turns: normalizeTurns(data.turns) } : prev);
+                    setStreamingContent('');
+                } else if (data.type === 'chunk' && data.content) {
+                    setStreamingContent(prev => prev + data.content);
+                    setIsStreaming(true);
+                } else if (data.type === 'status' && data.status) {
+                    setProcessStatus(data.status);
+                    setProcess(prev => prev ? { ...prev, status: data.status } : prev);
+                }
+            } catch { /* ignore */ }
+        };
+
+        es.onerror = () => {
+            // SSE will auto-reconnect; just mark as not streaming
+            setIsStreaming(false);
+        };
+
+        return () => {
+            es.close();
+            eventSourceRef.current = null;
+        };
+    }, [agentId, processId]);
 
     // Auto-scroll on new content
     useEffect(() => {
@@ -91,15 +184,15 @@ export function ProcessDetail({ agentId, processId, streamEvents, onSendFollowUp
         return <div className="detail-placeholder">Process not found.</div>;
     }
 
-    const isActive = process.status === 'running' || process.status === 'queued';
+    const isActive = processStatus === 'running' || processStatus === 'queued';
 
     return (
         <div className="process-detail">
             {/* Header */}
             <div className="detail-header">
                 <h2 className="detail-title">{process.title || process.prompt || process.id}</h2>
-                <span className={`status-badge status-${process.status || 'unknown'}`}>
-                    {process.status || 'unknown'}
+                <span className={`status-badge status-${processStatus}`}>
+                    {processStatus}
                 </span>
                 {process.createdAt && (
                     <span className="detail-time">{new Date(process.createdAt).toLocaleString()}</span>
@@ -129,21 +222,36 @@ export function ProcessDetail({ agentId, processId, streamEvents, onSendFollowUp
                     </div>
                 ))}
 
+                {/* Active tool calls */}
+                {activeTools.length > 0 && (
+                    <div className="turn turn-assistant">
+                        <div className="tool-calls">
+                            {activeTools.map(tc => (
+                                <ToolCallView key={tc.callId} toolCall={{
+                                    name: tc.name,
+                                    callId: tc.callId,
+                                    result: tc.result,
+                                }} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Streaming indicator */}
-                {streamingContent && (
+                {(streamingContent || isStreaming) && (
                     <div className="turn turn-assistant streaming">
                         <div className="turn-header">
                             <span className="turn-role-label">🤖 Assistant</span>
                             <span className="streaming-indicator">● streaming</span>
                         </div>
-                        <div className="turn-body">{streamingContent}</div>
+                        <div className="turn-body">{streamingContent || '…'}</div>
                     </div>
                 )}
 
                 <div ref={conversationEndRef} />
             </div>
 
-            {/* Follow-up input */}
+            {/* Follow-up input — always shown for active processes */}
             {isActive && (
                 <form className="followup-form" onSubmit={handleFollowUp}>
                     <input
@@ -171,6 +279,7 @@ function ToolCallView({ toolCall }: { toolCall: ToolCall }) {
         <div className="tool-call">
             <div className="tool-call-header" onClick={() => hasResult && setExpanded(!expanded)}>
                 <span className="tool-call-name">🔧 {name}</span>
+                {!hasResult && <span className="tool-call-spinner">⟳</span>}
                 {hasResult && (
                     <span className="tool-call-toggle">{expanded ? '▾' : '▸'}</span>
                 )}
@@ -186,6 +295,22 @@ function ToolCallView({ toolCall }: { toolCall: ToolCall }) {
     );
 }
 
+function normalizeTurns(turns: any[]): Turn[] {
+    if (!Array.isArray(turns)) return [];
+    return turns.map((t: any) => ({
+        role: t.role || (t.type === 'user' ? 'user' : 'assistant'),
+        content: t.content || t.message || '',
+        timestamp: t.timestamp,
+        toolCalls: (t.toolCalls || t.tool_calls || []).map((tc: any) => ({
+            name: tc.name || tc.type,
+            callId: tc.callId || tc.call_id,
+            type: tc.type,
+            arguments: tc.arguments,
+            result: tc.result,
+        })),
+    }));
+}
+
 function normalize(data: any): ProcessDetailType {
     return {
         id: data.id || '',
@@ -195,18 +320,6 @@ function normalize(data: any): ProcessDetailType {
         createdAt: data.createdAt || data.created_at,
         updatedAt: data.updatedAt || data.updated_at,
         workspaceId: data.workspaceId || data.workspace_id,
-        turns: Array.isArray(data.turns)
-            ? data.turns.map((t: any) => ({
-                role: t.role || (t.type === 'user' ? 'user' : 'assistant'),
-                content: t.content || t.message || '',
-                timestamp: t.timestamp,
-                toolCalls: (t.toolCalls || t.tool_calls || []).map((tc: any) => ({
-                    name: tc.name || tc.type,
-                    type: tc.type,
-                    arguments: tc.arguments,
-                    result: tc.result,
-                })),
-            }))
-            : [],
+        turns: normalizeTurns(data.turns),
     };
 }
