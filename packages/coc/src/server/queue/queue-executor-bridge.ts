@@ -2,7 +2,7 @@ import type { ChatPayload, ChatMode } from '../tasks/task-types';
 import { isChatPayload, isBackgroundReviewPayload, isMemoryPromotePayload, TaskDefs, getTaskDef } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
-import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, getLogger, LogCategory, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from '../executors/base-executor';
@@ -30,7 +30,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
@@ -279,7 +279,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
-                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl),
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
@@ -357,8 +357,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return resolved;
     }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource);
     }
 
     /**

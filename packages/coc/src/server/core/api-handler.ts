@@ -16,7 +16,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
-import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
 import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGit } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
@@ -39,7 +39,7 @@ import { GIT_MAX_BUFFER } from '../routes/api-shared';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;

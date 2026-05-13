@@ -752,4 +752,101 @@ describe('FollowUpExecutor', () => {
         expect(final?.metadata?.previousMode).toBe('ask');
         expect(final?.metadata?.systemPrompt).toBeDefined();
     });
+
+    // -------------------------------------------------------------------------
+    // turnSource — loop/wakeup follow-up user turn creation
+    // -------------------------------------------------------------------------
+
+    it('creates user turn with turnSource for loop-triggered follow-ups', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Loop check result',
+            sessionId: 'sess-loop',
+        });
+        const proc = makeProcess({
+            id: 'proc-loop',
+            conversationTurns: [
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        const turnSource = { source: 'loop' as const, loopId: 'loop_abc' };
+        await executor.executeFollowUp('proc-loop', 'Check status', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
+
+        const updated = store.processes.get('proc-loop');
+        const turns = updated?.conversationTurns ?? [];
+        // Should have: original user + assistant + loop user turn + loop assistant turn
+        expect(turns.length).toBeGreaterThanOrEqual(4);
+        const loopUserTurn = turns.find(t => t.role === 'user' && t.turnSource?.source === 'loop');
+        expect(loopUserTurn).toBeDefined();
+        expect(loopUserTurn!.content).toBe('Check status');
+        expect(loopUserTurn!.turnSource).toEqual({ source: 'loop', loopId: 'loop_abc' });
+    });
+
+    it('tags assistant turn with turnSource for loop follow-ups', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Loop response',
+            sessionId: 'sess-loop-assist',
+        });
+        const proc = makeProcess({ id: 'proc-loop-assist' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        const turnSource = { source: 'loop' as const, loopId: 'loop_xyz' };
+        await executor.executeFollowUp('proc-loop-assist', 'Check', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
+
+        const updated = store.processes.get('proc-loop-assist');
+        const turns = updated?.conversationTurns ?? [];
+        const assistantTurns = turns.filter(t => t.role === 'assistant' && t.turnSource?.source === 'loop');
+        expect(assistantTurns.length).toBeGreaterThanOrEqual(1);
+        expect(assistantTurns[assistantTurns.length - 1].turnSource).toEqual({ source: 'loop', loopId: 'loop_xyz' });
+    });
+
+    it('does not create extra user turn for normal follow-ups (no turnSource)', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Normal reply',
+            sessionId: 'sess-normal',
+        });
+        const proc = makeProcess({
+            id: 'proc-normal',
+            conversationTurns: [
+                { role: 'user', content: 'q', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'a', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'follow-up', timestamp: new Date(), turnIndex: 2, timeline: [] },
+            ],
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        // No turnSource — normal follow-up
+        await executor.executeFollowUp('proc-normal', 'follow-up');
+
+        const updated = store.processes.get('proc-normal');
+        const turns = updated?.conversationTurns ?? [];
+        // Should have original 3 + 1 assistant = 4 (no extra user turn created)
+        expect(turns).toHaveLength(4);
+        expect(turns[3].role).toBe('assistant');
+        expect(turns[3].turnSource).toBeUndefined();
+    });
+
+    it('tags error turn with turnSource for wakeup follow-ups', async () => {
+        sdkMocks.mockSendMessage.mockRejectedValue(new Error('AI failed'));
+        const proc = makeProcess({ id: 'proc-wakeup-err' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        const turnSource = { source: 'wakeup' as const, wakeupId: 'w_123' };
+        await executor.executeFollowUp('proc-wakeup-err', 'Wake up', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
+
+        const updated = store.processes.get('proc-wakeup-err');
+        const turns = updated?.conversationTurns ?? [];
+        const errorTurn = turns.find(t => t.role === 'assistant' && t.content.startsWith('Error:'));
+        expect(errorTurn).toBeDefined();
+        expect(errorTurn!.turnSource).toEqual({ source: 'wakeup', wakeupId: 'w_123' });
+    });
 });

@@ -20,6 +20,7 @@ import type {
     ProcessStore,
     QueuedTask,
     SystemMessageConfig,
+    TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode } from '../tasks/task-types';
 import {
@@ -130,6 +131,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         images?: string[],
         selectedSkillNames?: string[],
         model?: string,
+        turnSource?: TurnSource,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -235,6 +237,23 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // User turn is already persisted by the POST /message route handler
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
+            //
+            // Exception: loop/wakeup-triggered follow-ups have no POST /message
+            // route — the user turn must be created here.
+            if (turnSource) {
+                await this.store.appendConversationTurn(
+                    processId,
+                    (idx) => ({
+                        role: 'user' as const,
+                        content: message,
+                        timestamp: new Date(),
+                        turnIndex: idx,
+                        timeline: [],
+                        turnSource,
+                    }),
+                    { additionalUpdates: { status: 'running' } },
+                );
+            }
 
             const toolBundle = buildChatToolBundle({
                 dataDir: this.dataDir,
@@ -363,6 +382,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     timeline: followUpTimeline,
                     suggestions: pendingSuggestions,
                     tokenUsage: result.tokenUsage,
+                    ...(turnSource ? { turnSource } : {}),
                 }),
                 {
                     filterStreaming: true,
@@ -453,6 +473,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     timestamp: new Date(),
                     turnIndex,
                     timeline: [],
+                    ...(turnSource ? { turnSource } : {}),
                 }),
                 {
                     filterStreaming: true,

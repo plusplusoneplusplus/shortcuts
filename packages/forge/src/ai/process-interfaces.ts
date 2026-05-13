@@ -169,8 +169,11 @@ export interface ConversationTurn {
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
     /** Source metadata for automated follow-up turns (loops/wakeups). */
-    turnSource?: { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
+    turnSource?: TurnSource;
 }
+
+/** Metadata identifying the automated source of a conversation turn. */
+export type TurnSource = { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
 
 /**
  * Serialized format of ConversationTurn for persistence (Date -> ISO string)
@@ -205,7 +208,7 @@ export interface SerializedConversationTurn {
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
     /** Source metadata for automated follow-up turns (loops/wakeups). */
-    turnSource?: { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
+    turnSource?: TurnSource;
 }
 
 /**

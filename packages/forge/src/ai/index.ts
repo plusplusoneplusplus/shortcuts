@@ -155,6 +155,7 @@ export {
     TrackedProcessFields,
     ConversationTurn,
     SerializedConversationTurn,
+    TurnSource,
     TimelineItem,
     SerializedTimelineItem,
     ToolCallStatus,

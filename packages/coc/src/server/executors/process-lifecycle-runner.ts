@@ -28,6 +28,7 @@ import type {
     ProcessStore,
     QueuedTask,
     TaskExecutionResult,
+    TurnSource,
 } from '@plusplusoneplusplus/forge';
 import {
     getLogger,
@@ -121,6 +122,7 @@ export interface LifecycleRunnerOptions {
         images?: string[],
         selectedSkillNames?: string[],
         model?: string,
+        turnSource?: TurnSource,
     ) => Promise<void>;
     /** Dispatch execution by task type (chat/workflow/script). */
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
@@ -190,6 +192,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             task.processId = followUpPayload.processId;
             const imageTempDir = followUpPayload.imageTempDir;
             await rehydrateImagesIfNeeded(task.payload as any);
+            // Extract turnSource from payload context for loop/wakeup-triggered follow-ups
+            const ctx = followUpPayload.context as Record<string, unknown> | undefined;
+            let turnSource: TurnSource | undefined;
+            if (ctx?.source === 'loop' || ctx?.source === 'wakeup') {
+                turnSource = {
+                    source: ctx.source as 'loop' | 'wakeup',
+                    ...(typeof ctx.loopId === 'string' ? { loopId: ctx.loopId } : {}),
+                    ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
+                };
+            }
             try {
                 await opts.executeFollowUpFn(
                     followUpPayload.processId!,
@@ -200,6 +212,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     (followUpPayload as any).images,
                     followUpPayload.context?.skills,
                     (followUpPayload as any).model,
+                    turnSource,
                 );
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
