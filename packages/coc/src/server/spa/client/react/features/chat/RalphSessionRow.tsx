@@ -29,6 +29,8 @@ interface RalphSessionRowProps {
      * session. Optional so older callers compile unchanged.
      */
     onSelectSession?: (sessionId: string) => void;
+    /** Right-click handler for the group row (context menu). */
+    onContextMenu?: (e: React.MouseEvent) => void;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
      *  object so we can request the muted, group-child variant. */
     renderTaskCard: (
@@ -59,6 +61,7 @@ export function RalphSessionRow({
     unseenProcessIds: _unseenProcessIds,
     onSelectTask: _onSelectTask,
     onSelectSession,
+    onContextMenu,
     renderTaskCard,
 }: RalphSessionRowProps) {
     const [expanded, setExpanded] = useState(session.hasUnseen);
@@ -111,6 +114,7 @@ export function RalphSessionRow({
                     if (onSelectSession) onSelectSession(session.sessionId);
                     else toggle();
                 }}
+                onContextMenu={onContextMenu}
                 data-testid="ralph-session-body"
                 data-session-phase={session.phase}
                 data-expanded={expanded ? 'true' : 'false'}

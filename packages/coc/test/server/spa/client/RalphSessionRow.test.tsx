@@ -265,4 +265,17 @@ describe('RalphSessionRow', () => {
         expect(header.className).toContain('grid-cols-[10px_36px_minmax(0,1fr)_auto]');
         expect(header.className).toContain('h-[26px]');
     });
+
+    it('fires onContextMenu when the body is right-clicked', () => {
+        const onContextMenu = vi.fn();
+        render(<RalphSessionRow session={makeSession()} {...defaultProps} onContextMenu={onContextMenu} />);
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'));
+        expect(onContextMenu).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire onContextMenu when no handler is provided', () => {
+        render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
+        // Should not throw
+        fireEvent.contextMenu(screen.getByTestId('ralph-session-body'));
+    });
 });

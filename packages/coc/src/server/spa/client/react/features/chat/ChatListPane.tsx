@@ -414,7 +414,7 @@ export function ChatListPane({
     }, [onSearchQueryChange]);
 
     const isServerSearchActive = searchResults != null;
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[] } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[]; ralphSession?: RalphSession } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
@@ -1076,6 +1076,23 @@ export function ChatListPane({
                         closeContextMenu();
                     },
                 },
+                ...(contextMenu.ralphSession ? [{
+                    label: 'Copy session info',
+                    icon: '📎',
+                    onClick: () => {
+                        const rs = contextMenu.ralphSession!;
+                        const lines = [
+                            `Ralph session ${rs.sessionId}`,
+                            `Phase: ${rs.phase}`,
+                            `Iterations: ${rs.iterations.length}`,
+                            `Updated: ${rs.latestTimestamp ? new Date(rs.latestTimestamp).toISOString() : 'unknown'}`,
+                            'Processes:',
+                            ...ids.map(id => `  - ${id}`),
+                        ];
+                        void copyToClipboard(lines.join('\n'));
+                        closeContextMenu();
+                    },
+                }] : []),
                 // Rename available only for single-item selection
                 ...(ids.length === 1 ? [{
                     label: 'Rename', icon: '✏️', onClick: () => {
@@ -1638,6 +1655,15 @@ export function ChatListPane({
                                                             unseenProcessIds={unseenProcessIds}
                                                             onSelectTask={onSelectTask}
                                                             onSelectSession={onSelectRalphSession}
+                                                            onContextMenu={e => {
+                                                                if (e.shiftKey) return;
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                const rs = entry as RalphSession;
+                                                                const ids = [rs.grillingProcess?.id, ...rs.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+                                                                setSelectedHistoryIds(new Set(ids));
+                                                                setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: rs });
+                                                            }}
                                                             renderTaskCard={(task) => renderChatListRow(task, chatGroups!.flatVisible, { isGroupChild: true })}
                                                         />
                                                     ) : (
@@ -2218,6 +2244,14 @@ export function ChatListPane({
                                                     unseenProcessIds={unseenProcessIds}
                                                     onSelectTask={onSelectTask}
                                                     onSelectSession={onSelectRalphSession}
+                                                    onContextMenu={e => {
+                                                        if (e.shiftKey) return;
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
+                                                        setSelectedHistoryIds(new Set(ids));
+                                                        setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids, ralphSession: session });
+                                                    }}
                                                     renderTaskCard={(task) => renderChatListRow(task, filteredUnpinned, { taskStatus: 'completed', isGroupChild: true })}
                                                 />
                                             );

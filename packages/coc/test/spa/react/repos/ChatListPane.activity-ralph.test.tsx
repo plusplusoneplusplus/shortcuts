@@ -25,8 +25,22 @@ vi.mock('react-dom', async (importOriginal) => {
     return { ...actual, createPortal: (children: React.ReactNode) => children };
 });
 
+let lastContextMenuProps: any = null;
 vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', () => ({
-    ContextMenu: () => null,
+    ContextMenu: (props: any) => {
+        lastContextMenuProps = props;
+        return (
+            <div data-testid="context-menu">
+                {props.items?.map((item: any, i: number) =>
+                    item.separator ? null : (
+                        <button key={i} data-testid={`ctx-item-${item.label?.replace(/\s+/g, '-')}`} onClick={item.onClick}>
+                            {item.label}
+                        </button>
+                    )
+                )}
+            </div>
+        );
+    },
 }));
 
 let mockPinnedChatIds = new Set<string>();
@@ -323,5 +337,102 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         const pos = ralphRow!.compareDocumentPosition(freshRow!);
         // eslint-disable-next-line no-bitwise
         expect(pos & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Context-menu tests for RalphSessionRow in the Activity tab
+// ════════════════════════════════════════════════════════════════════════
+
+describe('ChatListPane Activity tab — ralph session context menu', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        lastContextMenuProps = null;
+        mockPinnedChatIds = new Set();
+        mockArchivedChatIds = new Set();
+        mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false, historyGrouping: true };
+        try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
+    });
+
+    function fixtureWithGrilling() {
+        const grilling = {
+            id: 'grilling-1',
+            type: 'chat',
+            status: 'completed',
+            displayName: 'Ralph grilling',
+            completedAt: new Date(NOW - 3000).toISOString(),
+            lastActivityAt: NOW - 3000,
+            payload: {
+                mode: 'ask',
+                context: { ralph: { sessionId: SESSION_ID, phase: 'grilling' } },
+            },
+        };
+        const iterations = [1, 2].map(makeRalphIteration);
+        return [grilling, ...iterations];
+    }
+
+    it('right-clicking a RalphSessionRow opens the context menu', () => {
+        renderActivity(fixtureWithGrilling());
+
+        const body = screen.getByTestId('ralph-session-body');
+        fireEvent.contextMenu(body, { clientX: 100, clientY: 200 });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    it('shift+right-click does NOT open the context menu (native browser fallback)', () => {
+        renderActivity(fixtureWithGrilling());
+
+        const body = screen.getByTestId('ralph-session-body');
+        fireEvent.contextMenu(body, { clientX: 100, clientY: 200, shiftKey: true });
+
+        // Context menu should not appear because the ContextMenu is only
+        // rendered when contextMenu state is set. With shiftKey, the handler
+        // returns early and never calls setContextMenu.
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('context menu includes bulk operation items and "Copy session info"', () => {
+        renderActivity(fixtureWithGrilling());
+
+        const body = screen.getByTestId('ralph-session-body');
+        fireEvent.contextMenu(body, { clientX: 100, clientY: 200 });
+
+        const menu = screen.getByTestId('context-menu');
+        expect(menu.textContent).toContain('Copy session info');
+        expect(menu.textContent).toContain('Archive');
+        expect(menu.textContent).toContain('Delete');
+    });
+
+    it('"Copy session info" writes the expected clipboard payload', async () => {
+        const { copyToClipboard: mockCopy } = await import('../../../../src/server/spa/client/react/utils/format') as any;
+
+        renderActivity(fixtureWithGrilling());
+
+        const body = screen.getByTestId('ralph-session-body');
+        fireEvent.contextMenu(body, { clientX: 100, clientY: 200 });
+
+        const copyBtn = screen.getByTestId('ctx-item-Copy-session-info');
+        fireEvent.click(copyBtn);
+
+        expect(mockCopy).toHaveBeenCalledTimes(1);
+        const text = mockCopy.mock.calls[0][0] as string;
+        expect(text).toContain(`Ralph session ${SESSION_ID}`);
+        expect(text).toContain('Iterations: 2');
+        expect(text).toContain('Processes:');
+        expect(text).toContain('grilling-1');
+        expect(text).toContain(`ralph-${SESSION_ID}-1`);
+        expect(text).toContain(`ralph-${SESSION_ID}-2`);
+    });
+
+    it('context menu bulk ids include grilling process and all iterations', () => {
+        renderActivity(fixtureWithGrilling());
+
+        const body = screen.getByTestId('ralph-session-body');
+        fireEvent.contextMenu(body, { clientX: 100, clientY: 200 });
+
+        const menu = screen.getByTestId('context-menu');
+        // The header should show "3 tasks selected" (1 grilling + 2 iterations).
+        expect(menu.textContent).toContain('3 tasks selected');
     });
 });
