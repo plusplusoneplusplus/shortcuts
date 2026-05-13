@@ -18,6 +18,7 @@ import {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
+    stripJsoncComments,
 } from '../../src/copilot-sdk-wrapper/trusted-folder';
 
 /**
@@ -245,6 +246,100 @@ describe('Trusted Folder Management', () => {
             }), 'utf-8');
 
             expect(isFolderTrusted(p('/any/path'))).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // stripJsoncComments
+    // ========================================================================
+
+    describe('stripJsoncComments', () => {
+        it('should strip leading // comment lines', () => {
+            const input = '// comment\n{"key": "value"}';
+            expect(JSON.parse(stripJsoncComments(input))).toEqual({ key: 'value' });
+        });
+
+        it('should strip multiple comment lines', () => {
+            const input = '// line 1\n// line 2\n{"a": 1}';
+            expect(JSON.parse(stripJsoncComments(input))).toEqual({ a: 1 });
+        });
+
+        it('should handle indented comment lines', () => {
+            const input = '  // indented comment\n{"a": 1}';
+            expect(JSON.parse(stripJsoncComments(input))).toEqual({ a: 1 });
+        });
+
+        it('should not strip // inside JSON string values', () => {
+            const input = '{"url": "https://github.com"}';
+            expect(JSON.parse(stripJsoncComments(input))).toEqual({ url: 'https://github.com' });
+        });
+
+        it('should return input unchanged when there are no comments', () => {
+            const input = '{"key": "value"}';
+            expect(stripJsoncComments(input)).toBe(input);
+        });
+
+        it('should handle empty string', () => {
+            expect(stripJsoncComments('')).toBe('');
+        });
+
+        it('should handle Copilot CLI v1.0.40+ real-world format', () => {
+            const input = [
+                '// User settings belong in settings.json.',
+                '// This file is managed automatically.',
+                '{',
+                '  "trustedFolders": ["/home/user/repo"],',
+                '  "copilotTokens": {"https://github.com:user": "gho_abc123"},',
+                '  "loggedInUsers": [{"host": "https://github.com", "login": "user"}]',
+                '}',
+            ].join('\n');
+            const parsed = JSON.parse(stripJsoncComments(input));
+            expect(parsed.trustedFolders).toEqual(['/home/user/repo']);
+            expect(parsed.copilotTokens).toEqual({ 'https://github.com:user': 'gho_abc123' });
+            expect(parsed.loggedInUsers).toHaveLength(1);
+        });
+    });
+
+    // ========================================================================
+    // JSONC config file handling (auth data preservation)
+    // ========================================================================
+
+    describe('JSONC config file handling', () => {
+        it('should preserve auth data when adding trusted folder to JSONC config', () => {
+            fs.mkdirSync(configDir, { recursive: true });
+            const jsoncContent = [
+                '// User settings belong in settings.json.',
+                '// This file is managed automatically.',
+                '{',
+                '  "trustedFolders": ["/home/user/repo"],',
+                '  "copilotTokens": {"https://github.com:user": "gho_token"},',
+                '  "loggedInUsers": [{"host": "https://github.com", "login": "user"}]',
+                '}',
+            ].join('\n');
+            fs.writeFileSync(configPath, jsoncContent, 'utf-8');
+
+            ensureFolderTrusted(p('/new/project'));
+
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            // Auth fields must be preserved
+            expect(config.copilotTokens).toEqual({ 'https://github.com:user': 'gho_token' });
+            expect(config.loggedInUsers).toEqual([{ host: 'https://github.com', login: 'user' }]);
+            expect(config.trustedFolders).toEqual(['/home/user/repo']);
+            // New trusted folder added
+            expect(config.trusted_folders).toContain(p('/new/project'));
+        });
+
+        it('should read trusted folders correctly from JSONC config via isFolderTrusted', () => {
+            fs.mkdirSync(configDir, { recursive: true });
+            const jsoncContent = [
+                '// comment',
+                '{',
+                '  "trusted_folders": ["/home/user/repo"]',
+                '}',
+            ].join('\n');
+            fs.writeFileSync(configPath, jsoncContent, 'utf-8');
+
+            expect(isFolderTrusted('/home/user/repo')).toBe(true);
         });
     });
 });

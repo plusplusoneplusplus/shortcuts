@@ -134,4 +134,5 @@ export {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
+    stripJsoncComments,
 } from './trusted-folder';
