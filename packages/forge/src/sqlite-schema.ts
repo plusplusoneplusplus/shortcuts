@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * Read the current schema version from the database.
@@ -177,6 +177,26 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
+        // ── loops ────────────────────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS loops (
+                id                    TEXT PRIMARY KEY,
+                process_id            TEXT NOT NULL,
+                description           TEXT NOT NULL DEFAULT '',
+                interval_ms           INTEGER NOT NULL,
+                status                TEXT NOT NULL DEFAULT 'active',
+                created_at            TEXT NOT NULL,
+                last_tick_at          TEXT,
+                next_tick_at          TEXT,
+                tick_count            INTEGER NOT NULL DEFAULT 0,
+                consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+                expires_at            TEXT NOT NULL,
+                paused_reason         TEXT,
+                prompt                TEXT NOT NULL DEFAULT '',
+                model                 TEXT
+            )
+        `);
+
         // ── FTS5 full-text search index on conversation_turns ────────
         db.exec(`
             CREATE VIRTUAL TABLE IF NOT EXISTS conversation_search
@@ -255,6 +275,12 @@ export function initializeDatabase(db: Database.Database): void {
 
             CREATE INDEX IF NOT EXISTS idx_schedule_runs_status
                 ON schedule_runs(status);
+
+            CREATE INDEX IF NOT EXISTS idx_loops_process_id
+                ON loops(process_id);
+
+            CREATE INDEX IF NOT EXISTS idx_loops_status
+                ON loops(status);
         `);
 
         // ── commit_chat_bindings ─────────────────────────────────────
@@ -307,6 +333,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 12) {
             migrateV11toV12(db);
+        }
+        if (versionBefore < 13) {
+            migrateV12toV13(db);
         }
 
         // Stamp the schema version
@@ -444,4 +473,13 @@ function migrateV11toV12(db: Database.Database): void {
     if (!cols.some(c => c.name === 'mode')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN mode TEXT');
     }
+}
+
+/**
+ * V12 → V13: add `loops` table for the loop subsystem.
+ * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
+ * this migration is a no-op but keeps the version chain explicit.
+ */
+function migrateV12toV13(_db: Database.Database): void {
+    // Table already created by the idempotent DDL above.
 }

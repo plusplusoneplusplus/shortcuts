@@ -16,7 +16,7 @@ describe('sqlite-schema', () => {
         db.close();
     });
 
-    it('creates all 7 tables', () => {
+    it('creates all 8 tables', () => {
         initializeDatabase(db);
 
         const tables = db
@@ -31,6 +31,7 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('commit_chat_bindings');
+        expect(tables).toContain('loops');
     });
 
     it('creates all expected indexes', () => {
@@ -56,6 +57,8 @@ describe('sqlite-schema', () => {
             'idx_schedule_runs_schedule_id',
             'idx_schedule_runs_repo_id',
             'idx_schedule_runs_status',
+            'idx_loops_process_id',
+            'idx_loops_status',
             'idx_commit_chat_bindings_workspace',
         ];
 
@@ -91,7 +94,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(12);
+        expect(SCHEMA_VERSION).toBe(13);
     });
 
     it('creates queue pause timer columns', () => {
