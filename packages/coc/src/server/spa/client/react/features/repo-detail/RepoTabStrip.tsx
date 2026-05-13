@@ -16,7 +16,7 @@ import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { isContainerMode, getCurrentAgentId } from '../../utils/config';
+import { isContainerMode } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -326,7 +326,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
-    const { dispatch } = useApp();
+    const { state: appState, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     /** Pre-computed queue status for each repo. */
@@ -770,7 +770,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 visibleAgentGroups.map((group) => {
                     const agentId = group.normalizedUrl ?? 'unknown';
                     const isOpen = openAgentDropdown === agentId;
-                    const isActiveAgent = getCurrentAgentId() === agentId;
+                    const isActiveAgent = appState.currentAgentId === agentId;
                     const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                     const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                     return (
@@ -792,7 +792,12 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 onClick={() => {
                                     // If only one repo, select it directly
                                     if (group.repos.length === 1) {
+                                        const switchingAgent = appState.currentAgentId !== agentId;
+                                        dispatch({ type: 'SET_CURRENT_AGENT', agentId });
                                         onSelect(group.repos[0].workspace.id);
+                                        if (switchingAgent && group.repos[0].workspace.id === selectedRepoId) {
+                                            onRefresh();
+                                        }
                                     } else {
                                         setOpenAgentDropdown(isOpen ? null : agentId);
                                     }
@@ -824,7 +829,17 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
                                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
                                                 }
-                                                onClick={() => { onSelect(ws.id); setOpenAgentDropdown(null); }}
+                                                onClick={() => {
+                                                    // Switch to this agent before selecting the repo
+                                                    const switchingAgent = appState.currentAgentId !== agentId;
+                                                    dispatch({ type: 'SET_CURRENT_AGENT', agentId });
+                                                    onSelect(ws.id);
+                                                    setOpenAgentDropdown(null);
+                                                    // If same repo ID is already selected but agent changed, force data refresh
+                                                    if (switchingAgent && ws.id === selectedRepoId) {
+                                                        onRefresh();
+                                                    }
+                                                }}
                                             >
                                                 <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-repo-dot" />
                                                 <span className="truncate">{ws.name}</span>
@@ -886,7 +901,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         {hiddenAgentGroups.map(group => {
                             const agentId = group.normalizedUrl ?? 'unknown';
-                            const isActiveAgent = getCurrentAgentId() === agentId;
+                            const isActiveAgent = appState.currentAgentId === agentId;
                             const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                             const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                             return (
@@ -937,7 +952,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                                 ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
                                                                 : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
                                                         }
-                                                        onClick={() => { onSelect(ws.id); setOpenAgentDropdown(null); setAgentOverflowOpen(false); }}
+                                                        onClick={() => { const sw = appState.currentAgentId !== agentId; dispatch({ type: 'SET_CURRENT_AGENT', agentId }); onSelect(ws.id); setOpenAgentDropdown(null); setAgentOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
                                                     >
                                                         <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-overflow-repo-dot" />
                                                         <span className="truncate">{ws.name}</span>

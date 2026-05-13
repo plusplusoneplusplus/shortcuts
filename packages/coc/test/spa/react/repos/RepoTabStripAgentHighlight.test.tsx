@@ -7,14 +7,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { RepoTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: {}, dispatch: mockDispatch }),
+    useApp: () => ({ state: { currentAgentId: mockCurrentAgentId }, dispatch: mockDispatch }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
@@ -195,5 +195,76 @@ describe('RepoTabStrip agent pill highlight (container mode)', () => {
         // dev2 has the repo but is not current agent, dev4 is current but doesn't have the repo
         const highlightedPills = pills.filter(p => p.className.includes('bg-[#0078d4]'));
         expect(highlightedPills).toHaveLength(0);
+    });
+
+    it('dispatches SET_CURRENT_AGENT and calls onSelect when clicking repo in agent dropdown', async () => {
+        const repos = [
+            makeAgentRepo('ws-abc', 'Storage-XStore', 'agent-dev2', 'dev2'),
+            makeAgentRepo('ws-abc', 'Storage-XStore', 'agent-dev4', 'dev4'),
+        ];
+
+        // Currently on agent-dev2
+        mockCurrentAgentId = 'agent-dev2';
+        mockDispatch.mockReset();
+        const onSelect = vi.fn();
+        const onRefresh = vi.fn();
+
+        render(
+            <RepoTabStrip
+                repos={repos}
+                selectedRepoId="ws-abc"
+                onSelect={onSelect}
+                unseenCounts={{}}
+                onRefresh={onRefresh}
+            />
+        );
+
+        const pills = screen.getAllByTestId('agent-pill');
+        // Hover over dev4 pill to open dropdown
+        fireEvent.mouseEnter(pills[1]);
+
+        // Click the repo in dev4's dropdown
+        const repoButtons = screen.getAllByTestId('agent-repo-dot');
+        fireEvent.click(repoButtons[0].closest('button')!);
+
+        // Should have dispatched SET_CURRENT_AGENT with dev4's agent ID
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_CURRENT_AGENT', agentId: 'agent-dev4' });
+        // Should have called onSelect with the workspace id
+        expect(onSelect).toHaveBeenCalledWith('ws-abc');
+        // Since same repo was already selected but agent changed, should refresh
+        expect(onRefresh).toHaveBeenCalled();
+    });
+
+    it('does not call onRefresh when selecting a different repo on same agent', () => {
+        const repos = [
+            makeAgentRepo('ws-abc', 'Repo-A', 'agent-dev2', 'dev2'),
+            makeAgentRepo('ws-xyz', 'Repo-B', 'agent-dev2', 'dev2'),
+        ];
+
+        mockCurrentAgentId = 'agent-dev2';
+        const onSelect = vi.fn();
+        const onRefresh = vi.fn();
+
+        render(
+            <RepoTabStrip
+                repos={repos}
+                selectedRepoId="ws-abc"
+                onSelect={onSelect}
+                unseenCounts={{}}
+                onRefresh={onRefresh}
+            />
+        );
+
+        const pills = screen.getAllByTestId('agent-pill');
+        // Hover to open dropdown
+        fireEvent.mouseEnter(pills[0]);
+
+        // Click the second repo (ws-xyz)
+        const repoButtons = screen.getAllByTestId('agent-repo-dot');
+        fireEvent.click(repoButtons[1].closest('button')!);
+
+        expect(onSelect).toHaveBeenCalledWith('ws-xyz');
+        // Not a cross-agent switch, no refresh needed
+        expect(onRefresh).not.toHaveBeenCalled();
     });
 });

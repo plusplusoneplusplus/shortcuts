@@ -20,8 +20,23 @@ import {
     type WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
+import { isContainerMode, getRawApiBase } from '../utils/config';
+import { CocClient } from '@plusplusoneplusplus/coc-client';
 
 export async function listWorkspaces(): Promise<WorkspaceInfo[]> {
+    // In container mode, always fetch the aggregated workspace list from the
+    // container-level endpoint (no agent prefix) regardless of which agent is active.
+    if (isContainerMode()) {
+        const rawBase = getRawApiBase();
+        const client = new CocClient({
+            baseUrl: '',
+            apiBasePath: rawBase,
+            wsPath: '/ws',
+            fetch,
+        });
+        const response = await client.workspaces.list();
+        return normalizeWorkspacesResponse(response);
+    }
     const response = await getSpaCocClient().workspaces.list();
     return normalizeWorkspacesResponse(response);
 }
