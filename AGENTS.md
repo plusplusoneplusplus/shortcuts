@@ -102,13 +102,25 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 **Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Default process store backend is SQLite. Namespaced config merge/source tracking is registered in `packages/coc/src/config/namespace-registry.ts`; add namespace fields there instead of expanding branch lists in `config.ts`.
 
+**Loop subsystem (`src/server/loops/`):** Recurring follow-up messages within a conversation. Separate from schedules — own `LoopEntry` type, own SQLite persistence (`loops` table in `processes.db`), own executor. Uses `ScheduleTimerRegistry` for timing and `TaskQueueManager` for follow-up execution.
+
+- **Types:** `LoopEntry`, `LoopStatus` (`active`/`paused`/`cancelled`/`expired`) in `loop-types.ts`.
+- **Persistence:** `LoopStore` — SQLite CRUD with `ensureTable()`, max 50 active loops per server.
+- **Executor:** `LoopExecutor` — arms timers, handles tick execution with circuit breakers (3 consecutive failures → auto-pause, 100 wakeups/process limit, 3-day TTL default). Per-process concurrency guard prevents double-firing.
+- **LLM tools:** `createLoop`, `cancelLoop`, `listLoops` (skill-gated via `/loop` skill); `scheduleWakeup` (always available, registered in `LLM_TOOL_REGISTRY`). Defined in `llm-tools/loop-tools.ts`.
+- **Bundled skill:** `/loop` in `forge/resources/bundled-skills/loop/SKILL.md` — teaches interval parsing, mode selection, user confirmation, stop-condition recognition.
+- **REST API:** Workspace-scoped at `/api/workspaces/:id/loops`, server-wide at `/api/loops`. CRUD + pause/resume. Handler in `loops/loop-handler.ts`.
+- **Infrastructure:** `loop-infrastructure.ts` factory creates LoopStore + LoopExecutor + ScheduleTimerRegistry. Wired into `createExecutionServer`. On shutdown, active loops are paused with `pausedReason: 'server-restart'` (no auto-resume).
+- **Dashboard UI:** `LoopBadge` (header badge with active count), `LoopManagementPanel` (list/pause/resume/cancel), turn source badge on `ConversationTurnBubble` for loop/wakeup turns.
+- **Turn metadata:** `turnSource` field on `ConversationTurn` (`{ source: 'loop'|'wakeup', loopId/wakeupId }`) propagated through follow-up executor pipeline.
+
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 
 > **Deep reference:** See `.github/skills/coc-knowledge/` for detailed architecture, module layout, REST API catalog, memory system, LLM tools, and dashboard SPA documentation.
 
 ## CoC Client (`packages/coc-client/`)
 
-Framework-free TypeScript client for CoC REST and realtime APIs. Exposes domain clients for all server endpoints plus WebSocket events and per-process SSE streaming helpers.
+Framework-free TypeScript client for CoC REST and realtime APIs. Exposes domain clients for all server endpoints plus WebSocket events and per-process SSE streaming helpers. Includes `LoopsClient` domain for loop CRUD + pause/resume.
 
 ## Deep Wiki (`packages/deep-wiki/`)
 
@@ -124,7 +136,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline (Seeds → Di
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger, Errors, Runtime policies, Task queue, AI SDK (CopilotSDKService, session-per-request), Workflow engine (DAG), Map-Reduce, Process store (SQLite default), Git CLI, Diff providers (`src/diff/` — unified `IDiffProvider` for commit, range, working-tree, PR, and PR-iteration diffs), Memory system, Skills, Utilities.
+**Key modules:** Logger, Errors, Runtime policies, Task queue, AI SDK (CopilotSDKService, session-per-request), Workflow engine (DAG), Map-Reduce, Process store (SQLite default), Git CLI, Diff providers (`src/diff/` — unified `IDiffProvider` for commit, range, working-tree, PR, and PR-iteration diffs), Memory system, Skills, Utilities. `ConversationTurn` includes optional `turnSource` field for loop/wakeup attribution. Bundled skills include `/loop` in `resources/bundled-skills/loop/`.
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` → `executeWorkflow(config, options)` → `flattenWorkflowResult(result)`.
 

@@ -24,3 +24,13 @@ synthesis follow-up turn (mode=ask, `context.skills=['grill-me']`,
 `buildRalphSynthesisPrompt` (`src/server/ralph/synthesis-prompt.ts`). The SPA
 shows a "Promote to Ralph" pill in the follow-up area for eligible chats and
 calls this endpoint via `coc-client`'s `processes.promoteToRalph` helper.
+
+## Loops
+
+Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
+
+- **Types/Store/Executor:** `loop-types.ts`, `loop-store.ts`, `loop-executor.ts`
+- **REST routes:** `loop-handler.ts` → `/api/workspaces/:id/loops` + `/api/loops`
+- **Infrastructure:** `infrastructure/loop-infrastructure.ts` wires store + executor + timer registry
+- **LLM tools:** `llm-tools/loop-tools.ts` — `createLoop`/`cancelLoop`/`listLoops` (skill-gated), `scheduleWakeup` (always available)
+- **Dashboard:** `LoopBadge`, `LoopManagementPanel`, turn source badges in `ConversationTurnBubble`
