@@ -27,9 +27,9 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(source).toContain("import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard'");
     });
 
-    it('gates rendering on terminal status, plan mode, and a known plan path', () => {
+    it('gates rendering on terminal status, not busy, plan mode, and a known plan path', () => {
         const guard = source.match(
-            /isTerminal\s*&&\s*resolveLoadedTaskMode\(task\)\s*===\s*'plan'\s*&&\s*effectivePlanPath/,
+            /isTerminal\s*&&\s*!planChatBusy\s*&&\s*resolveLoadedTaskMode\(task\)\s*===\s*'plan'\s*&&\s*effectivePlanPath/,
         );
         expect(guard).not.toBeNull();
     });
@@ -70,6 +70,23 @@ describe('ChatDetail implement-plan handoff', () => {
         const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
         expect(cardBlock).not.toBeNull();
         expect(cardBlock![0]).toContain('onRecordPersisted=');
+    });
+
+    it('defines planChatBusy predicate gating on sending, isActiveGeneration, and pendingQueue', () => {
+        const predicate = source.match(
+            /const\s+planChatBusy\s*=\s*sending\s*\|\|\s*isActiveGeneration\s*\|\|\s*\(pendingQueue\?\.\s*length\s*\?\?\s*0\)\s*>\s*0/,
+        );
+        expect(predicate).not.toBeNull();
+    });
+
+    it('planChatBusy is derived right after isTerminal', () => {
+        const terminalIdx = source.indexOf('const isTerminal =');
+        const busyIdx = source.indexOf('const planChatBusy =');
+        expect(terminalIdx).toBeGreaterThan(-1);
+        expect(busyIdx).toBeGreaterThan(terminalIdx);
+        // Should be within a few lines (no large gap)
+        const between = source.slice(terminalIdx, busyIdx);
+        expect(between.split('\n').length).toBeLessThanOrEqual(3);
     });
 
     it('resolves implementation runs from task metadata', () => {

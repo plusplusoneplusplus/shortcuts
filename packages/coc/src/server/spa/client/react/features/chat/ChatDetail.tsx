@@ -195,6 +195,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const isCancelling = effectiveStatus === 'cancelling';
     const isPending = effectiveStatus === 'queued';
     const isTerminal = effectiveStatus === 'completed' || effectiveStatus === 'failed' || effectiveStatus === 'cancelled';
+    const planChatBusy = sending || isActiveGeneration || (pendingQueue?.length ?? 0) > 0;
     const inputDisabled = loading || isPending || effectiveStatus === 'cancelled' || isCancelling || sessionExpired;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
@@ -1088,7 +1089,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         );
                     })()}
                     {/* Plan-mode complete — offer one-click handoff to autopilot */}
-                    {isTerminal && resolveLoadedTaskMode(task) === 'plan' && effectivePlanPath && (
+                    {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'plan' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             workspaceId={workspaceId}
