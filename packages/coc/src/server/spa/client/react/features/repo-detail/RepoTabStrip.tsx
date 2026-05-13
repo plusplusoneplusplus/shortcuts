@@ -1052,7 +1052,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             <AddAgentDialog
                 open={addAgentOpen}
                 onClose={() => setAddAgentOpen(false)}
-                onAdded={() => { setAddAgentOpen(false); containerAgentCtx.refreshAgents(); onRefresh(); }}
+                onAdd={async (address, name) => { await containerAgentCtx.addAgent(address, name); setAddAgentOpen(false); containerAgentCtx.refreshAgents(); onRefresh(); }}
             />
         )}
         <AddRepoDialog
