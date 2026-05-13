@@ -171,6 +171,28 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, { tasks: [], stats: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 } });
             }
 
+            // Queue repos stub
+            if (url.pathname === '/api/queue/repos' && req.method === 'GET') {
+                return sendJson(res, { repos: [] });
+            }
+
+            // Preferences stub (container stores no preferences — fire-and-forget writes)
+            if (url.pathname === '/api/preferences') {
+                if (req.method === 'GET') {
+                    return sendJson(res, {});
+                }
+                if (req.method === 'PATCH' || req.method === 'PUT') {
+                    // Discard — container has no persistent preferences
+                    await readBody(req).catch(() => {});
+                    return sendJson(res, {});
+                }
+            }
+
+            // Notifications stub
+            if (url.pathname === '/api/notifications' && req.method === 'GET') {
+                return sendJson(res, { notifications: [] });
+            }
+
             // ── Agent-scoped proxy ──────────────────────────────
             // Routes: /api/agent/:agentId/... → proxy to agent
             const agentProxyMatch = url.pathname.match(/^\/api\/agent\/([^/]+)\/(.*)/);

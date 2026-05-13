@@ -12,8 +12,16 @@ import {
     useCallback,
     type ReactNode,
 } from 'react';
-import { fetchApi } from '../hooks/useApi';
-import { isContainerMode } from '../utils/config';
+import { isContainerMode, getRawApiBase } from '../utils/config';
+
+/** Fetch from container-level endpoints (not agent-proxied). */
+async function fetchContainerApi(path: string, options?: RequestInit): Promise<any> {
+    const url = getRawApiBase() + path;
+    const res = await fetch(url, options ?? {});
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    if (res.status === 204) return undefined;
+    return res.json();
+}
 
 export interface ContainerAgent {
     id: string;
@@ -45,7 +53,7 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
             return;
         }
         try {
-            const data = await fetchApi('/container/agents');
+            const data = await fetchContainerApi('/container/agents');
             setAgents(Array.isArray(data) ? data : []);
         } catch {
             setAgents([]);
@@ -58,7 +66,7 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
     }, [refresh]);
 
     const addAgent = useCallback(async (address: string, name?: string): Promise<ContainerAgent> => {
-        const agent = await fetchApi('/container/agents', {
+        const agent = await fetchContainerApi('/container/agents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, name }),
@@ -68,7 +76,7 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
     }, [refresh]);
 
     const removeAgent = useCallback(async (id: string) => {
-        await fetchApi(`/container/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        await fetchContainerApi(`/container/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
         await refresh();
     }, [refresh]);
 
