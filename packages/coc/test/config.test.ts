@@ -503,6 +503,21 @@ timeout: 300
             expect(result.store.backend).toBe('sqlite');
         });
 
+        it('should default loops.enabled to false', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.loops.enabled).toBe(false);
+        });
+
+        it('should preserve loops.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.loops.enabled).toBe(false);
+        });
+
+        it('should override loops.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { loops: { enabled: true } });
+            expect(result.loops.enabled).toBe(true);
+        });
+
         it('should default memory promotion AI normalization to disabled', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.memoryPromotion.aiNormalization.enabled).toBe(false);
@@ -775,6 +790,8 @@ timeout: 300
                 '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
+                'loops:',
+                '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
                 'memoryPromotion:',
@@ -856,6 +873,8 @@ timeout: 300
                 '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
+                'loops:',
+                '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
                 'memoryPromotion:',
@@ -913,6 +932,9 @@ timeout: 300
                         "level": "info",
                       },
                     },
+                  },
+                  "loops": {
+                    "enabled": true,
                   },
                   "mcpConfig": "\${HOME}/mcp.json",
                   "memoryPromotion": {
@@ -1008,6 +1030,7 @@ timeout: 300
                   "chat.followUpSuggestions.enabled": "file",
                   "features.autoMemoryPromotion": "file",
                   "groupSingleLineMessages": "file",
+                  "loops.enabled": "file",
                   "mcpConfig": "file",
                   "memoryPromotion.aiNormalization.enabled": "file",
                   "memoryPromotion.aiNormalization.model": "file",

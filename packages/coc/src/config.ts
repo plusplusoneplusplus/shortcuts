@@ -117,6 +117,10 @@ export interface CLIConfig {
     ralph?: {
         enabled?: boolean;
     };
+    /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
+    loops?: {
+        enabled?: boolean;
+    };
     /** Vim-style navigation configuration (hjkl pane focus, j/k message stepping). Disabled by default. */
     vimNavigation?: {
         enabled?: boolean;
@@ -273,6 +277,10 @@ export interface ResolvedCLIConfig {
     ralph: {
         enabled: boolean;
     };
+    /** Loops/recurring follow-up subsystem configuration. */
+    loops: {
+        enabled: boolean;
+    };
     /** Vim-style navigation configuration. */
     vimNavigation: {
         enabled: boolean;
@@ -389,6 +397,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     ralph: {
+        enabled: false,
+    },
+    loops: {
         enabled: false,
     },
     vimNavigation: {

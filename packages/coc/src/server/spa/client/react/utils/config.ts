@@ -19,6 +19,7 @@ interface DashboardConfig {
     ralphEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
+    loopsEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -113,4 +114,8 @@ export function isVimNavigationEnabled(): boolean {
 
 export function isContainerMode(): boolean {
     return getConfig().containerMode === true;
+}
+
+export function isLoopsEnabled(): boolean {
+    return getConfig().loopsEnabled === true;
 }

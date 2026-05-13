@@ -223,32 +223,36 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
 
-    // Loop infrastructure — separate from schedules
-    loopInfra = createLoopInfrastructure({
-        dataDir,
-        queueFacade,
-        store,
-        emit: (event) => {
-            try {
-                wsServer?.broadcastProcessEvent({
-                    type: event.type,
-                    loopId: event.loop.id,
-                    processId: event.loop.processId,
-                    status: event.loop.status,
-                    timestamp: Date.now(),
-                });
-            } catch { /* best-effort broadcast */ }
-        },
-        resolveWorkspaceId: async (processId: string) => {
-            try {
-                const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                const task = bridge.getTask(taskId);
-                return task?.repoId;
-            } catch {
-                return undefined;
-            }
-        },
-    });
+    const loopsEnabled = resolvedConfig.loops?.enabled ?? false;
+
+    // Loop infrastructure — separate from schedules. Gated by loops.enabled feature flag (default false).
+    if (loopsEnabled) {
+        loopInfra = createLoopInfrastructure({
+            dataDir,
+            queueFacade,
+            store,
+            emit: (event) => {
+                try {
+                    wsServer?.broadcastProcessEvent({
+                        type: event.type,
+                        loopId: event.loop.id,
+                        processId: event.loop.processId,
+                        status: event.loop.status,
+                        timestamp: Date.now(),
+                    });
+                } catch { /* best-effort broadcast */ }
+            },
+            resolveWorkspaceId: async (processId: string) => {
+                try {
+                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
+                    const task = bridge.getTask(taskId);
+                    return task?.repoId;
+                } catch {
+                    return undefined;
+                }
+            },
+        });
+    }
 
     // Cleanup infra is created after the store is ready
     let cleanupInfra: ReturnType<typeof createCleanupInfrastructure>;
@@ -277,10 +281,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }).catch(() => { /* best-effort — never block startup */ });
     }
 
-    // Auto-install default bundled skills into the global skills dir (non-blocking on errors)
-    if (resolvedConfig.skills.defaultSkills.length > 0) {
+    // Auto-install default bundled skills into the global skills dir (non-blocking on errors).
+    // When loops feature is disabled, strip the `loop` skill so its prompt suffix doesn't
+    // leak into sessions where the underlying tools aren't wired.
+    const defaultSkillsToInstall = loopsEnabled
+        ? resolvedConfig.skills.defaultSkills
+        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'loop');
+    if (defaultSkillsToInstall.length > 0) {
         const globalSkillsDir = path.join(dataDir, 'skills');
-        autoInstallDefaultSkills(globalSkillsDir, resolvedConfig.skills.defaultSkills).then(result => {
+        autoInstallDefaultSkills(globalSkillsDir, defaultSkillsToInstall).then(result => {
             for (const name of result.installed) {
                 process.stderr.write(`[skills] Auto-installed default skill "${name}"\n`);
             }
@@ -336,8 +345,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedConfig,
         remoteServerStore,
         remoteServerConnector,
-        loopStore: loopInfra.loopStore,
-        loopExecutor: loopInfra.loopExecutor,
+        loopStore: loopInfra?.loopStore,
+        loopExecutor: loopInfra?.loopExecutor,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -345,7 +354,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? true, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false, serversEnabled: resolvedConfig.servers?.enabled ?? false, ralphEnabled: resolvedConfig.ralph?.enabled ?? false, vimNavigationEnabled: resolvedConfig.vimNavigation?.enabled ?? false }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? true, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false, serversEnabled: resolvedConfig.servers?.enabled ?? false, ralphEnabled: resolvedConfig.ralph?.enabled ?? false, vimNavigationEnabled: resolvedConfig.vimNavigation?.enabled ?? false, loopsEnabled }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),
@@ -399,8 +408,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
             autoPromoteScheduler,
-            loopExecutor: loopInfra.loopExecutor,
-            loopInfraDispose: loopInfra.dispose,
+            loopExecutor: loopInfra?.loopExecutor,
+            loopInfraDispose: loopInfra?.dispose,
             activeSockets, server,
         }),
     };

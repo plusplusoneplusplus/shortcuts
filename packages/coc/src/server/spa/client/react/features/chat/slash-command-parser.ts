@@ -12,6 +12,15 @@
 export const META_COMMANDS = ['model', 'loop'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
 
+/**
+ * Return the set of meta-commands available in the current runtime.
+ * Filters out `loop` when the loops feature is disabled.
+ */
+export function getActiveMetaCommands(loopsEnabled: boolean): readonly MetaCommand[] {
+    if (loopsEnabled) return META_COMMANDS;
+    return META_COMMANDS.filter(c => c !== 'loop');
+}
+
 export interface ParsedSlashCommands {
     /** Matched skill names (lowercased to match availableSkills) */
     skills: string[];
@@ -49,14 +58,19 @@ export function isMetaCommand(name: string): name is MetaCommand {
  * - Unknown `/tokens` are left as-is in the prompt
  * - Duplicate skills are deduplicated (first occurrence wins)
  * - Meta-command tokens (e.g., `/model`) are stripped and returned separately
+ * - When `metaCommands` is provided, only tokens in that list are treated as meta-commands.
  */
-export function parseSlashCommands(text: string, availableSkills: string[]): ParsedSlashCommands {
+export function parseSlashCommands(
+    text: string,
+    availableSkills: string[],
+    metaCommands: readonly string[] = META_COMMANDS,
+): ParsedSlashCommands {
     if (!text.trim()) {
         return { skills: [], prompt: '', metaCommands: [] };
     }
 
     const skillSet = new Set(availableSkills.map(s => s.toLowerCase()));
-    const metaSet = new Set<string>(META_COMMANDS);
+    const metaSet = new Set<string>(metaCommands);
     const matchedSkills: string[] = [];
     const matchedMeta: MetaCommand[] = [];
     const seen = new Set<string>();

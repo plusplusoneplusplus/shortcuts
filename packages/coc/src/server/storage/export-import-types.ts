@@ -80,6 +80,9 @@ export interface CLIConfig {
     vimNavigation?: {
         enabled?: boolean;
     };
+    loops?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

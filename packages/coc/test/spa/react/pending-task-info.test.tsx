@@ -32,6 +32,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',
     isRalphEnabled: () => true,
+    isLoopsEnabled: () => false,
 }));
 
 // Mock useDisplaySettings

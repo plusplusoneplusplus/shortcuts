@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { isLoopsEnabled } from '../../../utils/config';
 import type { LoopEntry } from '@plusplusoneplusplus/coc-client';
 
 export interface UseLoopsResult {
@@ -32,6 +33,11 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
 
     const fetchLoops = useCallback(() => {
         if (!workspaceId) return;
+        // Skip network calls when loops feature is disabled — REST routes are not registered.
+        if (!isLoopsEnabled()) {
+            setLoops([]);
+            return;
+        }
         setLoading(true);
         getSpaCocClient().loops.list(workspaceId)
             .then((all) => {
@@ -57,6 +63,7 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
     // Listen for WebSocket loop events
     useEffect(() => {
         if (!processId) return;
+        if (!isLoopsEnabled()) return;
 
         function handleWsMessage(event: MessageEvent) {
             try {

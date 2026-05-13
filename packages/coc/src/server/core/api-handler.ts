@@ -213,7 +213,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined, db?: Database.Database): void {
+export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined, db?: Database.Database, loopsEnabled?: boolean): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).
     const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
     const _origPush = routes.push.bind(routes);
@@ -257,7 +257,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             initializeDatabase(resolvedDb);
         }
 
-        const ctx: ApiRouteContext = { routes, store, bridge, dataDir, getWsServer, gitOpsStore, db: resolvedDb };
+        const ctx: ApiRouteContext = { routes, store, bridge, dataDir, getWsServer, gitOpsStore, db: resolvedDb, loopsEnabled };
 
         registerApiWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);

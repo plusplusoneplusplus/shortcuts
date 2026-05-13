@@ -14,7 +14,7 @@ describe('ChatDetail ralph feature-flag guard', () => {
     const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
 
     it('imports isRalphEnabled from config', () => {
-        expect(source).toContain("import { isRalphEnabled } from '../../utils/config'");
+        expect(source).toMatch(/import \{[^}]*\bisRalphEnabled\b[^}]*\} from '\.\.\/\.\.\/utils\/config'/);
     });
 
     it('gates ralphEligible on isRalphEnabled()', () => {

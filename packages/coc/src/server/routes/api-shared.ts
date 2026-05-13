@@ -24,6 +24,8 @@ export interface ApiRouteContext {
     getWsServer?: () => ProcessWebSocketServer | undefined;
     gitOpsStore: GitOpsStore;
     db?: Database.Database;
+    /** Whether the loops/recurring follow-up subsystem is enabled. */
+    loopsEnabled?: boolean;
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

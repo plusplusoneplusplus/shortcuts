@@ -24,7 +24,7 @@ import {
     writeRepoPreferences,
     validatePerRepoPreferences,
 } from '../preferences-handler';
-import { LLM_TOOL_REGISTRY, getEffectiveDefaultDisabledTools } from '../llm-tools/llm-tool-registry';
+import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -396,12 +396,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
+            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled });
             if (!ctx.dataDir) {
-                sendJSON(res, 200, { tools: LLM_TOOL_REGISTRY, disabledLlmTools: getEffectiveDefaultDisabledTools() });
+                sendJSON(res, 200, { tools: effectiveRegistry, disabledLlmTools: getEffectiveDefaultDisabledTools() });
                 return;
             }
             sendJSON(res, 200, {
-                tools: LLM_TOOL_REGISTRY,
+                tools: effectiveRegistry,
                 disabledLlmTools: readEffectiveDisabledLlmTools(ctx.dataDir, ws.id),
             });
         },
@@ -436,7 +437,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: LLM_TOOL_REGISTRY,
+                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled }),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
             });
         },

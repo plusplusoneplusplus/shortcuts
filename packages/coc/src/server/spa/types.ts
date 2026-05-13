@@ -33,6 +33,8 @@ export interface DashboardOptions {
     ralphEnabled?: boolean;
     /** Whether vim-style navigation (hjkl/jk/gg/G/Esc/i bindings) is enabled. */
     vimNavigationEnabled?: boolean;
+    /** Whether the loops/recurring follow-up subsystem is enabled in server config. */
+    loopsEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

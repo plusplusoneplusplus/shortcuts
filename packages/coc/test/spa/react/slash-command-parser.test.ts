@@ -292,3 +292,37 @@ describe('parseSlashCommands — /loop meta-command', () => {
         expect(result.skills).toEqual([]);
     });
 });
+
+describe('getActiveMetaCommands', () => {
+    it('includes "loop" when loops feature is enabled', async () => {
+        const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        expect(getActiveMetaCommands(true)).toContain('loop');
+        expect(getActiveMetaCommands(true)).toContain('model');
+    });
+
+    it('excludes "loop" when loops feature is disabled', async () => {
+        const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        expect(getActiveMetaCommands(false)).not.toContain('loop');
+        expect(getActiveMetaCommands(false)).toContain('model');
+    });
+});
+
+describe('parseSlashCommands with restricted meta-commands', () => {
+    it('does not match /loop when meta-commands excludes "loop"', async () => {
+        const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        const result = parseSlashCommands('/loop every 5m', [], getActiveMetaCommands(false));
+        expect(result.metaCommands).not.toContain('loop');
+    });
+
+    it('still matches /model when meta-commands excludes "loop"', async () => {
+        const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        const result = parseSlashCommands('/model gpt-5', [], getActiveMetaCommands(false));
+        expect(result.metaCommands).toContain('model');
+    });
+
+    it('matches /loop when meta-commands includes "loop"', async () => {
+        const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        const result = parseSlashCommands('/loop every 5m', [], getActiveMetaCommands(true));
+        expect(result.metaCommands).toContain('loop');
+    });
+});

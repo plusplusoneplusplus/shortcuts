@@ -49,7 +49,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
-import { isRalphEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
@@ -1032,7 +1032,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 activeLoopCount={loopsHook.activeCount}
                 onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
             />
-            {loopPanelOpen && (
+            {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">
                     <LoopManagementPanel
                         loops={loopsHook.loops}

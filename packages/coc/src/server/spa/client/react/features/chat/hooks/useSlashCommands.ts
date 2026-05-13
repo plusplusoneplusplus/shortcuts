@@ -6,7 +6,8 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { parseSlashCommands, getSlashCommandContext } from '../slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands } from '../slash-command-parser';
+import { isLoopsEnabled } from '../../../utils/config';
 import type { SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
@@ -115,9 +116,11 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        const result = parseSlashCommands(text, skillNames);
-        // /loop meta-command activates the 'loop' bundled skill
-        if (result.metaCommands.includes('loop') && !result.skills.includes('loop')) {
+        const loopsEnabled = isLoopsEnabled();
+        const activeMeta = getActiveMetaCommands(loopsEnabled);
+        const result = parseSlashCommands(text, skillNames, activeMeta);
+        // /loop meta-command activates the 'loop' bundled skill (when loops feature is enabled)
+        if (loopsEnabled && result.metaCommands.includes('loop') && !result.skills.includes('loop')) {
             result.skills.push('loop');
         }
         return result;

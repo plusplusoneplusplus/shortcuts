@@ -131,7 +131,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker,
     } = opts;
 
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer);
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);

@@ -154,3 +154,30 @@ describe('filterDisabledLlmTools', () => {
         expect(filtered[1]).toBe(mockTools[2]);
     });
 });
+
+describe('getEffectiveLlmToolRegistry', () => {
+    it('filters out scheduleWakeup when loopsEnabled is false', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: false }).map(t => t.name);
+        expect(names).not.toContain('scheduleWakeup');
+    });
+
+    it('filters out scheduleWakeup when loopsEnabled is omitted (default off)', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        const names = getEffectiveLlmToolRegistry().map(t => t.name);
+        expect(names).not.toContain('scheduleWakeup');
+    });
+
+    it('includes scheduleWakeup when loopsEnabled is true', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true }).map(t => t.name);
+        expect(names).toContain('scheduleWakeup');
+        // Should equal the full registry length when on
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+    });
+
+    it('returns registry minus exactly one entry when off', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 1);
+    });
+});

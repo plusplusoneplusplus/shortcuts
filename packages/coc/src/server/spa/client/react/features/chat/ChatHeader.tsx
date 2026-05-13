@@ -14,6 +14,7 @@ import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { LoopBadge } from './LoopBadge';
+import { isLoopsEnabled } from '../../utils/config';
 
 /**
  * Shared icon-button class for the right-side chat header actions.
@@ -427,7 +428,7 @@ export function ChatHeader({
                         iconOnly={!isWide}
                     />
                 )}
-                {(activeLoopCount ?? 0) > 0 && (
+                {isLoopsEnabled() && (activeLoopCount ?? 0) > 0 && (
                     <LoopBadge activeCount={activeLoopCount!} onClick={onToggleLoopPanel} />
                 )}
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}

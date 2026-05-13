@@ -94,6 +94,20 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     },
 ] as const;
 
+/**
+ * Returns the effective LLM tool registry given runtime feature flags.
+ *
+ * When `loops.enabled` is false, the `scheduleWakeup` tool is filtered out so
+ * the dashboard tool list and per-workspace settings do not advertise a tool
+ * the executor will not register.
+ */
+export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+    if (opts.loopsEnabled) {
+        return LLM_TOOL_REGISTRY;
+    }
+    return LLM_TOOL_REGISTRY.filter(t => t.name !== 'scheduleWakeup');
+}
+
 /** Tool names disabled by the registry-level default, independent of UI layout mode. */
 export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
     .filter(t => !t.enabledByDefault)

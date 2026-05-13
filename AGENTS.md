@@ -102,7 +102,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 **Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Default process store backend is SQLite. Namespaced config merge/source tracking is registered in `packages/coc/src/config/namespace-registry.ts`; add namespace fields there instead of expanding branch lists in `config.ts`.
 
-**Loop subsystem (`src/server/loops/`):** Recurring follow-up messages within a conversation. Separate from schedules — own `LoopEntry` type, own SQLite persistence (`loops` table in `processes.db`), own executor. Uses `ScheduleTimerRegistry` for timing and `TaskQueueManager` for follow-up execution.
+**Loop subsystem (`src/server/loops/`):** Recurring follow-up messages within a conversation. **Gated by `loops.enabled` config flag (default `false`).** When disabled, infrastructure is not constructed, REST routes are not registered, `scheduleWakeup`/`createLoop` LLM tools are filtered out, the `/loop` skill is not auto-installed, and dashboard UI (badge, panel, slash-command) is hidden. Separate from schedules — own `LoopEntry` type, own SQLite persistence (`loops` table in `processes.db`), own executor. Uses `ScheduleTimerRegistry` for timing and `TaskQueueManager` for follow-up execution.
 
 - **Types:** `LoopEntry`, `LoopStatus` (`active`/`paused`/`cancelled`/`expired`) in `loop-types.ts`.
 - **Persistence:** `LoopStore` — SQLite CRUD with `ensureTable()`, max 50 active loops per server.

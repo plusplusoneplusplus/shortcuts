@@ -15,7 +15,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
-import { LLM_TOOL_REGISTRY, getEffectiveDefaultDisabledTools } from '../../src/server/llm-tools/llm-tool-registry';
+import { LLM_TOOL_REGISTRY, getEffectiveLlmToolRegistry, getEffectiveDefaultDisabledTools } from '../../src/server/llm-tools/llm-tool-registry';
 
 // ============================================================================
 // Mock loadDefaultMcpConfig (required by registerApiRoutes)
@@ -127,10 +127,11 @@ describe('LLM Tools Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.tools).toHaveLength(LLM_TOOL_REGISTRY.length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
             const names = data.tools.map((t: any) => t.name);
             expect(names).toContain('tavily_web_search');
             expect(names).toContain('suggest_follow_ups');
+            expect(names).not.toContain('scheduleWakeup');
         });
 
         it('returns classic-mode defaults when no preferences are set', async () => {
@@ -253,7 +254,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
-            expect(data.tools).toHaveLength(LLM_TOOL_REGISTRY.length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
         });
 
         it('persists disabledLlmTools to disk', async () => {
