@@ -6,14 +6,17 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
+import { AddAgentDialog } from '../../repos/AddAgentDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
-import { groupReposByRemote, applyGroupOrder } from '../../repos/repoGrouping';
+import { groupReposByRemote, groupReposByAgent, applyGroupOrder } from '../../repos/repoGrouping';
 import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
+import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { isContainerMode } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -198,6 +201,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [addAgentOpen, setAddAgentOpen] = useState(false);
+    const containerAgentCtx = useContainerAgents();
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [editRepoId, setEditRepoId] = useState<string | null>(null);
     const [generateDialog, setGenerateDialog] = useState<{
@@ -216,6 +221,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [draggedRepoId, setDraggedRepoId] = useState<string | null>(null);
     const [repoDropIndicator, setRepoDropIndicator] = useState<RepoDropIndicator>(null);
     const [repoLiveMessage, setRepoLiveMessage] = useState('');
+    const [openAgentDropdown, setOpenAgentDropdown] = useState<string | null>(null);
+    const agentDropdownRef = useRef<HTMLDivElement>(null);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -249,13 +256,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     );
     const orderedRepos = useMemo(() => resolveRepoTabOrder(repos, repoTabOrder), [repos, repoTabOrder]);
     const rawGroups = useMemo<RepoGroup[]>(() => {
+        if (isContainerMode()) return groupReposByAgent(repos, {});
         if (hasCustomRepoOrder) {
             return [{ normalizedUrl: null, label: 'Repositories', repos: orderedRepos, expanded: true }];
         }
         return groupReposByRemote(repos, {});
     }, [hasCustomRepoOrder, orderedRepos, repos]);
     const groups = useMemo(
-        () => hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
+        () => isContainerMode() ? rawGroups : hasCustomRepoOrder ? rawGroups : applyGroupOrder(rawGroups, groupOrder),
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
@@ -521,7 +529,17 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         };
     }, [overflowOpen]);
 
-    // Focus search when overflow dropdown opens
+    // Close agent dropdown on outside click
+    useEffect(() => {
+        if (!openAgentDropdown) return;
+        const handleMouseDown = (e: MouseEvent) => {
+            if (agentDropdownRef.current && !agentDropdownRef.current.contains(e.target as Node)) {
+                setOpenAgentDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        return () => document.removeEventListener('mousedown', handleMouseDown);
+    }, [openAgentDropdown]);
     useEffect(() => {
         if (overflowOpen && overflowFilterRef.current) {
             overflowFilterRef.current.focus();
@@ -665,25 +683,89 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         {/* Visible tab container */}
         <div
             ref={tabContainerRef}
-            className="flex items-center gap-0.5 overflow-hidden flex-1 min-w-0 px-1"
+            className="flex items-center gap-0.5 flex-1 min-w-0 px-1"
             data-testid="repo-tab-visible-container"
         >
-            {groups.map((group, groupIndex) => {
-                const visibleInGroup = group.repos.filter(r => isRepoVisible(r.workspace.id));
-                if (visibleInGroup.length === 0) return null;
-                return (
-                    <div key={group.normalizedUrl ?? `ungrouped-${groupIndex}`} className="contents">
-                        {!hasCustomRepoOrder && groupIndex > 0 && groups.slice(0, groupIndex).some(g => g.repos.some(r => isRepoVisible(r.workspace.id))) && (
-                            <div
-                                className="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-1 flex-shrink-0"
-                                data-testid="repo-group-separator"
-                                title={group.normalizedUrl ? group.label : undefined}
-                            />
-                        )}
-                        {visibleInGroup.map(repo => renderTab(repo))}
-                    </div>
-                );
-            })}
+            {isContainerMode() ? (
+                /* Container mode: agent dropdown pills */
+                groups.map((group) => {
+                    const agentId = group.normalizedUrl ?? 'unknown';
+                    const isOpen = openAgentDropdown === agentId;
+                    const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
+                    const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
+                    return (
+                        <div key={agentId} className="relative flex-shrink-0" ref={isOpen ? agentDropdownRef : undefined}>
+                            <button
+                                data-testid="agent-pill"
+                                className={
+                                    'flex items-center gap-1 px-2.5 h-7 rounded text-xs whitespace-nowrap transition-colors cursor-pointer ' +
+                                    (selectedInGroup
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                                }
+                                onClick={() => setOpenAgentDropdown(isOpen ? null : agentId)}
+                            >
+                                <span>{group.label}</span>
+                                <span className="text-[9px] opacity-70">▾</span>
+                                {totalUnseen > 0 && (
+                                    <span className="min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
+                                        {totalUnseen > 99 ? '99+' : totalUnseen}
+                                    </span>
+                                )}
+                            </button>
+                            {isOpen && (
+                                <div className="absolute top-full left-0 mt-1 z-[9999] min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
+                                    {group.repos.map(repo => {
+                                        const ws = repo.workspace;
+                                        const isSelected = ws.id === selectedRepoId;
+                                        const color = ws.color || '#848484';
+                                        const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
+                                        const unseenCount = unseenCounts[ws.id] ?? 0;
+                                        return (
+                                            <button
+                                                key={ws.id}
+                                                className={
+                                                    'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer ' +
+                                                    (isSelected
+                                                        ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
+                                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
+                                                }
+                                                onClick={() => { onSelect(ws.id); setOpenAgentDropdown(null); }}
+                                            >
+                                                <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-repo-dot" />
+                                                <span className="truncate">{ws.name}</span>
+                                                {unseenCount > 0 && (
+                                                    <span className="ml-auto min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
+                                                        {unseenCount > 99 ? '99+' : unseenCount}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })
+            ) : (
+                /* Normal mode: flat repo tabs with group separators */
+                groups.map((group, groupIndex) => {
+                    const visibleInGroup = group.repos.filter(r => isRepoVisible(r.workspace.id));
+                    if (visibleInGroup.length === 0) return null;
+                    return (
+                        <div key={group.normalizedUrl ?? `ungrouped-${groupIndex}`} className="contents">
+                            {!hasCustomRepoOrder && groupIndex > 0 && groups.slice(0, groupIndex).some(g => g.repos.some(r => isRepoVisible(r.workspace.id))) && (
+                                <div
+                                    className="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-1 flex-shrink-0"
+                                    data-testid="repo-group-separator"
+                                    title={group.normalizedUrl ? group.label : undefined}
+                                />
+                            )}
+                            {visibleInGroup.map(repo => renderTab(repo))}
+                        </div>
+                    );
+                })
+            )}
         </div>
         {/* "+N" overflow pill / customize order list */}
         {showOverflowControl && (
@@ -928,6 +1010,19 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         ＋ Add specific repository
                     </button>
+                    {isContainerMode() && (
+                        <>
+                            <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                            <button
+                                data-testid="repo-tab-add-agent-option"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => { setDropdownOpen(false); setAddAgentOpen(true); }}
+                            >
+                                🔗 Add agent
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
         </div>
@@ -953,6 +1048,13 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             onClose={() => setAddFolderOpen(false)}
             onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
         />
+        {isContainerMode() && (
+            <AddAgentDialog
+                open={addAgentOpen}
+                onClose={() => setAddAgentOpen(false)}
+                onAdded={() => { setAddAgentOpen(false); containerAgentCtx.refreshAgents(); onRefresh(); }}
+            />
+        )}
         <AddRepoDialog
             open={editRepoId !== null}
             onClose={() => setEditRepoId(null)}

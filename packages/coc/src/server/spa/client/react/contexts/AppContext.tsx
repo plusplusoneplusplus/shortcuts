@@ -7,6 +7,7 @@ import { createContext, useContext, useReducer, useEffect, useRef, type ReactNod
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
+import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
 // ── Sidebar persistence ────────────────────────────────────────────────
@@ -566,6 +567,18 @@ const AppContext = createContext<{ state: AppContextState; dispatch: Dispatch<Ap
 
 export function AppProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // In container mode, update the global agent ID whenever the selected workspace changes.
+    // This makes getApiBase() return the agent-prefixed path for all API calls.
+    useEffect(() => {
+        if (!isContainerMode()) return;
+        if (!state.selectedRepoId) {
+            setCurrentAgentId(null);
+            return;
+        }
+        const ws = state.workspaces.find((w: any) => w.id === state.selectedRepoId);
+        setCurrentAgentId(ws?.agentId ?? null);
+    }, [state.selectedRepoId, state.workspaces]);
 
     // Debounced save of activity filters to server preferences
     const filterSaveRef = useRef<ReturnType<typeof setTimeout>>();

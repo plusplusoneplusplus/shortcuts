@@ -14,9 +14,10 @@ import { ReposEmptyState } from './ReposEmptyState';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
-import { groupReposByRemote, applyGroupOrder, groupKey } from './repoGrouping';
+import { groupReposByRemote, groupReposByAgent, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
 import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
+import { isContainerMode } from '../utils/config';
 
 const GROUP_DRAG_MIME = 'application/x-git-group-drag';
 const GROUP_EXPANDED_KEY = 'coc-git-group-expanded-state';
@@ -88,6 +89,9 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
 
     const rawGroups = groupReposByRemote(repos, expandedState);
     const groups = applyGroupOrder(rawGroups, groupOrder);
+
+    // Container mode: agent-level grouping above remote groups
+    const agentGroups = isContainerMode() ? groupReposByAgent(repos, expandedState) : null;
 
     const toggleGroup = (url: string) => {
         setExpandedState(prev => {
@@ -349,6 +353,40 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     ) : (
                         <ReposEmptyState onAddRepo={() => setAddOpen(true)} />
                     )
+                ) : agentGroups ? (
+                    /* Container mode: agent sections wrapping remote groups */
+                    agentGroups.map((ag) => {
+                        const agentKey = ag.normalizedUrl ?? 'unknown';
+                        const isExpanded = expandedState[`agent:${agentKey}`] !== false;
+                        // Sub-group this agent's repos by remote
+                        const subGroups = groupReposByRemote(ag.repos, expandedState);
+                        const orderedSubGroups = applyGroupOrder(subGroups, groupOrder);
+                        return (
+                            <div key={`agent-${agentKey}`} className="mb-2">
+                                {/* Agent header */}
+                                <button
+                                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded bg-[#f3f3f3] dark:bg-[#2d2d2d] hover:bg-[#e8e8e8] dark:hover:bg-[#363636] transition-colors"
+                                    onClick={() => {
+                                        const key = `agent:${agentKey}`;
+                                        setExpandedState(prev => {
+                                            const next = { ...prev, [key]: prev[key] === false };
+                                            saveGroupExpandedState(next);
+                                            return next;
+                                        });
+                                    }}
+                                >
+                                    <span className="text-[11px]">{isExpanded ? '▾' : '▸'}</span>
+                                    <span className="text-xs font-semibold text-[#0078d4] dark:text-[#3794ff]">Agent: {ag.label}</span>
+                                    <span className="ml-auto text-[10px] bg-[#e0e0e0] dark:bg-[#3c3c3c] px-1.5 py-px rounded text-[#616161] dark:text-[#999]">{ag.repos.length}</span>
+                                </button>
+                                {isExpanded && (
+                                    <div className="flex flex-col gap-1 mt-1 pl-1 border-l-2 border-[#0078d4]/20 dark:border-[#3794ff]/20 ml-2">
+                                        {orderedSubGroups.map((group, idx) => renderGroup(group, idx))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
                 ) : (
                     groups.map((group, idx) => renderGroup(group, idx))
                 )}

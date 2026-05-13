@@ -12,7 +12,8 @@
     "packages/forge",
     "packages/coc",
     "packages/coc-client",
-    "packages/deep-wiki"
+    "packages/deep-wiki",
+    "packages/coccontainer"
   ],
   "engines": {
     "vscode": "^1.95.0"
@@ -3814,10 +3815,10 @@
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/test-electron": "^2.2.0",
     "@vscode/vsce": "^2.15.0",
-    "copy-webpack-plugin": "^13.0.1",
+    "copy-webpack-plugin": "^14.0.0",
     "eslint": "^8.28.0",
     "glob": "^8.0.3",
-    "mocha": "^10.1.0",
+    "mocha": "^7.2.0",
     "ts-loader": "^9.4.1",
     "typescript": "^4.9.4",
     "webpack": "^5.75.0",
@@ -3827,7 +3828,9 @@
     "@github/copilot-sdk": "^0.3.0",
     "@plusplusoneplusplus/forge": "file:packages/forge",
     "diff": "^5.2.0",
-    "js-yaml": "^4.1.0"
+    "esbuild": "0.28.0",
+    "js-yaml": "^4.1.0",
+    "monaco-editor": "0.53.0"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

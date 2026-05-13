@@ -1,0 +1,308 @@
+/**
+ * CoCContainer Server
+ *
+ * Thin wrapper that serves CoC's SPA in containerMode and proxies
+ * API calls to registered CoC agents. The container has NO SPA of
+ * its own — it reuses CoC's dashboard bundle.
+ */
+
+import * as http from 'http';
+import * as path from 'path';
+import { URL } from 'url';
+import type { ResolvedContainerConfig } from '../config';
+import { createAgentStore, type Agent } from '../store';
+import { pipeRequest } from '../proxy/http';
+import { fetchAgentWorkspaces, type RemoteWorkspace } from '../proxy/workspaces';
+import { SSERelay } from '../proxy/sse-relay';
+import { WebSocketRelay } from '../proxy/ws-relay';
+import { AgentHealthMonitor } from './health-monitor';
+
+export interface ContainerServer {
+    close(): void;
+}
+
+// ── CoC SPA HTML reuse ──────────────────────────────────
+
+/**
+ * Import CoC's generateDashboardHtml from its compiled dist so the
+ * container always serves the exact same HTML/config as CoC itself,
+ * just with `containerMode: true`.
+ */
+function getCocHtmlTemplate(): { generateDashboardHtml: (opts?: Record<string, unknown>) => string } {
+    const cocPkg = require.resolve('@plusplusoneplusplus/coc/package.json');
+    const templatePath = path.join(path.dirname(cocPkg), 'dist', 'server', 'spa', 'html-template.js');
+    return require(templatePath);
+}
+
+let cachedHtml: string | null = null;
+
+function generateContainerHtml(): string {
+    if (cachedHtml) return cachedHtml;
+    const { generateDashboardHtml } = getCocHtmlTemplate();
+    cachedHtml = generateDashboardHtml({
+        title: 'CoCContainer',
+        containerMode: true,
+        // Container doesn't run terminal/notes/wiki locally — agents provide those
+        terminalEnabled: false,
+        notesEnabled: false,
+        workflowsEnabled: false,
+    });
+    return cachedHtml;
+}
+
+// ── Server factory ──────────────────────────────────────
+
+export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
+    const agentStore = createAgentStore(config.serve.dataDir);
+    const sseRelay = new SSERelay();
+    const wsRelay = new WebSocketRelay();
+    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs);
+
+    // Start health monitoring and SSE/WS connections for existing agents
+    const agents = agentStore.list();
+    healthMonitor.start();
+
+    for (const agent of agents) {
+        sseRelay.connect(agent.id, agent.name, agent.address);
+        wsRelay.connect(agent.id, agent.name, agent.address);
+    }
+
+    const server = http.createServer(async (req, res) => {
+        const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+
+        // CORS
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        if (req.method === 'OPTIONS') {
+            res.writeHead(204);
+            res.end();
+            return;
+        }
+
+        try {
+            // ── Container-level APIs ──────────────────────────────
+            if (url.pathname === '/api/container/agents' && req.method === 'GET') {
+                return sendJson(res, agentStore.list());
+            }
+
+            if (url.pathname === '/api/container/agents' && req.method === 'POST') {
+                const body = await readBody(req);
+                const { address, name } = body as { address: string; name?: string };
+                const agent = agentStore.add(address, name);
+                sseRelay.connect(agent.id, agent.name, agent.address);
+                wsRelay.connect(agent.id, agent.name, agent.address);
+                return sendJson(res, agent, 201);
+            }
+
+            if (url.pathname.startsWith('/api/container/agents/') && req.method === 'DELETE') {
+                const agentId = url.pathname.split('/')[4];
+                const agent = agentStore.get(agentId);
+                if (agent) {
+                    sseRelay.disconnect(agent.id);
+                    wsRelay.disconnect(agent.id);
+                }
+                const removed = agentStore.remove(agentId);
+                return sendJson(res, { removed });
+            }
+
+            if (url.pathname.startsWith('/api/container/agents/') && req.method === 'PUT') {
+                const agentId = url.pathname.split('/')[4];
+                const body = await readBody(req);
+                const { name } = body as { name: string };
+                const agent = agentStore.rename(agentId, name);
+                if (!agent) return sendJson(res, { error: 'Agent not found' }, 404);
+                return sendJson(res, agent);
+            }
+
+            // Aggregated workspaces from all agents
+            if (url.pathname === '/api/workspaces' && req.method === 'GET') {
+                const allAgents = agentStore.list();
+                const workspaces = await aggregateWorkspaces(allAgents);
+                return sendJson(res, { workspaces });
+            }
+
+            // Aggregated process summaries from all agents
+            if (url.pathname === '/api/processes/summaries' && req.method === 'GET') {
+                const allAgents = agentStore.list().filter(a => a.status !== 'offline');
+                const results = await Promise.all(
+                    allAgents.map(async (agent) => {
+                        try {
+                            const resp = await fetch(`${agent.address}/api/processes/summaries${url.search}`);
+                            if (!resp.ok) return [];
+                            const data = await resp.json() as any;
+                            const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
+                            return summaries.map((p: any) => ({ ...p, agentId: agent.id, agentName: agent.name }));
+                        } catch { return []; }
+                    })
+                );
+                return sendJson(res, { summaries: results.flat() });
+            }
+
+            // Queue stub (container has no local queue — per-agent queues via proxy)
+            if (url.pathname === '/api/queue' && req.method === 'GET') {
+                return sendJson(res, { tasks: [], stats: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 } });
+            }
+
+            // Queue repos stub
+            if (url.pathname === '/api/queue/repos' && req.method === 'GET') {
+                return sendJson(res, { repos: [] });
+            }
+
+            // Preferences stub (container stores no preferences — fire-and-forget writes)
+            if (url.pathname === '/api/preferences') {
+                if (req.method === 'GET') {
+                    return sendJson(res, {});
+                }
+                if (req.method === 'PATCH' || req.method === 'PUT') {
+                    // Discard — container has no persistent preferences
+                    await readBody(req).catch(() => {});
+                    return sendJson(res, {});
+                }
+            }
+
+            // Notifications stub
+            if (url.pathname === '/api/notifications' && req.method === 'GET') {
+                return sendJson(res, { notifications: [] });
+            }
+
+            // ── Agent-scoped proxy ──────────────────────────────
+            // Routes: /api/agent/:agentId/... → proxy to agent
+            const agentProxyMatch = url.pathname.match(/^\/api\/agent\/([^/]+)\/(.*)/);
+            if (agentProxyMatch) {
+                const [, agentId, rest] = agentProxyMatch;
+                const agent = agentStore.get(agentId);
+                if (!agent) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Agent not found' }));
+                }
+                return pipeRequest(agent.address, req, res, `/api/${rest}${url.search}`);
+            }
+
+            // ── SSE events stream ──────────────────────────────
+            if (url.pathname === '/api/events') {
+                res.writeHead(200, {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                });
+                res.write(':ok\n\n');
+
+                const onEvent = (event: { agentId: string; agentName: string; event?: string; data: string }) => {
+                    const envelope = JSON.stringify({
+                        agentId: event.agentId,
+                        agentName: event.agentName,
+                        payload: event.data,
+                    });
+                    if (event.event) {
+                        res.write(`event: ${event.event}\n`);
+                    }
+                    res.write(`data: ${envelope}\n\n`);
+                };
+
+                sseRelay.on('event', onEvent);
+                req.on('close', () => sseRelay.off('event', onEvent));
+                return;
+            }
+
+            // ── Dashboard SPA (CoC bundle with containerMode) ───
+            if (url.pathname === '/' || url.pathname === '/index.html') {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                return res.end(generateContainerHtml());
+            }
+
+            // 404
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not found' }));
+        } catch (err) {
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+            }
+        }
+    });
+
+    // WebSocket upgrade handling
+    server.on('upgrade', (req, socket, head) => {
+        const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+
+        // Client WS at /ws — relay all agent messages
+        if (url.pathname === '/ws') {
+            const wss = new (require('ws').WebSocketServer)({ noServer: true });
+            wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
+                const onMessage = (msg: { agentId: string; agentName: string; data: string }) => {
+                    if (ws.readyState === 1) {
+                        ws.send(JSON.stringify(msg));
+                    }
+                };
+                wsRelay.on('message', onMessage);
+                ws.on('message', (data: Buffer) => {
+                    // Forward client messages to target agent
+                    try {
+                        const parsed = JSON.parse(data.toString());
+                        if (parsed.agentId && parsed.data) {
+                            wsRelay.send(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
+                        }
+                    } catch {
+                        // ignore malformed
+                    }
+                });
+                ws.on('close', () => wsRelay.off('message', onMessage));
+            });
+            return;
+        }
+
+        socket.destroy();
+    });
+
+    server.listen(config.serve.port, config.serve.host);
+
+    return {
+        close() {
+            healthMonitor.stop();
+            sseRelay.disconnectAll();
+            wsRelay.disconnectAll();
+            agentStore.close();
+            server.close();
+        },
+    };
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+async function aggregateWorkspaces(agents: Agent[]): Promise<RemoteWorkspace[]> {
+    const results = await Promise.all(
+        agents
+            .filter(a => a.status !== 'offline')
+            .map(async (agent) => {
+                const workspaces = await fetchAgentWorkspaces(agent.address);
+                return workspaces.map(ws => ({
+                    ...ws,
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    agentAddress: agent.address,
+                }));
+            })
+    );
+    return results.flat();
+}
+
+function sendJson(res: http.ServerResponse, data: unknown, status: number = 200): void {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data));
+}
+
+async function readBody(req: http.IncomingMessage): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => {
+            try {
+                resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+            } catch (err) {
+                reject(err);
+            }
+        });
+        req.on('error', reject);
+    });
+}

@@ -18,6 +18,7 @@ interface DashboardConfig {
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     vimNavigationEnabled?: boolean;
+    containerMode?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -28,7 +29,33 @@ function getConfig(): DashboardConfig {
     return config;
 }
 
+/**
+ * Module-level current agent ID for container mode API routing.
+ * Set by AppContext when the selected workspace changes.
+ * When set, getApiBase() returns `/api/agent/:agentId` so all API calls
+ * are routed through the container's agent proxy.
+ */
+let _currentAgentId: string | null = null;
+
+/** Called by AppContext when selected workspace changes. */
+export function setCurrentAgentId(agentId: string | null): void {
+    _currentAgentId = agentId;
+}
+
+export function getCurrentAgentId(): string | null {
+    return _currentAgentId;
+}
+
 export function getApiBase(): string {
+    const base = getConfig().apiBasePath;
+    if (isContainerMode() && _currentAgentId) {
+        return base + '/agent/' + encodeURIComponent(_currentAgentId);
+    }
+    return base;
+}
+
+/** Returns the raw API base path without agent prefix. Use for container-level endpoints. */
+export function getRawApiBase(): string {
     return getConfig().apiBasePath;
 }
 
@@ -82,4 +109,8 @@ export function isRalphEnabled(): boolean {
 
 export function isVimNavigationEnabled(): boolean {
     return getConfig().vimNavigationEnabled === true;
+}
+
+export function isContainerMode(): boolean {
+    return getConfig().containerMode === true;
 }

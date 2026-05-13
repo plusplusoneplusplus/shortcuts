@@ -113,6 +113,50 @@ export function groupReposByRemote(
     return result;
 }
 
+/** Group repos by their agent (container mode). Each agent becomes a group. */
+export function groupReposByAgent(
+    repos: RepoData[],
+    expandedState: Record<string, boolean>
+): RepoGroup[] {
+    const groups = new Map<string, RepoGroup>();
+    const ungrouped: RepoData[] = [];
+
+    for (const repo of repos) {
+        const agentId = repo.workspace.agentId as string | undefined;
+        const agentName = (repo.workspace.agentName as string | undefined) || agentId;
+        if (!agentId) {
+            ungrouped.push(repo);
+            continue;
+        }
+        if (!groups.has(agentId)) {
+            groups.set(agentId, {
+                normalizedUrl: agentId,
+                label: agentName || agentId,
+                repos: [],
+                expanded: expandedState[agentId] !== false,
+            });
+        }
+        groups.get(agentId)!.repos.push(repo);
+    }
+
+    const result: RepoGroup[] = [];
+    const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+    result.push(...sorted);
+
+    if (ungrouped.length > 0) {
+        for (const repo of ungrouped) {
+            result.push({
+                normalizedUrl: null,
+                label: repo.workspace.name,
+                repos: [repo],
+                expanded: true,
+            });
+        }
+    }
+
+    return result;
+}
+
 /** djb2-style hash → base36 string. Used for deterministic workspace IDs. */
 export function hashString(s: string): string {
     let hash = 0;

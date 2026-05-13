@@ -92,6 +92,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         serversEnabled,
         ralphEnabled,
         vimNavigationEnabled,
+        containerMode,
         reviewFilePath,
         projectDir,
     } = options;
@@ -136,7 +137,8 @@ ${getBundleCss()}
             pullRequestsEnabled: ${!!pullRequestsEnabled},
             serversEnabled: ${!!serversEnabled},
             ralphEnabled: ${!!ralphEnabled},
-            vimNavigationEnabled: ${!!vimNavigationEnabled}
+            vimNavigationEnabled: ${!!vimNavigationEnabled},
+            containerMode: ${!!containerMode}
         };
     </script>${reviewFilePath ? `
     <script>

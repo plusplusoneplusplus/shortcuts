@@ -19,6 +19,8 @@ import { useQueue } from './QueueContext';
 import { fetchUnseenCount } from '../hooks/preferences/seenStateApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
+import { isContainerMode } from '../utils/config';
+import { fetchAgentApi } from '../hooks/useApi';
 import {
     getWorkspaceGitInfo,
     getWorkspaceGitInfoBatch,
@@ -173,6 +175,39 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             gitInfoAbortRef.current = abortController;
 
             const wsIds = enriched.map(r => r.workspace.id);
+
+            if (isContainerMode()) {
+                // In container mode, split batch by agent and proxy each
+                const byAgent = new Map<string, string[]>();
+                for (const r of enriched) {
+                    const aid = r.workspace.agentId as string | undefined;
+                    if (!aid) continue;
+                    if (!byAgent.has(aid)) byAgent.set(aid, []);
+                    byAgent.get(aid)!.push(r.workspace.id);
+                }
+                Promise.all(
+                    [...byAgent.entries()].map(([agentId, ids]) =>
+                        fetchAgentApi(agentId, '/git-info/batch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ workspaceIds: ids }),
+                            signal: abortController.signal,
+                        }).catch(() => ({ results: {} }))
+                    )
+                ).then((responses) => {
+                    if (abortController.signal.aborted) return;
+                    const merged: Record<string, any> = {};
+                    for (const data of responses) Object.assign(merged, data?.results || {});
+                    setRepos(prev => prev.map(r => ({
+                        ...r,
+                        gitInfo: merged[r.workspace.id] || undefined,
+                        gitInfoLoading: false,
+                    })));
+                }).catch((err: unknown) => {
+                    if (err instanceof Error && err.name === 'AbortError') return;
+                    setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
+                });
+            } else {
             getWorkspaceGitInfoBatch(wsIds, abortController.signal).then((data: any) => {
                 if (abortController.signal.aborted) return;
                 const results = data?.results || {};
@@ -185,6 +220,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 if (err instanceof Error && err.name === 'AbortError') return;
                 setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
             });
+            }
         } catch {
             setRepos([]);
             setLoading(false);

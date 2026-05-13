@@ -37,5 +37,7 @@ export interface DashboardOptions {
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */
     projectDir?: string;
+    /** When true, the SPA runs in container mode (multi-agent aggregation). */
+    containerMode?: boolean;
 }
 
