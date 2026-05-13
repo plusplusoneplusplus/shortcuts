@@ -1,6 +1,7 @@
 import type { ProcessStore, Tool } from '@plusplusoneplusplus/forge';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { WakeupToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
@@ -10,6 +11,7 @@ import {
     buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
     buildMemoryReadToolsAddon,
+    buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
 } from './prompt-builder';
@@ -29,11 +31,13 @@ export interface ChatToolBundleOptions {
     };
     broadcastWorkItem?: BroadcastWorkItemFn;
     boundedMemory?: BoundedMemoryAddon;
+    scheduleWakeup?: WakeupToolDeps;
     includeFollowUpSuggestions?: boolean;
     includeSearchConversations?: boolean;
     includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
     includeMemoryReadTools?: boolean;
+    includeScheduleWakeup?: boolean;
     excludeTools?: string[];
 }
 
@@ -82,6 +86,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.includeMemoryReadTools !== false) {
         addons.push(buildMemoryReadToolsAddon(options.dataDir, options.workspaceId));
+    }
+
+    if (options.includeScheduleWakeup !== false) {
+        addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
     }
 
     if (options.boundedMemory) {

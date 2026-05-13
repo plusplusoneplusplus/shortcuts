@@ -49,3 +49,16 @@ export {
     filterDisabledLlmTools,
     type LlmToolMeta,
 } from './llm-tool-registry';
+export {
+    createCreateLoopTool,
+    createCancelLoopTool,
+    createListLoopsTool,
+    createScheduleWakeupTool,
+    parseDuration,
+    type LoopToolDeps,
+    type WakeupToolDeps,
+    type CreateLoopArgs,
+    type CancelLoopArgs,
+    type ListLoopsArgs,
+    type ScheduleWakeupArgs,
+} from './loop-tools';

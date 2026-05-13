@@ -47,6 +47,7 @@ import {
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import { createMemoryGetTool, createMemorySearchTool } from '../llm-tools/memory-read-tools';
+import { createScheduleWakeupTool } from '../llm-tools/loop-tools';
 import { readRepoPreferences } from '../preferences-handler';
 
 
@@ -508,6 +509,26 @@ export function buildTavilyWebSearchAddon(
         '\n\nYou have access to the `tavily_web_search` tool. ' +
         'Use it proactively when the user asks about recent events, version-specific behavior, ' +
         'newly released libraries/APIs, ongoing incidents, or anything likely past your knowledge cutoff.';
+
+    return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// Schedule Wakeup Tool
+// ============================================================================
+
+export function buildScheduleWakeupAddon(
+    deps: import('../llm-tools/loop-tools').WakeupToolDeps | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!deps) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createScheduleWakeupTool(deps);
+    const suffix =
+        '\n\nYou have access to the `scheduleWakeup` tool. ' +
+        'Use it to schedule a one-shot delayed follow-up message into the current conversation. ' +
+        'Specify a delay like "30s", "5m", or "1h". Minimum delay is 1 second.';
 
     return { tools: [tool], suffix };
 }

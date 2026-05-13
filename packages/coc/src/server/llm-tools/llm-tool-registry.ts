@@ -81,6 +81,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'scheduleWakeup',
+        label: 'Schedule Wakeup',
+        description: 'Schedules a one-shot delayed follow-up message into the conversation.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
