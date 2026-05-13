@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /**
  * Read the current schema version from the database.
@@ -299,6 +299,22 @@ export function initializeDatabase(db: Database.Database): void {
                 ON commit_chat_bindings(workspace_id);
         `);
 
+        // ── note_chat_bindings ───────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS note_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                note_path     TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, note_path)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_task
+                ON note_chat_bindings(workspace_id, task_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         // Guards use only `versionBefore < N` (not `>= 1`) so that
         // databases at version 0 with pre-existing tables still get
@@ -336,6 +352,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 13) {
             migrateV12toV13(db);
+        }
+        if (versionBefore < 14) {
+            migrateV13toV14(db);
         }
 
         // Stamp the schema version
@@ -482,4 +501,25 @@ function migrateV11toV12(db: Database.Database): void {
  */
 function migrateV12toV13(_db: Database.Database): void {
     // Table already created by the idempotent DDL above.
+}
+
+/**
+ * V13 → V14: add `note_chat_bindings` table for the per-note chat mapping.
+ * Must run AFTER migrateV6toV7 (which drops a legacy table of the same name)
+ * so it cannot be relied on solely from the upfront DDL.
+ */
+function migrateV13toV14(db: Database.Database): void {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS note_chat_bindings (
+            workspace_id  TEXT NOT NULL,
+            note_path     TEXT NOT NULL,
+            task_id       TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, note_path)
+        )
+    `);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_task
+            ON note_chat_bindings(workspace_id, task_id);
+    `);
 }

@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
     isWireAttachmentArray,
@@ -26,9 +26,48 @@ import {
     type TaskValidationResult,
     type SummarizeConversation,
 } from './queue-shared';
+import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
+import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
+
+    /**
+     * Note-chat binding store. Lazily resolved because we only need it when an
+     * enqueued chat payload carries a `notePath` and we can only access the
+     * shared DB through SqliteProcessStore.
+     */
+    let bindingStore: NoteChatBindingStore | undefined;
+    const getBindingStore = (): NoteChatBindingStore | undefined => {
+        if (bindingStore) return bindingStore;
+        if (store instanceof SqliteProcessStore) {
+            bindingStore = new NoteChatBindingStore(store.getDatabase());
+        }
+        return bindingStore;
+    };
+
+    /**
+     * If the just-enqueued task is a per-note chat, persist a note→task
+     * binding so the Notes view can resolve the chat by path on reload.
+     */
+    const maybeBindNoteChat = (input: { type: string; payload: unknown }, taskId: string): void => {
+        if (input.type !== 'chat') return;
+        const payload = input.payload as { workspaceId?: unknown; context?: { noteChat?: { notePath?: unknown } } } | undefined;
+        const workspaceId = typeof payload?.workspaceId === 'string' ? payload.workspaceId : undefined;
+        const rawNotePath = payload?.context?.noteChat?.notePath;
+        if (!workspaceId) return;
+        const notePath = normalizeRelativeNotePath(rawNotePath);
+        if (!notePath) return;
+        const bs = getBindingStore();
+        if (!bs) return;
+        try {
+            bs.bind(workspaceId, notePath, taskId);
+        } catch (err) {
+            process.stderr.write(
+                `[Queue] note-chat bind failed taskId=${taskId} notePath=${notePath}: ${(err as Error).message}\n`,
+            );
+        }
+    };
 
     // ------------------------------------------------------------------
     // GET /api/queue/models — List available AI model IDs
@@ -79,6 +118,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
             const inp = validation.input!;
             process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
+            maybeBindNoteChat(inp, taskId);
             sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to enqueue task';

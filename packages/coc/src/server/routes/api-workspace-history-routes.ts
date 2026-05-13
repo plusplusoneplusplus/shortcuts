@@ -11,10 +11,11 @@
 
 import type http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 
 type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
 
@@ -27,6 +28,8 @@ async function tryDeleteHistoryEntry(
     processId: string,
     store: ProcessStore,
     bridge: MultiRepoQueueRouter,
+    workspaceId: string | undefined,
+    bindingStore: NoteChatBindingStore | undefined,
 ): Promise<DeleteOutcome> {
     let removedAnything = false;
 
@@ -63,6 +66,16 @@ async function tryDeleteHistoryEntry(
         process.stderr.write(`[History] error removing processId=${processId} from store\n`);
     }
 
+    // 3. Drop any per-note binding pointing at this task so the Notes view
+    //    doesn't resolve to a deleted chat next time it loads.
+    if (removedAnything && bindingStore && workspaceId && isQueueProcessId(processId)) {
+        try {
+            bindingStore.unbindByTask(workspaceId, toTaskId(processId));
+        } catch {
+            // Non-fatal.
+        }
+    }
+
     return removedAnything ? 'deleted' : 'notFound';
 }
 
@@ -71,6 +84,10 @@ export function registerWorkspaceHistoryRoutes(
     store: ProcessStore,
     bridge: MultiRepoQueueRouter,
 ): void {
+    const bindingStore = store instanceof SqliteProcessStore
+        ? new NoteChatBindingStore(store.getDatabase())
+        : undefined;
+
     // ------------------------------------------------------------------
     // DELETE /api/workspaces/:id/history/:processId — Single delete
     // ------------------------------------------------------------------
@@ -78,8 +95,9 @@ export function registerWorkspaceHistoryRoutes(
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/history\/([^/]+)$/,
         handler: async (_req, res, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const processId = decodeURIComponent(match![2]);
-            const outcome = await tryDeleteHistoryEntry(processId, store, bridge);
+            const outcome = await tryDeleteHistoryEntry(processId, store, bridge, workspaceId, bindingStore);
 
             switch (outcome) {
                 case 'conflict':
@@ -100,7 +118,8 @@ export function registerWorkspaceHistoryRoutes(
     routes.push({
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/history$/,
-        handler: async (req, res, _match) => {
+        handler: async (req, res, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const body = await parseBody(req);
             const ids = body?.processIds;
             if (!Array.isArray(ids) || ids.length === 0) {
@@ -109,7 +128,7 @@ export function registerWorkspaceHistoryRoutes(
 
             const results: Array<{ processId: string; status: DeleteOutcome }> = [];
             for (const pid of ids) {
-                const outcome = await tryDeleteHistoryEntry(pid, store, bridge);
+                const outcome = await tryDeleteHistoryEntry(pid, store, bridge, workspaceId, bindingStore);
                 results.push({ processId: pid, status: outcome });
             }
             sendJSON(res, 200, { results });

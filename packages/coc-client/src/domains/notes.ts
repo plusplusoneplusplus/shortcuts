@@ -7,6 +7,8 @@ import type {
   CreateNoteChatResponse,
   CreateNoteNodeResponse,
   CreateNoteWithAIResponse,
+  NoteChatBindingResponse,
+  NoteChatBindingsResponse,
   NoteContentResponse,
   NoteEditSnapshot,
   NoteFileContentAtRevisionResponse,
@@ -268,6 +270,30 @@ export class NotesClient {
 
   initializeGit(workspaceId: string): Promise<{ initialized: boolean }> {
     return this.transport.request<{ initialized: boolean }>(notesGitPath(workspaceId, '/init'), { method: 'POST' });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Per-note chat bindings
+  // ──────────────────────────────────────────────────────────────────────
+
+  listChatBindings(workspaceId: string): Promise<NoteChatBindingsResponse> {
+    return this.transport.request<NoteChatBindingsResponse>(
+      workspaceNotesPath(workspaceId, '/chat-bindings'),
+    );
+  }
+
+  getChatBindingByPath(workspaceId: string, notePath: string): Promise<NoteChatBindingResponse> {
+    return this.transport.request<NoteChatBindingResponse>(
+      workspaceNotesPath(workspaceId, '/chat-bindings/by-path'),
+      { query: { path: notePath } },
+    );
+  }
+
+  deleteChatBindingByPath(workspaceId: string, notePath: string): Promise<void> {
+    return this.transport.request<void>(
+      workspaceNotesPath(workspaceId, '/chat-bindings/by-path'),
+      { method: 'DELETE', query: { path: notePath } },
+    );
   }
 
   deinitializeGit(workspaceId: string): Promise<{ deinitialized: boolean }> {

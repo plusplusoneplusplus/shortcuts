@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import type { AttachmentPayload } from '../../../types/attachments';
 
@@ -41,10 +41,6 @@ function storageKey(workspaceId: string): string {
     return `coc-notes-chat-${workspaceId}`;
 }
 
-function noteMapKey(workspaceId: string): string {
-    return `coc-notes-chat-map-${workspaceId}`;
-}
-
 function scopeKey(workspaceId: string): string {
     return `coc-notes-chat-scope-${workspaceId}`;
 }
@@ -71,16 +67,6 @@ function saveContext(workspaceId: string, ctx: ChatNoteContext | null): void {
     } catch { /* ignore */ }
 }
 
-function loadNoteMap(workspaceId: string): Record<string, string> {
-    try {
-        const raw = localStorage.getItem(noteMapKey(workspaceId));
-        if (!raw) return {};
-        return JSON.parse(raw) as Record<string, string>;
-    } catch {
-        return {};
-    }
-}
-
 function encodeMarkdownLinkPathSegment(value: string): string {
     return encodeURIComponent(value).replace(/[!'()*]/g, char =>
         `%${char.charCodeAt(0).toString(16).toUpperCase()}`
@@ -105,8 +91,9 @@ export function formatNoteAttachmentPrompt(prompt: string, workspaceId: string, 
  * Dual-scope chat hook for the Notes view.
  *
  * Supports two chat scopes:
- * - `per-workspace`: one chat for the entire workspace (stored in `coc-notes-chat-<wsId>`)
- * - `per-note`: one chat per note path (stored as a JSON map in `coc-notes-chat-map-<wsId>`)
+ * - `per-workspace`: one chat for the entire workspace (stored in `coc-notes-chat-<wsId>` localStorage)
+ * - `per-note`: one chat per note path (persisted server-side in the `note_chat_bindings` SQLite
+ *   table; the server auto-binds when a chat task is enqueued with `context.noteChat.notePath`)
  *
  * The active scope is persisted to `coc-notes-chat-scope-<wsId>` localStorage.
  */
@@ -124,18 +111,34 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         return defaultScope;
     });
 
-    // ── Per-workspace task ID ────────────────────────────────────────────────
+    // ── Per-workspace task ID (localStorage; unaffected by note rename) ──────
 
     const [perWorkspaceTaskId, setPerWorkspaceTaskId] = useState<string | null>(() => {
         try { return localStorage.getItem(key); }
         catch { return null; }
     });
 
-    // ── Per-note task ID map ─────────────────────────────────────────────────
+    // ── Per-note task ID map (server-backed; seeded on mount) ────────────────
 
-    const [perNoteMap, setPerNoteMap] = useState<Record<string, string>>(() =>
-        loadNoteMap(workspaceId),
-    );
+    const [perNoteMap, setPerNoteMap] = useState<Record<string, string>>({});
+    const seededWorkspaceRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (seededWorkspaceRef.current === workspaceId) return;
+        seededWorkspaceRef.current = workspaceId;
+        let cancelled = false;
+        void getSpaCocClient().notes.listChatBindings(workspaceId).then(res => {
+            if (cancelled) return;
+            const next: Record<string, string> = {};
+            for (const [path, binding] of Object.entries(res.bindings ?? {})) {
+                next[path] = binding.taskId;
+            }
+            setPerNoteMap(next);
+        }).catch(() => {
+            // Best-effort: if the request fails, leave the map empty.
+        });
+        return () => { cancelled = true; };
+    }, [workspaceId]);
 
     // ── Derived task ID ──────────────────────────────────────────────────────
 
@@ -165,18 +168,6 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         } catch { /* ignore */ }
     }, [perWorkspaceTaskId, key]);
 
-    // ── Persist per-note map ─────────────────────────────────────────────────
-
-    useEffect(() => {
-        try {
-            if (Object.keys(perNoteMap).length > 0) {
-                localStorage.setItem(noteMapKey(workspaceId), JSON.stringify(perNoteMap));
-            } else {
-                localStorage.removeItem(noteMapKey(workspaceId));
-            }
-        } catch { /* ignore */ }
-    }, [perNoteMap, workspaceId]);
-
     // ── Persist context to localStorage ─────────────────────────────────────
 
     useEffect(() => {
@@ -201,6 +192,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
             if (scope === 'per-workspace') {
                 setPerWorkspaceTaskId(newTaskId);
             } else if (notePath) {
+                // Server auto-binds on enqueue; mirror locally so the UI updates without waiting.
                 setPerNoteMap(prev => ({ ...prev, [notePath]: newTaskId }));
             }
 
@@ -227,9 +219,11 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 delete next[notePath];
                 return next;
             });
+            // Best-effort server cleanup; failures are tolerated.
+            void getSpaCocClient().notes.deleteChatBindingByPath(workspaceId, notePath).catch(() => undefined);
         }
         setChatNoteContext(null);
-    }, [scope, notePath]);
+    }, [scope, notePath, workspaceId]);
 
     return { taskId, chatNoteContext, createChat, resetChat, scope, setScope };
 }

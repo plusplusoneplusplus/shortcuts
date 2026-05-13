@@ -60,6 +60,7 @@ describe('sqlite-schema', () => {
             'idx_loops_process_id',
             'idx_loops_status',
             'idx_commit_chat_bindings_workspace',
+            'idx_note_chat_bindings_task',
         ];
 
         for (const name of expected) {
@@ -94,7 +95,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(13);
+        expect(SCHEMA_VERSION).toBe(14);
     });
 
     it('creates queue pause timer columns', () => {

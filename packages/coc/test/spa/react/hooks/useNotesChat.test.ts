@@ -83,16 +83,12 @@ describe('useNotesChat', () => {
             expect(source).toContain('`coc-notes-chat-${workspaceId}`');
         });
 
-        it('uses workspace-scoped map key for per-note chats', () => {
-            expect(source).toContain('`coc-notes-chat-map-${workspaceId}`');
+        it('seeds per-note map from server via listChatBindings', () => {
+            expect(source).toContain('listChatBindings(workspaceId)');
         });
 
-        it('persists per-note map to localStorage', () => {
-            expect(source).toContain('localStorage.setItem(noteMapKey(workspaceId), JSON.stringify(perNoteMap))');
-        });
-
-        it('removes per-note map from localStorage when empty', () => {
-            expect(source).toContain('localStorage.removeItem(noteMapKey(workspaceId))');
+        it('does not persist per-note map to localStorage', () => {
+            expect(source).not.toContain('coc-notes-chat-map-');
         });
     });
 
@@ -217,6 +213,10 @@ describe('useNotesChat', () => {
 
         it('removes per-note entry when scope is per-note', () => {
             expect(source).toContain("delete next[notePath]");
+        });
+
+        it('calls deleteChatBindingByPath on the server when resetting a per-note chat', () => {
+            expect(source).toContain('deleteChatBindingByPath(workspaceId, notePath)');
         });
 
         it('clears chat note context in both cases', () => {
