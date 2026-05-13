@@ -106,27 +106,40 @@ function ScheduleItem({
                 <span className="truncate">{schedule.name}</span>
                 {isNotesAutoCommit ? (
                     <span
-                        className="flex-shrink-0 text-[9px] px-1 py-px rounded bg-pink-100 dark:bg-pink-900/40 text-[#bf3989] dark:text-pink-300 font-medium leading-tight"
+                        className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#ffeff7] dark:bg-pink-900/40 text-[#bf3989] dark:text-pink-300 border border-[#ffadda] dark:border-pink-700/60"
                         data-testid="notes-badge"
+                        data-type-label="notes"
                     >
-                        [Notes]
+                        Notes
                     </span>
                 ) : schedule.source === 'repo' ? (
-                    <span className="flex-shrink-0 text-[9px] px-1 py-px rounded bg-[#ddf4ff] dark:bg-[#1a3a5c] text-[#0969da] dark:text-[#4fc3f7] font-medium leading-tight">
-                        [Repo]
+                    <span
+                        className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#ddf4ff] dark:bg-[#1a3a5c] text-[#0969da] dark:text-[#4fc3f7] border border-[#b6e3ff] dark:border-[#316dca]"
+                        data-testid="type-label-repo"
+                        data-type-label="repo"
+                    >
+                        Repo
                     </span>
                 ) : schedule.targetType === 'script' ? (
-                    <span className="flex-shrink-0 text-[9px] px-1 py-px rounded bg-[#fff8c5] dark:bg-amber-900/40 text-[#9a6700] dark:text-amber-300 font-medium leading-tight">
-                        [Script]
+                    <span
+                        className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#fff8c5] dark:bg-amber-900/40 text-[#9a6700] dark:text-amber-300 border border-[#d4a72c] dark:border-amber-700/60"
+                        data-testid="type-label-script"
+                        data-type-label="script"
+                    >
+                        Script
                     </span>
                 ) : (
-                    <span className="flex-shrink-0 text-[9px] px-1 py-px rounded bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#848484] font-medium leading-tight">
-                        [Prompt]
+                    <span
+                        className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#848484] border border-[#d8dee4] dark:border-[#3c3c3c]"
+                        data-testid="type-label-prompt"
+                        data-type-label="prompt"
+                    >
+                        Prompt
                     </span>
                 )}
                 {!isNotesAutoCommit && schedule.source !== 'repo' && (!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
                     <span
-                        className="flex-shrink-0 text-[9px] px-1 py-px rounded bg-purple-100 dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 font-medium leading-tight capitalize"
+                        className="flex-shrink-0 inline-flex items-center px-[7px] py-px rounded-full text-[10px] font-medium leading-4 bg-[#fbf0ff] dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 border border-[#e5cffd] dark:border-purple-700/60 capitalize"
                         data-testid="list-mode-badge"
                     >
                         {schedule.mode}
@@ -254,16 +267,24 @@ export function ScheduleListPanel({
             {/* ── Scrollable list ──────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto pb-4 pt-1">
                 {/* ── MY SCHEDULES section ─────────────────────────────── */}
-                <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                <div className="flex items-center px-3 pt-2 pb-1">
                     <button
-                        className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-[#656d76] dark:text-[#848484] font-semibold hover:text-[#1f2328] dark:hover:text-[#cccccc]"
+                        className="flex-1 flex items-center gap-1 text-[11px] uppercase tracking-wider text-[#656d76] dark:text-[#848484] font-semibold hover:text-[#1f2328] dark:hover:text-[#cccccc]"
                         onClick={() => setUserCollapsed(v => !v)}
                         aria-expanded={!userCollapsed}
                         data-testid="my-schedules-header"
                     >
                         <span aria-hidden>{userCollapsed ? '▶' : '▼'}</span>
-                        MY SCHEDULES{userSchedules.length > 0 ? ` (${userSchedules.length})` : ''}
+                        MY SCHEDULES
                     </button>
+                    {userSchedules.length > 0 && (
+                        <span
+                            className="ml-2 inline-flex items-center justify-center min-w-[18px] px-1.5 py-0 text-[10px] font-medium leading-4 rounded-full text-[#656d76] dark:text-[#848484] bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-transparent tabular-nums"
+                            data-testid="my-schedules-count"
+                        >
+                            {userSchedules.length}
+                        </span>
+                    )}
                 </div>
 
                 {!userCollapsed && (
@@ -343,16 +364,24 @@ export function ScheduleListPanel({
                 )}
 
                 {/* ── REPO SCHEDULES section ──────────────────────────────── */}
-                <div className="flex items-center justify-between px-3 pt-3 pb-1 mt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
+                <div className="flex items-center px-3 pt-3 pb-1 mt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
                     <button
-                        className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-[#656d76] dark:text-[#848484] font-semibold hover:text-[#1f2328] dark:hover:text-[#cccccc]"
+                        className="flex-1 flex items-center gap-1 text-[11px] uppercase tracking-wider text-[#656d76] dark:text-[#848484] font-semibold hover:text-[#1f2328] dark:hover:text-[#cccccc]"
                         onClick={() => setRepoCollapsed(v => !v)}
                         aria-expanded={!repoCollapsed}
                         data-testid="repo-schedules-header"
                     >
                         <span aria-hidden>{repoCollapsed ? '▶' : '▼'}</span>
-                        REPO SCHEDULES{repoSchedules.length > 0 ? ` (${repoSchedules.length})` : ''}
+                        REPO SCHEDULES
                     </button>
+                    {repoSchedules.length > 0 && (
+                        <span
+                            className="ml-2 inline-flex items-center justify-center min-w-[18px] px-1.5 py-0 text-[10px] font-medium leading-4 rounded-full text-[#656d76] dark:text-[#848484] bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-transparent tabular-nums"
+                            data-testid="repo-schedules-count"
+                        >
+                            {repoSchedules.length}
+                        </span>
+                    )}
                 </div>
 
                 {!repoCollapsed && (

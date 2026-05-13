@@ -29,6 +29,98 @@ function computeSuccessRate(history: RunRecord[]): number | null {
     return Math.round((ok / completed.length) * 100);
 }
 
+// Inline GitHub Primer-style icons used in the schedule detail header.
+const PromptIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.573A1.458 1.458 0 0 1 2 11.543V10h-.25A1.75 1.75 0 0 1 0 8.25v-5.5C0 1.784.784 1 1.75 1ZM1.5 2.75v5.5c0 .138.112.25.25.25h1a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h3.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13 2a.25.25 0 0 0-.25-.25h-.5a.75.75 0 0 1 0-1.5h.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 14.25 12H14v1.543a1.458 1.458 0 0 1-2.487 1.03L9.22 12.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.22 2.22v-2.19a.75.75 0 0 1 .75-.75h1a.25.25 0 0 0 .25-.25Z" />
+    </svg>
+);
+
+const ScriptIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25Zm7.47 3.97a.75.75 0 0 1 1.06 0l2 2a.75.75 0 0 1 0 1.06l-2 2a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L10.69 9 9.22 7.53a.75.75 0 0 1 0-1.06ZM6.78 6.47 8.25 8 6.78 9.47A.749.749 0 0 1 5.503 8.94a.749.749 0 0 1 .215-.734L6.94 7 5.72 5.78a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215Z" />
+    </svg>
+);
+
+const RepoIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
+    </svg>
+);
+
+const PlayIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="m4 2 10 6-10 6V2Z" />
+    </svg>
+);
+
+const PauseIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M3 2h3v12H3Zm7 0h3v12h-3Z" />
+    </svg>
+);
+
+const EditIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758ZM4.176 13.085l-1.115.318.318-1.115Z" />
+    </svg>
+);
+
+const CopyIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+        <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+    </svg>
+);
+
+const TrashIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.749 1.749 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+    </svg>
+);
+
+interface TypeLabelInfo {
+    text: 'Notes' | 'Repo' | 'Script' | 'Prompt';
+    pillClass: string;
+    testId: string;
+}
+
+function typeLabel(schedule: Schedule): TypeLabelInfo {
+    if (schedule.name === 'Notes Auto-Commit') {
+        return {
+            text: 'Notes',
+            pillClass: 'bg-[#ffeff7] dark:bg-pink-900/40 text-[#bf3989] dark:text-pink-300 border-[#ffadda] dark:border-pink-700/60',
+            testId: 'type-label-notes',
+        };
+    }
+    if (schedule.source === 'repo') {
+        return {
+            text: 'Repo',
+            pillClass: 'bg-[#ddf4ff] dark:bg-[#1a3a5c] text-[#0969da] dark:text-[#4fc3f7] border-[#b6e3ff] dark:border-[#316dca]',
+            testId: 'type-label-repo',
+        };
+    }
+    if (schedule.targetType === 'script') {
+        return {
+            text: 'Script',
+            pillClass: 'bg-[#fff8c5] dark:bg-amber-900/40 text-[#9a6700] dark:text-amber-300 border-[#d4a72c] dark:border-amber-700/60',
+            testId: 'type-label-script',
+        };
+    }
+    return {
+        text: 'Prompt',
+        pillClass: 'bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#848484] border-[#d8dee4] dark:border-[#3c3c3c]',
+        testId: 'type-label-prompt',
+    };
+}
+
+function HeaderIcon({ schedule }: { schedule: Schedule }) {
+    const className = 'w-4 h-4 text-[#656d76] dark:text-[#848484] flex-shrink-0';
+    if (schedule.source === 'repo') return <RepoIcon className={className} />;
+    if (schedule.targetType === 'script') return <ScriptIcon className={className} />;
+    return <PromptIcon className={className} />;
+}
+
 export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
     const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
     const paramEntries = Object.entries(schedule.params ?? {});
@@ -44,6 +136,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
     const lastRun = useMemo(() => history.find(r => r.status !== 'running'), [history]);
     const successRate = useMemo(() => computeSuccessRate(history), [history]);
     const crumbParent = schedule.source === 'repo' ? 'Repo schedules' : 'My schedules';
+    const tLabel = typeLabel(schedule);
 
     return (
         <div className="flex flex-col gap-0" data-testid="schedule-detail">
@@ -98,9 +191,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             className="m-0 text-lg font-semibold text-[#1f2328] dark:text-[#cccccc] leading-tight flex items-center gap-2 flex-wrap"
                             data-testid="schedule-name"
                         >
-                            <span className="text-[#656d76] dark:text-[#848484]" aria-hidden>
-                                {schedule.targetType === 'script' ? '🛠️' : '📄'}
-                            </span>
+                            <HeaderIcon schedule={schedule} />
                             <span>{schedule.name}</span>
                             {schedule.isRunning && (
                                 <span
@@ -110,9 +201,16 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                 />
                             )}
                             <StatusBadge status={schedule.status} isRunning={schedule.isRunning} />
+                            <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium leading-4 border ${tLabel.pillClass}`}
+                                data-testid={tLabel.testId}
+                                data-type-label={tLabel.text.toLowerCase()}
+                            >
+                                {tLabel.text}
+                            </span>
                             {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
                                 <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 font-medium capitalize"
+                                    className="text-[11px] px-2 py-0.5 rounded-full bg-[#fbf0ff] dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 border border-[#e5cffd] dark:border-purple-700/60 font-medium leading-4 capitalize"
                                     data-testid="mode-badge"
                                 >
                                     {schedule.mode}
@@ -155,13 +253,14 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                     {/* ── Action toolbar ──────────────────────────────────── */}
                     <div className="px-5 py-2.5 flex items-center gap-2 flex-wrap bg-white dark:bg-[#1e1e1e] border-b border-[#eaeef2] dark:border-[#3c3c3c]">
                         <Button
-                            variant="primary"
+                            variant="success"
                             size="sm"
                             disabled={schedule.isRunning}
                             onClick={() => onRunNow(schedule.id)}
                             aria-label="Run schedule now"
                         >
-                            ▶ Run Now
+                            <PlayIcon />
+                            Run now
                         </Button>
                         <span className="flex-1" />
                         <Button
@@ -170,7 +269,8 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             onClick={() => onPauseResume(schedule)}
                             aria-label={schedule.status === 'active' ? 'Pause schedule' : 'Resume schedule'}
                         >
-                            {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
+                            {schedule.status === 'active' ? <PauseIcon /> : <PlayIcon />}
+                            {schedule.status === 'active' ? 'Pause' : 'Resume'}
                         </Button>
                         <Button
                             variant="secondary"
@@ -180,7 +280,8 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             aria-label="Edit schedule"
                             data-testid="edit-btn"
                         >
-                            ✏ Edit
+                            <EditIcon />
+                            Edit
                         </Button>
                         <Button
                             variant="secondary"
@@ -189,7 +290,8 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             aria-label="Duplicate schedule"
                             data-testid="duplicate-btn"
                         >
-                            ⧉ Duplicate
+                            <CopyIcon />
+                            Duplicate
                         </Button>
                         <span className="flex-1" />
                         <Button
@@ -198,7 +300,8 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             onClick={() => onDelete(schedule.id)}
                             aria-label="Delete schedule"
                         >
-                            🗑 Delete
+                            <TrashIcon />
+                            Delete
                         </Button>
                     </div>
 
@@ -268,7 +371,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                                 {paramEntries.map(([k, v]) => (
                                                     <span
                                                         key={k}
-                                                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#eaeef2] dark:bg-[#1a3a5c] text-[#1f2328] dark:text-[#4fc3f7] font-mono"
+                                                        className="text-[11px] px-[7px] py-px rounded-full bg-[#eaeef2] dark:bg-[#2a2a2a] text-[#1f2328] dark:text-[#cccccc] font-mono leading-4"
                                                         data-testid={`param-pill-${k}`}
                                                     >
                                                         {k}={v}

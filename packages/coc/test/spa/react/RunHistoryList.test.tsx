@@ -80,7 +80,7 @@ describe('RunHistoryList — flex layout', () => {
         expect(inner.style.gridTemplateColumns).toBeFalsy();
     });
 
-    it('renders ISO date sub-row beneath relative time', async () => {
+    it('renders ISO date inline beside relative time', async () => {
         const RunHistoryList = await getRunHistoryList();
         render(
             <Wrap>
@@ -96,8 +96,8 @@ describe('RunHistoryList — flex layout', () => {
         const isoDate = screen.getByTestId('iso-date-run-1');
         expect(isoDate).toBeTruthy();
         expect(isoDate.textContent).toBe('2026-03-24 02:14:22');
-        expect(isoDate.className).toContain('font-mono');
-        expect(isoDate.className).toContain('text-[10px]');
+        // ISO date is now muted (not monospace) per the redesign.
+        expect(isoDate.className).toMatch(/text-\[#656d76\]|text-\[#848484\]/);
     });
 
     it('does not truncate the start time span', async () => {

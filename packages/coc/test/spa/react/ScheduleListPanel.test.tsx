@@ -109,36 +109,47 @@ describe('ScheduleListPanel — two-section UI', () => {
 
     it('shows count in MY SCHEDULES header when user schedules exist', () => {
         renderPanel([USER_SCHEDULE]);
-        expect(screen.getByTestId('my-schedules-header').textContent).toContain('(1)');
+        expect(screen.getByTestId('my-schedules-count').textContent).toBe('1');
     });
 
     it('shows count in REPO SCHEDULES header when repo schedules exist', () => {
         renderPanel([REPO_SCHEDULE]);
-        expect(screen.getByTestId('repo-schedules-header').textContent).toContain('(1)');
+        expect(screen.getByTestId('repo-schedules-count').textContent).toBe('1');
     });
 
-    it('shows no count in MY SCHEDULES when empty', () => {
+    it('shows no count pill in MY SCHEDULES when empty', () => {
         renderPanel([]);
-        const header = screen.getByTestId('my-schedules-header');
-        expect(header.textContent).not.toContain('(');
+        expect(screen.queryByTestId('my-schedules-count')).toBeNull();
     });
 
-    it('repo schedule shows [Repo] badge instead of [Prompt]/[Script]', () => {
+    it('repo schedule shows Repo label pill instead of Prompt/Script', () => {
         renderPanel([REPO_SCHEDULE]);
-        expect(screen.getByText('[Repo]')).toBeTruthy();
-        expect(screen.queryByText('[Prompt]')).toBeNull();
-        expect(screen.queryByText('[Script]')).toBeNull();
+        expect(screen.getByTestId('type-label-repo')).toBeTruthy();
+        expect(screen.queryByTestId('type-label-prompt')).toBeNull();
+        expect(screen.queryByTestId('type-label-script')).toBeNull();
     });
 
-    it('user prompt schedule shows [Prompt] badge', () => {
+    it('user prompt schedule shows Prompt label pill', () => {
         renderPanel([USER_SCHEDULE]);
-        expect(screen.getByText('[Prompt]')).toBeTruthy();
-        expect(screen.queryByText('[Repo]')).toBeNull();
+        expect(screen.getByTestId('type-label-prompt')).toBeTruthy();
+        expect(screen.queryByTestId('type-label-repo')).toBeNull();
     });
 
-    it('user script schedule shows [Script] badge', () => {
+    it('user script schedule shows Script label pill', () => {
         renderPanel([makeSchedule({ id: 'sch-script', name: 'Script', targetType: 'script' })]);
-        expect(screen.getByText('[Script]')).toBeTruthy();
+        expect(screen.getByTestId('type-label-script')).toBeTruthy();
+    });
+
+    it('type label pills render without surrounding brackets', () => {
+        renderPanel([USER_SCHEDULE, REPO_SCHEDULE, makeSchedule({ id: 'sch-sx', name: 'Script', targetType: 'script' })]);
+        expect(screen.getByTestId('type-label-prompt').textContent).toBe('Prompt');
+        expect(screen.getByTestId('type-label-repo').textContent).toBe('Repo');
+        expect(screen.getByTestId('type-label-script').textContent).toBe('Script');
+        // No brackets anywhere in the panel text
+        expect(screen.queryByText(/\[Prompt\]/)).toBeNull();
+        expect(screen.queryByText(/\[Repo\]/)).toBeNull();
+        expect(screen.queryByText(/\[Script\]/)).toBeNull();
+        expect(screen.queryByText(/\[Notes\]/)).toBeNull();
     });
 
     it('+ New button is present', () => {
@@ -255,7 +266,7 @@ describe('ScheduleListPanel — Quick Actions & Notes badge', () => {
         expect(btn).toHaveProperty('disabled', true);
     });
 
-    it('[Notes] badge renders on schedule named "Notes Auto-Commit"', () => {
+    it('Notes label pill renders on schedule named "Notes Auto-Commit"', () => {
         const autoCommitSchedule = makeSchedule({
             id: 'ac-1',
             name: 'Notes Auto-Commit',
@@ -263,13 +274,14 @@ describe('ScheduleListPanel — Quick Actions & Notes badge', () => {
         });
         renderPanel([autoCommitSchedule]);
         expect(screen.getByTestId('notes-badge')).toBeTruthy();
-        expect(screen.getByText('[Notes]')).toBeTruthy();
+        expect(screen.getByTestId('notes-badge').textContent).toBe('Notes');
     });
 
-    it('[Notes] badge does not render on other schedules', () => {
+    it('Notes label pill does not render on other schedules', () => {
         renderPanel([USER_SCHEDULE]);
         expect(screen.queryByTestId('notes-badge')).toBeNull();
-        expect(screen.queryByText('[Notes]')).toBeNull();
+        // 'Notes' text should not appear elsewhere on user schedule
+        expect(screen.queryByText('Notes')).toBeNull();
     });
 
     it('Quick Actions is hidden when MY SCHEDULES section is collapsed', () => {

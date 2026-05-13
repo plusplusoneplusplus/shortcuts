@@ -336,18 +336,18 @@ describe('Split-panel layout', () => {
         await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
 
         await waitFor(() => {
-            // MY SCHEDULES section header shows count of user schedules
-            expect(screen.getByText(/MY SCHEDULES\s*\(2\)/)).toBeTruthy();
+            // MY SCHEDULES section header shows a right-aligned count pill.
+            expect(screen.getByTestId('my-schedules-count').textContent).toBe('2');
         });
     });
 
-    it('left panel header shows no count when empty', async () => {
+    it('left panel header shows no count pill when empty', async () => {
         await renderEmpty();
 
-        // MY SCHEDULES section header should exist and show no count (no parentheses)
         const header = screen.getByTestId('my-schedules-header');
         expect(header.textContent).toContain('MY SCHEDULES');
-        expect(header.textContent).not.toContain('(');
+        // The count pill is omitted when there are no user schedules.
+        expect(screen.queryByTestId('my-schedules-count')).toBeNull();
     });
 
     it('desktop layout has resize handle with data-testid', async () => {

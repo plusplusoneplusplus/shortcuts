@@ -61,13 +61,13 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
     const hasMore = history.length > visibleHistory.length;
 
     return (
-        <div className="px-3 py-2.5" data-testid="run-history">
-            <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] uppercase text-[#848484] font-medium">
+        <div data-testid="run-history">
+            <div className="px-4 py-2.5 flex items-center justify-between bg-[#f6f8fa] dark:bg-[#252526] border-b border-[#d0d7de] dark:border-[#3c3c3c]">
+                <span className="text-xs font-semibold text-[#1f2328] dark:text-[#cccccc]">
                     Run History{history.length > 0 ? ` (${history.length})` : ''}
                 </span>
                 <button
-                    className="text-[10px] text-[#0078d4] hover:underline disabled:opacity-50 flex items-center gap-0.5"
+                    className="text-[11px] text-[#0969da] dark:text-[#4fc3f7] hover:underline disabled:opacity-50 flex items-center gap-1"
                     onClick={refreshHistory}
                     disabled={refreshing}
                     aria-label="Refresh run history"
@@ -78,10 +78,10 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
             </div>
 
             {history.length === 0 ? (
-                <div className="text-[11px] text-[#848484]" data-testid="no-runs-empty">
+                <div className="px-4 py-5 text-center text-[11px] text-[#656d76] dark:text-[#848484]" data-testid="no-runs-empty">
                     No runs yet —{' '}
                     <button
-                        className="text-[#0078d4] hover:underline"
+                        className="text-[#0969da] dark:text-[#4fc3f7] hover:underline"
                         onClick={() => onRunNow(scheduleId)}
                         disabled={isRunning}
                         aria-label="Run this schedule"
@@ -90,50 +90,62 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                     </button>
                 </div>
             ) : (
-                <div className="flex flex-col gap-0.5" data-testid="history-list">
+                <div className="flex flex-col" data-testid="history-list">
                     {visibleHistory.map(run => {
                         const isExpanded = showOutputId === run.id;
                         const hasOutput = !!(run.stdout || run.stderr);
                         return (
-                            <div key={run.id} className="text-[11px] text-[#616161] dark:text-[#999] py-0.5" data-testid={`run-row-${run.id}`}>
-                                <div className="flex items-start gap-2">
+                            <div key={run.id} className="text-[11px] text-[#616161] dark:text-[#999] border-b border-[#eaeef2] dark:border-[#3c3c3c] last:border-b-0" data-testid={`run-row-${run.id}`}>
+                                <div className="flex items-start gap-3 px-4 py-2">
                                     {/* Status icon */}
-                                    <span className="flex-shrink-0 text-center w-4" aria-label={`Run status: ${run.status}`}>
-                                        {run.status === 'completed'
-                                            ? <span className="text-green-600">✅</span>
+                                    <span className="flex-shrink-0 text-center w-3 mt-[3px]" aria-label={`Run status: ${run.status}`}>
+                                        {run.status === 'completed' || run.status === 'success'
+                                            ? <span className="inline-block w-2 h-2 rounded-full bg-[#1a7f37] dark:bg-[#3fb950]" />
                                             : run.status === 'failed'
-                                                ? <span className="text-red-500">❌</span>
+                                                ? <span className="inline-block w-2 h-2 rounded-full bg-[#cf222e] dark:bg-[#f85149]" />
                                                 : run.status === 'running'
-                                                    ? <span className="inline-block w-3 h-3 border-2 border-[#0078d4] border-t-transparent rounded-full animate-spin" aria-label="Running" />
-                                                    : <span className="text-yellow-500">⚠️</span>}
+                                                    ? <span className="inline-block w-3 h-3 border-2 border-[#0969da] border-t-transparent rounded-full animate-spin" aria-label="Running" />
+                                                    : <span className="inline-block w-2 h-2 rounded-full bg-[#9a6700] dark:bg-amber-300" />}
                                     </span>
                                     {/* Start time */}
-                                    <span className="min-w-0 flex-1" title={run.startedAt}>
-                                        <span className="block">{formatRelativeTime(run.startedAt)}</span>
-                                        <span className="block text-[10px] font-mono text-[#848484]" data-testid={`iso-date-${run.id}`}>{run.startedAt.replace('T', ' ').replace(/\.\d+Z$/, '')}</span>
+                                    <span className="min-w-0 flex-1 leading-tight" title={run.startedAt}>
+                                        <span className="block text-[12px] text-[#1f2328] dark:text-[#cccccc]">{formatRelativeTime(run.startedAt)} · <span className="text-[#656d76] dark:text-[#848484]" data-testid={`iso-date-${run.id}`}>{run.startedAt.replace('T', ' ').replace(/\.\d+Z$/, '')}</span></span>
                                     </span>
                                     {/* Duration */}
-                                    <span className="text-right font-mono text-[10px] text-[#848484] flex-shrink-0">
+                                    <span className="text-right font-mono text-[11px] text-[#656d76] dark:text-[#848484] flex-shrink-0 mt-[2px] tabular-nums">
                                         {run.durationMs != null ? formatDuration(run.durationMs) : '—'}
                                     </span>
                                     {/* Exit code */}
-                                    <span className="text-right flex-shrink-0">
+                                    <span className="text-right flex-shrink-0 mt-[2px] min-w-[44px]">
                                         {run.exitCode != null ? (
                                             <span className={cn(
-                                                'text-[10px] px-1 py-0.5 rounded font-mono',
+                                                'font-mono text-[11px]',
                                                 run.exitCode === 0
-                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                    : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                                    ? 'text-[#656d76] dark:text-[#848484]'
+                                                    : 'text-[#cf222e] dark:text-red-400 font-medium'
                                             )} data-testid={`exit-code-${run.id}`}>
-                                                {run.exitCode}
+                                                exit {run.exitCode}
                                             </span>
                                         ) : null}
                                     </span>
+                                    {/* Output toggle */}
+                                    <span className="flex justify-end flex-shrink-0 mt-[1px] min-w-[60px]">
+                                        {hasOutput ? (
+                                            <button
+                                                className="text-[11px] text-[#0969da] dark:text-[#4fc3f7] hover:underline select-none leading-tight"
+                                                onClick={() => setShowOutputId(isExpanded ? null : run.id)}
+                                                aria-expanded={isExpanded}
+                                                aria-label={isExpanded ? 'Hide output' : 'Show output'}
+                                            >
+                                                {isExpanded ? 'Hide output' : 'Output'}
+                                            </button>
+                                        ) : null}
+                                    </span>
                                     {/* Activity link */}
-                                    <span className="flex justify-center flex-shrink-0 w-4">
+                                    <span className="flex justify-center flex-shrink-0 mt-[1px] w-4">
                                         {run.processId ? (
                                             <button
-                                                className="text-[#0078d4] hover:text-[#005fa3] leading-none"
+                                                className="text-[#0969da] dark:text-[#4fc3f7] hover:text-[#0550ae] leading-none"
                                                 title="Go to activity"
                                                 aria-label="Go to activity"
                                                 data-testid={`activity-link-${run.id}`}
@@ -146,30 +158,18 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                                         ) : null}
                                     </span>
                                 </div>
-                                {hasOutput && (
-                                    <div className="ml-5 mt-0.5">
-                                        <button
-                                            className="text-[10px] text-[#0078d4] hover:underline select-none"
-                                            onClick={() => setShowOutputId(isExpanded ? null : run.id)}
-                                            aria-expanded={isExpanded}
-                                            aria-label={isExpanded ? 'Hide output' : 'Show output'}
-                                        >
-                                            {isExpanded ? 'Hide output' : 'Show output'}
-                                        </button>
-                                        {isExpanded && (
-                                            <pre className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all overflow-y-auto max-h-48" data-testid={`output-block-${run.id}`}>
-                                                {run.stdout && <span>{run.stdout}</span>}
-                                                {run.stderr && <span className="text-red-400">{run.stderr}</span>}
-                                            </pre>
-                                        )}
-                                    </div>
+                                {hasOutput && isExpanded && (
+                                    <pre className="px-4 py-2 bg-[#eaeef2] dark:bg-[#1e1e1e] font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all overflow-y-auto max-h-48 border-t border-[#d8dee4] dark:border-[#3c3c3c]" data-testid={`output-block-${run.id}`}>
+                                        {run.stdout && <span>{run.stdout}</span>}
+                                        {run.stderr && <span className="text-red-400 block">{run.stderr}</span>}
+                                    </pre>
                                 )}
                             </div>
                         );
                     })}
                     {hasMore && (
                         <button
-                            className="mt-1 text-[10px] text-[#0078d4] hover:underline text-left"
+                            className="px-4 py-2 text-[11px] text-[#0969da] dark:text-[#4fc3f7] hover:underline text-left"
                             onClick={() => setHistoryPage(p => p + 1)}
                             data-testid="load-more-history"
                         >

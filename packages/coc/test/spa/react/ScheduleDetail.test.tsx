@@ -184,24 +184,38 @@ describe('ScheduleDetail — header zone', () => {
         expect(screen.getByTestId('schedule-name').textContent).toContain('Test Schedule');
     });
 
-    it('renders prompt icon for prompt targetType', async () => {
+    it('renders Prompt type label for prompt targetType', async () => {
         const ScheduleDetail = await getScheduleDetail();
         render(
             <Wrap>
                 <ScheduleDetail {...renderDetail()} />
             </Wrap>,
         );
-        expect(screen.getByTestId('schedule-name').textContent).toContain('📄');
+        expect(screen.getByTestId('type-label-prompt').textContent).toBe('Prompt');
     });
 
-    it('renders script icon for script targetType', async () => {
+    it('renders Script type label for script targetType', async () => {
         const ScheduleDetail = await getScheduleDetail();
         render(
             <Wrap>
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE_SCRIPT)} />
             </Wrap>,
         );
-        expect(screen.getByTestId('schedule-name').textContent).toContain('🛠️');
+        expect(screen.getByTestId('type-label-script').textContent).toBe('Script');
+    });
+
+    it('renders a header icon (SVG, not emoji) for the schedule type', async () => {
+        const ScheduleDetail = await getScheduleDetail();
+        render(
+            <Wrap>
+                <ScheduleDetail {...renderDetail()} />
+            </Wrap>,
+        );
+        const header = screen.getByTestId('schedule-name');
+        // Header icon is now an inline SVG, not an emoji
+        expect(header.querySelector('svg')).toBeTruthy();
+        expect(header.textContent).not.toContain('📄');
+        expect(header.textContent).not.toContain('🛠️');
     });
 
     it('shows Active status badge for active schedule', async () => {
@@ -621,7 +635,7 @@ describe('ScheduleDetail — run history', () => {
         expect(screen.getByTestId('run-row-run-3')).toBeTruthy();
     });
 
-    it('shows exit code badge for completed run', async () => {
+    it('shows exit code label for completed run', async () => {
         const ScheduleDetail = await getScheduleDetail();
         render(
             <Wrap>
@@ -629,10 +643,10 @@ describe('ScheduleDetail — run history', () => {
             </Wrap>,
         );
         const exitCode = screen.getByTestId('exit-code-run-1');
-        expect(exitCode.textContent).toBe('0');
+        expect(exitCode.textContent).toBe('exit 0');
     });
 
-    it('shows red exit code badge for failed run', async () => {
+    it('shows red exit code label for failed run', async () => {
         const ScheduleDetail = await getScheduleDetail();
         render(
             <Wrap>
@@ -640,11 +654,11 @@ describe('ScheduleDetail — run history', () => {
             </Wrap>,
         );
         const exitCode = screen.getByTestId('exit-code-run-2');
-        expect(exitCode.textContent).toBe('1');
+        expect(exitCode.textContent).toBe('exit 1');
         expect(exitCode.className).toContain('red');
     });
 
-    it('shows "Show output" link for runs with stdout', async () => {
+    it('shows "Output" toggle for runs with stdout', async () => {
         const ScheduleDetail = await getScheduleDetail();
         render(
             <Wrap>
@@ -654,7 +668,7 @@ describe('ScheduleDetail — run history', () => {
         const row = screen.getByTestId('run-row-run-1');
         const showLink = row.querySelector('button[aria-expanded]');
         expect(showLink).toBeTruthy();
-        expect(showLink!.textContent).toBe('Show output');
+        expect(showLink!.textContent).toBe('Output');
     });
 
     it('toggles output block on click', async () => {

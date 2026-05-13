@@ -1,5 +1,5 @@
 /**
- * RepoSchedulesTab lifecycle tests: delete, pause/resume, and [Prompt] badge.
+ * RepoSchedulesTab lifecycle tests: delete, pause/resume, and type label pills.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -141,34 +141,45 @@ async function renderWithSchedules(schedules: any[]) {
 }
 
 // ============================================================================
-// [Prompt] badge
+// Type label pills (no brackets)
 // ============================================================================
 
-describe('RepoSchedulesTab — [Prompt] and [Script] badges', () => {
+describe('RepoSchedulesTab — Prompt and Script type labels', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('shows [Prompt] badge for prompt-type schedule', async () => {
+    it('shows Prompt label pill for prompt-type schedule', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
-        expect(screen.getByText('[Prompt]')).toBeTruthy();
+        // List row and detail header both render the same pill testid.
+        const pills = screen.getAllByTestId('type-label-prompt');
+        expect(pills.length).toBeGreaterThan(0);
+        expect(pills[0].textContent).toBe('Prompt');
     });
 
-    it('shows [Script] badge for script-type schedule', async () => {
+    it('shows Script label pill for script-type schedule', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_SCRIPT]);
-        expect(screen.getByText('[Script]')).toBeTruthy();
+        const pills = screen.getAllByTestId('type-label-script');
+        expect(pills.length).toBeGreaterThan(0);
+        expect(pills[0].textContent).toBe('Script');
     });
 
-    it('shows [Prompt] badge when targetType is undefined', async () => {
+    it('shows Prompt label pill when targetType is undefined', async () => {
         const noType = { ...MOCK_SCHEDULE_PROMPT, targetType: undefined };
         await renderWithSchedules([noType]);
-        expect(screen.getByText('[Prompt]')).toBeTruthy();
+        expect(screen.getAllByTestId('type-label-prompt').length).toBeGreaterThan(0);
     });
 
-    it('renders both badges when both schedule types are in the list', async () => {
+    it('renders both pills when both schedule types are in the list', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT, MOCK_SCHEDULE_SCRIPT]);
-        expect(screen.getByText('[Prompt]')).toBeTruthy();
-        expect(screen.getByText('[Script]')).toBeTruthy();
+        expect(screen.getAllByTestId('type-label-prompt').length).toBeGreaterThan(0);
+        expect(screen.getAllByTestId('type-label-script').length).toBeGreaterThan(0);
+    });
+
+    it('does not render type labels with bracket syntax', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE_PROMPT, MOCK_SCHEDULE_SCRIPT]);
+        expect(screen.queryByText('[Prompt]')).toBeNull();
+        expect(screen.queryByText('[Script]')).toBeNull();
     });
 });
 

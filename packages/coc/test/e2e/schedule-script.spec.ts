@@ -68,7 +68,7 @@ async function navigateToSchedules(page: Page, serverUrl: string): Promise<void>
 // ────────────────────────────────────────────────────────────────────────────
 
 test.describe('Schedule Script', () => {
-    test('UI: create script schedule via form shows [Script] badge', async ({ page, serverUrl }) => {
+    test('UI: create script schedule via form shows Script label pill', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sched-ui', 'sched-ui', '/ws/sched-ui');
 
         await navigateToSchedules(page, serverUrl);
@@ -93,10 +93,12 @@ test.describe('Schedule Script', () => {
         // Submit
         await page.getByRole('button', { name: 'Create' }).click();
 
-        // Schedule card with [Script] badge should appear
+        // Schedule card with Script label pill should appear
         await expect(page.getByTestId('schedule-name').filter({ hasText: 'Echo Test' })).toBeVisible({ timeout: 10_000 });
-        // Schedule items are <li> elements containing a [Script] badge
-        await expect(page.locator('.repo-schedule-item:has-text("[Script]")')).toBeVisible();
+        // Type label pills carry a stable data-testid in the list rows
+        await expect(
+            page.locator('.repo-schedule-item:has-text("Echo Test") [data-testid="type-label-script"]'),
+        ).toBeVisible();
     });
 
     test('UI: Run Now triggers run and history entry appears', async ({ page, serverUrl }) => {
@@ -245,7 +247,7 @@ test.describe('Schedule Script', () => {
         expect(inner.stderr).toContain('err-output');
     });
 
-    test('UI: create prompt-type schedule shows [Prompt] badge', async ({ page, serverUrl }) => {
+    test('UI: create prompt-type schedule shows Prompt label pill', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sched-prompt', 'sched-prompt', '/ws/sched-prompt');
 
         await navigateToSchedules(page, serverUrl);
@@ -268,9 +270,9 @@ test.describe('Schedule Script', () => {
         // Submit
         await page.getByRole('button', { name: 'Create' }).click();
 
-        // [Prompt] badge should appear in the list
+        // Prompt label pill should appear in the list
         await expect(
-            page.locator('.repo-schedule-item:has-text("[Prompt]")'),
+            page.locator('.repo-schedule-item:has-text("My Prompt Schedule") [data-testid="type-label-prompt"]'),
         ).toBeVisible({ timeout: 10_000 });
     });
 });

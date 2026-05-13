@@ -15,11 +15,11 @@ export function StatusBadge({ status, isRunning }: { status: string; isRunning: 
     if (isRunning) {
         return (
             <span
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium leading-4 bg-[#ddf4ff] dark:bg-blue-900/40 text-[#0969da] dark:text-blue-300 border border-[#b6e3ff] dark:border-blue-700/60"
                 aria-label="Status: Running"
                 data-testid="status-badge"
             >
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0969da] dark:bg-blue-400 animate-pulse inline-block" />
                 Running
             </span>
         );
@@ -27,11 +27,11 @@ export function StatusBadge({ status, isRunning }: { status: string; isRunning: 
     if (status === 'active') {
         return (
             <span
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium leading-4 bg-[#dafbe1] dark:bg-green-900/40 text-[#1a7f37] dark:text-green-300 border border-[#aceebb] dark:border-green-700/60"
                 aria-label="Status: Active"
                 data-testid="status-badge"
             >
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#1a7f37] dark:bg-green-400 inline-block" />
                 Active
             </span>
         );
@@ -39,18 +39,30 @@ export function StatusBadge({ status, isRunning }: { status: string; isRunning: 
     if (status === 'paused') {
         return (
             <span
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300"
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium leading-4 bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#848484] border border-[#d0d7de] dark:border-[#3c3c3c]"
                 aria-label="Status: Paused"
                 data-testid="status-badge"
             >
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#6e7781] dark:bg-[#848484] inline-block" />
                 Paused
+            </span>
+        );
+    }
+    if (status === 'failed' || status === 'stopped') {
+        return (
+            <span
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium leading-4 bg-[#ffebe9] dark:bg-red-900/40 text-[#cf222e] dark:text-red-300 border border-[#ffcecb] dark:border-red-700/60"
+                aria-label={`Status: ${status === 'failed' ? 'Failed' : 'Stopped'}`}
+                data-testid="status-badge"
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#cf222e] dark:bg-red-400 inline-block" />
+                {status === 'failed' ? 'Failed' : 'Stopped'}
             </span>
         );
     }
     return (
         <span
-            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-[#f3f3f3] dark:bg-[#333] text-[#848484]"
+            className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium leading-4 bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#848484] border border-[#d0d7de] dark:border-[#3c3c3c]"
             aria-label={`Status: ${status}`}
             data-testid="status-badge"
         >
