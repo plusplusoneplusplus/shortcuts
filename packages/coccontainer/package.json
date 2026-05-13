@@ -11,30 +11,24 @@
     "dist"
   ],
   "scripts": {
-    "build:client": "node scripts/build-client.mjs",
-    "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');function cp(s,d){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))fs.copyFileSync(p.join(s,f),p.join(d,f));}try{cp(p.join('src','server','spa','client','dist'),p.join('dist','server','spa','client','dist'));}catch(e){}\"",
-    "build": "npm run build:client && tsc && npm run build:copy-client",
+    "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "lint": "eslint src"
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc": "^1.2.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "commander": "^12.1.0",
     "js-yaml": "^4.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
-    "@types/react": "^18.3.1",
-    "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.0",
     "@vitest/coverage-v8": "^4.1.5",
-    "esbuild": "^0.28.0",
     "typescript": "^5.3.0",
     "vitest": "^4.1.5"
   },

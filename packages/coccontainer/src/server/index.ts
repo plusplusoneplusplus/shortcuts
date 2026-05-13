@@ -1,24 +1,92 @@
 /**
  * CoCContainer Server
  *
- * HTTP server that serves the aggregation dashboard and proxies API calls
- * to registered CoC agents.
+ * Thin wrapper that serves CoC's SPA in containerMode and proxies
+ * API calls to registered CoC agents. The container has NO SPA of
+ * its own — it reuses CoC's dashboard bundle.
  */
 
 import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 import { URL } from 'url';
 import type { ResolvedContainerConfig } from '../config';
-import { createAgentStore, type AgentStore, type Agent } from '../store';
+import { createAgentStore, type Agent } from '../store';
 import { pipeRequest } from '../proxy/http';
 import { fetchAgentWorkspaces, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
 import { AgentHealthMonitor } from './health-monitor';
-import { generateDashboardHtml } from './spa/html-template';
 
 export interface ContainerServer {
     close(): void;
 }
+
+// ── CoC SPA bundle helpers ──────────────────────────────
+
+/**
+ * Resolve the path to CoC's compiled SPA client bundles.
+ * In the monorepo, npm workspaces symlink `@plusplusoneplusplus/coc`
+ * so `require.resolve` lands in the real package directory.
+ */
+function getCocSpaDistDir(): string {
+    const cocPkg = require.resolve('@plusplusoneplusplus/coc/package.json');
+    return path.join(path.dirname(cocPkg), 'dist', 'server', 'spa', 'client', 'dist');
+}
+
+let cachedHtml: string | null = null;
+
+function generateContainerHtml(): string {
+    if (cachedHtml) return cachedHtml;
+
+    const distDir = getCocSpaDistDir();
+    let css = '';
+    let js = '';
+    try { css = fs.readFileSync(path.join(distDir, 'bundle.css'), 'utf-8'); } catch { /* bundle not built */ }
+    try { js = fs.readFileSync(path.join(distDir, 'bundle.js'), 'utf-8'); } catch { /* bundle not built */ }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoCContainer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"><\/script>
+    <style>
+${css}
+    </style>
+</head>
+<body>
+    <div id="app-root"></div>
+    <script>
+        window.__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            version: '',
+            terminalEnabled: false,
+            notesEnabled: false,
+            myWorkEnabled: false,
+            myLifeEnabled: false,
+            scratchpadEnabled: false,
+            scratchpadLayout: 'horizontal',
+            workflowsEnabled: false,
+            containerMode: true
+        };
+    </script>
+    <script>
+${js}
+    </script>
+</body>
+</html>`;
+
+    cachedHtml = html;
+    return html;
+}
+
+// ── Server factory ──────────────────────────────────────
 
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
     const agentStore = createAgentStore(config.serve.dataDir);
@@ -120,10 +188,10 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return;
             }
 
-            // ── Dashboard SPA ──────────────────────────────
+            // ── Dashboard SPA (CoC bundle with containerMode) ───
             if (url.pathname === '/' || url.pathname === '/index.html') {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
-                return res.end(generateDashboardHtml());
+                return res.end(generateContainerHtml());
             }
 
             // 404
