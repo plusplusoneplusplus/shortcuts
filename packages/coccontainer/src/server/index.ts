@@ -14,6 +14,7 @@ import { fetchAgentWorkspaces, type RemoteWorkspace } from '../proxy/workspaces'
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
 import { AgentHealthMonitor } from './health-monitor';
+import { generateDashboardHtml } from './spa/html-template';
 
 export interface ContainerServer {
     close(): void;
@@ -122,7 +123,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // ── Dashboard SPA ──────────────────────────────
             if (url.pathname === '/' || url.pathname === '/index.html') {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
-                return res.end(getDashboardHtml());
+                return res.end(generateDashboardHtml());
             }
 
             // 404
@@ -219,128 +220,4 @@ async function readBody(req: http.IncomingMessage): Promise<unknown> {
         });
         req.on('error', reject);
     });
-}
-
-function getDashboardHtml(): string {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CoCContainer Dashboard</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; }
-    .header { padding: 16px 24px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
-    .header h1 { font-size: 20px; font-weight: 600; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-    .agent-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-    .agent-header { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .status-dot.online { background: #3fb950; }
-    .status-dot.offline { background: #f85149; }
-    .status-dot.unknown { background: #8b949e; }
-    .agent-name { font-weight: 600; font-size: 16px; }
-    .agent-address { color: #8b949e; font-size: 13px; margin-left: auto; }
-    .repos-list { margin-top: 12px; padding-left: 16px; }
-    .repo-item { padding: 8px 12px; border: 1px solid #21262d; border-radius: 6px; margin-bottom: 6px; background: #0d1117; }
-    .add-agent { margin-bottom: 24px; }
-    .add-agent input { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 8px 12px; border-radius: 6px; margin-right: 8px; }
-    .add-agent button { background: #238636; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-    .add-agent button:hover { background: #2ea043; }
-    .empty { text-align: center; color: #8b949e; padding: 48px; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>🔗 CoCContainer</h1>
-    <span style="color: #8b949e">Multi-Agent Dashboard</span>
-  </div>
-  <div class="container">
-    <div class="add-agent">
-      <input id="agent-addr" type="text" placeholder="http://localhost:4000" style="width:300px" />
-      <input id="agent-name" type="text" placeholder="Name (optional)" style="width:180px" />
-      <button onclick="addAgent()">Add Agent</button>
-    </div>
-    <div id="agents-container">
-      <div class="empty">Loading agents...</div>
-    </div>
-  </div>
-  <script>
-    const API = '';
-    async function loadAgents() {
-      const res = await fetch(API + '/api/agents');
-      const agents = await res.json();
-      const container = document.getElementById('agents-container');
-      if (agents.length === 0) {
-        container.innerHTML = '<div class="empty">No agents registered. Add one above.</div>';
-        return;
-      }
-      container.innerHTML = '';
-      for (const agent of agents) {
-        const card = document.createElement('div');
-        card.className = 'agent-card';
-        card.innerHTML = \`
-          <div class="agent-header" onclick="toggleRepos('\${agent.id}')">
-            <span class="status-dot \${agent.status}"></span>
-            <span class="agent-name">\${agent.name}</span>
-            <span class="agent-address">\${agent.address}</span>
-            <button onclick="event.stopPropagation(); removeAgent('\${agent.id}')" style="background:#da3633;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-left:8px;">Remove</button>
-          </div>
-          <div class="repos-list" id="repos-\${agent.id}" style="display:none">Loading repos...</div>
-        \`;
-        container.appendChild(card);
-      }
-    }
-
-    async function toggleRepos(agentId) {
-      const el = document.getElementById('repos-' + agentId);
-      if (el.style.display === 'none') {
-        el.style.display = 'block';
-        try {
-          const res = await fetch(API + '/api/agent/' + agentId + '/workspaces');
-          const data = await res.json();
-          const workspaces = Array.isArray(data) ? data : (data.workspaces || []);
-          if (workspaces.length === 0) {
-            el.innerHTML = '<div style="color:#8b949e;padding:8px">No repos on this agent.</div>';
-          } else {
-            el.innerHTML = workspaces.map(ws =>
-              '<div class="repo-item">' + (ws.name || ws.rootPath || ws.id) + '</div>'
-            ).join('');
-          }
-        } catch {
-          el.innerHTML = '<div style="color:#f85149;padding:8px">Failed to fetch repos.</div>';
-        }
-      } else {
-        el.style.display = 'none';
-      }
-    }
-
-    async function addAgent() {
-      const addr = document.getElementById('agent-addr').value.trim();
-      const name = document.getElementById('agent-name').value.trim();
-      if (!addr) return alert('Enter an address');
-      try {
-        await fetch(API + '/api/agents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: addr, name: name || undefined })
-        });
-        document.getElementById('agent-addr').value = '';
-        document.getElementById('agent-name').value = '';
-        loadAgents();
-      } catch (e) { alert('Failed: ' + e.message); }
-    }
-
-    async function removeAgent(id) {
-      if (!confirm('Remove this agent?')) return;
-      await fetch(API + '/api/agents/' + id, { method: 'DELETE' });
-      loadAgents();
-    }
-
-    loadAgents();
-    setInterval(loadAgents, 30000);
-  </script>
-</body>
-</html>`;
 }

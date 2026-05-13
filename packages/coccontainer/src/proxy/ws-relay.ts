@@ -49,7 +49,7 @@ export class WebSocketRelay extends EventEmitter {
 
         ws.on('error', () => {
             this.connections.delete(agentId);
-            this.emit('error', agentId);
+            // Don't re-emit — just log silently. Unhandled 'error' events crash Node.
         });
     }
 
