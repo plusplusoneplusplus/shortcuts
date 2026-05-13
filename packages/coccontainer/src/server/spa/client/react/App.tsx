@@ -1,36 +1,46 @@
 /**
  * CoCContainer SPA Root Component
  *
- * Layout mirrors CoC:
- *   Top bar       — agent selector with repo dropdown (instead of flat repo tabs)
- *   Left sidebar  — process list for the selected agent+repo
- *   Main area     — process detail / conversation view
+ * Mirrors CoC's layout exactly:
+ *   Top bar   — hamburger, brand, repo tabs (from all agents), "+" menu, action buttons
+ *   Left      — process sidebar (activity list, filters)
+ *   Main      — conversation / empty state
+ *
+ * Key difference from CoC: repos come from multiple agents.
+ * "+" menu has "Add agent" option. "Add Repo" dialog includes agent selector.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { AgentRepoBar } from './components/AgentRepoBar';
-import { AgentSettings } from './components/AgentSettings';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { TopBar } from './components/TopBar';
 import { ProcessSidebar } from './components/ProcessSidebar';
 import { ProcessDetail } from './components/ProcessDetail';
+import { AddAgentDialog } from './components/AddAgentDialog';
+import { AddRepoDialog } from './components/AddRepoDialog';
+import { AgentSettings } from './components/AgentSettings';
 import { useAgents, fetchApi } from './hooks/useAgents';
-import type { Selection, RemoteProcess } from './types';
+import type { RemoteWorkspace, RemoteProcess } from './types';
 
-type View = 'main' | 'settings';
+/** A workspace tagged with which agent it belongs to */
+export interface TaggedWorkspace extends RemoteWorkspace {
+    agentId: string;
+    agentName: string;
+}
+
+type DialogState = 'none' | 'add-agent' | 'add-repo' | 'settings';
 
 export function App() {
-    const { agents, loading, refresh, addAgent, removeAgent } = useAgents();
-    const [view, setView] = useState<View>('main');
-    const [selection, setSelection] = useState<Selection | null>(null);
+    const { agents, loading: agentsLoading, refresh: refreshAgents, addAgent, removeAgent } = useAgents();
+    const [workspaces, setWorkspaces] = useState<TaggedWorkspace[]>([]);
+    const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
     const [processes, setProcesses] = useState<RemoteProcess[]>([]);
     const [processesLoading, setProcessesLoading] = useState(false);
     const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+    const [dialog, setDialog] = useState<DialogState>('none');
     const [streamEvents, setStreamEvents] = useState<any[]>([]);
-    const eventSourceRef = useRef<EventSource | null>(null);
 
-    // SSE connection to get streaming events
+    // SSE connection
     useEffect(() => {
         const es = new EventSource('/api/events');
-        eventSourceRef.current = es;
         es.onmessage = (e) => {
             try {
                 const envelope = JSON.parse(e.data);
@@ -46,134 +56,152 @@ export function App() {
         return () => es.close();
     }, []);
 
-    // Fetch processes when selection changes
+    // Fetch workspaces from all agents
+    const refreshWorkspaces = useCallback(async () => {
+        const results: TaggedWorkspace[] = [];
+        await Promise.all(agents.map(async (agent) => {
+            if (agent.status === 'offline') return;
+            try {
+                const data = await fetchApi(`/api/agent/${agent.id}/workspaces`);
+                const wsList: RemoteWorkspace[] = Array.isArray(data) ? data : (data?.workspaces ?? []);
+                for (const ws of wsList) {
+                    results.push({ ...ws, agentId: agent.id, agentName: agent.name });
+                }
+            } catch { /* skip unavailable agents */ }
+        }));
+        setWorkspaces(results);
+    }, [agents]);
+
     useEffect(() => {
-        if (!selection) {
+        if (agents.length > 0) refreshWorkspaces();
+        else setWorkspaces([]);
+    }, [agents, refreshWorkspaces]);
+
+    // Currently selected workspace
+    const selectedWs = useMemo(
+        () => workspaces.find(ws => ws.id === selectedWsId) ?? null,
+        [workspaces, selectedWsId]
+    );
+
+    // Fetch processes when workspace changes
+    useEffect(() => {
+        if (!selectedWs) {
             setProcesses([]);
             setSelectedProcessId(null);
             return;
         }
         let cancelled = false;
         setProcessesLoading(true);
-        fetchApi(`/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`)
+        fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`)
             .then(data => {
                 if (cancelled) return;
-                const list: RemoteProcess[] = Array.isArray(data)
-                    ? data
-                    : (data?.processes ?? []);
+                const list: RemoteProcess[] = Array.isArray(data) ? data : (data?.processes ?? []);
                 setProcesses(list);
                 setProcessesLoading(false);
             })
             .catch(() => {
-                if (!cancelled) {
-                    setProcesses([]);
-                    setProcessesLoading(false);
-                }
+                if (!cancelled) { setProcesses([]); setProcessesLoading(false); }
             });
         return () => { cancelled = true; };
-    }, [selection]);
+    }, [selectedWs?.id, selectedWs?.agentId]);
 
-    // Auto-refresh processes when stream events indicate changes
+    // Refresh processes on stream events
     useEffect(() => {
-        if (!selection) return;
+        if (!selectedWs) return;
         const last = streamEvents[streamEvents.length - 1];
-        if (!last) return;
-        if (last.agentId === selection.agentId &&
-            (last.type === 'process-updated' || last.type === 'process-completed' || last.type === 'process-created')) {
-            fetchApi(`/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`)
-                .then(data => {
-                    const list: RemoteProcess[] = Array.isArray(data)
-                        ? data : (data?.processes ?? []);
-                    setProcesses(list);
-                })
+        if (!last || last.agentId !== selectedWs.agentId) return;
+        if (last.type === 'process-updated' || last.type === 'process-completed' || last.type === 'process-created') {
+            fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`)
+                .then(data => setProcesses(Array.isArray(data) ? data : (data?.processes ?? [])))
                 .catch(() => {});
         }
-    }, [streamEvents, selection]);
-
-    const handleSelectProcess = useCallback((processId: string) => {
-        setSelectedProcessId(processId);
-    }, []);
+    }, [streamEvents, selectedWs]);
 
     const handleNewChat = useCallback(async (message: string) => {
-        if (!selection) return;
+        if (!selectedWs) return;
         try {
-            const result = await fetchApi(`/api/agent/${selection.agentId}/processes`, {
+            const result = await fetchApi(`/api/agent/${selectedWs.agentId}/processes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: message,
-                    workspaceId: selection.workspaceId,
-                }),
+                body: JSON.stringify({ prompt: message, workspaceId: selectedWs.id }),
             });
-            // Refresh process list
-            const data = await fetchApi(
-                `/api/agent/${selection.agentId}/workspaces/${selection.workspaceId}/processes`
-            );
-            const list: RemoteProcess[] = Array.isArray(data) ? data : (data?.processes ?? []);
-            setProcesses(list);
-            // Select the new process
-            if (result?.id) {
-                setSelectedProcessId(result.id);
-            }
-        } catch (err) {
-            console.error('Failed to create process:', err);
-        }
-    }, [selection]);
+            const data = await fetchApi(`/api/agent/${selectedWs.agentId}/workspaces/${selectedWs.id}/processes`);
+            setProcesses(Array.isArray(data) ? data : (data?.processes ?? []));
+            if (result?.id) setSelectedProcessId(result.id);
+        } catch (err) { console.error('Failed to create process:', err); }
+    }, [selectedWs]);
 
     const handleSendFollowUp = useCallback(async (processId: string, message: string) => {
-        if (!selection) return;
+        if (!selectedWs) return;
         try {
-            await fetchApi(`/api/agent/${selection.agentId}/processes/${processId}/message`, {
+            await fetchApi(`/api/agent/${selectedWs.agentId}/processes/${processId}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message }),
             });
-        } catch (err) {
-            console.error('Failed to send follow-up:', err);
-        }
-    }, [selection]);
+        } catch (err) { console.error('Failed to send follow-up:', err); }
+    }, [selectedWs]);
+
+    const handleAddAgent = useCallback(async (address: string, name?: string) => {
+        await addAgent(address, name);
+        setDialog('none');
+    }, [addAgent]);
+
+    const handleAddRepo = useCallback(async (agentId: string, path: string, name: string, color: string) => {
+        try {
+            await fetchApi(`/api/agent/${agentId}/workspaces`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rootPath: path, name, color }),
+            });
+            await refreshWorkspaces();
+            setDialog('none');
+        } catch (err) { console.error('Failed to add repo:', err); }
+    }, [refreshWorkspaces]);
 
     return (
         <div className="app-shell">
-            {/* ── Top bar ──────────────────────────── */}
-            <AgentRepoBar
-                agents={agents}
-                selection={selection}
-                onSelect={setSelection}
-                onOpenSettings={() => setView('settings')}
+            {/* ── Top bar ── */}
+            <TopBar
+                workspaces={workspaces}
+                selectedWsId={selectedWsId}
+                onSelectWorkspace={setSelectedWsId}
+                onAddAgent={() => setDialog('add-agent')}
+                onAddRepo={() => setDialog('add-repo')}
+                onOpenSettings={() => setDialog('settings')}
+                selectedWs={selectedWs}
             />
 
-            {/* ── Body ─────────────────────────────── */}
+            {/* ── Sub-tab bar (only when a workspace is selected) ── */}
+            {dialog !== 'settings' && selectedWs && (
+                <div className="sub-tab-bar">
+                    <span className="sub-tab-repo-name">
+                        <span className="sub-tab-dot" style={{ background: selectedWs.color || '#848484' }} />
+                        {selectedWs.name || selectedWs.rootPath || selectedWs.id}
+                    </span>
+                    <span className="sub-tab active">Activity</span>
+                    <span className="sub-tab-agent-badge">{selectedWs.agentName}</span>
+                </div>
+            )}
+
+            {/* ── Body ── */}
             <div className="app-body">
-                {view === 'settings' ? (
+                {dialog === 'settings' ? (
                     <div className="settings-container">
                         <AgentSettings
                             agents={agents}
-                            loading={loading}
+                            loading={agentsLoading}
                             onAdd={addAgent}
                             onRemove={removeAgent}
-                            onRefresh={refresh}
-                            onClose={() => setView('main')}
+                            onRefresh={refreshAgents}
+                            onClose={() => setDialog('none')}
                         />
                     </div>
-                ) : !selection ? (
+                ) : !selectedWs ? (
                     <div className="empty-body">
-                        {agents.length === 0 ? (
-                            <>
-                                <div className="empty-icon">🔗</div>
-                                <h2>Welcome to CoCContainer</h2>
-                                <p>Add a CoC agent to get started.</p>
-                                <button className="btn-primary" onClick={() => setView('settings')}>
-                                    + Add Agent
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <div className="empty-icon">📂</div>
-                                <h2>Select a repo</h2>
-                                <p>Click an agent in the top bar, then pick a repo from the dropdown.</p>
-                            </>
-                        )}
+                        <div className="empty-chat-icon">💬</div>
+                        <h2>Start a new conversation</h2>
+                        <p>Select a repo from the top bar to begin, or add a new agent.</p>
                     </div>
                 ) : (
                     <>
@@ -182,28 +210,45 @@ export function App() {
                             processes={processes}
                             loading={processesLoading}
                             selectedProcessId={selectedProcessId}
-                            onSelect={handleSelectProcess}
+                            onSelect={setSelectedProcessId}
                             onNewChat={handleNewChat}
                         />
 
                         {/* Main area — process detail */}
                         <main className="main-content">
-                            {selectedProcessId && selection ? (
+                            {selectedProcessId && selectedWs ? (
                                 <ProcessDetail
-                                    agentId={selection.agentId}
+                                    agentId={selectedWs.agentId}
                                     processId={selectedProcessId}
                                     streamEvents={streamEvents}
                                     onSendFollowUp={handleSendFollowUp}
                                 />
                             ) : (
                                 <div className="empty-detail">
-                                    <p>Select a process from the sidebar, or start a new chat.</p>
+                                    <div className="empty-chat-icon">💬</div>
+                                    <p>Start a new conversation</p>
+                                    <p className="empty-detail-sub">Type a message below to begin</p>
                                 </div>
                             )}
                         </main>
                     </>
                 )}
             </div>
+
+            {/* ── Dialogs ── */}
+            {dialog === 'add-agent' && (
+                <AddAgentDialog
+                    onAdd={handleAddAgent}
+                    onClose={() => setDialog('none')}
+                />
+            )}
+            {dialog === 'add-repo' && (
+                <AddRepoDialog
+                    agents={agents}
+                    onAdd={handleAddRepo}
+                    onClose={() => setDialog('none')}
+                />
+            )}
         </div>
     );
 }
