@@ -75,6 +75,9 @@ import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
+import { registerLoopRoutes } from '../loops/loop-handler';
+import type { LoopStore } from '../loops/loop-store';
+import type { LoopExecutor } from '../loops/loop-executor';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -115,6 +118,8 @@ export interface RegisterRoutesOptions {
     resolvedConfig?: ResolvedCLIConfig;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
+    loopStore?: LoopStore;
+    loopExecutor?: LoopExecutor;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -203,6 +208,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const workspaces = await store.getWorkspaces();
         return workspaces.find(w => w.id === repoId)?.rootPath;
     });
+
+    // Loop routes
+    if (opts.loopStore && opts.loopExecutor) {
+        registerLoopRoutes(routes, {
+            store: opts.loopStore,
+            executor: opts.loopExecutor,
+            resolveWorkspaceId: async (processId: string) => {
+                // Look up workspace via the queue task (which carries repoId)
+                try {
+                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
+                    const task = bridge.getTask(taskId);
+                    return task?.repoId;
+                } catch {
+                    return undefined;
+                }
+            },
+        });
+    }
 
     registerMemoryRoutes(routes, dataDir);
 

@@ -17,3 +17,6 @@ export { LoopStore } from './loop-store';
 
 export { LoopExecutor } from './loop-executor';
 export type { LoopEventEmit, LoopExecutorDeps } from './loop-executor';
+
+export { registerLoopRoutes } from './loop-handler';
+export type { LoopRouteContext } from './loop-handler';
