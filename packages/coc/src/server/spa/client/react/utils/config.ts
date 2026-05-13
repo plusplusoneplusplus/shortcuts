@@ -114,14 +114,3 @@ export function isVimNavigationEnabled(): boolean {
 export function isContainerMode(): boolean {
     return getConfig().containerMode === true;
 }
-
-// Module-level state for container mode agent routing
-let _currentAgentId: string | null = null;
-
-export function setCurrentAgentId(id: string | null): void {
-    _currentAgentId = id;
-}
-
-export function getCurrentAgentId(): string | null {
-    return _currentAgentId;
-}
