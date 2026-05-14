@@ -41,7 +41,7 @@ export function createAgentStore(dataDir: string): AgentStore {
         CREATE TABLE IF NOT EXISTS agents (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            address TEXT NOT NULL,
+            address TEXT NOT NULL UNIQUE,
             tunnel_id TEXT,
             status TEXT NOT NULL DEFAULT 'unknown',
             last_seen_at TEXT,
@@ -52,24 +52,6 @@ export function createAgentStore(dataDir: string): AgentStore {
     const cols = db.pragma('table_info(agents)') as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'tunnel_id')) {
         db.exec(`ALTER TABLE agents ADD COLUMN tunnel_id TEXT`);
-    }
-    // Migration: remove UNIQUE constraint on address (requires table rebuild)
-    const tableInfo = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'`).get() as { sql: string } | undefined;
-    if (tableInfo?.sql?.includes('UNIQUE')) {
-        db.exec(`
-            CREATE TABLE agents_new (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                address TEXT NOT NULL,
-                tunnel_id TEXT,
-                status TEXT NOT NULL DEFAULT 'unknown',
-                last_seen_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            INSERT INTO agents_new SELECT id, name, address, tunnel_id, status, last_seen_at, created_at FROM agents;
-            DROP TABLE agents;
-            ALTER TABLE agents_new RENAME TO agents;
-        `);
     }
 
     const insertStmt = db.prepare(
@@ -102,6 +84,12 @@ export function createAgentStore(dataDir: string): AgentStore {
         add(address: string, name?: string, tunnelId?: string): Agent {
             // Normalize address: strip trailing slash
             const normalizedAddress = address.replace(/\/+$/, '');
+
+            // Check for duplicate address
+            const existing = selectByAddressStmt.get(normalizedAddress) as Record<string, unknown> | undefined;
+            if (existing) {
+                throw new Error(`Agent with address '${normalizedAddress}' already registered (id: ${existing.id})`);
+            }
 
             const id = randomUUID();
             const agentName = name ?? new URL(normalizedAddress).host;
