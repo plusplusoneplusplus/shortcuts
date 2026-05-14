@@ -71,6 +71,8 @@ export async function proxyRequest(
 /**
  * Raw proxy: pipe an incoming request to an agent and stream response back.
  * Used by the server to transparently proxy dashboard API calls.
+ * Detects auth-required responses (401/403/302-to-login) and returns a
+ * structured JSON error so the client can prompt for authentication.
  */
 export function pipeRequest(
     agentAddress: string,
@@ -94,7 +96,31 @@ export function pipeRequest(
             },
         },
         (proxyRes) => {
-            outgoingRes.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+            const status = proxyRes.statusCode ?? 502;
+            // Detect auth-required: 401, 403, or redirect to a login page
+            if (status === 401 || status === 403) {
+                outgoingRes.writeHead(status, { 'Content-Type': 'application/json' });
+                outgoingRes.end(JSON.stringify({
+                    error: 'Authentication required',
+                    authUrl: agentAddress,
+                    status,
+                }));
+                proxyRes.resume(); // drain
+                return;
+            }
+            if (status >= 300 && status < 400) {
+                const location = proxyRes.headers['location'] || '';
+                // Redirect likely to a login page — signal auth required
+                outgoingRes.writeHead(401, { 'Content-Type': 'application/json' });
+                outgoingRes.end(JSON.stringify({
+                    error: 'Authentication required (redirect)',
+                    authUrl: location || agentAddress,
+                    status: 401,
+                }));
+                proxyRes.resume();
+                return;
+            }
+            outgoingRes.writeHead(status, proxyRes.headers);
             proxyRes.pipe(outgoingRes);
         }
     );

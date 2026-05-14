@@ -16,6 +16,7 @@ import {
 } from './repositoryService';
 import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 const AUTO_VALUE = 'auto';
 
@@ -141,16 +142,64 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserEntries(data.entries || []);
             setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
             setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-        } catch {
+        } catch (err) {
             setBrowserEntries([]);
             setBrowserParent(null);
             setBrowseRoots([]);
-            setBrowserError('Unable to browse this path');
+            const errStatus = (err as any)?.status;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const isAuthError = (errStatus === 401 || errStatus === 403)
+                || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
+            console.warn('[AddRepoDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
+            if (isAuthError && isContainerMode() && selectedAgentId) {
+                const agent = availableAgents.find(a => a.id === selectedAgentId);
+                if (agent?.address) {
+                    // Open browse-helper on the agent domain (same-origin, so auth cookies work).
+                    // The helper page fetches /api/fs/browse same-origin and posts results back via postMessage.
+                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
+                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
+                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
+                    const onMessage = (event: MessageEvent) => {
+                        if (event.data?.type === 'browse-result') {
+                            window.removeEventListener('message', onMessage);
+                            const data = event.data.data as BrowserResponse;
+                            setBrowserPath(data.path);
+                            setBrowserParent(data.parent || null);
+                            setBrowserEntries(data.entries || []);
+                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
+                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+                            setBrowserError(null);
+                            setBrowserLoading(false);
+                        } else if (event.data?.type === 'browse-error') {
+                            window.removeEventListener('message', onMessage);
+                            setBrowserError(`Browse failed: ${event.data.error}`);
+                            setBrowserLoading(false);
+                        }
+                    };
+                    window.addEventListener('message', onMessage);
+                    // Cleanup if popup is closed without posting
+                    if (popup) {
+                        const cleanup = setInterval(() => {
+                            if (popup.closed) {
+                                clearInterval(cleanup);
+                                window.removeEventListener('message', onMessage);
+                                // Only update if still in auth state
+                                setBrowserLoading(false);
+                            }
+                        }, 1000);
+                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
+                    }
+                } else {
+                    setBrowserError('Authentication required. Please authenticate with this agent first.');
+                }
+            } else {
+                setBrowserError('Unable to browse this path');
+            }
         } finally {
             setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
-    }, [selectedAgentId]);
+    }, [selectedAgentId, availableAgents]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);

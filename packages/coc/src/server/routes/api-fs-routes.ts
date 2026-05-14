@@ -228,6 +228,45 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
         },
     });
 
+    // GET /api/fs/browse-helper — HTML page that browses same-origin and posts results via postMessage.
+    // Used by container-mode SPA on localhost to browse devtunnel agents without cross-origin cookie issues.
+    routes.push({
+        method: 'GET',
+        pattern: '/api/fs/browse-helper',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const browsePath = typeof parsed.query.path === 'string' ? parsed.query.path : '~';
+            const showHidden = parsed.query.showHidden === 'true';
+            const html = `<!DOCTYPE html><html><head><title>Browsing...</title></head><body>
+<p>Loading directory listing...</p>
+<script>
+(async () => {
+  try {
+    const p = ${JSON.stringify(browsePath)};
+    const sh = ${JSON.stringify(showHidden)};
+    const resp = await fetch('/api/fs/browse?path=' + encodeURIComponent(p) + '&showHidden=' + sh);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (window.opener) {
+      window.opener.postMessage({ type: 'browse-result', data: data }, '*');
+      document.body.innerHTML = '<p>Done — this tab will close.</p>';
+      setTimeout(() => window.close(), 500);
+    } else {
+      document.body.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+  } catch (e) {
+    if (window.opener) {
+      window.opener.postMessage({ type: 'browse-error', error: e.message }, '*');
+    }
+    document.body.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>';
+  }
+})();
+</script></body></html>`;
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(html);
+        },
+    });
+
     // GET /api/fs/blob — Read file content from trusted directories (read-only)
     routes.push({
         method: 'GET',
