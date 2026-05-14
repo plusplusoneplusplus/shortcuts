@@ -148,7 +148,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             merge: (base, override) => ({
                 serve: {
                     port: override?.serve?.port ?? base.serve?.port ?? 4000,
-                    host: override?.serve?.host ?? base.serve?.host ?? '0.0.0.0',
+                    host: override?.serve?.host ?? base.serve?.host ?? '127.0.0.1',
                     dataDir: override?.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
                     theme: override?.serve?.theme ?? base.serve?.theme ?? 'auto',
                     serverName: override?.serve?.serverName ?? base.serve?.serverName,

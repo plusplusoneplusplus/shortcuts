@@ -1504,7 +1504,7 @@ export function AdminPanel() {
                             )}
                             <div>
                                 Serve{' '}
-                                <span className="font-mono">{resolved.serve?.host ?? '0.0.0.0'}:{resolved.serve?.port ?? '4000'}</span>
+                                <span className="font-mono">{resolved.serve?.host ?? '127.0.0.1'}:{resolved.serve?.port ?? '4000'}</span>
                                 {resolved.serve?.dataDir && <span className="ml-2 font-mono">{resolved.serve.dataDir}</span>}
                             </div>
                             {versionInfo && (

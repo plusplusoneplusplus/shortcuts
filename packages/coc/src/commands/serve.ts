@@ -39,7 +39,7 @@ import type { ServeCommandOptions } from '../server/types';
  */
 export async function executeServe(options: ServeCommandOptions): Promise<number> {
     const port = options.port ?? 4000;
-    const host = options.host ?? '0.0.0.0';
+    const host = options.host ?? '127.0.0.1';
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
     const drainEnabled = options.noDrain !== true;
     const DEFAULT_DRAIN_TIMEOUT_S = 30;

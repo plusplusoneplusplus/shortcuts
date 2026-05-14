@@ -375,7 +375,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     serve: {
         port: 4000,
-        host: '0.0.0.0',
+        host: '127.0.0.1',
         dataDir: '~/.coc',
         theme: 'auto',
     },

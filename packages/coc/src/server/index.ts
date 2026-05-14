@@ -143,7 +143,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
  */
 export async function createExecutionServer(options: ExecutionServerOptions = {}): Promise<ExecutionServer> {
     const port = options.port ?? 4000;
-    const host = options.host ?? '0.0.0.0';
+    const host = options.host ?? '127.0.0.1';
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
@@ -393,7 +393,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
-    const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
+    const displayHost = host === '0.0.0.0' || host === '::' || host === '127.0.0.1' ? 'localhost' : host;
     const url = `http://${displayHost}:${actualPort}`;
 
     const activeSockets = new Set<import('net').Socket>();

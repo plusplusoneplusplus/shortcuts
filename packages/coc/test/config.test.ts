@@ -765,7 +765,7 @@ timeout: 300
                 '    enabled: false',
                 'serve:',
                 '  port: 9000',
-                '  host: 0.0.0.0',
+                '  host: 127.0.0.1',
                 '  dataDir: /tmp/coc',
                 '  theme: light',
                 '  serverName: MBP',

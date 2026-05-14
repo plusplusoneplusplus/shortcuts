@@ -48,20 +48,18 @@ List pipeline packages in a directory.
 ### `coc serve`
 Start the AI Execution Dashboard web server (default port 4000).
 
-> ⚠️ **Security note:** By default, `coc serve` binds to `0.0.0.0`, which accepts
-> connections from **any network interface** — not just localhost. On shared or
-> public networks this can expose the dashboard to unauthorized access. To
-> restrict access to your local machine only, use:
+> By default, `coc serve` binds to `127.0.0.1` (localhost only). To accept
+> connections from other machines on the network, use:
 >
 > ```bash
-> coc serve --host 127.0.0.1
+> coc serve --host 0.0.0.0
 > ```
 >
 > Or set it permanently in `~/.coc/config.yaml`:
 >
 > ```yaml
 > serve:
->   host: 127.0.0.1
+>   host: 0.0.0.0
 > ```
 
 ## Features
