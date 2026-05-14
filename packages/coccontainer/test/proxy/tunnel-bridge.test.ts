@@ -2,34 +2,24 @@
  * Tests for TunnelBridge
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { TunnelBridge } from '../../src/proxy/tunnel-bridge';
-import { DevTunnelTokenService } from '../../src/proxy/tunnel-token';
 
 describe('TunnelBridge', () => {
     let bridge: TunnelBridge;
-    let tokenService: DevTunnelTokenService;
     let targetServer: http.Server;
     let targetPort: number;
 
     beforeEach(async () => {
-        tokenService = new DevTunnelTokenService();
-        // Mock getToken to return a fake token
-        vi.spyOn(tokenService, 'getToken').mockResolvedValue('fake-token');
-
-        bridge = new TunnelBridge({ basePort: 19400, tokenService });
+        bridge = new TunnelBridge({ basePort: 19400 });
 
         // Create a target server that echoes requests
         targetServer = http.createServer((req, res) => {
-            // Check for tunnel auth header
-            const authHeader = req.headers['x-tunnel-authorization'];
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 method: req.method,
                 url: req.url,
-                hasAuth: !!authHeader,
-                authValue: authHeader,
             }));
         });
 
@@ -66,7 +56,7 @@ describe('TunnelBridge', () => {
         expect(url2).toContain('19401');
     });
 
-    it('should proxy requests to target with auth header', async () => {
+    it('should proxy requests to target', async () => {
         const localUrl = await bridge.start('agent-1', 'tunnel-1', `http://127.0.0.1:${targetPort}`);
 
         const resp = await fetch(`${localUrl}/api/health`);
@@ -74,8 +64,6 @@ describe('TunnelBridge', () => {
         const body = await resp.json() as any;
         expect(body.url).toBe('/api/health');
         expect(body.method).toBe('GET');
-        expect(body.hasAuth).toBe(true);
-        expect(body.authValue).toBe('TunnelAccessToken fake-token');
     });
 
     it('should stop a bridge', async () => {

@@ -57,7 +57,7 @@ function generateContainerHtml(): string {
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
     const agentStore = createAgentStore(config.serve.dataDir);
     const tokenService = new DevTunnelTokenService();
-    const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort, tokenService });
+    const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
     const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge);

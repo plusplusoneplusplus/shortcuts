@@ -3,16 +3,16 @@
  *
  * Creates local HTTP proxy servers for devtunnel agents. Each tunnel agent
  * gets a local port (auto-assigned from a configurable base) that forwards
- * all requests to the remote devtunnel URL with the appropriate auth token.
+ * all requests to the remote devtunnel URL.
  *
- * This eliminates browser auth popups entirely — all traffic goes through
- * localhost and the bridge handles devtunnel authentication via access tokens.
+ * Since we configure anonymous access on the tunnel (via ensureAnonymousAccess),
+ * no auth header is needed — the devtunnel infrastructure handles it.
+ * This eliminates browser auth popups entirely — all traffic goes through localhost.
  */
 
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
-import { DevTunnelTokenService } from './tunnel-token';
 
 export interface BridgeEntry {
     agentId: string;
@@ -26,18 +26,14 @@ export interface BridgeEntry {
 export interface TunnelBridgeOptions {
     /** Base port for auto-assignment (default: 10400) */
     basePort?: number;
-    /** Token service for acquiring tunnel auth tokens */
-    tokenService: DevTunnelTokenService;
 }
 
 export class TunnelBridge {
     private bridges = new Map<string, BridgeEntry>();
     private nextPort: number;
-    private tokenService: DevTunnelTokenService;
 
-    constructor(options: TunnelBridgeOptions) {
+    constructor(options: TunnelBridgeOptions = {}) {
         this.nextPort = options.basePort ?? 10400;
-        this.tokenService = options.tokenService;
     }
 
     /** Start a local bridge for a tunnel agent. Returns the local URL. */
@@ -49,8 +45,8 @@ export class TunnelBridge {
         }
 
         const localPort = this.nextPort++;
-        const server = http.createServer(async (req, res) => {
-            await this.proxyToRemote(tunnelId, remoteUrl, req, res);
+        const server = http.createServer((req, res) => {
+            this.proxyToRemote(remoteUrl, req, res);
         });
 
         await new Promise<void>((resolve, reject) => {
@@ -93,26 +89,20 @@ export class TunnelBridge {
         }));
     }
 
-    private async proxyToRemote(
-        tunnelId: string,
+    private proxyToRemote(
         remoteUrl: string,
         incomingReq: http.IncomingMessage,
         outgoingRes: http.ServerResponse,
-    ): Promise<void> {
+    ): void {
         const targetPath = incomingReq.url || '/';
         const url = new URL(targetPath, remoteUrl);
         const isHttps = url.protocol === 'https:';
         const transport = isHttps ? https : http;
 
-        // Get tunnel access token
-        const token = await this.tokenService.getToken(tunnelId);
         const headers: Record<string, string | string[] | undefined> = {
             ...incomingReq.headers,
             host: url.host,
         };
-        if (token) {
-            headers['x-tunnel-authorization'] = `TunnelAccessToken ${token}`;
-        }
         // Remove connection-specific headers that shouldn't be forwarded
         delete headers['connection'];
         delete headers['keep-alive'];
