@@ -16,6 +16,7 @@ import {
 } from './repositoryService';
 import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 const AUTO_VALUE = 'auto';
 
@@ -141,16 +142,61 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserEntries(data.entries || []);
             setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
             setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-        } catch {
+        } catch (err) {
             setBrowserEntries([]);
             setBrowserParent(null);
             setBrowseRoots([]);
-            setBrowserError('Unable to browse this path');
+            const errStatus = (err as any)?.status;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const isAuthError = (errStatus === 401 || errStatus === 403)
+                || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
+            console.warn('[AddRepoDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
+            if (isAuthError && isContainerMode() && selectedAgentId) {
+                const agent = availableAgents.find(a => a.id === selectedAgentId);
+                if (agent?.address) {
+                    // Open auth page; poll until popup closes, then retry via direct browser fetch
+                    setBrowserError('Authentication required — complete login in the opened tab...');
+                    const authWindow = window.open(agent.address, '_blank');
+                    if (authWindow) {
+                        const poll = setInterval(async () => {
+                            if (authWindow.closed) {
+                                clearInterval(poll);
+                                // Retry using direct fetch to agent (browser has auth cookie now)
+                                setBrowserError(null);
+                                setBrowserLoading(true);
+                                try {
+                                    const directUrl = `${agent.address}/api/workspaces/browse?path=${encodeURIComponent(dir)}`;
+                                    const resp = await fetch(directUrl, { credentials: 'include' });
+                                    if (resp.ok) {
+                                        const data = await resp.json() as BrowserResponse;
+                                        setBrowserPath(data.path);
+                                        setBrowserParent(data.parent || null);
+                                        setBrowserEntries(data.entries || []);
+                                        setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
+                                        setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+                                        setBrowserError(null);
+                                    } else {
+                                        setBrowserError('Authentication may have failed. Please try Browse again.');
+                                    }
+                                } catch {
+                                    setBrowserError('Authentication may have failed. Please try Browse again.');
+                                }
+                                setBrowserLoading(false);
+                            }
+                        }, 1000);
+                        setTimeout(() => clearInterval(poll), 300_000);
+                    }
+                } else {
+                    setBrowserError('Authentication required. Please authenticate with this agent first.');
+                }
+            } else {
+                setBrowserError('Unable to browse this path');
+            }
         } finally {
             setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
-    }, [selectedAgentId]);
+    }, [selectedAgentId, availableAgents]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);
