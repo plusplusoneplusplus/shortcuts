@@ -126,12 +126,13 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             if (isAuthError && isContainerMode() && selectedAgentId) {
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
-                    // Browser may already have auth cookie — try direct fetch first
-                    const directUrl = `${agent.address}/api/workspaces/browse?path=${encodeURIComponent(dir)}`;
-                    try {
-                        const resp = await fetch(directUrl, { credentials: 'include' });
-                        if (resp.ok) {
-                            const data = await resp.json() as BrowserResponse;
+                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
+                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
+                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
+                    const onMessage = (event: MessageEvent) => {
+                        if (event.data?.type === 'browse-result') {
+                            window.removeEventListener('message', onMessage);
+                            const data = event.data.data as BrowserResponse;
                             setBrowserPath(data.path);
                             setBrowserParent(data.parent || null);
                             setBrowserEntries(data.entries || []);
@@ -139,39 +140,22 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                             setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
                             setBrowserError(null);
                             setBrowserLoading(false);
-                            return;
+                        } else if (event.data?.type === 'browse-error') {
+                            window.removeEventListener('message', onMessage);
+                            setBrowserError(`Browse failed: ${event.data.error}`);
+                            setBrowserLoading(false);
                         }
-                    } catch { /* direct fetch failed, fall through to popup */ }
-
-                    // Direct fetch failed — open auth page, poll until closed, then retry
-                    setBrowserError('Authentication required — complete login in the opened tab, then close it.');
-                    const authWindow = window.open(agent.address, '_blank');
-                    if (authWindow) {
-                        const poll = setInterval(async () => {
-                            if (authWindow.closed) {
-                                clearInterval(poll);
-                                setBrowserError(null);
-                                setBrowserLoading(true);
-                                try {
-                                    const resp = await fetch(directUrl, { credentials: 'include' });
-                                    if (resp.ok) {
-                                        const data = await resp.json() as BrowserResponse;
-                                        setBrowserPath(data.path);
-                                        setBrowserParent(data.parent || null);
-                                        setBrowserEntries(data.entries || []);
-                                        setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-                                        setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-                                        setBrowserError(null);
-                                    } else {
-                                        setBrowserError('Authentication may have failed. Please try Browse again.');
-                                    }
-                                } catch {
-                                    setBrowserError('Authentication may have failed. Please try Browse again.');
-                                }
+                    };
+                    window.addEventListener('message', onMessage);
+                    if (popup) {
+                        const cleanup = setInterval(() => {
+                            if (popup.closed) {
+                                clearInterval(cleanup);
+                                window.removeEventListener('message', onMessage);
                                 setBrowserLoading(false);
                             }
                         }, 1000);
-                        setTimeout(() => clearInterval(poll), 300_000);
+                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
                     }
                 } else {
                     setBrowserError('Authentication required. Please authenticate with this agent first.');
